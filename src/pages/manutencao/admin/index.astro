@@ -72,9 +72,10 @@ export const prerender = false;
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       <button class="btn btn-outline btn-sm filtro-lead active" data-etapa="">Todos</button>
       <button class="btn btn-outline btn-sm filtro-lead" data-etapa="novo">Novos</button>
-      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="em_contato">Em Contato</button>
-      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="contatado">Contatados</button>
-      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="contratado">Contratados</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="contato_feito">Contato Feito</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="proposta_enviada">Proposta</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="negociando">Negociando</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="convertido">Convertidos</button>
       <button class="btn btn-outline btn-sm filtro-lead" data-etapa="perdido">Perdidos</button>
     </div>
     <div id="loadingLeads" class="loading">Carregando...</div>
@@ -438,6 +439,8 @@ export const prerender = false;
   let loaded={dashboard:false,clientes:false,precadastros:false,chamados:false,tecnicos:false,valores:false,cupons:false,contrato:false,orcamentos:false,suporte:false};
 
   // ─── helpers ───
+  const etapaLabels={novo:"Novo",contato_feito:"Contato Feito",proposta_enviada:"Proposta",negociando:"Negociando",convertido:"Convertido",perdido:"Perdido"};
+  function etapaBadge(e){const cores={novo:"badge-pendente",contato_feito:"badge-aberto",proposta_enviada:"badge-aguardando_material",negociando:"badge-em_andamento",convertido:"badge-ativo",perdido:"badge-cancelado"};return`<span class="badge ${cores[e]||"badge-pendente"}">${etapaLabels[e]||e}</span>`}
   function badge(status){const m={aberto:"Aberto",em_andamento:"Em andamento",aguardando_material:"Aguard. material",concluido:"Concluído",cancelado:"Cancelado",ativo:"Ativo",pendente:"Pendente",inadimplente:"Inadimplente",suspenso:"Suspenso"};return`<span class="badge badge-${status}">${m[status]||status}</span>`}
   function tipoBadge(t){return`<span class="tipo-badge tipo-${t}">${t}</span>`}
   function fmtDate(d){return d?new Date(d).toLocaleDateString("pt-BR"):"—"}
@@ -642,7 +645,7 @@ export const prerender = false;
         <td><strong>${l.nome}</strong><div style="font-size:12px;color:#6B7280">${l.nome_loja||""}</div></td>
         <td style="font-size:13px">${l.telefone||""}<br>${l.email||""}</td>
         <td style="font-size:13px">${l.plano||"—"}<br><span style="color:#5B5F6B">${fmtMoney(l.valor)}</span></td>
-        <td>${badge(l.etapa||"novo")}</td>
+        <td>${etapaBadge(l.etapa||"novo")}</td>
         <td>
           <div style="display:flex;gap:6px;align-items:center">
           <select class="btn btn-outline btn-sm" style="border:1px solid #E5E7EB" onchange="atualizarEtapaLead('${l.id}',this.value)">
@@ -678,6 +681,27 @@ export const prerender = false;
     await api(`/api/manut/admin/leads/${id}`,{method:"PUT",body:JSON.stringify({etapa})});
     const idx=allLeads.findIndex(l=>l.id===id);if(idx>=0)allLeads[idx].etapa=etapa;
     renderLeads();
+
+    // Ao converter: cria cliente com status "pendente"
+    if(etapa==="convertido"){
+      const lead=allLeads.find(l=>l.id===id);
+      if(lead&&lead.email){
+        const res=await api("/api/manut/admin/clientes",{method:"POST",body:JSON.stringify({
+          nome:lead.nome,
+          email:lead.email,
+          telefone:lead.telefone||null,
+          plano_selecionado:lead.plano||null,
+          valor_mensal_contratado:lead.valor||null,
+        })});
+        const data=await res.json();
+        if(res.ok&&data.senhaInicial){
+          alert(`✓ Cliente criado automaticamente!\n\nCódigo: ${data.codigo}\nEmail: ${data.email}\nSenha inicial: ${data.senhaInicial}\n\nAnote e repasse ao cliente.\nStatus: Pendente (aguardando pagamento)`);
+          loaded.clientes=false;
+        }else if(res.status===409){
+          alert(`Lead marcado como Convertido.\nObs: o email "${lead.email}" já possui cadastro de cliente existente.`);
+        }
+      }
+    }
   }
   window.atualizarEtapaLead=atualizarEtapaLead;
 
