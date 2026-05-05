@@ -3,102 +3,332 @@ import Portal from "~/layouts/Portal.astro";
 export const prerender = false;
 ---
 <Portal title="Administração" tipo="admin" activePage="clientes">
-  <!-- Tabs -->
-  <div style="display:flex;gap:4px;margin-bottom:24px;border-bottom:2px solid #E5E7EB;padding-bottom:0">
-    <button class="tab active" data-tab="clientes">Clientes</button>
-    <button class="tab" data-tab="chamados">Chamados</button>
-    <button class="tab" data-tab="tecnicos">Técnicos</button>
+
+  <!-- Atalhos rápidos -->
+  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+    <a href="/manutencao/cliente/login" target="_blank" class="btn btn-outline btn-sm">👤 Visualizar como Cliente</a>
+    <a href="/manutencao/tecnico/login" target="_blank" class="btn btn-outline btn-sm">🔧 Visualizar como Técnico</a>
   </div>
 
-  <!-- CLIENTES -->
-  <div id="tab-clientes">
-    <div id="loadingClientes" class="loading">Carregando clientes...</div>
-    <div class="card" id="cardClientes" style="display:none">
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>Código</th><th>Nome</th><th>Email</th><th>Plano</th>
-            <th>Valor/mês</th><th>Status</th><th>Contratação</th>
-          </tr></thead>
-          <tbody id="tbodyClientes"></tbody>
-        </table>
+  <!-- Tabs -->
+  <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid #E5E7EB;overflow-x:auto">
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="clientes">Clientes</button>
+    <button class="tab" data-tab="precadastros">Pré-cadastros</button>
+    <button class="tab" data-tab="chamados">Chamados</button>
+    <button class="tab" data-tab="tecnicos">Técnicos</button>
+    <button class="tab" data-tab="valores">Valores Base</button>
+    <button class="tab" data-tab="cupons">Cupons</button>
+    <button class="tab" data-tab="contrato">Contrato</button>
+    <button class="tab" data-tab="orcamentos">Orçamentos</button>
+    <button class="tab" data-tab="suporte">Suporte</button>
+  </div>
+
+  <!-- ── DASHBOARD ── -->
+  <div id="tab-dashboard">
+    <div id="loadingDash" class="loading">Carregando...</div>
+    <div id="dashContent" style="display:none">
+      <div class="stats-grid" id="dashStats"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:4px">
+        <div class="card">
+          <h3>Clientes por Status</h3>
+          <div id="dashStatusList"></div>
+        </div>
+        <div class="card">
+          <h3>Clientes Recentes</h3>
+          <div id="dashRecentes"></div>
+        </div>
       </div>
-      <div id="emptyClientes" class="loading" style="display:none">Nenhum cliente cadastrado.</div>
     </div>
   </div>
 
-  <!-- CHAMADOS -->
+  <!-- ── CLIENTES ── -->
+  <div id="tab-clientes" style="display:none">
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="buscaClientes" placeholder="Buscar por nome, email, código..." class="form-control" style="flex:1;min-width:200px;padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:14px;outline:none">
+      <select id="filtroStatusClientes" class="form-control" style="padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:14px;outline:none">
+        <option value="">Todos os status</option>
+        <option value="ativo">Ativo</option>
+        <option value="pendente">Pendente</option>
+        <option value="inadimplente">Inadimplente</option>
+        <option value="cancelado">Cancelado</option>
+      </select>
+      <button class="btn btn-primary btn-sm" id="btnNovoCliente">+ Adicionar</button>
+    </div>
+    <div id="loadingClientes" class="loading">Carregando...</div>
+    <div class="card" id="cardClientes" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Código</th><th>Nome / Responsável</th><th>Email</th><th>Plano</th><th>Valor/mês</th><th>Status</th><th>Contratação</th><th>Ações</th></tr></thead>
+          <tbody id="tbodyClientes"></tbody>
+        </table>
+      </div>
+      <div id="emptyClientes" style="display:none" class="loading">Nenhum cliente encontrado.</div>
+    </div>
+  </div>
+
+  <!-- ── PRÉ-CADASTROS ── -->
+  <div id="tab-precadastros" style="display:none">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm filtro-lead active" data-etapa="">Todos</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="novo">Novos</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="em_contato">Em Contato</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="contatado">Contatados</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="contratado">Contratados</button>
+      <button class="btn btn-outline btn-sm filtro-lead" data-etapa="perdido">Perdidos</button>
+    </div>
+    <div id="loadingLeads" class="loading">Carregando...</div>
+    <div class="card" id="cardLeads" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Nome / Loja</th><th>Contato</th><th>Plano</th><th>Etapa</th><th>Ações</th></tr></thead>
+          <tbody id="tbodyLeads"></tbody>
+        </table>
+      </div>
+      <div id="emptyLeads" style="display:none" class="loading">Nenhum pré-cadastro.</div>
+    </div>
+  </div>
+
+  <!-- ── CHAMADOS ── -->
   <div id="tab-chamados" style="display:none">
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       <button class="btn btn-outline btn-sm filtro-ch active" data-status="">Todos</button>
       <button class="btn btn-outline btn-sm filtro-ch" data-status="aberto">Abertos</button>
       <button class="btn btn-outline btn-sm filtro-ch" data-status="em_andamento">Em andamento</button>
+      <button class="btn btn-outline btn-sm filtro-ch" data-status="aguardando_material">Aguard. material</button>
       <button class="btn btn-outline btn-sm filtro-ch" data-status="concluido">Concluídos</button>
     </div>
-    <div id="loadingChamados" class="loading">Carregando chamados...</div>
+    <div id="loadingChamados" class="loading">Carregando...</div>
     <div class="card" id="cardChamados" style="display:none">
       <div class="table-wrap">
         <table>
-          <thead><tr>
-            <th>Tipo</th><th>Loja</th><th>Cliente</th><th>Status</th>
-            <th>Prioridade</th><th>Técnico</th><th>Aberto em</th><th>Ação</th>
-          </tr></thead>
+          <thead><tr><th>Tipo</th><th>Loja</th><th>Cliente</th><th>Status</th><th>Prioridade</th><th>Técnico</th><th>Aberto em</th><th>Ação</th></tr></thead>
           <tbody id="tbodyChamados"></tbody>
         </table>
       </div>
-      <div id="emptyChamados" class="loading" style="display:none">Nenhum chamado encontrado.</div>
+      <div id="emptyChamados" style="display:none" class="loading">Nenhum chamado.</div>
     </div>
   </div>
 
-  <!-- TÉCNICOS -->
+  <!-- ── TÉCNICOS ── -->
   <div id="tab-tecnicos" style="display:none">
-    <div id="loadingTecnicos" class="loading">Carregando técnicos...</div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button class="btn btn-primary btn-sm" id="btnNovoTecnico">+ Cadastrar Técnico</button>
+    </div>
+    <div id="loadingTecnicos" class="loading">Carregando...</div>
     <div class="card" id="cardTecnicos" style="display:none">
       <div class="table-wrap">
         <table>
-          <thead><tr>
-            <th>Nome</th><th>Email</th><th>Telefone</th><th>Especialidades</th><th>Status</th><th>Último acesso</th>
-          </tr></thead>
+          <thead><tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Especialidades</th><th>Status</th><th>Último acesso</th></tr></thead>
           <tbody id="tbodyTecnicos"></tbody>
         </table>
       </div>
-      <div id="emptyTecnicos" class="loading" style="display:none">Nenhum técnico cadastrado.</div>
+      <div id="emptyTecnicos" style="display:none" class="loading">Nenhum técnico cadastrado.</div>
     </div>
   </div>
+
+  <!-- ── VALORES BASE ── -->
+  <div id="tab-valores" style="display:none">
+    <div class="card" style="max-width:600px;margin-bottom:20px">
+      <h3>Editar preço por tipo de loja</h3>
+      <p style="font-size:14px;color:#5B5F6B;margin:0 0 20px">O preço final = preço base + (qtd. especialidades extras × custo adicional).</p>
+      <div class="form-group">
+        <label>Tipo de Loja</label>
+        <select id="valTipo">
+          <option value="quiosque">Quiosque</option>
+          <option value="ate40">Até 40 m²</option>
+          <option value="41a80">41–80 m²</option>
+          <option value="81a120">81–120 m²</option>
+          <option value="121a250">121–250 m²</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group">
+          <label>Preço Base (R$/mês)</label>
+          <input type="number" id="valPreco" placeholder="Ex: 300" min="0">
+        </div>
+        <div class="form-group">
+          <label>Custo por especialidade (R$)</label>
+          <input type="number" id="valCusto" placeholder="Ex: 50" min="0">
+        </div>
+      </div>
+      <div id="valAlert" class="alert" style="display:none"></div>
+      <button class="btn btn-primary" id="btnSalvarValor">Salvar</button>
+    </div>
+    <div class="card" id="cardValores">
+      <h3>Tabela atual</h3>
+      <div id="valoresTabela" class="loading">Carregando...</div>
+    </div>
+  </div>
+
+  <!-- ── CUPONS ── -->
+  <div id="tab-cupons" style="display:none">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button class="btn btn-primary btn-sm" id="btnNovoCupom">+ Novo Cupom</button>
+    </div>
+    <div id="loadingCupons" class="loading">Carregando...</div>
+    <div class="card" id="cardCupons" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Código</th><th>Descricao</th><th>Desconto</th><th>Duração</th><th>Usos</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead>
+          <tbody id="tbodyCupons"></tbody>
+        </table>
+      </div>
+      <div id="emptyCupons" style="display:none" class="loading">Nenhum cupom cadastrado.</div>
+    </div>
+  </div>
+
+  <!-- ── CONTRATO ── -->
+  <div id="tab-contrato" style="display:none">
+    <div class="card" style="max-width:860px">
+      <h3>Editar Contrato / Termo de Serviço</h3>
+      <p style="font-size:14px;color:#5B5F6B;margin:0 0 16px">Este texto é exibido ao cliente na etapa de assinatura do contrato.</p>
+      <div id="contratoAlert" class="alert" style="display:none"></div>
+      <div class="form-group">
+        <textarea id="contratoTexto" rows="20" placeholder="Digite o texto do contrato aqui..." style="font-family:'Open Sans',sans-serif;font-size:14px;line-height:1.7"></textarea>
+      </div>
+      <button class="btn btn-primary" id="btnSalvarContrato">Salvar Contrato</button>
+    </div>
+  </div>
+
+  <!-- ── ORÇAMENTOS ── -->
+  <div id="tab-orcamentos" style="display:none">
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="buscaOrc" placeholder="Buscar por cliente ou título..." style="flex:1;min-width:200px;padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:14px;outline:none">
+      <select id="filtroStatusOrc" style="padding:9px 14px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:14px;outline:none">
+        <option value="">Todos</option>
+        <option value="em_analise">Em Análise</option>
+        <option value="em_ajuste">Em Ajuste</option>
+        <option value="aprovado">Aprovado</option>
+        <option value="rejeitado">Rejeitado</option>
+      </select>
+      <button class="btn btn-primary btn-sm" id="btnNovoOrc">+ Novo Orçamento</button>
+    </div>
+    <div id="loadingOrc" class="loading">Carregando...</div>
+    <div class="card" id="cardOrc" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Cliente</th><th>Loja</th><th>Descrição</th><th>Valor</th><th>Status</th><th>Data</th><th>Ações</th></tr></thead>
+          <tbody id="tbodyOrc"></tbody>
+        </table>
+      </div>
+      <div id="emptyOrc" style="display:none" class="loading">Nenhum orçamento.</div>
+    </div>
+  </div>
+
+  <!-- ── SUPORTE ── -->
+  <div id="tab-suporte" style="display:none">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm filtro-sup active" data-status="">Todos</button>
+      <button class="btn btn-outline btn-sm filtro-sup" data-status="aberto">Abertos</button>
+      <button class="btn btn-outline btn-sm filtro-sup" data-status="em_atendimento">Em Atendimento</button>
+      <button class="btn btn-outline btn-sm filtro-sup" data-status="resolvido">Resolvidos</button>
+    </div>
+    <div id="loadingSup" class="loading">Carregando...</div>
+    <div class="card" id="cardSup" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Usuário</th><th>Tipo</th><th>Assunto</th><th>Status</th><th>Data</th><th>Ações</th></tr></thead>
+          <tbody id="tbodySup"></tbody>
+        </table>
+      </div>
+      <div id="emptySup" style="display:none" class="loading">Nenhum chamado de suporte.</div>
+    </div>
+  </div>
+
+  <!-- ─── Modais ─── -->
 
   <!-- Modal atribuir técnico -->
   <div class="modal-bg" id="modalAtribuir">
     <div class="modal">
       <h2>Atribuir Técnico</h2>
       <div id="atribuirAlert" class="alert alert-error" style="display:none"></div>
-      <div class="form-group">
-        <label>Técnico</label>
-        <select id="tecnicoSelect"><option value="">Selecione...</option></select>
-      </div>
+      <div class="form-group"><label>Técnico</label><select id="tecnicoSelect"><option value="">Selecione...</option></select></div>
       <div style="display:flex;gap:12px;justify-content:flex-end">
-        <button class="btn btn-outline" id="btnCancelarAtribuir">Cancelar</button>
+        <button class="btn btn-outline" onclick="closeModal('modalAtribuir')">Cancelar</button>
         <button class="btn btn-primary" id="btnConfirmarAtribuir">Atribuir</button>
       </div>
     </div>
   </div>
+
+  <!-- Modal novo cupom -->
+  <div class="modal-bg" id="modalCupom">
+    <div class="modal">
+      <h2 id="cupomModalTitulo">Novo Cupom</h2>
+      <div id="cupomAlert" class="alert alert-error" style="display:none"></div>
+      <div class="form-group"><label>Código</label><input type="text" id="cupomCodigo" placeholder="Ex: PROMO10"></div>
+      <div class="form-group"><label>Descrição</label><input type="text" id="cupomDesc" placeholder="Ex: Desconto lançamento"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Desconto (%)</label><input type="number" id="cupomDesconto" min="1" max="100" placeholder="Ex: 20"></div>
+        <div class="form-group"><label>Duração (meses)</label><input type="number" id="cupomMeses" min="1" placeholder="Ex: 3"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Usos máximos</label><input type="number" id="cupomUsos" min="1" placeholder="Ex: 50"></div>
+        <div class="form-group"><label>Validade</label><input type="date" id="cupomValidade"></div>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modalCupom')">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvarCupom">Salvar Cupom</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal novo técnico -->
+  <div class="modal-bg" id="modalTecnico">
+    <div class="modal">
+      <h2>Cadastrar Técnico</h2>
+      <div id="tecnicoAlert" class="alert alert-error" style="display:none"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Nome</label><input type="text" id="tecNome" placeholder="Nome completo"></div>
+        <div class="form-group"><label>Email</label><input type="email" id="tecEmail" placeholder="tecnico@email.com"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Telefone</label><input type="text" id="tecTel" placeholder="(11) 99999-0000"></div>
+        <div class="form-group"><label>CPF</label><input type="text" id="tecCpf" placeholder="000.000.000-00"></div>
+      </div>
+      <div class="form-group">
+        <label>Especialidades</label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">
+          <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" value="eletrica"> Elétrica</label>
+          <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" value="hidraulica"> Hidráulica</label>
+          <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" value="civil"> Civil</label>
+        </div>
+      </div>
+      <div class="form-group"><label>Senha inicial</label><input type="text" id="tecSenha" placeholder="Será enviada ao técnico"></div>
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modalTecnico')">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvarTecnico">Cadastrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal responder suporte -->
+  <div class="modal-bg" id="modalSuporte">
+    <div class="modal">
+      <h2>Responder Suporte</h2>
+      <div id="supAssunto" style="font-size:14px;color:#5B5F6B;margin-bottom:8px"></div>
+      <div id="supDescricao" style="background:#F4F6F9;padding:14px;border-radius:8px;font-size:14px;margin-bottom:16px;max-height:120px;overflow-y:auto"></div>
+      <div class="form-group"><label>Resposta</label><textarea id="supResposta" rows="4" placeholder="Digite a resposta..."></textarea></div>
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modalSuporte')">Cancelar</button>
+        <button class="btn btn-primary" id="btnEnviarResposta">Responder e Resolver</button>
+      </div>
+    </div>
+  </div>
+
 </Portal>
 
 <style>
-  .tab {
-    padding: 10px 20px; border: 0; background: transparent; cursor: pointer;
-    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px;
-    color: #6B7280; border-bottom: 2px solid transparent; margin-bottom: -2px;
-    transition: all .15s;
-  }
-  .tab.active { color: #C41E3A; border-bottom-color: #C41E3A; }
-  .tab:hover { color: #2D2F36; }
-  .filtro-ch.active { background: #C41E3A; color: #fff; border-color: #C41E3A; }
-  .tipo-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-  .tipo-eletrica { background: #EFF6FF; color: #1D4ED8; }
-  .tipo-hidraulica { background: #F0FDF4; color: #15803D; }
-  .tipo-civil { background: #FFF7ED; color: #C2410C; }
-  .prio-urgente { color: #B91C1C; font-weight: 700; }
-  .prio-alta { color: #C2410C; font-weight: 600; }
+  .tab { padding:10px 18px;border:0;background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;color:#6B7280;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;white-space:nowrap; }
+  .tab.active { color:#C41E3A;border-bottom-color:#C41E3A; }
+  .tab:hover { color:#2D2F36; }
+  .filtro-ch.active,.filtro-lead.active,.filtro-sup.active { background:#C41E3A;color:#fff;border-color:#C41E3A; }
+  .tipo-badge { display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase; }
+  .tipo-eletrica{background:#EFF6FF;color:#1D4ED8}.tipo-hidraulica{background:#F0FDF4;color:#15803D}.tipo-civil{background:#FFF7ED;color:#C2410C}
+  .status-dot { display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px; }
+  .dot-ativo{background:#22C55E}.dot-pendente{background:#EAB308}.dot-inadimplente{background:#EF4444}.dot-cancelado{background:#9CA3AF}
+  .row-item { padding:10px 0;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between; }
+  .row-item:last-child{border-bottom:0}
 </style>
 
 <script>
@@ -106,183 +336,540 @@ export const prerender = false;
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) window.location.replace("/manutencao/admin/login");
 
-  let allChamados = [];
-  let tecnicos = [];
-  let filtroChStatus = "";
-  let chamadoAtribuirId = null;
-  let loaded = { clientes: false, chamados: false, tecnicos: false };
+  // ─── estado ───
+  let allChamados=[], tecnicos=[], allLeads=[], allClientes=[], allCupons=[], allOrc=[], allSup=[];
+  let filtroChStatus="", filtroLeadEtapa="", filtroSupStatus="";
+  let chamadoAtribuirId=null, supAtualId=null;
+  let loaded={dashboard:false,clientes:false,precadastros:false,chamados:false,tecnicos:false,valores:false,cupons:false,contrato:false,orcamentos:false,suporte:false};
 
-  function badge(status) {
-    const labels = { aberto: "Aberto", em_andamento: "Em andamento", aguardando_material: "Aguard. material", concluido: "Concluído", cancelado: "Cancelado", ativo: "Ativo", pendente: "Pendente", inadimplente: "Inadimplente" };
-    return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
-  }
-  function tipoBadge(tipo) { return `<span class="tipo-badge tipo-${tipo}">${tipo}</span>`; }
-  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
-  function fmtMoney(v) { return v ? "R$ " + Number(v).toLocaleString("pt-BR", {minimumFractionDigits:2}) : "—"; }
+  // ─── helpers ───
+  function badge(status){const m={aberto:"Aberto",em_andamento:"Em andamento",aguardando_material:"Aguard. material",concluido:"Concluído",cancelado:"Cancelado",ativo:"Ativo",pendente:"Pendente",inadimplente:"Inadimplente",suspenso:"Suspenso"};return`<span class="badge badge-${status}">${m[status]||status}</span>`}
+  function tipoBadge(t){return`<span class="tipo-badge tipo-${t}">${t}</span>`}
+  function fmtDate(d){return d?new Date(d).toLocaleDateString("pt-BR"):"—"}
+  function fmtMoney(v){return v?"R$ "+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2}):"—"}
+  function api(url,opts={}){return fetch(url,{...opts,headers:{...opts.headers,"x-portal-auth":token,"content-type":"application/json"}})}
+  function closeModal(id){document.getElementById(id).classList.remove("open")}
+  window.closeModal=closeModal;
 
-  // ── Tabs ──
-  const tabEls = document.querySelectorAll(".tab");
-  tabEls.forEach(btn => btn.addEventListener("click", () => {
-    tabEls.forEach(t => t.classList.remove("active"));
+  // ─── tabs ───
+  document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
     btn.classList.add("active");
-    const tab = btn.dataset.tab;
-    document.getElementById("tab-clientes").style.display = tab === "clientes" ? "" : "none";
-    document.getElementById("tab-chamados").style.display = tab === "chamados" ? "" : "none";
-    document.getElementById("tab-tecnicos").style.display = tab === "tecnicos" ? "" : "none";
-    if (!loaded[tab]) loadTab(tab);
+    const tab=btn.dataset.tab;
+    ["dashboard","clientes","precadastros","chamados","tecnicos","valores","cupons","contrato","orcamentos","suporte"].forEach(t=>{
+      document.getElementById("tab-"+t).style.display=t===tab?"":"none";
+    });
+    if(!loaded[tab])loadTab(tab);
   }));
 
-  // ── Clientes ──
-  async function loadClientes() {
-    try {
-      const res = await fetch("/api/manut/admin/clientes", { headers: { "x-portal-auth": token } });
-      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/admin/login"); return; }
-      const clientes = await res.json();
-      document.getElementById("loadingClientes").style.display = "none";
-      document.getElementById("cardClientes").style.display = "";
-      if (!clientes.length) { document.getElementById("emptyClientes").style.display = ""; return; }
-      document.getElementById("tbodyClientes").innerHTML = clientes.map(c => `
-        <tr>
-          <td><code style="font-size:12px">${c.codigo}</code></td>
-          <td><strong>${c.nome}</strong><div style="font-size:12px;color:#6B7280">${c.telefone || ""}</div></td>
-          <td style="font-size:13px">${c.email}</td>
-          <td style="font-size:13px">${c.plano_selecionado || "—"}</td>
-          <td style="font-size:13px">${fmtMoney(c.valor_mensal_contratado)}</td>
-          <td>${badge(c.status)}</td>
-          <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_contratacao)}</td>
-        </tr>
-      `).join("");
-      loaded.clientes = true;
-    } catch {
-      document.getElementById("loadingClientes").textContent = "Erro ao carregar clientes.";
-    }
+  // ─── close modals on bg click ───
+  document.querySelectorAll(".modal-bg").forEach(bg=>bg.addEventListener("click",e=>{if(e.target===bg)bg.classList.remove("open")}));
+
+  // ────────────────────────────────────────────────────────────────
+  // DASHBOARD
+  // ────────────────────────────────────────────────────────────────
+  async function loadDashboard(){
+    try{
+      const [resCli,resCh]=await Promise.all([
+        api("/api/manut/admin/clientes"),
+        api("/api/manut/admin/chamados")
+      ]);
+      if(resCli.status===401){localStorage.removeItem(TOKEN_KEY);window.location.replace("/manutencao/admin/login");return}
+      const clientes=await resCli.json();
+      const chamados=await resCh.json();
+      const ativos=clientes.filter(c=>c.status==="ativo");
+      const inadim=clientes.filter(c=>c.status==="inadimplente");
+      const pend=clientes.filter(c=>c.status==="pendente");
+      const receita=ativos.reduce((s,c)=>s+Number(c.valor_mensal_contratado||0),0);
+      const abertos=chamados.filter(c=>c.status==="aberto").length;
+      const emAnd=chamados.filter(c=>c.status==="em_andamento").length;
+      document.getElementById("dashStats").innerHTML=`
+        <div class="stat-card"><div class="stat-label">Total de Clientes</div><div class="stat-value">${clientes.length}</div></div>
+        <div class="stat-card accent"><div class="stat-label">Clientes Ativos</div><div class="stat-value">${ativos.length}</div></div>
+        <div class="stat-card accent"><div class="stat-label">Receita Mensal</div><div class="stat-value" style="font-size:22px">${fmtMoney(receita)}</div></div>
+        <div class="stat-card"><div class="stat-label">Chamados Abertos</div><div class="stat-value">${abertos}</div></div>
+        <div class="stat-card"><div class="stat-label">Em Andamento</div><div class="stat-value">${emAnd}</div></div>
+        <div class="stat-card"><div class="stat-label">Inadimplentes</div><div class="stat-value" style="color:${inadim.length>0?'#EF4444':'inherit'}">${inadim.length}</div></div>
+      `;
+      document.getElementById("dashStatusList").innerHTML=`
+        <div class="row-item"><span><span class="status-dot dot-ativo"></span>Ativos</span><strong>${ativos.length}</strong></div>
+        <div class="row-item"><span><span class="status-dot dot-pendente"></span>Pendentes</span><strong>${pend.length}</strong></div>
+        <div class="row-item"><span><span class="status-dot dot-inadimplente"></span>Inadimplentes</span><strong>${inadim.length}</strong></div>
+        <div class="row-item"><span><span class="status-dot dot-cancelado"></span>Cancelados</span><strong>${clientes.filter(c=>c.status==="cancelado").length}</strong></div>
+      `;
+      const recentes=clientes.slice(0,5);
+      document.getElementById("dashRecentes").innerHTML=recentes.length?recentes.map(c=>`
+        <div class="row-item">
+          <div><div style="font-weight:600;font-size:14px">${c.nome}</div><div style="font-size:12px;color:#6B7280">${c.email}</div></div>
+          ${badge(c.status)}
+        </div>
+      `).join(""):'<div class="loading">Nenhum cliente.</div>';
+      document.getElementById("loadingDash").style.display="none";
+      document.getElementById("dashContent").style.display="";
+      loaded.dashboard=true;
+    }catch(e){document.getElementById("loadingDash").textContent="Erro ao carregar.";}
   }
 
-  // ── Chamados ──
-  function renderChamados() {
-    const tbody = document.getElementById("tbodyChamados");
-    const empty = document.getElementById("emptyChamados");
-    const filtered = filtroChStatus ? allChamados.filter(c => c.status === filtroChStatus) : allChamados;
-    if (!filtered.length) { tbody.innerHTML = ""; empty.style.display = ""; return; }
-    empty.style.display = "none";
-    tbody.innerHTML = filtered.map(c => `
+  // ────────────────────────────────────────────────────────────────
+  // CLIENTES
+  // ────────────────────────────────────────────────────────────────
+  function renderClientes(){
+    const busca=document.getElementById("buscaClientes").value.toLowerCase();
+    const filtro=document.getElementById("filtroStatusClientes").value;
+    const tbody=document.getElementById("tbodyClientes");
+    const empty=document.getElementById("emptyClientes");
+    let list=allClientes;
+    if(filtro)list=list.filter(c=>c.status===filtro);
+    if(busca)list=list.filter(c=>(c.nome+c.email+(c.codigo||"")).toLowerCase().includes(busca));
+    if(!list.length){tbody.innerHTML="";empty.style.display="";return}
+    empty.style.display="none";
+    tbody.innerHTML=list.map(c=>`
       <tr>
-        <td>${tipoBadge(c.tipo)}</td>
-        <td style="font-size:13px">${c.manut_lojas?.nome || "—"}</td>
-        <td style="font-size:13px">${c.manut_clientes?.nome || "—"}</td>
+        <td><code style="font-size:12px">${c.codigo||"—"}</code></td>
+        <td><strong>${c.nome}</strong><div style="font-size:12px;color:#6B7280">${c.telefone||""}</div></td>
+        <td style="font-size:13px">${c.email}</td>
+        <td style="font-size:13px">${c.plano_selecionado||"—"}</td>
+        <td style="font-size:13px">${fmtMoney(c.valor_mensal_contratado)}</td>
         <td>${badge(c.status)}</td>
-        <td class="${"prio-" + c.prioridade}" style="font-size:13px">${c.prioridade}</td>
-        <td style="font-size:13px;color:#5B5F6B">${c.manut_tecnicos?.nome || '<span style="color:#9CA3AF">—</span>'}</td>
-        <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_abertura)}</td>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_contratacao)}</td>
+        <td><button class="btn btn-outline btn-sm" onclick="editarStatusCliente('${c.id}','${c.status}')">Editar status</button></td>
+      </tr>
+    `).join("");
+  }
+  async function loadClientes(){
+    try{
+      const res=await api("/api/manut/admin/clientes");
+      if(res.status===401){localStorage.removeItem(TOKEN_KEY);window.location.replace("/manutencao/admin/login");return}
+      allClientes=await res.json();
+      document.getElementById("loadingClientes").style.display="none";
+      document.getElementById("cardClientes").style.display="";
+      renderClientes();
+      loaded.clientes=true;
+    }catch{document.getElementById("loadingClientes").textContent="Erro ao carregar.";}
+  }
+  document.getElementById("buscaClientes").addEventListener("input",renderClientes);
+  document.getElementById("filtroStatusClientes").addEventListener("change",renderClientes);
+
+  function editarStatusCliente(id,statusAtual){
+    const novo=prompt(`Status atual: ${statusAtual}\nDigite o novo status:\nato, pendente, inadimplente, cancelado`);
+    if(!novo)return;
+    api(`/api/manut/admin/clientes/${id}`,{method:"PUT",body:JSON.stringify({status:novo})}).then(r=>r.json()).then(()=>loadClientes()).catch(e=>alert(e.message));
+  }
+  window.editarStatusCliente=editarStatusCliente;
+
+  // ────────────────────────────────────────────────────────────────
+  // PRÉ-CADASTROS
+  // ────────────────────────────────────────────────────────────────
+  function renderLeads(){
+    const tbody=document.getElementById("tbodyLeads");
+    const empty=document.getElementById("emptyLeads");
+    const list=filtroLeadEtapa?allLeads.filter(l=>l.etapa===filtroLeadEtapa):allLeads;
+    if(!list.length){tbody.innerHTML="";empty.style.display="";return}
+    empty.style.display="none";
+    tbody.innerHTML=list.map(l=>`
+      <tr>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(l.created_at)}</td>
+        <td><strong>${l.nome}</strong><div style="font-size:12px;color:#6B7280">${l.nome_loja||""}</div></td>
+        <td style="font-size:13px">${l.telefone||""}<br>${l.email||""}</td>
+        <td style="font-size:13px">${l.plano||"—"}<br><span style="color:#5B5F6B">${fmtMoney(l.valor)}</span></td>
+        <td>${badge(l.etapa||"novo")}</td>
         <td>
-          ${c.status !== "concluido" && c.status !== "cancelado" ? `<button class="btn btn-outline btn-sm" onclick="abrirAtribuir('${c.id}')">Atribuir técnico</button>` : ""}
+          <select class="btn btn-outline btn-sm" style="border:1px solid #E5E7EB" onchange="atualizarEtapaLead('${l.id}',this.value)">
+            <option value="novo" ${l.etapa==="novo"?"selected":""}>Novo</option>
+            <option value="em_contato" ${l.etapa==="em_contato"?"selected":""}>Em Contato</option>
+            <option value="contatado" ${l.etapa==="contatado"?"selected":""}>Contatado</option>
+            <option value="contratado" ${l.etapa==="contratado"?"selected":""}>Contratado</option>
+            <option value="perdido" ${l.etapa==="perdido"?"selected":""}>Perdido</option>
+          </select>
         </td>
       </tr>
     `).join("");
   }
-
-  async function loadChamados() {
-    try {
-      const res = await fetch("/api/manut/admin/chamados", { headers: { "x-portal-auth": token } });
-      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/admin/login"); return; }
-      allChamados = await res.json();
-      document.getElementById("loadingChamados").style.display = "none";
-      document.getElementById("cardChamados").style.display = "";
-      renderChamados();
-      loaded.chamados = true;
-    } catch {
-      document.getElementById("loadingChamados").textContent = "Erro ao carregar chamados.";
-    }
+  async function loadLeads(){
+    try{
+      const res=await api("/api/manut/admin/leads");
+      if(res.status===401){localStorage.removeItem(TOKEN_KEY);window.location.replace("/manutencao/admin/login");return}
+      allLeads=await res.json();
+      document.getElementById("loadingLeads").style.display="none";
+      document.getElementById("cardLeads").style.display="";
+      renderLeads();
+      loaded.precadastros=true;
+    }catch{document.getElementById("loadingLeads").textContent="Erro ao carregar.";}
   }
+  document.querySelectorAll(".filtro-lead").forEach(btn=>btn.addEventListener("click",()=>{
+    document.querySelectorAll(".filtro-lead").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");filtroLeadEtapa=btn.dataset.etapa;renderLeads();
+  }));
+  async function atualizarEtapaLead(id,etapa){
+    await api(`/api/manut/admin/leads/${id}`,{method:"PUT",body:JSON.stringify({etapa})});
+    const idx=allLeads.findIndex(l=>l.id===id);if(idx>=0)allLeads[idx].etapa=etapa;
+    renderLeads();
+  }
+  window.atualizarEtapaLead=atualizarEtapaLead;
 
-  document.querySelectorAll(".filtro-ch").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".filtro-ch").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      filtroChStatus = btn.dataset.status;
+  // ────────────────────────────────────────────────────────────────
+  // CHAMADOS
+  // ────────────────────────────────────────────────────────────────
+  function renderChamados(){
+    const tbody=document.getElementById("tbodyChamados");
+    const empty=document.getElementById("emptyChamados");
+    const list=filtroChStatus?allChamados.filter(c=>c.status===filtroChStatus):allChamados;
+    if(!list.length){tbody.innerHTML="";empty.style.display="";return}
+    empty.style.display="none";
+    tbody.innerHTML=list.map(c=>`
+      <tr>
+        <td>${tipoBadge(c.tipo)}</td>
+        <td style="font-size:13px">${c.manut_lojas?.nome||"—"}</td>
+        <td style="font-size:13px">${c.manut_clientes?.nome||"—"}</td>
+        <td>${badge(c.status)}</td>
+        <td style="font-size:13px;font-weight:600;color:${c.prioridade==="urgente"?"#B91C1C":c.prioridade==="alta"?"#C2410C":"inherit"}">${c.prioridade}</td>
+        <td style="font-size:13px;color:#5B5F6B">${c.manut_tecnicos?.nome||'<span style="color:#9CA3AF">—</span>'}</td>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_abertura)}</td>
+        <td>${c.status!=="concluido"&&c.status!=="cancelado"?`<button class="btn btn-outline btn-sm" onclick="abrirAtribuir('${c.id}')">Atribuir</button>`:""}</td>
+      </tr>
+    `).join("");
+  }
+  async function loadChamados(){
+    try{
+      const res=await api("/api/manut/admin/chamados");
+      if(res.status===401){localStorage.removeItem(TOKEN_KEY);window.location.replace("/manutencao/admin/login");return}
+      allChamados=await res.json();
+      document.getElementById("loadingChamados").style.display="none";
+      document.getElementById("cardChamados").style.display="";
       renderChamados();
-    });
+      loaded.chamados=true;
+    }catch{document.getElementById("loadingChamados").textContent="Erro.";}
+  }
+  document.querySelectorAll(".filtro-ch").forEach(btn=>btn.addEventListener("click",()=>{
+    document.querySelectorAll(".filtro-ch").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");filtroChStatus=btn.dataset.status;renderChamados();
+  }));
+  function abrirAtribuir(id){
+    chamadoAtribuirId=id;
+    document.getElementById("atribuirAlert").style.display="none";
+    document.getElementById("tecnicoSelect").value="";
+    document.getElementById("modalAtribuir").classList.add("open");
+    if(!loaded.tecnicos)loadTecnicos();
+  }
+  window.abrirAtribuir=abrirAtribuir;
+  document.getElementById("btnConfirmarAtribuir").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("atribuirAlert");
+    const tid=document.getElementById("tecnicoSelect").value;
+    const btn=document.getElementById("btnConfirmarAtribuir");
+    alertEl.style.display="none";
+    if(!tid){alertEl.className="alert alert-error";alertEl.textContent="Selecione o técnico";alertEl.style.display="";return}
+    btn.disabled=true;btn.textContent="Atribuindo...";
+    try{
+      const res=await api(`/api/manut/admin/chamados/${chamadoAtribuirId}`,{method:"PUT",body:JSON.stringify({tecnicoId:tid})});
+      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      const tec=tecnicos.find(t=>t.id===tid);
+      const idx=allChamados.findIndex(c=>c.id===chamadoAtribuirId);
+      if(idx>=0)allChamados[idx]={...allChamados[idx],...data,manut_tecnicos:tec};
+      renderChamados();closeModal("modalAtribuir");
+    }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Atribuir";}
   });
 
-  // ── Técnicos ──
-  async function loadTecnicos() {
-    try {
-      const res = await fetch("/api/manut/admin/tecnicos", { headers: { "x-portal-auth": token } });
-      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/admin/login"); return; }
-      tecnicos = await res.json();
-      // Popula select do modal
-      const sel = document.getElementById("tecnicoSelect");
-      tecnicos.forEach(t => { const o = document.createElement("option"); o.value = t.id; o.textContent = t.nome + " (" + (t.especialidades || []).join(", ") + ")"; sel.appendChild(o); });
-      document.getElementById("loadingTecnicos").style.display = "none";
-      document.getElementById("cardTecnicos").style.display = "";
-      if (!tecnicos.length) { document.getElementById("emptyTecnicos").style.display = ""; return; }
-      document.getElementById("tbodyTecnicos").innerHTML = tecnicos.map(t => `
+  // ────────────────────────────────────────────────────────────────
+  // TÉCNICOS
+  // ────────────────────────────────────────────────────────────────
+  async function loadTecnicos(){
+    try{
+      const res=await api("/api/manut/admin/tecnicos");
+      if(res.status===401){localStorage.removeItem(TOKEN_KEY);window.location.replace("/manutencao/admin/login");return}
+      tecnicos=await res.json();
+      const sel=document.getElementById("tecnicoSelect");
+      sel.innerHTML='<option value="">Selecione...</option>';
+      tecnicos.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.nome+" ("+(t.especialidades||[]).join(", ")+")";sel.appendChild(o)});
+      document.getElementById("loadingTecnicos").style.display="none";
+      document.getElementById("cardTecnicos").style.display="";
+      if(!tecnicos.length){document.getElementById("emptyTecnicos").style.display="";return}
+      document.getElementById("tbodyTecnicos").innerHTML=tecnicos.map(t=>`
         <tr>
           <td><strong>${t.nome}</strong></td>
           <td style="font-size:13px">${t.email}</td>
-          <td style="font-size:13px">${t.telefone || "—"}</td>
-          <td style="font-size:12px">${(t.especialidades || []).join(", ") || "—"}</td>
+          <td style="font-size:13px">${t.telefone||"—"}</td>
+          <td style="font-size:12px">${(t.especialidades||[]).join(", ")||"—"}</td>
           <td>${badge(t.status)}</td>
           <td style="font-size:12px;color:#6B7280">${fmtDate(t.last_login_at)}</td>
         </tr>
       `).join("");
-      loaded.tecnicos = true;
-    } catch {
-      document.getElementById("loadingTecnicos").textContent = "Erro ao carregar técnicos.";
-    }
+      loaded.tecnicos=true;
+    }catch{document.getElementById("loadingTecnicos").textContent="Erro.";}
   }
-
-  // ── Modal atribuir técnico ──
-  function abrirAtribuir(chamadoId) {
-    chamadoAtribuirId = chamadoId;
-    document.getElementById("atribuirAlert").style.display = "none";
-    document.getElementById("tecnicoSelect").value = "";
-    document.getElementById("modalAtribuir").classList.add("open");
-    if (!loaded.tecnicos) loadTecnicos();
-  }
-  window.abrirAtribuir = abrirAtribuir;
-
-  document.getElementById("btnCancelarAtribuir").addEventListener("click", () => {
-    document.getElementById("modalAtribuir").classList.remove("open");
+  document.getElementById("btnNovoTecnico").addEventListener("click",()=>{
+    document.getElementById("tecnicoAlert").style.display="none";
+    document.getElementById("modalTecnico").classList.add("open");
   });
-  document.getElementById("modalAtribuir").addEventListener("click", (e) => {
-    if (e.target === e.currentTarget) document.getElementById("modalAtribuir").classList.remove("open");
-  });
-
-  document.getElementById("btnConfirmarAtribuir").addEventListener("click", async () => {
-    const alertEl = document.getElementById("atribuirAlert");
-    const tecnicoId = document.getElementById("tecnicoSelect").value;
-    const btn = document.getElementById("btnConfirmarAtribuir");
-    alertEl.style.display = "none";
-    if (!tecnicoId) { alertEl.textContent = "Selecione o técnico"; alertEl.style.display = ""; return; }
-    btn.disabled = true; btn.textContent = "Atribuindo...";
-    try {
-      const res = await fetch(`/api/manut/admin/chamados/${chamadoAtribuirId}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json", "x-portal-auth": token },
-        body: JSON.stringify({ tecnicoId })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      const idx = allChamados.findIndex(c => c.id === chamadoAtribuirId);
-      const tec = tecnicos.find(t => t.id === tecnicoId);
-      if (idx >= 0) allChamados[idx] = { ...allChamados[idx], ...data, manut_tecnicos: tec };
-      renderChamados();
-      document.getElementById("modalAtribuir").classList.remove("open");
-    } catch (err) {
-      alertEl.textContent = err.message; alertEl.style.display = "";
-    } finally {
-      btn.disabled = false; btn.textContent = "Atribuir";
-    }
+  document.getElementById("btnSalvarTecnico").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("tecnicoAlert");
+    const btn=document.getElementById("btnSalvarTecnico");
+    const esp=Array.from(document.querySelectorAll("#modalTecnico input[type=checkbox]:checked")).map(c=>c.value);
+    alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
+    try{
+      const res=await api("/api/manut/admin/tecnicos",{method:"POST",body:JSON.stringify({
+        nome:document.getElementById("tecNome").value,
+        email:document.getElementById("tecEmail").value,
+        telefone:document.getElementById("tecTel").value,
+        cpf:document.getElementById("tecCpf").value,
+        especialidades:esp,
+        senha:document.getElementById("tecSenha").value
+      })});
+      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      loaded.tecnicos=false;loadTecnicos();closeModal("modalTecnico");
+    }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Cadastrar";}
   });
 
-  // ── Tab loader ──
-  function loadTab(tab) {
-    if (tab === "clientes") loadClientes();
-    else if (tab === "chamados") loadChamados();
-    else if (tab === "tecnicos") loadTecnicos();
+  // ────────────────────────────────────────────────────────────────
+  // VALORES BASE
+  // ────────────────────────────────────────────────────────────────
+  async function loadValores(){
+    try{
+      const res=await api("/api/manut/admin/precificacao");
+      const data=await res.json();
+      const el=document.getElementById("valoresTabela");
+      if(!res.ok||!data.length){el.innerHTML='<div class="loading">Usando valores padrão do sistema.</div>';
+        el.innerHTML+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:12px">
+          ${[{id:"quiosque",label:"Quiosque",preco:250},{id:"ate40",label:"Até 40m²",preco:280},{id:"41a80",label:"41–80m²",preco:300},{id:"81a120",label:"81–120m²",preco:400},{id:"121a250",label:"121–250m²",preco:650}].map(t=>`
+            <div style="padding:14px;border:1px solid #E5E7EB;border-radius:8px;text-align:center">
+              <div style="font-weight:700;font-size:14px">${t.label}</div>
+              <div style="color:#C41E3A;font-weight:800;font-size:18px;margin:6px 0">${fmtMoney(t.preco)}</div>
+              <div style="font-size:12px;color:#6B7280">+R$ 50/esp.</div>
+            </div>`).join("")}
+        </div>`;return;}
+      el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+        ${data.map(t=>`
+          <div style="padding:14px;border:1px solid #E5E7EB;border-radius:8px;text-align:center">
+            <div style="font-weight:700;font-size:14px">${t.label||t.tipo_loja}</div>
+            <div style="color:#C41E3A;font-weight:800;font-size:18px;margin:6px 0">${fmtMoney(t.preco_base)}</div>
+            <div style="font-size:12px;color:#6B7280">+${fmtMoney(t.custo_especialidade)}/esp.</div>
+          </div>`).join("")}
+      </div>`;
+      loaded.valores=true;
+    }catch{document.getElementById("valoresTabela").textContent="Erro ao carregar.";}
+  }
+  document.getElementById("btnSalvarValor").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("valAlert");
+    const btn=document.getElementById("btnSalvarValor");
+    alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
+    try{
+      const res=await api("/api/manut/admin/precificacao",{method:"POST",body:JSON.stringify({
+        tipo_loja:document.getElementById("valTipo").value,
+        preco_base:Number(document.getElementById("valPreco").value),
+        custo_especialidade:Number(document.getElementById("valCusto").value)
+      })});
+      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      alertEl.className="alert alert-success";alertEl.textContent="Salvo com sucesso!";alertEl.style.display="";
+      loaded.valores=false;loadValores();
+    }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Salvar";}
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // CUPONS
+  // ────────────────────────────────────────────────────────────────
+  async function loadCupons(){
+    try{
+      const res=await api("/api/manut/admin/cupons");
+      allCupons=await res.json();
+      document.getElementById("loadingCupons").style.display="none";
+      document.getElementById("cardCupons").style.display="";
+      renderCupons();loaded.cupons=true;
+    }catch{document.getElementById("loadingCupons").textContent="Erro.";}
+  }
+  function renderCupons(){
+    const tbody=document.getElementById("tbodyCupons");
+    const empty=document.getElementById("emptyCupons");
+    if(!allCupons.length){tbody.innerHTML="";empty.style.display="";return}
+    empty.style.display="none";
+    tbody.innerHTML=allCupons.map(c=>`
+      <tr>
+        <td><code style="font-size:13px;font-weight:700">${c.codigo}</code></td>
+        <td style="font-size:13px">${c.descricao||"—"}</td>
+        <td style="font-weight:700;color:#C41E3A">${c.desconto_percentual}%</td>
+        <td style="font-size:13px">${c.duracao_meses} mês(es)</td>
+        <td style="font-size:13px">${c.usos_atuais||0}/${c.usos_maximos||"∞"}</td>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(c.validade)}</td>
+        <td>${c.ativo?'<span class="badge badge-ativo">Ativo</span>':'<span class="badge badge-cancelado">Pausado</span>'}</td>
+        <td style="display:flex;gap:6px">
+          <button class="btn btn-outline btn-sm" onclick="toggleCupom('${c.id}',${!c.ativo})">${c.ativo?"Pausar":"Reativar"}</button>
+          <button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirCupom('${c.id}')">Excluir</button>
+        </td>
+      </tr>
+    `).join("");
+  }
+  document.getElementById("btnNovoCupom").addEventListener("click",()=>{
+    document.getElementById("cupomAlert").style.display="none";
+    document.getElementById("cupomModalTitulo").textContent="Novo Cupom";
+    document.getElementById("modalCupom").classList.add("open");
+  });
+  document.getElementById("btnSalvarCupom").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("cupomAlert");
+    const btn=document.getElementById("btnSalvarCupom");
+    alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
+    try{
+      const res=await api("/api/manut/admin/cupons",{method:"POST",body:JSON.stringify({
+        codigo:document.getElementById("cupomCodigo").value.trim().toUpperCase(),
+        descricao:document.getElementById("cupomDesc").value,
+        desconto_percentual:Number(document.getElementById("cupomDesconto").value),
+        duracao_meses:Number(document.getElementById("cupomMeses").value),
+        usos_maximos:Number(document.getElementById("cupomUsos").value)||null,
+        validade:document.getElementById("cupomValidade").value||null
+      })});
+      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      allCupons.unshift(data);renderCupons();closeModal("modalCupom");
+    }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Salvar Cupom";}
+  });
+  async function toggleCupom(id,ativo){
+    await api(`/api/manut/admin/cupons/${id}`,{method:"PUT",body:JSON.stringify({ativo})});
+    const idx=allCupons.findIndex(c=>c.id===id);if(idx>=0)allCupons[idx].ativo=ativo;renderCupons();
+  }
+  async function excluirCupom(id){
+    if(!confirm("Excluir este cupom?"))return;
+    await api(`/api/manut/admin/cupons/${id}`,{method:"DELETE"});
+    allCupons=allCupons.filter(c=>c.id!==id);renderCupons();
+  }
+  window.toggleCupom=toggleCupom;window.excluirCupom=excluirCupom;
+
+  // ────────────────────────────────────────────────────────────────
+  // CONTRATO
+  // ────────────────────────────────────────────────────────────────
+  async function loadContrato(){
+    try{
+      const res=await api("/api/manut/admin/contrato");
+      const data=await res.json();
+      document.getElementById("contratoTexto").value=data.texto||"";
+      loaded.contrato=true;
+    }catch{}
+  }
+  document.getElementById("btnSalvarContrato").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("contratoAlert");
+    const btn=document.getElementById("btnSalvarContrato");
+    alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
+    try{
+      const res=await api("/api/manut/admin/contrato",{method:"POST",body:JSON.stringify({texto:document.getElementById("contratoTexto").value})});
+      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      alertEl.className="alert alert-success";alertEl.textContent="Contrato salvo com sucesso!";alertEl.style.display="";
+    }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Salvar Contrato";}
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // ORÇAMENTOS
+  // ────────────────────────────────────────────────────────────────
+  async function loadOrcamentos(){
+    try{
+      const res=await api("/api/manut/admin/orcamentos");
+      allOrc=await res.json();
+      document.getElementById("loadingOrc").style.display="none";
+      document.getElementById("cardOrc").style.display="";
+      renderOrc();loaded.orcamentos=true;
+    }catch{document.getElementById("loadingOrc").textContent="Erro.";}
+  }
+  function renderOrc(){
+    const busca=document.getElementById("buscaOrc").value.toLowerCase();
+    const filtro=document.getElementById("filtroStatusOrc").value;
+    let list=allOrc;
+    if(filtro)list=list.filter(o=>o.status===filtro);
+    if(busca)list=list.filter(o=>(o.manut_clientes?.nome+o.descricao_solicitacao).toLowerCase().includes(busca));
+    const tbody=document.getElementById("tbodyOrc");
+    const empty=document.getElementById("emptyOrc");
+    if(!list.length){tbody.innerHTML="";empty.style.display="";return}
+    empty.style.display="none";
+    tbody.innerHTML=list.map(o=>`
+      <tr>
+        <td style="font-size:13px">${o.manut_clientes?.nome||"—"}</td>
+        <td style="font-size:13px">${o.manut_lojas?.nome||"—"}</td>
+        <td style="font-size:13px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o.descricao_solicitacao}</td>
+        <td style="font-size:13px">${o.valor?fmtMoney(o.valor):"—"}</td>
+        <td>${badge(o.status)}</td>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(o.created_at)}</td>
+        <td><button class="btn btn-outline btn-sm" onclick="editarStatusOrc('${o.id}','${o.status}')">Status</button></td>
+      </tr>
+    `).join("");
+  }
+  document.getElementById("buscaOrc").addEventListener("input",renderOrc);
+  document.getElementById("filtroStatusOrc").addEventListener("change",renderOrc);
+  async function editarStatusOrc(id,atual){
+    const novo=prompt(`Status atual: ${atual}\nNovo status:\nem_analise, em_ajuste, aprovado, rejeitado`);
+    if(!novo)return;
+    await api(`/api/manut/admin/orcamentos/${id}`,{method:"PUT",body:JSON.stringify({status:novo})});
+    const idx=allOrc.findIndex(o=>o.id===id);if(idx>=0)allOrc[idx].status=novo;renderOrc();
+  }
+  window.editarStatusOrc=editarStatusOrc;
+
+  // ────────────────────────────────────────────────────────────────
+  // SUPORTE
+  // ────────────────────────────────────────────────────────────────
+  async function loadSuporte(){
+    try{
+      const res=await api("/api/manut/admin/suporte");
+      allSup=await res.json();
+      document.getElementById("loadingSup").style.display="none";
+      document.getElementById("cardSup").style.display="";
+      renderSup();loaded.suporte=true;
+    }catch{document.getElementById("loadingSup").textContent="Erro.";}
+  }
+  function renderSup(){
+    const list=filtroSupStatus?allSup.filter(s=>s.status===filtroSupStatus):allSup;
+    const tbody=document.getElementById("tbodySup");
+    const empty=document.getElementById("emptySup");
+    if(!list.length){tbody.innerHTML="";empty.style.display="";return}
+    empty.style.display="none";
+    tbody.innerHTML=list.map(s=>`
+      <tr>
+        <td><strong style="font-size:13px">${s.usuario_nome||"—"}</strong><div style="font-size:11px;color:#6B7280">${s.usuario_tipo}</div></td>
+        <td style="font-size:12px">${s.usuario_tipo==="cliente"?"Cliente":"Técnico"}</td>
+        <td style="font-size:13px">${s.assunto}</td>
+        <td>${badge(s.status)}</td>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(s.created_at)}</td>
+        <td>${s.status!=="resolvido"?`<button class="btn btn-primary btn-sm" onclick="abrirSuporte('${s.id}')">Responder</button>`:""}</td>
+      </tr>
+    `).join("");
+  }
+  document.querySelectorAll(".filtro-sup").forEach(btn=>btn.addEventListener("click",()=>{
+    document.querySelectorAll(".filtro-sup").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");filtroSupStatus=btn.dataset.status;renderSup();
+  }));
+  function abrirSuporte(id){
+    supAtualId=id;
+    const s=allSup.find(s=>s.id===id);
+    document.getElementById("supAssunto").textContent="Assunto: "+s.assunto;
+    document.getElementById("supDescricao").textContent=s.descricao;
+    document.getElementById("supResposta").value=s.resposta_admin||"";
+    document.getElementById("modalSuporte").classList.add("open");
+  }
+  window.abrirSuporte=abrirSuporte;
+  document.getElementById("btnEnviarResposta").addEventListener("click",async()=>{
+    const btn=document.getElementById("btnEnviarResposta");
+    btn.disabled=true;btn.textContent="Enviando...";
+    try{
+      await api(`/api/manut/admin/suporte/${supAtualId}`,{method:"PUT",body:JSON.stringify({
+        resposta:document.getElementById("supResposta").value,
+        status:"resolvido"
+      })});
+      const idx=allSup.findIndex(s=>s.id===supAtualId);
+      if(idx>=0)allSup[idx]={...allSup[idx],status:"resolvido",resposta_admin:document.getElementById("supResposta").value};
+      renderSup();closeModal("modalSuporte");
+    }finally{btn.disabled=false;btn.textContent="Responder e Resolver";}
+  });
+
+  // ─── loader por tab ───
+  function loadTab(tab){
+    if(tab==="dashboard")loadDashboard();
+    else if(tab==="clientes")loadClientes();
+    else if(tab==="precadastros")loadLeads();
+    else if(tab==="chamados")loadChamados();
+    else if(tab==="tecnicos")loadTecnicos();
+    else if(tab==="valores")loadValores();
+    else if(tab==="cupons")loadCupons();
+    else if(tab==="contrato")loadContrato();
+    else if(tab==="orcamentos")loadOrcamentos();
+    else if(tab==="suporte")loadSuporte();
   }
 
-  // Inicia com clientes
-  loadClientes();
+  // Inicia com Dashboard
+  loadDashboard();
 </script>

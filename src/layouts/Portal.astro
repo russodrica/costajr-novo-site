@@ -216,13 +216,10 @@ const nav = navs[tipo];
 <div class="portal-shell">
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <a href="/">
-        <div class="logo-mark"><span></span><span></span><span></span><span></span></div>
-        <div class="logo-text">
-          <span>Costa Júnior</span>
-          <small>Manutenção Predial</small>
-        </div>
+      <a href="/" style="display:block">
+        <img src="/logo-cjr.png" alt="Costa Júnior" style="height:36px;display:block;filter:brightness(0) invert(1)">
       </a>
+      <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#4B5563;margin-top:6px">Manutenção Predial</div>
     </div>
     <div class="sidebar-tipo">{tipo === "cliente" ? "Portal Cliente" : tipo === "tecnico" ? "Portal Técnico" : "Administração"}</div>
     <nav class="sidebar-nav">
