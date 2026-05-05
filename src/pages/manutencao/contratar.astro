@@ -1,19 +1,33 @@
 ---
 import Base from "~/layouts/Base.astro";
+import { supabaseAdmin } from "~/lib/supabase";
 
-const tiposLoja = [
-  { id: "quiosque",  label: "Quiosque",      descricao: "Ponto compacto, baixa metragem",                precoBase: 250 },
-  { id: "ate40",     label: "Até 40 m²",     descricao: "Loja pequena de rua ou shopping",               precoBase: 280 },
-  { id: "41a80",     label: "41 a 80 m²",    descricao: "Loja média",                                    precoBase: 300 },
-  { id: "81a120",    label: "81 a 120 m²",   descricao: "Loja grande",                                   precoBase: 400 },
-  { id: "121a250",   label: "121 a 250 m²",  descricao: "Loja âncora ou centro de distribuição pequeno", precoBase: 650 },
-];
+const { data: precificacao } = await supabaseAdmin()
+  .from("manut_precificacao")
+  .select("tipo_loja, label, preco_base, custo_especialidade")
+  .order("ordem");
+
+const tiposLoja = (precificacao ?? []).length > 0
+  ? (precificacao as any[]).map(p => ({
+      id: p.tipo_loja,
+      label: p.label,
+      descricao: "",
+      precoBase: Number(p.preco_base),
+    }))
+  : [
+      { id: "quiosque",  label: "Quiosque",      descricao: "", precoBase: 250 },
+      { id: "ate40",     label: "Até 40 m²",     descricao: "", precoBase: 280 },
+      { id: "41a80",     label: "41 a 80 m²",    descricao: "", precoBase: 300 },
+      { id: "81a120",    label: "81 a 120 m²",   descricao: "", precoBase: 400 },
+      { id: "121a250",   label: "121 a 250 m²",  descricao: "", precoBase: 650 },
+    ];
+
 const especialidades = [
   { id: "eletrica",   label: "Elétrica",   icone: "⚡", descricao: "Lâmpadas, tomadas, interruptores" },
   { id: "hidraulica", label: "Hidráulica", icone: "💧", descricao: "Vazamentos, torneiras, registros" },
   { id: "civil",      label: "Civil",      icone: "🏗", descricao: "Pintura, revestimentos, acabamentos" },
 ];
-const custoEsp = 50;
+const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50);
 ---
 <Base
   title="Contratar manutenção predial — Costa Júnior"
@@ -487,7 +501,17 @@ const custoEsp = 50;
       const res = await fetch("/api/manut/contrato");
       const d = await res.json();
       if (d.texto && d.texto.trim()) {
-        contratoBox.innerHTML = `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.7">${d.texto}</pre>`;
+        const endFull = [dados.endereco, dados.cidade, dados.uf].filter(Boolean).join(", ") || "—";
+        const dataHoje = new Date().toLocaleDateString("pt-BR");
+        const textoPreenchido = d.texto
+          .replace(/\{\{RESPONSAVEL\}\}/g, dados.nome || "—")
+          .replace(/\{\{NOME_LOJA\}\}/g, dados.nomeLoja || "—")
+          .replace(/\{\{CNPJ\}\}/g, dados.cnpj || "—")
+          .replace(/\{\{ENDERECO\}\}/g, endFull)
+          .replace(/\{\{EMAIL\}\}/g, dados.email || "—")
+          .replace(/\{\{TELEFONE\}\}/g, dados.telefone || "—")
+          .replace(/\{\{DATA\}\}/g, dataHoje);
+        contratoBox.innerHTML = `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.7">${textoPreenchido}</pre>`;
       } else {
         contratoBox.innerHTML = `<div class="ctr-sem-contrato">
           <strong>Contrato de Prestação de Serviços de Manutenção Predial</strong><br><br>

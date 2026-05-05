@@ -119,7 +119,7 @@ export const prerender = false;
     <div class="card" id="cardTecnicos" style="display:none">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Especialidades</th><th>Status</th><th>Último acesso</th></tr></thead>
+          <thead><tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Especialidades</th><th>Status</th><th>Último acesso</th><th>Ações</th></tr></thead>
           <tbody id="tbodyTecnicos"></tbody>
         </table>
       </div>
@@ -302,6 +302,101 @@ export const prerender = false;
     </div>
   </div>
 
+  <!-- Modal novo cliente (manual) -->
+  <div class="modal-bg" id="modalCliente">
+    <div class="modal">
+      <h2>Cadastrar Cliente</h2>
+      <div id="clienteAlert" class="alert alert-error" style="display:none"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Nome *</label><input type="text" id="cliNome" placeholder="Nome completo"></div>
+        <div class="form-group"><label>Email *</label><input type="email" id="cliEmail" placeholder="email@loja.com.br"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Telefone</label><input type="text" id="cliTel" placeholder="(11) 99999-0000"></div>
+        <div class="form-group"><label>Plano</label><input type="text" id="cliPlano" placeholder="Ex: ate40-eletrica"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Valor mensal (R$)</label><input type="number" id="cliValor" placeholder="Ex: 300" min="0"></div>
+        <div class="form-group"><label>Visitas/mês</label><input type="number" id="cliVisitas" value="1" min="1"></div>
+      </div>
+      <p style="font-size:12px;color:#5B5F6B;margin:0 0 16px">A senha inicial será gerada automaticamente e exibida após o cadastro.</p>
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal('modalCliente')">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvarCliente">Cadastrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal editar cliente -->
+  <div class="modal-bg" id="modalEditarCliente">
+    <div class="modal">
+      <h2>Editar Cliente</h2>
+      <input type="hidden" id="editCliId">
+      <div id="editCliAlert" class="alert alert-error" style="display:none"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Nome</label><input type="text" id="editCliNome"></div>
+        <div class="form-group"><label>Telefone</label><input type="text" id="editCliTel"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Plano</label><input type="text" id="editCliPlano"></div>
+        <div class="form-group"><label>Valor mensal (R$)</label><input type="number" id="editCliValor" min="0"></div>
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="editCliStatus">
+          <option value="pendente">Pendente</option>
+          <option value="ativo">Ativo</option>
+          <option value="inadimplente">Inadimplente</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <button class="btn btn-outline btn-sm" id="btnResetSenhaCliente" style="color:#C41E3A">Resetar Senha</button>
+        <div style="display:flex;gap:12px">
+          <button class="btn btn-outline" onclick="closeModal('modalEditarCliente')">Cancelar</button>
+          <button class="btn btn-primary" id="btnSalvarEditCli">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal editar técnico -->
+  <div class="modal-bg" id="modalEditarTecnico">
+    <div class="modal">
+      <h2>Editar Técnico</h2>
+      <input type="hidden" id="editTecId">
+      <div id="editTecAlert" class="alert alert-error" style="display:none"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Nome</label><input type="text" id="editTecNome"></div>
+        <div class="form-group"><label>Email</label><input type="email" id="editTecEmail"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group"><label>Telefone</label><input type="text" id="editTecTel"></div>
+        <div class="form-group"><label>Status</label>
+          <select id="editTecStatus">
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Especialidades</label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">
+          <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="etEletrica" value="eletrica"> Elétrica</label>
+          <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="etHidraulica" value="hidraulica"> Hidráulica</label>
+          <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="etCivil" value="civil"> Civil</label>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <button class="btn btn-outline btn-sm" id="btnResetSenhaTec" style="color:#C41E3A">Resetar Senha</button>
+        <div style="display:flex;gap:12px">
+          <button class="btn btn-outline" onclick="closeModal('modalEditarTecnico')">Cancelar</button>
+          <button class="btn btn-primary" id="btnSalvarEditTec">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal responder suporte -->
   <div class="modal-bg" id="modalSuporte">
     <div class="modal">
@@ -432,7 +527,7 @@ export const prerender = false;
         <td style="font-size:13px">${fmtMoney(c.valor_mensal_contratado)}</td>
         <td>${badge(c.status)}</td>
         <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_contratacao)}</td>
-        <td><button class="btn btn-outline btn-sm" onclick="editarStatusCliente('${c.id}','${c.status}')">Editar status</button></td>
+        <td><div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="abrirEditarCliente('${c.id}')">Editar</button><button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirCliente('${c.id}','${c.nome.replace(/'/g,"\\'")}')">Excluir</button></div></td>
       </tr>
     `).join("");
   }
@@ -450,12 +545,87 @@ export const prerender = false;
   document.getElementById("buscaClientes").addEventListener("input",renderClientes);
   document.getElementById("filtroStatusClientes").addEventListener("change",renderClientes);
 
-  function editarStatusCliente(id,statusAtual){
-    const novo=prompt(`Status atual: ${statusAtual}\nDigite o novo status:\nato, pendente, inadimplente, cancelado`);
-    if(!novo)return;
-    api(`/api/manut/admin/clientes/${id}`,{method:"PUT",body:JSON.stringify({status:novo})}).then(r=>r.json()).then(()=>loadClientes()).catch(e=>alert(e.message));
+  // ─── Modal criar cliente ──────────────────────────────────────────
+  document.getElementById("btnNovoCliente").addEventListener("click",()=>{
+    document.getElementById("clienteAlert").style.display="none";
+    ["cliNome","cliEmail","cliTel","cliPlano","cliValor"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+    document.getElementById("cliVisitas").value="1";
+    document.getElementById("modalCliente").classList.add("open");
+  });
+  document.getElementById("btnSalvarCliente").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("clienteAlert");
+    const btn=document.getElementById("btnSalvarCliente");
+    alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
+    try{
+      const res=await api("/api/manut/admin/clientes",{method:"POST",body:JSON.stringify({
+        nome:document.getElementById("cliNome").value.trim(),
+        email:document.getElementById("cliEmail").value.trim(),
+        telefone:document.getElementById("cliTel").value.trim()||null,
+        plano_selecionado:document.getElementById("cliPlano").value.trim()||null,
+        valor_mensal_contratado:document.getElementById("cliValor").value||null,
+        visitas_contratadas:document.getElementById("cliVisitas").value||1,
+      })});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||"Erro ao cadastrar");
+      closeModal("modalCliente");
+      alert(`✓ Cliente cadastrado!\nCódigo: ${data.codigo}\nSenha inicial: ${data.senhaInicial}\n\nAnote e repasse ao cliente.`);
+      loaded.clientes=false;loadClientes();
+    }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Cadastrar";}
+  });
+
+  // ─── Editar cliente ───────────────────────────────────────────────
+  function abrirEditarCliente(id){
+    const c=allClientes.find(x=>x.id===id);if(!c)return;
+    document.getElementById("editCliId").value=id;
+    document.getElementById("editCliNome").value=c.nome||"";
+    document.getElementById("editCliTel").value=c.telefone||"";
+    document.getElementById("editCliPlano").value=c.plano_selecionado||"";
+    document.getElementById("editCliValor").value=c.valor_mensal_contratado||"";
+    document.getElementById("editCliStatus").value=c.status||"pendente";
+    document.getElementById("editCliAlert").style.display="none";
+    document.getElementById("modalEditarCliente").classList.add("open");
   }
-  window.editarStatusCliente=editarStatusCliente;
+  window.abrirEditarCliente=abrirEditarCliente;
+  document.getElementById("btnSalvarEditCli").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("editCliAlert");
+    const btn=document.getElementById("btnSalvarEditCli");
+    const id=document.getElementById("editCliId").value;
+    alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
+    try{
+      const res=await api(`/api/manut/admin/clientes/${id}`,{method:"PUT",body:JSON.stringify({
+        nome:document.getElementById("editCliNome").value.trim(),
+        telefone:document.getElementById("editCliTel").value.trim()||null,
+        plano_selecionado:document.getElementById("editCliPlano").value.trim()||null,
+        valor_mensal_contratado:document.getElementById("editCliValor").value||null,
+        status:document.getElementById("editCliStatus").value,
+      })});
+      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      closeModal("modalEditarCliente");loaded.clientes=false;loadClientes();
+    }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Salvar";}
+  });
+  document.getElementById("btnResetSenhaCliente").addEventListener("click",async()=>{
+    const id=document.getElementById("editCliId").value;
+    if(!confirm("Resetar a senha deste cliente?"))return;
+    const res=await api(`/api/manut/admin/clientes/${id}`,{method:"PUT",body:JSON.stringify({reset_senha:true})});
+    const data=await res.json();
+    if(data.novaSenha)alert(`Nova senha: ${data.novaSenha}\n\nRepasse ao cliente.`);
+  });
+  async function excluirCliente(id,nome){
+    if(!confirm(`Excluir o cliente "${nome}"? Esta ação não pode ser desfeita.`))return;
+    await api(`/api/manut/admin/clientes/${id}`,{method:"DELETE"});
+    allClientes=allClientes.filter(c=>c.id!==id);renderClientes();
+  }
+  window.excluirCliente=excluirCliente;
+
+  // ─── Excluir lead ────────────────────────────────────────────────
+  async function excluirLead(id){
+    if(!confirm("Remover este pré-cadastro?"))return;
+    await api(`/api/manut/admin/leads/${id}`,{method:"DELETE"});
+    allLeads=allLeads.filter(l=>l.id!==id);renderLeads();
+  }
+  window.excluirLead=excluirLead;
 
   // ────────────────────────────────────────────────────────────────
   // PRÉ-CADASTROS
@@ -474,13 +644,17 @@ export const prerender = false;
         <td style="font-size:13px">${l.plano||"—"}<br><span style="color:#5B5F6B">${fmtMoney(l.valor)}</span></td>
         <td>${badge(l.etapa||"novo")}</td>
         <td>
+          <div style="display:flex;gap:6px;align-items:center">
           <select class="btn btn-outline btn-sm" style="border:1px solid #E5E7EB" onchange="atualizarEtapaLead('${l.id}',this.value)">
             <option value="novo" ${l.etapa==="novo"?"selected":""}>Novo</option>
-            <option value="em_contato" ${l.etapa==="em_contato"?"selected":""}>Em Contato</option>
-            <option value="contatado" ${l.etapa==="contatado"?"selected":""}>Contatado</option>
-            <option value="contratado" ${l.etapa==="contratado"?"selected":""}>Contratado</option>
+            <option value="contato_feito" ${l.etapa==="contato_feito"?"selected":""}>Contato feito</option>
+            <option value="proposta_enviada" ${l.etapa==="proposta_enviada"?"selected":""}>Proposta</option>
+            <option value="negociando" ${l.etapa==="negociando"?"selected":""}>Negociando</option>
+            <option value="convertido" ${l.etapa==="convertido"?"selected":""}>Convertido</option>
             <option value="perdido" ${l.etapa==="perdido"?"selected":""}>Perdido</option>
           </select>
+          <button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirLead('${l.id}')">✕</button>
+          </div>
         </td>
       </tr>
     `).join("");
@@ -592,6 +766,7 @@ export const prerender = false;
           <td style="font-size:12px">${(t.especialidades||[]).join(", ")||"—"}</td>
           <td>${badge(t.status)}</td>
           <td style="font-size:12px;color:#6B7280">${fmtDate(t.last_login_at)}</td>
+          <td><div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="abrirEditarTecnico('${t.id}')">Editar</button><button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirTecnico('${t.id}','${(t.nome||"").replace(/'/g,"\\'")}')">Excluir</button></div></td>
         </tr>
       `).join("");
       loaded.tecnicos=true;
@@ -620,6 +795,66 @@ export const prerender = false;
     }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
     finally{btn.disabled=false;btn.textContent="Cadastrar";}
   });
+
+  // ─── Editar / Excluir técnico ────────────────────────────────────
+  function abrirEditarTecnico(id){
+    const t=tecnicos.find(x=>x.id===id);if(!t)return;
+    document.getElementById("editTecId").value=id;
+    document.getElementById("editTecNome").value=t.nome||"";
+    document.getElementById("editTecEmail").value=t.email||"";
+    document.getElementById("editTecTel").value=t.telefone||"";
+    document.getElementById("editTecStatus").value=t.status||"ativo";
+    const esps=t.especialidades||[];
+    document.getElementById("etEletrica").checked=esps.includes("eletrica");
+    document.getElementById("etHidraulica").checked=esps.includes("hidraulica");
+    document.getElementById("etCivil").checked=esps.includes("civil");
+    document.getElementById("editTecAlert").style.display="none";
+    document.getElementById("modalEditarTecnico").classList.add("open");
+  }
+  window.abrirEditarTecnico=abrirEditarTecnico;
+  document.getElementById("btnSalvarEditTec").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("editTecAlert");
+    const btn=document.getElementById("btnSalvarEditTec");
+    const id=document.getElementById("editTecId").value;
+    const esps=["etEletrica","etHidraulica","etCivil"].filter(id=>document.getElementById(id).checked).map(id=>document.getElementById(id).value);
+    alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
+    try{
+      const res=await api(`/api/manut/admin/tecnicos/${id}`,{method:"PUT",body:JSON.stringify({
+        nome:document.getElementById("editTecNome").value.trim(),
+        email:document.getElementById("editTecEmail").value.trim(),
+        telefone:document.getElementById("editTecTel").value.trim()||null,
+        status:document.getElementById("editTecStatus").value,
+        especialidades:esps,
+      })});
+      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      closeModal("modalEditarTecnico");loaded.tecnicos=false;loadTecnicos();
+    }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Salvar";}
+  });
+  document.getElementById("btnResetSenhaTec").addEventListener("click",async()=>{
+    const id=document.getElementById("editTecId").value;
+    if(!confirm("Resetar a senha deste técnico?"))return;
+    const res=await api(`/api/manut/admin/tecnicos/${id}`,{method:"PUT",body:JSON.stringify({reset_senha:true})});
+    const data=await res.json();
+    if(data.novaSenha)alert(`Nova senha: ${data.novaSenha}\n\nRepasse ao técnico.`);
+  });
+  async function excluirTecnico(id,nome){
+    if(!confirm(`Excluir o técnico "${nome}"? Esta ação não pode ser desfeita.`))return;
+    await api(`/api/manut/admin/tecnicos/${id}`,{method:"DELETE"});
+    tecnicos=tecnicos.filter(t=>t.id!==id);
+    document.getElementById("tbodyTecnicos").innerHTML=tecnicos.map(t=>`
+      <tr>
+        <td><strong>${t.nome}</strong></td>
+        <td style="font-size:13px">${t.email}</td>
+        <td style="font-size:13px">${t.telefone||"—"}</td>
+        <td style="font-size:12px">${(t.especialidades||[]).join(", ")||"—"}</td>
+        <td>${badge(t.status)}</td>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(t.last_login_at)}</td>
+        <td><div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="abrirEditarTecnico('${t.id}')">Editar</button><button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirTecnico('${t.id}','${(t.nome||"").replace(/'/g,"\\'")}')">Excluir</button></div></td>
+      </tr>
+    `).join("");
+  }
+  window.excluirTecnico=excluirTecnico;
 
   // ────────────────────────────────────────────────────────────────
   // VALORES BASE

@@ -11,7 +11,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     if (!id) return jsonErr(400, "id obrigatório");
 
     const body = await request.json();
-    const allowed = ["status", "nome", "telefone", "plano_selecionado", "valor_mensal_contratado", "visitas_contratadas", "data_proximo_vencimento"];
+    const allowed = ["nome", "email", "telefone", "cpf", "especialidades", "status"];
     const update: Record<string, any> = {};
     for (const k of allowed) {
       if (k in body) update[k] = body[k];
@@ -21,13 +21,13 @@ export const PUT: APIRoute = async ({ request, params }) => {
       const novaSenha = gerarSenhaInicial();
       update.senha_hash = await hashSenha(novaSenha);
       update.senha_troca_obrigatoria = true;
-      const { error } = await supabaseAdmin().from("manut_clientes").update(update).eq("id", id);
+      const { error } = await supabaseAdmin().from("manut_tecnicos").update(update).eq("id", id);
       if (error) throw new Error(error.message);
       return jsonOk({ ok: true, novaSenha });
     }
 
     if (Object.keys(update).length === 0) return jsonErr(400, "Nenhum campo para atualizar");
-    const { error } = await supabaseAdmin().from("manut_clientes").update(update).eq("id", id);
+    const { error } = await supabaseAdmin().from("manut_tecnicos").update(update).eq("id", id);
     if (error) throw new Error(error.message);
     return jsonOk({ ok: true });
   } catch (e: any) {
@@ -40,7 +40,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     await requireAdmin(request);
     const { id } = params;
     if (!id) return jsonErr(400, "id obrigatório");
-    const { error } = await supabaseAdmin().from("manut_clientes").delete().eq("id", id);
+    const { error } = await supabaseAdmin().from("manut_tecnicos").delete().eq("id", id);
     if (error) throw new Error(error.message);
     return jsonOk({ ok: true });
   } catch (e: any) {
