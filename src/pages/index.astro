@@ -1,89 +1,173 @@
 ---
 import Base from "~/layouts/Base.astro";
+
+const pilares = [
+  { t: "PRAZO", d: "Cronograma rigoroso e acompanhamento contínuo. Sua operação não para." },
+  { t: "CUSTO", d: "Engenharia de valor para reduzir orçamento sem comprometer qualidade." },
+  { t: "EFICIÊNCIA", d: "Planejamento e otimizações que reduzem retrabalho e desperdício." },
+  { t: "QUALIDADE", d: "Equipe técnica especializada, foco em conformidade e entrega." },
+];
+
+const atalhos = [
+  {
+    t: "Nossas garantias",
+    d: "Os 4 pilares que orientam cada obra: prazo, custo, eficiência e qualidade.",
+    href: "#garantias",
+    icon: "M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 0 0 1.946-.806 3.42 3.42 0 0 1 4.438 0 3.42 3.42 0 0 0 1.946.806 3.42 3.42 0 0 1 3.138 3.138 3.42 3.42 0 0 0 .806 1.946 3.42 3.42 0 0 1 0 4.438 3.42 3.42 0 0 0-.806 1.946 3.42 3.42 0 0 1-3.138 3.138 3.42 3.42 0 0 0-1.946.806 3.42 3.42 0 0 1-4.438 0 3.42 3.42 0 0 0-1.946-.806 3.42 3.42 0 0 1-3.138-3.138 3.42 3.42 0 0 0-.806-1.946 3.42 3.42 0 0 1 0-4.438 3.42 3.42 0 0 0 .806-1.946 3.42 3.42 0 0 1 3.138-3.138z",
+  },
+  {
+    t: "Serviços",
+    d: "Projeto, consultoria, fundação, contenção, construção, reforma e fiscalização.",
+    href: "/servicos",
+    icon: "M22 12h-4l-3 9L9 3l-3 9H2",
+  },
+  {
+    t: "Manutenção predial",
+    d: "Preventiva, corretiva e contratos sob demanda — com plataforma digital.",
+    href: "/manutencao/contratar",
+    icon: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
+  },
+  {
+    t: "Intranet",
+    d: "Acesso restrito — Portal do Cliente, Portal do Técnico e área administrativa.",
+    href: "/intranet",
+    icon: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10",
+  },
+];
+
+const clientes = [
+  "Coca-Cola FEMSA", "Bradesco", "Santander", "Itaú", "RaiaDrogasil",
+  "Carrefour", "McDonald's", "J&T Express", "Cyrela", "Vivo",
+  "Movida", "Smart Fit", "Avon", "Meliá Hotels", "Kallas",
+];
 ---
-<Base title="Costa Júnior — Engenharia, Manutenção e Construção" description="Há mais de 30 anos entregando engenharia, manutenção predial e construção com responsabilidade técnica. Atendemos varejo, indústria e instituições financeiras em todo o Brasil.">
-  <!-- Hero -->
-  <section style="padding:120px 0 80px;background:linear-gradient(180deg,#fff 0%,var(--bg-soft) 100%)">
-    <div class="container">
-      <div style="display:grid;grid-template-columns:1.1fr .9fr;gap:64px;align-items:center">
-        <div>
-          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(230,57,70,.1);color:var(--brand);padding:6px 14px;border-radius:99px;font-size:13px;font-weight:600;margin-bottom:24px">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-            Há mais de 30 anos no mercado
-          </div>
-          <h1>Engenharia que <span style="color:var(--brand)">cuida</span><br>do seu patrimônio.</h1>
-          <p class="lead" style="margin-bottom:32px;max-width:520px">
-            Manutenção predial preventiva e corretiva, construção, reformas e acompanhamento técnico. Para varejo, indústrias e instituições financeiras de norte a sul do Brasil.
-          </p>
-          <div style="display:flex;gap:12px;flex-wrap:wrap">
-            <a href="/manutencao/contratar" class="btn btn-primary">Contratar manutenção
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
-            </a>
-            <a href="/servicos" class="btn btn-outline">Ver serviços</a>
-          </div>
-          <div style="display:flex;gap:32px;margin-top:48px;flex-wrap:wrap">
-            <div><strong style="font-size:28px;font-weight:800;display:block">+30</strong><span style="color:var(--ink-light);font-size:14px">anos de mercado</span></div>
-            <div><strong style="font-size:28px;font-weight:800;display:block">+800</strong><span style="color:var(--ink-light);font-size:14px">obras entregues</span></div>
-            <div><strong style="font-size:28px;font-weight:800;display:block">26</strong><span style="color:var(--ink-light);font-size:14px">estados atendidos</span></div>
-          </div>
-        </div>
-        <div style="aspect-ratio:4/5;background:linear-gradient(135deg,var(--ink) 0%,#374151 100%);border-radius:24px;position:relative;overflow:hidden">
-          <div style="position:absolute;inset:0;background:radial-gradient(circle at 20% 80%,rgba(230,57,70,.4) 0%,transparent 60%)"></div>
-          <div style="position:absolute;bottom:32px;left:32px;right:32px;color:#fff">
-            <h3 style="color:#fff;margin:0 0 8px">Plataforma de manutenção 24/7</h3>
-            <p style="margin:0;color:#D1D5DB;font-size:14px">Abra chamados, acompanhe preventivas e gerencie suas lojas em uma só tela.</p>
-          </div>
-        </div>
+<Base
+  title="Costa Júnior — Engenharia, Manutenção e Construção desde 2004"
+  description="Construindo sonhos desde 2004. Obras corporativas e comerciais entregues sem prazo. A confiança de quem atende Coca-Cola, Bradesco, Santander, Carrefour e RaiaDrogasil."
+>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-overlay"></div>
+    <div class="container hero-content">
+      <span class="hero-eyebrow">Construindo sonhos desde 2004</span>
+      <h1>Obras corporativas e comerciais<br><span class="hl">entregues sem prazo</span>.</h1>
+      <p class="hero-sub">
+        A confiança de quem atende Coca-Cola, Bradesco, Santander, Carrefour e RaiaDrogasil.
+        Há mais de 20 anos administrando projetos, fornecedores e cronogramas para empresas que não podem parar.
+      </p>
+      <div class="hero-ctas">
+        <a href="/contato" class="btn btn-primary">
+          Solicite um orçamento
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+        </a>
+        <a href="/manutencao/contratar" class="btn btn-ghost-light">
+          Contratar manutenção
+        </a>
+      </div>
+      <div class="hero-stats">
+        <div><strong>2004</strong><span>fundada em SP</span></div>
+        <div><strong>+2.000</strong><span>obras entregues</span></div>
+        <div><strong>26</strong><span>estados atendidos</span></div>
       </div>
     </div>
   </section>
 
-  <!-- Soluções -->
+  <!-- QUEM SOMOS -->
   <section class="section">
-    <div class="container">
-      <div style="text-align:center;max-width:680px;margin:0 auto 64px">
-        <h2>Soluções para cada etapa do imóvel</h2>
-        <p class="lead">Da construção à manutenção contínua, com equipe técnica própria e plataforma digital de gestão.</p>
+    <div class="container quem-somos">
+      <div>
+        <span class="kicker">Quem somos</span>
+        <h2>Construtora paulistana<br>especializada em obras<br>que <span style="color:var(--brand)">não podem parar</span>.</h2>
+        <p class="lead">
+          Construtora fundada em 2004, com sede em São Paulo, especializada em obras corporativas, comerciais, industriais e de saúde. Atendemos varejo, indústria e instituições financeiras com foco em prazo, custo e qualidade técnica.
+        </p>
+        <a href="/sobre" class="btn btn-outline" style="margin-top:8px">Saber mais</a>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px">
-        {[
-          { t: "Manutenção Predial", d: "Preventiva, corretiva e emergencial. Visitas programadas, checklist digital e relatórios em PDF.", icon: "M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" },
-          { t: "Construção e Reforma", d: "Projetos comerciais, retrofit e ampliação com gerenciamento de obra e cronograma transparente.", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
-          { t: "Acompanhamento Técnico", d: "Laudos, vistorias, ART/RRT, regularização junto a prefeitura e bombeiros.", icon: "M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" }
-        ].map(card => (
-          <article style="background:#fff;border:1px solid var(--border);border-radius:20px;padding:32px;transition:all .2s ease">
-            <div style="width:48px;height:48px;border-radius:12px;background:rgba(230,57,70,.1);display:flex;align-items:center;justify-content:center;margin-bottom:20px">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={`<path d="${card.icon}"/>`}></svg>
+      <div class="quem-card">
+        <div class="quem-card-row">
+          <div class="quem-stat"><strong>22+</strong><span>anos no mercado</span></div>
+          <div class="quem-stat"><strong>+2k</strong><span>obras entregues</span></div>
+        </div>
+        <div class="quem-card-row">
+          <div class="quem-stat"><strong>26</strong><span>estados atendidos</span></div>
+          <div class="quem-stat"><strong>5★</strong><span>clientes-âncora</span></div>
+        </div>
+        <p class="quem-card-foot">
+          Coca-Cola · Bradesco · Santander · Itaú · Carrefour · RaiaDrogasil · McDonald's · J&T · Cyrela
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 BOTÕES PRA PARTES ESPECÍFICAS -->
+  <section class="section section-soft">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 56px">
+        <span class="kicker">Como podemos ajudar</span>
+        <h2>Vá direto ao que você procura</h2>
+        <p class="lead">Da garantia de prazo à manutenção predial — escolha por onde começar.</p>
+      </div>
+      <div class="atalhos-grid">
+        {atalhos.map(a => (
+          <a href={a.href} class="atalho-card">
+            <div class="atalho-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={`<path d="${a.icon}"/>`}></svg>
             </div>
-            <h3>{card.t}</h3>
-            <p style="margin:0;color:var(--ink-light)">{card.d}</p>
+            <h3>{a.t}</h3>
+            <p>{a.d}</p>
+            <span class="atalho-arrow">
+              Acessar
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 PILARES -->
+  <section id="garantias" class="section">
+    <div class="container">
+      <div style="text-align:center;max-width:720px;margin:0 auto 56px">
+        <span class="kicker">Nossas garantias</span>
+        <h2>Quatro pilares que orientam cada obra entregue</h2>
+      </div>
+      <div class="pilares-grid">
+        {pilares.map((p, i) => (
+          <article class="pilar-card">
+            <span class="pilar-num">{String(i + 1).padStart(2, "0")}</span>
+            <h3>{p.t}</h3>
+            <p>{p.d}</p>
           </article>
         ))}
       </div>
     </div>
   </section>
 
-  <!-- CTA Manutenção -->
+  <!-- CTA MANUTENÇÃO -->
   <section class="section section-soft">
     <div class="container">
-      <div style="background:var(--ink);color:#fff;border-radius:24px;padding:64px;display:grid;grid-template-columns:1.5fr 1fr;gap:32px;align-items:center;position:relative;overflow:hidden">
-        <div style="position:absolute;top:-50%;right:-20%;width:600px;height:600px;background:radial-gradient(circle,rgba(230,57,70,.25) 0%,transparent 60%)"></div>
-        <div style="position:relative">
-          <h2 style="color:#fff">Manutenção predial sem dor de cabeça.</h2>
-          <p style="color:#D1D5DB;font-size:18px;margin:0 0 24px">A partir de R$ 200/mês por loja, com técnico vinculado, chamados ilimitados e visitas preventivas.</p>
-          <a href="/manutencao/contratar" class="btn btn-primary">Ver planos
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+      <div class="cta-manut">
+        <div>
+          <span class="kicker" style="color:#fff;opacity:.85">Plataforma digital</span>
+          <h2 style="color:#fff;margin-bottom:16px">Manutenção predial sem dor de cabeça.</h2>
+          <p style="color:#D1D5DB;font-size:18px;margin:0 0 28px;max-width:520px">
+            Técnico vinculado, chamados ilimitados, visitas preventivas e relatórios em PDF. Monte seu plano em 2 minutos — pagamento via Mercado Pago.
+          </p>
+          <a href="/manutencao/contratar" class="btn btn-primary">
+            Montar meu plano
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
           </a>
         </div>
-        <ul style="list-style:none;padding:0;margin:0;display:grid;gap:14px;position:relative;color:#fff">
+        <ul class="cta-manut-list">
           {[
             "Técnico responsável vinculado à sua loja",
             "Plataforma com chamados, agenda e checklist",
             "Mercado Pago — assinatura mensal automatizada",
-            "Suporte direto com a engenharia"
+            "Suporte direto com a engenharia",
           ].map(item => (
-            <li style="display:flex;gap:10px;align-items:flex-start">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><polyline points="20 6 9 17 4 12"/></svg>
+            <li>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               <span>{item}</span>
             </li>
           ))}
@@ -91,4 +175,237 @@ import Base from "~/layouts/Base.astro";
       </div>
     </div>
   </section>
+
+  <!-- CLIENTES -->
+  <section class="section" style="padding-top:64px">
+    <div class="container">
+      <div style="text-align:center;margin-bottom:40px">
+        <span class="kicker">Confiança de marcas líderes</span>
+        <h2 style="font-size:clamp(22px,2.5vw,30px)">Quem confia na nossa engenharia</h2>
+      </div>
+      <div class="clientes-grid">
+        {clientes.map(c => <span class="cliente-tag">{c}</span>)}
+      </div>
+    </div>
+  </section>
 </Base>
+
+<style>
+  /* HERO */
+  .hero {
+    position: relative;
+    min-height: 640px;
+    display: flex; align-items: center;
+    background:
+      radial-gradient(circle at 78% 30%, rgba(196,30,58,.55) 0%, transparent 55%),
+      radial-gradient(circle at 12% 88%, rgba(196,30,58,.18) 0%, transparent 50%),
+      linear-gradient(135deg, #1A1C20 0%, #2D2F36 60%, #3A1419 100%);
+    color: #fff;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: linear-gradient(135deg, rgba(0,0,0,.6) 0%, transparent 70%);
+    -webkit-mask-image: linear-gradient(135deg, rgba(0,0,0,.6) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    top: 50%; right: -120px; transform: translateY(-50%);
+    width: 480px; height: 480px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    background:
+      linear-gradient(var(--brand) 0 0) 0 0/calc(50% - 4px) calc(50% - 4px) no-repeat,
+      linear-gradient(rgba(255,255,255,.08) 0 0) 100% 0/calc(50% - 4px) calc(50% - 4px) no-repeat,
+      linear-gradient(rgba(255,255,255,.08) 0 0) 0 100%/calc(50% - 4px) calc(50% - 4px) no-repeat,
+      linear-gradient(var(--brand) 0 0) 100% 100%/calc(50% - 4px) calc(50% - 4px) no-repeat;
+    opacity: .35;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .hero-overlay { display: none; }
+  .hero-content { position: relative; z-index: 2; padding: 96px 0 88px; max-width: 820px; }
+  .hero-eyebrow {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--brand);
+    border-left: 3px solid var(--brand); padding-left: 12px;
+    margin-bottom: 24px;
+  }
+  .hero h1 { color: #fff; margin: 0 0 24px; }
+  .hero h1 .hl { color: var(--brand); }
+  .hero-sub {
+    font-size: clamp(16px, 1.4vw, 18px); line-height: 1.7;
+    color: #E5E7EB; max-width: 640px; margin: 0 0 36px;
+  }
+  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 56px; }
+  .hero-stats {
+    display: flex; gap: 56px; flex-wrap: wrap;
+    padding-top: 32px; border-top: 1px solid rgba(255,255,255,.18);
+  }
+  .hero-stats div { display: flex; flex-direction: column; gap: 4px; }
+  .hero-stats strong {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 32px; font-weight: 800; color: #fff; line-height: 1;
+  }
+  .hero-stats span { font-size: 13px; color: #C8CACE; }
+
+  /* KICKER (label sobre título) */
+  .kicker {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--brand);
+    margin-bottom: 16px;
+  }
+
+  /* QUEM SOMOS */
+  .quem-somos {
+    display: grid; grid-template-columns: 1.2fr 1fr; gap: 64px;
+    align-items: center;
+  }
+  .quem-card {
+    background: linear-gradient(135deg, var(--ink) 0%, #3A3D45 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 40px;
+    position: relative; overflow: hidden;
+  }
+  .quem-card::after {
+    content: ""; position: absolute; top: -40%; right: -20%;
+    width: 300px; height: 300px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(196,30,58,.3) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .quem-card-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 24px; margin-bottom: 24px; position: relative;
+  }
+  .quem-stat strong {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 36px; font-weight: 800; color: #fff; display: block; line-height: 1;
+  }
+  .quem-stat span { font-size: 13px; color: #C8CACE; }
+  .quem-card-foot {
+    position: relative;
+    border-top: 1px solid rgba(255,255,255,.18);
+    padding-top: 20px; margin: 8px 0 0;
+    font-size: 13px; color: #C8CACE; line-height: 1.7;
+  }
+
+  /* ATALHOS */
+  .atalhos-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+  }
+  .atalho-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px 28px;
+    transition: all .2s ease;
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative; overflow: hidden;
+  }
+  .atalho-card::before {
+    content: ""; position: absolute; top: 0; left: 0; height: 3px; width: 0;
+    background: var(--brand); transition: width .25s ease;
+  }
+  .atalho-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 40px rgba(0,0,0,.08);
+    border-color: var(--brand-soft);
+  }
+  .atalho-card:hover::before { width: 100%; }
+  .atalho-icon {
+    width: 52px; height: 52px; border-radius: 10px;
+    background: var(--brand-soft); color: var(--brand);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 18px;
+  }
+  .atalho-card h3 { margin: 0; }
+  .atalho-card p { color: var(--ink-mid); font-size: 14px; margin: 4px 0 16px; flex: 1; line-height: 1.6; }
+  .atalho-arrow {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--brand);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+
+  /* PILARES */
+  .pilares-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 24px;
+  }
+  .pilar-card {
+    background: #fff; border-top: 4px solid var(--brand);
+    border-radius: 0 0 8px 8px;
+    padding: 32px 28px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.04);
+    position: relative;
+  }
+  .pilar-num {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 56px; font-weight: 900; line-height: 1;
+    color: var(--brand-soft); display: block; margin-bottom: 8px;
+  }
+  .pilar-card h3 {
+    font-size: 20px; letter-spacing: 0.05em;
+    margin: 0 0 8px; color: var(--ink);
+  }
+  .pilar-card p { color: var(--ink-mid); font-size: 14px; margin: 0; line-height: 1.6; }
+
+  /* CTA MANUT */
+  .cta-manut {
+    background: linear-gradient(135deg, #1F2126 0%, #2D2F36 100%);
+    border-radius: 16px;
+    padding: 64px;
+    display: grid; grid-template-columns: 1.4fr 1fr; gap: 40px;
+    align-items: center; position: relative; overflow: hidden;
+  }
+  .cta-manut::before {
+    content: ""; position: absolute; top: -30%; right: -15%;
+    width: 500px; height: 500px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(196,30,58,.25) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .cta-manut > * { position: relative; }
+  .cta-manut-list {
+    list-style: none; padding: 0; margin: 0;
+    display: grid; gap: 14px; color: #fff;
+  }
+  .cta-manut-list li {
+    display: flex; gap: 12px; align-items: flex-start;
+    font-size: 15px; line-height: 1.6;
+  }
+  .cta-manut-list svg { flex: none; margin-top: 4px; }
+
+  /* CLIENTES */
+  .clientes-grid {
+    display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+  }
+  .cliente-tag {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600; font-size: 13px; letter-spacing: 0.04em;
+    color: var(--ink-mid);
+    padding: 10px 18px; border: 1px solid var(--border); border-radius: 99px;
+    background: #fff;
+    transition: all .15s ease;
+  }
+  .cliente-tag:hover { color: var(--brand); border-color: var(--brand); }
+
+  @media (max-width: 900px) {
+    .hero { min-height: 560px; }
+    .hero-content { padding: 64px 0; }
+    .hero-stats { gap: 28px; }
+    .hero-stats strong { font-size: 26px; }
+    .quem-somos { grid-template-columns: 1fr; gap: 40px; }
+    .cta-manut { padding: 40px 28px; grid-template-columns: 1fr; gap: 32px; }
+  }
+</style>
