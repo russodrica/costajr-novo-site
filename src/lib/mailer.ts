@@ -1,12 +1,15 @@
 import { Resend } from "resend";
 
 const resend = new Resend(import.meta.env.RESEND_API_KEY);
-const FROM = import.meta.env.EMAIL_FROM || "contato@costajr.com.br";
+const FROM = import.meta.env.EMAIL_FROM || "onboarding@resend.dev";
+// Resend só aceita domínios verificados. Enquanto costajr.com.br não for verificado,
+// usar o remetente padrão do Resend (onboarding@resend.dev).
+const FROM_SAFE = FROM === "contato@costajr.com.br" ? "onboarding@resend.dev" : FROM;
 const SITE = import.meta.env.SITE_BASE_URL || "https://costajr.com.br";
 
 export async function enviarSenhaTemporaria(email: string, nome: string, senha: string) {
   await resend.emails.send({
-    from: `Costa Júnior <${FROM}>`,
+    from: `Costa Júnior <${FROM_SAFE}>`,
     to: email,
     subject: "Sua senha temporária — Portal Costa Júnior",
     html: `
@@ -33,7 +36,7 @@ export async function enviarSenhaTemporaria(email: string, nome: string, senha: 
 
 export async function enviarSenhaReset(email: string, nome: string, senha: string) {
   await resend.emails.send({
-    from: `Costa Júnior <${FROM}>`,
+    from: `Costa Júnior <${FROM_SAFE}>`,
     to: email,
     subject: "Recuperação de senha — Portal Costa Júnior",
     html: `
