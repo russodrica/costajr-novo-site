@@ -685,6 +685,8 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
         id: `${dados.tamanho}-${esps.join("_")}`,
         nome: dados.planoLabel,
         valorMensal: dados.valorMensal,
+        valorTotal: dados.valorTotal,
+        duracaoMeses: dados.duracaoMeses,
         visitas: 1,
       },
       cadastro: {
@@ -717,7 +719,9 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
           </a>
           <br><small style="color:#9CA3AF;margin-top:8px;display:block">O link também foi enviado por e-mail.</small>`;
       } else {
-        $("e5-sucesso-msg").textContent = "Cadastro realizado! Em breve você receberá o link de pagamento por e-mail.";
+        const motivo = d.mpMotivo ? ` (${d.mpMotivo})` : "";
+        $("e5-sucesso-msg").innerHTML = `Cadastro realizado! Houve um problema ao gerar o link de pagamento${motivo}.<br>
+          <small style="color:#9CA3AF">Entre em contato: <a href="mailto:comercial@costajr.com.br" style="color:#C41E3A">comercial@costajr.com.br</a></small>`;
       }
     } catch (err) {
       $("e5-loading").style.display = "none";

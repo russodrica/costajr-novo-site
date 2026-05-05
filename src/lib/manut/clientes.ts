@@ -99,7 +99,7 @@ export async function clienteDashboard(clienteId: string) {
 // ─── Contratação pública ───────────────────────────────────────────────────
 export async function contratarSubmit(payload: {
   loja: { email: string; nomeResp: string; nomeLoja: string; telefone?: string; tamanho?: number; especialidades?: string[] };
-  plano: { id: string; nome: string; valorMensal: number; visitas: number };
+  plano: { id: string; nome: string; valorMensal: number; valorTotal?: number; duracaoMeses?: number; visitas: number };
   cadastro: { cnpjCpf: string; endereco?: string; cidade?: string; uf?: string; cep?: string };
 }) {
   const { loja, plano, cadastro } = payload;
@@ -163,12 +163,15 @@ export async function contratarSubmit(payload: {
     status: "pendente"
   });
 
+  const valorCobranca = plano.valorTotal ?? plano.valorMensal;
+  const duracaoMeses = plano.duracaoMeses ?? 1;
+
   // Pagamento pendente
   const { data: pag } = await db()
     .from("manut_pagamentos")
     .insert({
       cliente_id: cliente.id,
-      valor: plano.valorMensal,
+      valor: valorCobranca,
       referencia: new Date().toISOString().slice(0, 7),
       status: "pendente",
       data_vencimento: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -176,9 +179,13 @@ export async function contratarSubmit(payload: {
     .select("id")
     .single();
 
-  // Mercado Pago — assinatura
+  // Mercado Pago — assinatura cobrada a cada duracaoMeses meses pelo valorTotal
   const externalRef = `CJR-MANUT-${cliente.id}-${pag?.id}`;
-  const mp = await criarPreapproval({ cliente, plano, externalReference: externalRef }).catch(
+  const mp = await criarPreapproval({
+    cliente,
+    plano: { ...plano, valorCobranca, duracaoMeses },
+    externalReference: externalRef
+  }).catch(
     (e) => ({ ok: false, motivo: e.message, initPoint: null, preapprovalId: null })
   );
   if (mp.ok && pag?.id) {
