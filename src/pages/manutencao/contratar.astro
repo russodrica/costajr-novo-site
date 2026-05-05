@@ -319,7 +319,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
 
   // ─── Helpers ─────────────────────────────────────────────────────
   const $ = id => document.getElementById(id);
-  const fmtMoney = v => "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+  const fmtMoney = v => "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   function calcular() {
     const sel = document.querySelector('#e1-tamanho option:checked');
@@ -566,6 +566,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
     const durDesc = dados.desconto;
     const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
     dados.valorMensal = precoFinal(dados.valorMensal, durDesc, cupDesc);
+    dados.valorTotal = Math.round(dados.valorMensal * m * 100) / 100;
     dados.planoLabel = `${dados.planoLabel} · ${duracaoLabels[m]}`;
     if (cupomAtivo) dados.planoLabel += ` · Cupom ${cupomAtivo.codigo}`;
     await salvarLead("proposta_enviada");
@@ -613,7 +614,13 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
           .replace(/\{\{ENDERECO\}\}/g, endFull)
           .replace(/\{\{EMAIL\}\}/g, dados.email || "—")
           .replace(/\{\{TELEFONE\}\}/g, dados.telefone || "—")
-          .replace(/\{\{DATA\}\}/g, dataHoje);
+          .replace(/\{\{DATA\}\}/g, dataHoje)
+          .replace(/\[Nome da empresa\]/gi, dados.nomeLoja || "—")
+          .replace(/\[Nome do Responsável\]/gi, dados.nome || "—")
+          .replace(/^(CNPJ[^:\n]*:\s*)\[•\]/gim, `$1${dados.cnpj || "—"}`)
+          .replace(/^(Endere[çc]o[^:\n]*:\s*)\[•\]/gim, `$1${endFull}`)
+          .replace(/^(Respons[aá]vel[^:\n]*:\s*)\[•\]/gim, `$1${dados.nome || "—"}`)
+          .replace(/\[•\]/g, "—");
         contratoBox.innerHTML = `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.7">${textoPreenchido}</pre>`;
       } else {
         contratoBox.innerHTML = `<div class="ctr-sem-contrato">
@@ -648,6 +655,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
       <div class="resumo-linha"><span>Telefone</span><strong>${dados.telefone}</strong></div>
       <div class="resumo-linha"><span>Plano</span><strong>${dados.planoLabel}</strong></div>
       <div class="resumo-linha resumo-total"><span>Valor mensal</span><strong>${fmtMoney(dados.valorMensal)}</strong></div>
+      <div class="resumo-linha" style="background:#F0FDF4"><span>Total ${duracaoLabels[dados.duracaoMeses]} (${dados.duracaoMeses}x)</span><strong style="color:#15803D;font-family:'Montserrat',sans-serif;font-size:18px">${fmtMoney(dados.valorTotal)}</strong></div>
     `;
     irParaEtapa(5);
   });
@@ -659,7 +667,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
     $("e5-actions").style.display = "none";
     $("e5-loading").style.display = "";
 
-    const { esps } = calcular();
+    const esps = dados.especialidades;
     const payload = {
       loja: {
         email: dados.email,
