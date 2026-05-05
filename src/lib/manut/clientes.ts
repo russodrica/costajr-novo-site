@@ -114,16 +114,21 @@ export async function contratarSubmit(payload: {
   let senhaInicial: string | null = null;
 
   if (dup) {
-    cliente = dup;
-    if (cliente.status === "cancelado") {
-      const { data } = await db()
-        .from("manut_clientes")
-        .update({ status: "pendente" })
-        .eq("id", cliente.id)
-        .select("*")
-        .single();
-      cliente = data;
-    }
+    // Atualiza nome, telefone e plano — mantém senha e código existentes
+    const { data } = await db()
+      .from("manut_clientes")
+      .update({
+        nome: loja.nomeResp,
+        telefone: loja.telefone || dup.telefone,
+        plano_selecionado: plano.id,
+        valor_mensal_contratado: plano.valorMensal,
+        visitas_contratadas: plano.visitas,
+        ...(dup.status === "cancelado" ? { status: "pendente" } : {})
+      })
+      .eq("id", dup.id)
+      .select("*")
+      .single();
+    cliente = data || dup;
   } else {
     senhaInicial = gerarSenhaInicial();
     const codigo = "CLI-" + String(Date.now()).slice(-6);
