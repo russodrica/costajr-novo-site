@@ -1,538 +1,748 @@
 ---
 import Base from "~/layouts/Base.astro";
 
-// Regra base de precificação — espelha a tabela `manut_precificacao` do banco.
-// Estes valores podem ser editados pelo admin. Quando a API GET /api/manut/precificacao
-// estiver implementada, o front passa a buscar de lá; por ora usa este fallback.
 const tiposLoja = [
-  { id: "quiosque",   label: "Quiosque",       descricao: "Ponto compacto, baixa metragem", precoBase: 250 },
-  { id: "ate40",      label: "Até 40 m²",      descricao: "Loja pequena de rua ou shopping",  precoBase: 280 },
-  { id: "41a80",      label: "41 a 80 m²",     descricao: "Loja média",                       precoBase: 300 },
-  { id: "81a120",     label: "81 a 120 m²",    descricao: "Loja grande",                      precoBase: 400 },
-  { id: "121a250",    label: "121 a 250 m²",   descricao: "Loja âncora ou centro de distribuição pequeno", precoBase: 650 },
+  { id: "quiosque",  label: "Quiosque",      descricao: "Ponto compacto, baixa metragem",                precoBase: 250 },
+  { id: "ate40",     label: "Até 40 m²",     descricao: "Loja pequena de rua ou shopping",               precoBase: 280 },
+  { id: "41a80",     label: "41 a 80 m²",    descricao: "Loja média",                                    precoBase: 300 },
+  { id: "81a120",    label: "81 a 120 m²",   descricao: "Loja grande",                                   precoBase: 400 },
+  { id: "121a250",   label: "121 a 250 m²",  descricao: "Loja âncora ou centro de distribuição pequeno", precoBase: 650 },
 ];
-
 const especialidades = [
-  { id: "civil",      label: "Civil",     descricao: "Pintura, alvenaria, gesso, marcenaria, esquadrias" },
-  { id: "eletrica",   label: "Elétrica",  descricao: "Quadros, iluminação, tomadas, instalações de baixa tensão" },
-  { id: "hidraulica", label: "Hidráulica", descricao: "Águas, esgoto, louças, registros e infraestrutura sanitária" },
+  { id: "eletrica",   label: "Elétrica",   icone: "⚡", descricao: "Lâmpadas, tomadas, interruptores" },
+  { id: "hidraulica", label: "Hidráulica", icone: "💧", descricao: "Vazamentos, torneiras, registros" },
+  { id: "civil",      label: "Civil",      icone: "🏗", descricao: "Pintura, revestimentos, acabamentos" },
 ];
-
-const custoEspecialidade = 50; // R$ por especialidade adicional
+const custoEsp = 50;
 ---
 <Base
   title="Contratar manutenção predial — Costa Júnior"
-  description="Plataforma digital de manutenção predial. Técnico vinculado, chamados ilimitados, visitas preventivas e assinatura via Mercado Pago. Preço sob medida pra sua loja."
+  description="Manutenção preventiva por assinatura. Técnico vinculado, chamados ilimitados, visitas preventivas. Faça uma simulação grátis agora."
 >
-  <section class="page-hero">
-    <div class="container page-hero-content">
-      <span class="hero-eyebrow">Manutenção predial sem dor de cabeça</span>
-      <h1>Sua loja sob cuidado da <span class="hl">engenharia certa</span>.</h1>
-      <p class="page-hero-sub">
-        Técnico responsável vinculado, chamados ilimitados, visita preventiva mensal e relatórios em PDF. Pagamento via Mercado Pago — assinatura mensal automatizada.
-      </p>
-    </div>
-  </section>
 
-  <!-- 1. CALCULADORA -->
-  <section class="section">
-    <div class="container">
-      <div style="text-align:center;max-width:680px;margin:0 auto 56px">
-        <span class="kicker">1. Monte seu plano</span>
-        <h2>Preço sob medida pro seu metro quadrado</h2>
-        <p class="lead">Selecione o porte da loja e as especialidades necessárias. Sem fidelidade, sem letra miúda.</p>
+<!-- PROGRESS BAR -->
+<div class="ctr-progress-wrap">
+  <div class="ctr-progress">
+    {[
+      { n: 1, label: "Sua Loja" },
+      { n: 2, label: "Simulação" },
+      { n: 3, label: "Cadastro" },
+      { n: 4, label: "Contrato" },
+      { n: 5, label: "Pagamento" },
+    ].map(s => (
+      <div class={`ctr-step ${s.n === 1 ? "active" : ""}`} data-step={s.n}>
+        <div class="ctr-step-circle">{s.n}</div>
+        <div class="ctr-step-label">{s.label}</div>
       </div>
+    ))}
+    <div class="ctr-step-line"></div>
+  </div>
+</div>
 
-      <div class="calc-grid">
-        <!-- COLUNA ESQUERDA — opções -->
-        <div class="calc-opcoes">
-          <h3 class="calc-titulo">Porte da loja</h3>
-          <div class="opcoes-stack" role="radiogroup" aria-label="Tipo de loja">
-            {tiposLoja.map((t, i) => (
-              <label class={`opcao ${i === 1 ? "checked" : ""}`} data-tipo={t.id}>
-                <input type="radio" name="tipoLoja" value={t.id} checked={i === 1} data-preco={t.precoBase}>
-                <span class="opcao-radio"></span>
-                <span class="opcao-conteudo">
-                  <strong>{t.label}</strong>
-                  <span>{t.descricao}</span>
-                </span>
-                <span class="opcao-preco">R$ {t.precoBase}<small>/mês</small></span>
-              </label>
-            ))}
-          </div>
+<!-- WRAPPER -->
+<div class="ctr-wrap">
 
-          <h3 class="calc-titulo">Especialidades incluídas</h3>
-          <p class="calc-aux">Toda manutenção inclui no mínimo uma especialidade. Cada adicional soma R$ {custoEspecialidade}/mês.</p>
-          <div class="opcoes-stack">
-            {especialidades.map((e, i) => (
-              <label class={`opcao opcao-check ${i === 0 ? "checked" : ""}`} data-esp={e.id}>
-                <input type="checkbox" name="especialidades" value={e.id} checked={i === 0} data-custo={custoEspecialidade}>
-                <span class="opcao-check-mark">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span class="opcao-conteudo">
-                  <strong>{e.label}</strong>
-                  <span>{e.descricao}</span>
-                </span>
-                <span class="opcao-preco-add">+R$ {custoEspecialidade}<small>/mês</small></span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <!-- COLUNA DIREITA — resumo / preço -->
-        <aside class="calc-resumo">
-          <span class="kicker" style="color:#fff;opacity:.85">Seu plano</span>
-          <h3 id="resumo-tipo">Até 40 m²</h3>
-          <p id="resumo-esp">1 especialidade · Civil</p>
-
-          <div class="resumo-preco">
-            <div class="preco-linha">
-              <span>Base</span>
-              <strong id="preco-base">R$ 280</strong>
-            </div>
-            <div class="preco-linha">
-              <span id="preco-extras-label">+0 especialidade extra</span>
-              <strong id="preco-extras">R$ 0</strong>
-            </div>
-            <div class="preco-total">
-              <span>Total mensal</span>
-              <strong><span class="moeda">R$</span><span id="preco-total">280</span><small>/mês</small></strong>
-            </div>
-          </div>
-
-          <ul class="resumo-bullets">
-            <li>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span>1 visita preventiva mensal</span>
-            </li>
-            <li>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span>Chamados ilimitados via plataforma</span>
-            </li>
-            <li>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span>Técnico responsável vinculado</span>
-            </li>
-            <li>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span>Relatório mensal em PDF</span>
-            </li>
-            <li>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span>Sem fidelidade · cancele quando quiser</span>
-            </li>
-          </ul>
-
-          <button type="button" class="btn btn-primary calc-cta" id="btn-avancar">
-            Avançar para cadastro
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
-          </button>
-        </aside>
+  <!-- ── ETAPA 1: Dados da Loja ── -->
+  <div class="ctr-card" id="etapa-1">
+    <div class="ctr-card-header">
+      <span class="ctr-n">1</span>
+      <div>
+        <h2>Dados da Sua Loja</h2>
+        <p>Rápido e sem compromisso — veja o preço antes de decidir</p>
       </div>
     </div>
-  </section>
 
-  <!-- 2. CADASTRO -->
-  <section class="section section-soft" id="cadastro">
-    <div class="container">
-      <div style="text-align:center;max-width:680px;margin:0 auto 40px">
-        <span class="kicker">2. Cadastre sua loja</span>
-        <h2>Dados pra gente preparar tudo</h2>
-        <p class="lead">A senha de acesso ao Portal do Cliente é gerada automaticamente após o pagamento.</p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nome completo do responsável *</label>
+        <input type="text" id="e1-nome" placeholder="Nome e sobrenome" required>
       </div>
-
-      <form id="contratar-form" class="contratar-form" novalidate>
-        <h3 class="form-section">Loja / unidade</h3>
-        <label>
-          <span>Nome da loja *</span>
-          <input type="text" name="nomeLoja" required>
-        </label>
-
-        <h3 class="form-section">Responsável</h3>
-        <div class="form-row">
-          <label>
-            <span>Nome *</span>
-            <input type="text" name="nomeResp" required>
-          </label>
-          <label>
-            <span>Telefone *</span>
-            <input type="tel" name="telefone" required>
-          </label>
-        </div>
-        <label>
-          <span>E-mail (será o login no Portal) *</span>
-          <input type="email" name="email" required>
-        </label>
-
-        <h3 class="form-section">Cadastro fiscal</h3>
-        <div class="form-row">
-          <label>
-            <span>CNPJ ou CPF *</span>
-            <input type="text" name="cnpjCpf" required>
-          </label>
-          <label>
-            <span>CEP</span>
-            <input type="text" name="cep">
-          </label>
-        </div>
-        <label>
-          <span>Endereço completo</span>
-          <input type="text" name="endereco" placeholder="Rua, número, bairro">
-        </label>
-        <div class="form-row">
-          <label>
-            <span>Cidade</span>
-            <input type="text" name="cidade">
-          </label>
-          <label>
-            <span>UF</span>
-            <input type="text" name="uf" maxlength="2" placeholder="SP">
-          </label>
-        </div>
-
-        <label class="checkbox">
-          <input type="checkbox" name="lgpd" required>
-          <span>Concordo com o tratamento dos meus dados conforme a <a href="/privacidade">Política de Privacidade</a>.</span>
-        </label>
-
-        <button type="submit" class="btn btn-primary btn-submit">
-          Avançar para pagamento
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
-        </button>
-
-        <p id="contratar-status" class="form-status" hidden></p>
-      </form>
+      <div class="form-group">
+        <label>Telefone / WhatsApp *</label>
+        <input type="tel" id="e1-tel" placeholder="(11) 99999-9999" required>
+      </div>
     </div>
-  </section>
+    <div class="form-row">
+      <div class="form-group">
+        <label>E-mail *</label>
+        <input type="email" id="e1-email" placeholder="email@empresa.com.br" required>
+      </div>
+      <div class="form-group">
+        <label>Nome da Loja *</label>
+        <input type="text" id="e1-loja" placeholder="Ex: LOJA ABC" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Tamanho da Loja *</label>
+        <select id="e1-tamanho">
+          {tiposLoja.map(t => <option value={t.id} data-preco={t.precoBase}>{t.label} — R$ {t.precoBase}/mês</option>)}
+        </select>
+      </div>
+    </div>
+
+    <label class="form-label-block">Especialidades desejadas *</label>
+    <div class="esp-grid">
+      {especialidades.map((e, i) => (
+        <label class={`esp-card ${i === 0 ? "checked" : ""}`} data-esp={e.id}>
+          <input type="checkbox" name="especialidades" value={e.id} checked={i === 0}>
+          <span class="esp-icone">{e.icone}</span>
+          <strong>{e.label}</strong>
+          <span class="esp-desc">{e.descricao}</span>
+          <span class="esp-check">✓ Selecionado</span>
+        </label>
+      ))}
+    </div>
+
+    <div id="e1-alert" class="ctr-alert" style="display:none"></div>
+    <div class="ctr-actions">
+      <button class="btn btn-primary" id="btn-e1">Ver Simulação de Preço →</button>
+    </div>
+  </div>
+
+  <!-- ── ETAPA 2: Simulação ── -->
+  <div class="ctr-card" id="etapa-2" style="display:none">
+    <div class="ctr-card-header">
+      <span class="ctr-n">2</span>
+      <div>
+        <h2>Simulação de Preço</h2>
+        <p>Veja o valor exato do seu plano</p>
+      </div>
+    </div>
+
+    <div class="sim-box">
+      <div class="sim-row"><span>Tipo de loja</span><strong id="sim-tipo">—</strong></div>
+      <div class="sim-row"><span>Especialidades</span><strong id="sim-esps">—</strong></div>
+      <div class="sim-row"><span>Preço base</span><strong id="sim-base">—</strong></div>
+      <div class="sim-row" id="sim-extra-row"><span id="sim-extra-label">Especialidades extras</span><strong id="sim-extra">R$ 0</strong></div>
+      <div class="sim-total">
+        <span>Total mensal</span>
+        <strong id="sim-total">—</strong>
+      </div>
+    </div>
+
+    <!-- Duração / desconto -->
+    <div class="dur-titulo">Escolha a duração do plano</div>
+    <div class="dur-grid">
+      <label class="dur-card" data-meses="1" data-desc="0">
+        <input type="radio" name="duracao" value="1" checked>
+        <div class="dur-nome">Mensal</div>
+        <div class="dur-desc-tag" style="visibility:hidden">—</div>
+        <div class="dur-preco" id="dur-preco-1">—</div>
+        <div class="dur-total" id="dur-total-1"></div>
+      </label>
+      <label class="dur-card" data-meses="3" data-desc="5">
+        <input type="radio" name="duracao" value="3">
+        <div class="dur-nome">Trimestral</div>
+        <div class="dur-desc-tag">5% de desconto</div>
+        <div class="dur-preco" id="dur-preco-3">—</div>
+        <div class="dur-total" id="dur-total-3"></div>
+      </label>
+      <label class="dur-card" data-meses="6" data-desc="10">
+        <input type="radio" name="duracao" value="6">
+        <div class="dur-nome">Semestral</div>
+        <div class="dur-desc-tag">10% de desconto</div>
+        <div class="dur-preco" id="dur-preco-6">—</div>
+        <div class="dur-total" id="dur-total-6"></div>
+      </label>
+      <label class="dur-card recomendado" data-meses="12" data-desc="15">
+        <input type="radio" name="duracao" value="12">
+        <div class="dur-badge">Melhor valor</div>
+        <div class="dur-nome">Anual</div>
+        <div class="dur-desc-tag">15% de desconto</div>
+        <div class="dur-preco" id="dur-preco-12">—</div>
+        <div class="dur-total" id="dur-total-12"></div>
+      </label>
+    </div>
+
+    <div class="sim-bullets">
+      <div class="sim-bullet">✔ 1 visita preventiva mensal</div>
+      <div class="sim-bullet">✔ Chamados ilimitados via plataforma</div>
+      <div class="sim-bullet">✔ Técnico responsável vinculado</div>
+      <div class="sim-bullet">✔ Relatório mensal em PDF</div>
+      <div class="sim-bullet">✔ Sem fidelidade · cancele quando quiser</div>
+    </div>
+
+    <div class="ctr-actions">
+      <button class="btn btn-outline" onclick="irParaEtapa(1)">← Voltar</button>
+      <button class="btn btn-primary" id="btn-e2">Quero contratar →</button>
+    </div>
+  </div>
+
+  <!-- ── ETAPA 3: Cadastro ── -->
+  <div class="ctr-card" id="etapa-3" style="display:none">
+    <div class="ctr-card-header">
+      <span class="ctr-n">3</span>
+      <div>
+        <h2>Dados de Cadastro</h2>
+        <p>Precisamos dessas informações para formalizar o contrato</p>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>CNPJ ou CPF *</label>
+        <input type="text" id="e3-cnpj" placeholder="00.000.000/0001-00" required>
+      </div>
+      <div class="form-group">
+        <label>CEP</label>
+        <input type="text" id="e3-cep" placeholder="00000-000">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Endereço completo</label>
+      <input type="text" id="e3-end" placeholder="Rua, número, bairro">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Cidade</label>
+        <input type="text" id="e3-cidade" placeholder="São Paulo">
+      </div>
+      <div class="form-group">
+        <label>Estado</label>
+        <select id="e3-uf">
+          {["SP","RJ","MG","ES","PR","SC","RS","BA","GO","DF","MT","MS","PA","AM","CE","PE","RN","PB","AL","SE","PI","MA","TO","AC","AP","RO","RR"].map(uf => (
+            <option value={uf} selected={uf === "SP"}>{uf}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+
+    <div id="e3-alert" class="ctr-alert" style="display:none"></div>
+    <div class="ctr-actions">
+      <button class="btn btn-outline" onclick="irParaEtapa(2)">← Voltar</button>
+      <button class="btn btn-primary" id="btn-e3">Avançar para o Contrato →</button>
+    </div>
+  </div>
+
+  <!-- ── ETAPA 4: Contrato ── -->
+  <div class="ctr-card" id="etapa-4" style="display:none">
+    <div class="ctr-card-header">
+      <span class="ctr-n">4</span>
+      <div>
+        <h2>Contrato de Serviço</h2>
+        <p>Leia atentamente antes de prosseguir</p>
+      </div>
+    </div>
+
+    <div class="contrato-box" id="contrato-texto">
+      <div class="ctr-loading">Carregando contrato...</div>
+    </div>
+
+    <label class="aceite-label">
+      <input type="checkbox" id="aceite-contrato">
+      <span>Li e concordo com os termos do contrato de prestação de serviços acima.</span>
+    </label>
+    <label class="aceite-label">
+      <input type="checkbox" id="aceite-lgpd">
+      <span>Concordo com o tratamento dos meus dados conforme a <a href="/privacidade" target="_blank">Política de Privacidade</a>.</span>
+    </label>
+
+    <div id="e4-alert" class="ctr-alert" style="display:none"></div>
+    <div class="ctr-actions">
+      <button class="btn btn-outline" onclick="irParaEtapa(3)">← Voltar</button>
+      <button class="btn btn-primary" id="btn-e4">Ir para pagamento →</button>
+    </div>
+  </div>
+
+  <!-- ── ETAPA 5: Pagamento ── -->
+  <div class="ctr-card" id="etapa-5" style="display:none">
+    <div class="ctr-card-header">
+      <span class="ctr-n">5</span>
+      <div>
+        <h2>Finalizar Pagamento</h2>
+        <p>Estamos quase lá! Revise o resumo e confirme</p>
+      </div>
+    </div>
+
+    <div class="resumo-final" id="resumo-final"></div>
+
+    <div id="e5-alert" class="ctr-alert" style="display:none"></div>
+    <div id="e5-loading" style="display:none" class="ctr-loading">Processando seu cadastro...</div>
+    <div class="ctr-actions" id="e5-actions">
+      <button class="btn btn-outline" onclick="irParaEtapa(4)">← Voltar</button>
+      <button class="btn btn-primary" id="btn-e5">Confirmar e ir para pagamento →</button>
+    </div>
+    <div id="e5-sucesso" style="display:none" class="ctr-sucesso">
+      <div class="sucesso-icone">✓</div>
+      <h3>Cadastro realizado!</h3>
+      <p id="e5-sucesso-msg">Redirecionando para o pagamento...</p>
+    </div>
+  </div>
+
+</div><!-- /ctr-wrap -->
+
 </Base>
 
-<script define:vars={{ tiposLoja, especialidades, custoEspecialidade }}>
-  const tipos = tiposLoja;
-  const espMap = Object.fromEntries(especialidades.map(e => [e.id, e]));
+<script define:vars={{ tiposLoja, especialidades, custoEsp }}>
+  // ─── Estado global ───────────────────────────────────────────────
+  let leadId = null;
+  let etapaAtual = 1;
+  const dados = {
+    nome: "", email: "", telefone: "", nomeLoja: "",
+    tamanho: "", especialidades: [],
+    cnpj: "", cep: "", endereco: "", cidade: "", uf: "SP",
+    valorMensal: 0, planoLabel: "",
+    duracaoMeses: 1, desconto: 0,
+  };
 
-  const $ = (s) => document.querySelector(s);
+  const duracaoLabels = { 1: "mensal", 3: "trimestral", 6: "semestral", 12: "anual" };
 
-  function lerSelecao() {
-    const tipoEl = document.querySelector('input[name="tipoLoja"]:checked');
-    const tipoId = tipoEl ? tipoEl.value : tipos[0].id;
-    const tipo = tipos.find(t => t.id === tipoId) || tipos[0];
-
-    const espIds = Array.from(document.querySelectorAll('input[name="especialidades"]:checked'))
-      .map(el => el.value);
-
-    return { tipo, espIds };
-  }
+  // ─── Helpers ─────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const fmtMoney = v => "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
 
   function calcular() {
-    const { tipo, espIds } = lerSelecao();
-    const numEsp = espIds.length;
-    const extras = Math.max(0, numEsp - 1);
-    const valorExtras = extras * custoEspecialidade;
-    const total = tipo.precoBase + valorExtras;
-
-    $("#resumo-tipo").textContent = tipo.label;
-    $("#resumo-esp").textContent =
-      numEsp === 0
-        ? "Selecione ao menos 1 especialidade"
-        : `${numEsp} especialidade${numEsp > 1 ? "s" : ""} · ${espIds.map(id => espMap[id].label).join(", ")}`;
-    $("#preco-base").textContent = `R$ ${tipo.precoBase}`;
-    $("#preco-extras-label").textContent =
-      extras === 0 ? "Nenhuma especialidade extra" : `+${extras} especialidade${extras > 1 ? "s" : ""} extra`;
-    $("#preco-extras").textContent = `R$ ${valorExtras}`;
-    $("#preco-total").textContent = total.toLocaleString("pt-BR");
-
-    const cta = $("#btn-avancar");
-    if (cta) cta.disabled = numEsp === 0;
+    const sel = document.querySelector('#e1-tamanho option:checked');
+    const preco = sel ? Number(sel.dataset.preco || sel.value) : 280;
+    const tipo = tiposLoja.find(t => t.id === document.getElementById("e1-tamanho").value) || tiposLoja[1];
+    const esps = Array.from(document.querySelectorAll('input[name="especialidades"]:checked')).map(c => c.value);
+    const extras = Math.max(0, esps.length - 1) * custoEsp;
+    const total = preco + extras;
+    dados.valorMensal = total;
+    dados.especialidades = esps;
+    dados.tamanho = tipo.id;
+    dados.planoLabel = `${tipo.label} · ${esps.map(id => especialidades.find(e => e.id === id)?.label || id).join(" + ")}`;
+    return { tipo, esps, preco, extras, total };
   }
 
-  // Atualização visual das opções
-  function refreshVisual() {
-    document.querySelectorAll('label.opcao').forEach(label => {
-      const input = label.querySelector('input');
-      if (!input) return;
-      label.classList.toggle("checked", input.checked);
+  // ─── Navegação de etapas ─────────────────────────────────────────
+  window.irParaEtapa = function(n) {
+    etapaAtual = n;
+    [1,2,3,4,5].forEach(i => {
+      const card = $(`etapa-${i}`);
+      if (card) card.style.display = i === n ? "" : "none";
+      const stepEl = document.querySelector(`.ctr-step[data-step="${i}"]`);
+      if (stepEl) {
+        stepEl.classList.toggle("active", i === n);
+        stepEl.classList.toggle("done", i < n);
+      }
     });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ─── Persistir lead ──────────────────────────────────────────────
+  async function salvarLead(etapa, extra = {}) {
+    try {
+      const res = await fetch("/api/manut/leads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          nome: dados.nome,
+          nome_loja: dados.nomeLoja,
+          email: dados.email,
+          telefone: dados.telefone,
+          plano: dados.planoLabel,
+          valor: dados.valorMensal,
+          etapa,
+          ...extra,
+        }),
+      });
+      const d = await res.json();
+      if (d.id) leadId = d.id;
+    } catch {}
   }
 
-  document.querySelectorAll('input[name="tipoLoja"], input[name="especialidades"]').forEach(input => {
-    input.addEventListener("change", () => { refreshVisual(); calcular(); });
+  // ─── ETAPA 1 ─────────────────────────────────────────────────────
+  // Visual das especialidades
+  document.querySelectorAll('.esp-card').forEach(card => {
+    card.addEventListener("click", () => {
+      const cb = card.querySelector("input[type=checkbox]");
+      cb.checked = !cb.checked;
+      card.classList.toggle("checked", cb.checked);
+    });
   });
 
-  // CTA → scroll para cadastro
-  $("#btn-avancar")?.addEventListener("click", () => {
-    const { espIds } = lerSelecao();
-    if (espIds.length === 0) return;
-    document.getElementById("cadastro")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
+  $("btn-e1").addEventListener("click", async () => {
+    const nome = $("e1-nome").value.trim();
+    const tel  = $("e1-tel").value.trim();
+    const email= $("e1-email").value.trim();
+    const loja = $("e1-loja").value.trim();
+    const alert = $("e1-alert");
 
-  // Submit do form
-  const form = document.getElementById("contratar-form");
-  const status = document.getElementById("contratar-status");
-
-  form?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!status) return;
-
-    const { tipo, espIds } = lerSelecao();
-    if (espIds.length === 0) {
-      status.hidden = false;
-      status.className = "form-status form-status-erro";
-      status.textContent = "Selecione ao menos 1 especialidade antes de continuar.";
-      window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!nome || !tel || !email || !loja) {
+      alert.textContent = "Preencha todos os campos obrigatórios.";
+      alert.style.display = "";
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert.textContent = "E-mail inválido.";
+      alert.style.display = "";
+      return;
+    }
+    const { esps } = calcular();
+    if (esps.length === 0) {
+      alert.textContent = "Selecione ao menos uma especialidade.";
+      alert.style.display = "";
+      return;
+    }
+    alert.style.display = "none";
+    dados.nome = nome; dados.telefone = tel; dados.email = email; dados.nomeLoja = loja;
 
-    const valorMensal = tipo.precoBase + Math.max(0, espIds.length - 1) * custoEspecialidade;
-    const data = new FormData(form);
+    // Salva lead assim que preenche etapa 1
+    await salvarLead("contato_feito");
 
+    // Monta simulação
+    const { tipo, esps: espsNomes, preco, extras, total } = calcular();
+    const espLabels = espsNomes.map(id => especialidades.find(e => e.id === id)?.label || id);
+    $("sim-tipo").textContent = tipo.label;
+    $("sim-esps").textContent = espLabels.join(", ");
+    $("sim-base").textContent = fmtMoney(preco);
+    $("sim-extra-label").textContent = extras > 0 ? `+${espsNomes.length - 1} especialidade(s) extra` : "Sem especialidades extras";
+    $("sim-extra").textContent = fmtMoney(extras);
+    $("sim-extra-row").style.opacity = extras > 0 ? "1" : "0.4";
+    $("sim-total").textContent = fmtMoney(total);
+
+    // Preenche cards de duração
+    atualizarDuracao();
+    irParaEtapa(2);
+  });
+
+  // ─── Duração ─────────────────────────────────────────────────────
+  function atualizarDuracao() {
+    const base = dados.valorMensal;
+    [1, 3, 6, 12].forEach(m => {
+      const desc = { 1: 0, 3: 5, 6: 10, 12: 15 }[m];
+      const comDesc = base * (1 - desc / 100);
+      const totalPeriodo = comDesc * m;
+      const el = $(`dur-preco-${m}`);
+      const elT = $(`dur-total-${m}`);
+      if (el) el.textContent = fmtMoney(comDesc) + "/mês";
+      if (elT) elT.textContent = m > 1 ? `Total: ${fmtMoney(totalPeriodo)}` : "";
+    });
+    atualizarVisualDuracao();
+  }
+
+  function atualizarVisualDuracao() {
+    document.querySelectorAll(".dur-card").forEach(card => {
+      const rb = card.querySelector("input[type=radio]");
+      card.classList.toggle("checked", rb?.checked);
+    });
+    const sel = document.querySelector("input[name=duracao]:checked");
+    if (sel) {
+      const m = parseInt(sel.value);
+      const desc = { 1: 0, 3: 5, 6: 10, 12: 15 }[m];
+      dados.duracaoMeses = m;
+      dados.desconto = desc;
+      const comDesc = dados.valorMensal * (1 - desc / 100);
+      $("sim-total").textContent = fmtMoney(comDesc) + (m > 1 ? `/mês · ${duracaoLabels[m]}` : "/mês");
+    }
+  }
+
+  document.querySelectorAll(".dur-card").forEach(card => {
+    card.addEventListener("click", () => {
+      const rb = card.querySelector("input");
+      if (rb) { rb.checked = true; atualizarVisualDuracao(); }
+    });
+  });
+
+  // ─── ETAPA 2 ─────────────────────────────────────────────────────
+  $("btn-e2").addEventListener("click", async () => {
+    const m = dados.duracaoMeses;
+    const desc = dados.desconto;
+    const comDesc = dados.valorMensal * (1 - desc / 100);
+    dados.valorMensal = comDesc;
+    dados.planoLabel = `${dados.planoLabel} · ${duracaoLabels[m]}`;
+    await salvarLead("proposta_enviada");
+    irParaEtapa(3);
+  });
+
+  // ─── ETAPA 3 ─────────────────────────────────────────────────────
+  $("btn-e3").addEventListener("click", async () => {
+    const cnpj = $("e3-cnpj").value.trim();
+    if (!cnpj) {
+      const a = $("e3-alert");
+      a.textContent = "CNPJ ou CPF é obrigatório.";
+      a.style.display = "";
+      return;
+    }
+    $("e3-alert").style.display = "none";
+    dados.cnpj    = cnpj;
+    dados.cep     = $("e3-cep").value.trim();
+    dados.endereco= $("e3-end").value.trim();
+    dados.cidade  = $("e3-cidade").value.trim();
+    dados.uf      = $("e3-uf").value;
+
+    await salvarLead("negociando");
+
+    // Carrega contrato
+    const contratoBox = $("contrato-texto");
+    contratoBox.innerHTML = '<div class="ctr-loading">Carregando contrato...</div>';
+    try {
+      const res = await fetch("/api/manut/contrato");
+      const d = await res.json();
+      if (d.texto && d.texto.trim()) {
+        contratoBox.innerHTML = `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.7">${d.texto}</pre>`;
+      } else {
+        contratoBox.innerHTML = `<div class="ctr-sem-contrato">
+          <strong>Contrato de Prestação de Serviços de Manutenção Predial</strong><br><br>
+          O contrato completo será enviado por e-mail após a confirmação do pagamento.<br>
+          Ao prosseguir, você concorda com os termos padrão de prestação de serviços da Costa Júnior Engenharia e Construções LTDA.<br><br>
+          <em>CNPJ: 07.132.942/0001-72 — Av. Eng. Luís Carlos Berrini, 1140 — 7º andar, Brooklin, São Paulo/SP</em>
+        </div>`;
+      }
+    } catch {
+      contratoBox.innerHTML = '<div class="ctr-sem-contrato">Não foi possível carregar o contrato. Prossiga — ele será enviado por e-mail.</div>';
+    }
+
+    irParaEtapa(4);
+  });
+
+  // ─── ETAPA 4 ─────────────────────────────────────────────────────
+  $("btn-e4").addEventListener("click", () => {
+    const a = $("e4-alert");
+    if (!$("aceite-contrato").checked || !$("aceite-lgpd").checked) {
+      a.textContent = "Você precisa aceitar o contrato e a política de privacidade para continuar.";
+      a.style.display = "";
+      return;
+    }
+    a.style.display = "none";
+
+    // Monta resumo final
+    $("resumo-final").innerHTML = `
+      <div class="resumo-linha"><span>Responsável</span><strong>${dados.nome}</strong></div>
+      <div class="resumo-linha"><span>E-mail / Login</span><strong>${dados.email}</strong></div>
+      <div class="resumo-linha"><span>Loja</span><strong>${dados.nomeLoja}</strong></div>
+      <div class="resumo-linha"><span>Telefone</span><strong>${dados.telefone}</strong></div>
+      <div class="resumo-linha"><span>Plano</span><strong>${dados.planoLabel}</strong></div>
+      <div class="resumo-linha resumo-total"><span>Valor mensal</span><strong>${fmtMoney(dados.valorMensal)}</strong></div>
+    `;
+    irParaEtapa(5);
+  });
+
+  // ─── ETAPA 5 ─────────────────────────────────────────────────────
+  $("btn-e5").addEventListener("click", async () => {
+    const a = $("e5-alert");
+    a.style.display = "none";
+    $("e5-actions").style.display = "none";
+    $("e5-loading").style.display = "";
+
+    const { esps } = calcular();
     const payload = {
       loja: {
-        email: data.get("email"),
-        nomeResp: data.get("nomeResp"),
-        nomeLoja: data.get("nomeLoja"),
-        telefone: data.get("telefone"),
-        especialidades: espIds,
+        email: dados.email,
+        nomeResp: dados.nome,
+        nomeLoja: dados.nomeLoja,
+        telefone: dados.telefone,
+        especialidades: esps,
       },
       plano: {
-        id: `${tipo.id}-${espIds.join("_")}`,
-        nome: `${tipo.label} · ${espIds.map(id => espMap[id].label).join(" + ")}`,
-        valorMensal,
+        id: `${dados.tamanho}-${esps.join("_")}`,
+        nome: dados.planoLabel,
+        valorMensal: dados.valorMensal,
         visitas: 1,
       },
       cadastro: {
-        cnpjCpf: data.get("cnpjCpf"),
-        endereco: data.get("endereco") || undefined,
-        cidade: data.get("cidade") || undefined,
-        uf: data.get("uf") || undefined,
-        cep: data.get("cep") || undefined,
+        cnpjCpf: dados.cnpj,
+        endereco: dados.endereco || undefined,
+        cidade: dados.cidade || undefined,
+        uf: dados.uf || undefined,
+        cep: dados.cep || undefined,
       },
     };
 
-    const btn = form.querySelector(".btn-submit");
-    btn?.setAttribute("disabled", "true");
-    status.hidden = false;
-    status.className = "form-status";
-    status.textContent = "Enviando seus dados…";
-
     try {
-      const r = await fetch("/api/manut/contratar", {
+      const res = await fetch("/api/manut/contratar", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j?.error || "Falha ao enviar");
-      if (j.linkPagamento) {
-        status.textContent = "Tudo certo! Redirecionando para o pagamento…";
-        setTimeout(() => { window.location.href = j.linkPagamento; }, 1200);
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d?.error || "Erro ao processar");
+
+      // Atualiza lead para convertido
+      await salvarLead("convertido");
+
+      $("e5-loading").style.display = "none";
+      $("e5-sucesso").style.display = "";
+      if (d.linkPagamento) {
+        $("e5-sucesso-msg").textContent = "Redirecionando para o pagamento...";
+        setTimeout(() => { window.location.href = d.linkPagamento; }, 1500);
       } else {
-        status.textContent = "Cadastro recebido! Em breve enviaremos o link de pagamento por e-mail.";
+        $("e5-sucesso-msg").textContent = "Cadastro realizado! Em breve você receberá o link de pagamento por e-mail.";
       }
     } catch (err) {
-      status.className = "form-status form-status-erro";
-      status.textContent = "Não foi possível enviar agora. Tente novamente em instantes ou escreva para comercial@costajr.com.br.";
-      btn?.removeAttribute("disabled");
+      $("e5-loading").style.display = "none";
+      $("e5-actions").style.display = "";
+      a.textContent = "Não foi possível processar agora. Tente novamente ou entre em contato: comercial@costajr.com.br";
+      a.style.display = "";
     }
   });
-
-  // Inicial
-  refreshVisual();
-  calcular();
 </script>
 
 <style>
-  .page-hero {
-    position: relative;
-    background:
-      radial-gradient(circle at 78% 30%, rgba(196,30,58,.45) 0%, transparent 55%),
-      linear-gradient(135deg, #1A1C20 0%, #2D2F36 60%, #3A1419 100%);
-    color: #fff; overflow: hidden;
+  /* ── Progress bar ── */
+  .ctr-progress-wrap {
+    background: #1E2128; padding: 20px 0;
   }
-  .page-hero-content { position: relative; padding: 96px 0 80px; max-width: 820px; }
-  .hero-eyebrow {
-    display: inline-block;
-    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
-    letter-spacing: 0.2em; text-transform: uppercase; color: var(--brand);
-    border-left: 3px solid var(--brand); padding-left: 12px; margin-bottom: 24px;
+  .ctr-progress {
+    max-width: 640px; margin: 0 auto;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    position: relative; padding: 0 24px;
   }
-  .page-hero h1 { color: #fff; margin: 0 0 20px; }
-  .page-hero h1 .hl { color: var(--brand); }
-  .page-hero-sub { font-size: clamp(16px, 1.4vw, 18px); line-height: 1.7; color: #E5E7EB; max-width: 680px; margin: 0; }
-
-  .kicker {
-    display: inline-block;
-    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
-    letter-spacing: 0.2em; text-transform: uppercase; color: var(--brand); margin-bottom: 16px;
+  .ctr-step-line {
+    position: absolute; top: 18px; left: 56px; right: 56px;
+    height: 2px; background: #374151; z-index: 0;
   }
-
-  /* CALCULADORA */
-  .calc-grid {
-    display: grid; grid-template-columns: 1.4fr 1fr; gap: 40px;
-    align-items: flex-start;
+  .ctr-step {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    position: relative; z-index: 1;
   }
-  .calc-titulo {
-    margin: 0 0 12px; font-size: 14px;
-    font-family: 'Montserrat', sans-serif; font-weight: 700; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--ink);
-  }
-  .calc-titulo:not(:first-child) { margin-top: 32px; }
-  .calc-aux { font-size: 13px; color: var(--ink-mid); margin: 0 0 12px; }
-  .opcoes-stack { display: grid; gap: 10px; }
-  .opcao {
-    display: grid;
-    grid-template-columns: 24px 1fr auto;
-    align-items: center;
-    gap: 16px;
-    background: #fff; border: 2px solid var(--border); border-radius: 10px;
-    padding: 16px 20px;
-    cursor: pointer;
-    transition: all .15s ease;
-  }
-  .opcao input { position: absolute; opacity: 0; pointer-events: none; }
-  .opcao:hover { border-color: var(--brand-soft); background: #FAFAFB; }
-  .opcao.checked { border-color: var(--brand); background: var(--brand-soft); }
-  .opcao-radio {
-    width: 20px; height: 20px; border-radius: 50%;
-    border: 2px solid var(--border);
-    position: relative;
-  }
-  .opcao.checked .opcao-radio { border-color: var(--brand); }
-  .opcao.checked .opcao-radio::after {
-    content: ""; position: absolute; inset: 4px;
-    border-radius: 50%; background: var(--brand);
-  }
-  .opcao-check-mark {
-    width: 20px; height: 20px; border-radius: 4px;
-    border: 2px solid var(--border);
+  .ctr-step-circle {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: #374151; color: #9CA3AF;
     display: flex; align-items: center; justify-content: center;
-    color: transparent;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px;
+    transition: all .2s;
   }
-  .opcao.checked .opcao-check-mark {
-    border-color: var(--brand); background: var(--brand); color: #fff;
+  .ctr-step.active .ctr-step-circle { background: #C41E3A; color: #fff; }
+  .ctr-step.done .ctr-step-circle { background: #22C55E; color: #fff; }
+  .ctr-step-label {
+    font-size: 11px; font-weight: 600; color: #6B7280;
+    font-family: 'Montserrat', sans-serif; text-transform: uppercase; letter-spacing: 0.06em;
+    white-space: nowrap;
   }
-  .opcao-conteudo { display: flex; flex-direction: column; gap: 2px; }
-  .opcao-conteudo strong {
-    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px;
-    color: var(--ink);
-  }
-  .opcao-conteudo span { font-size: 13px; color: var(--ink-mid); line-height: 1.4; }
-  .opcao-preco, .opcao-preco-add {
-    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px;
-    color: var(--ink); white-space: nowrap;
-  }
-  .opcao-preco-add { color: var(--brand); font-size: 13px; }
-  .opcao-preco small, .opcao-preco-add small { font-weight: 500; color: var(--ink-light); margin-left: 2px; }
+  .ctr-step.active .ctr-step-label { color: #C41E3A; }
+  .ctr-step.done .ctr-step-label { color: #22C55E; }
 
-  /* RESUMO */
-  .calc-resumo {
-    background: linear-gradient(135deg, #1F2126 0%, #2D2F36 100%);
-    color: #fff;
-    border-radius: 16px;
-    padding: 36px 32px;
-    position: sticky; top: 96px;
-    overflow: hidden;
+  /* ── Wrap & Card ── */
+  .ctr-wrap {
+    background: #F4F6F9; min-height: calc(100vh - 80px);
+    padding: 40px 24px; display: flex; flex-direction: column; align-items: center;
   }
-  .calc-resumo::before {
-    content: ""; position: absolute; top: -30%; right: -15%;
-    width: 360px; height: 360px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(196,30,58,.25) 0%, transparent 65%);
-    pointer-events: none;
+  .ctr-card {
+    background: #fff; border-radius: 12px; border: 1px solid #E5E7EB;
+    padding: 36px; width: 100%; max-width: 700px;
+    box-shadow: 0 2px 16px rgba(0,0,0,.06);
   }
-  .calc-resumo > * { position: relative; }
-  .calc-resumo h3 { color: #fff; font-size: 22px; margin: 0 0 4px; }
-  #resumo-esp { color: #C8CACE; font-size: 14px; margin: 0 0 24px; }
+  .ctr-card-header {
+    display: flex; align-items: flex-start; gap: 16px; margin-bottom: 28px;
+  }
+  .ctr-n {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #C41E3A; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 16px;
+    flex-shrink: 0;
+  }
+  .ctr-card-header h2 { margin: 0 0 4px; font-size: 20px; }
+  .ctr-card-header p { margin: 0; color: #5B5F6B; font-size: 14px; }
 
-  .resumo-preco {
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.12);
-    border-radius: 10px; padding: 18px 20px; margin-bottom: 24px;
-  }
-  .preco-linha {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 0; color: #C8CACE; font-size: 14px;
-  }
-  .preco-linha strong { color: #fff; font-family: 'Montserrat', sans-serif; }
-  .preco-total {
-    border-top: 1px solid rgba(255,255,255,.18); margin-top: 8px; padding-top: 14px;
-    display: flex; justify-content: space-between; align-items: baseline;
-    color: #fff;
-  }
-  .preco-total > span {
-    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
-    letter-spacing: 0.1em; text-transform: uppercase;
-  }
-  .preco-total strong {
-    font-family: 'Montserrat', sans-serif; font-weight: 800;
-    display: flex; align-items: baseline; gap: 2px;
-  }
-  .preco-total .moeda { font-size: 16px; color: #C8CACE; font-weight: 600; }
-  .preco-total #preco-total { font-size: 40px; line-height: 1; }
-  .preco-total small { font-size: 13px; color: #C8CACE; font-weight: 500; margin-left: 4px; }
-
-  .resumo-bullets {
-    list-style: none; padding: 0; margin: 0 0 24px;
-    display: grid; gap: 10px;
-  }
-  .resumo-bullets li {
-    display: flex; gap: 10px; align-items: flex-start;
-    font-size: 13px; color: #E5E7EB; line-height: 1.5;
-  }
-  .resumo-bullets svg { flex: none; margin-top: 3px; }
-
-  .calc-cta { width: 100%; justify-content: center; }
-  .calc-cta:disabled { opacity: .5; cursor: not-allowed; }
-
-  /* FORM */
-  .contratar-form {
-    background: #fff; border: 1px solid var(--border); border-radius: 12px;
-    padding: 48px;
-    display: grid; gap: 16px;
-    max-width: 780px; margin: 0 auto;
-    box-shadow: 0 4px 20px rgba(0,0,0,.04);
-  }
-  .form-section {
-    margin: 16px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--border);
-    font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--brand);
-    font-family: 'Montserrat', sans-serif; font-weight: 700;
-  }
-  .contratar-form label { display: grid; gap: 6px; }
-  .contratar-form label > span {
-    font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 13px;
-    color: var(--ink); letter-spacing: 0.02em;
-  }
-  .contratar-form input,
-  .contratar-form select {
-    font-family: 'Open Sans', sans-serif; font-size: 15px; padding: 12px 14px;
-    border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--ink);
-    transition: border-color .15s ease, box-shadow .15s ease;
-  }
-  .contratar-form input:focus,
-  .contratar-form select:focus {
-    outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(196,30,58,.12);
-  }
+  /* ── Form ── */
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .checkbox { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--ink-mid); }
-  .checkbox input { width: 16px; height: 16px; margin-top: 3px; }
-  .checkbox a { color: var(--brand); border-bottom: 1px solid var(--brand-soft); }
-  .btn-submit:disabled { opacity: .6; cursor: not-allowed; }
-
-  .form-status {
-    margin: 12px 0 0; padding: 12px 14px;
-    background: var(--brand-soft); color: var(--brand);
-    border-radius: 6px; font-size: 14px;
+  .form-group { margin-bottom: 16px; }
+  .form-group label, .form-label-block { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #2D2F36; }
+  .form-label-block { margin-bottom: 12px; }
+  .form-group input, .form-group select {
+    width: 100%; padding: 10px 14px; border: 1.5px solid #E5E7EB;
+    border-radius: 6px; font-size: 14px; font-family: 'Open Sans', sans-serif;
+    color: #2D2F36; outline: none; transition: border .15s;
   }
-  .form-status-erro { background: #FEE2E2; color: #B91C1C; }
+  .form-group input:focus, .form-group select:focus { border-color: #C41E3A; }
 
-  @media (max-width: 980px) {
-    .calc-grid { grid-template-columns: 1fr; }
-    .calc-resumo { position: static; }
+  /* ── Especialidades ── */
+  .esp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  .esp-card {
+    border: 2px solid #E5E7EB; border-radius: 10px; padding: 18px 14px;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    cursor: pointer; transition: all .15s; text-align: center; user-select: none;
   }
-  @media (max-width: 900px) {
-    .page-hero-content { padding: 64px 0 56px; }
-    .contratar-form { padding: 28px; }
+  .esp-card input { display: none; }
+  .esp-icone { font-size: 28px; }
+  .esp-card strong { font-size: 14px; font-family: 'Montserrat', sans-serif; }
+  .esp-desc { font-size: 12px; color: #6B7280; }
+  .esp-check { font-size: 11px; font-weight: 700; color: #C41E3A; display: none; }
+  .esp-card.checked { border-color: #C41E3A; background: rgba(196,30,58,.05); }
+  .esp-card.checked .esp-check { display: block; }
+  .esp-card:hover { border-color: #C41E3A; }
+
+  /* ── Simulação ── */
+  .sim-box {
+    background: #F4F6F9; border-radius: 10px; padding: 24px; margin-bottom: 24px;
+    border: 1px solid #E5E7EB;
+  }
+  .sim-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E5E7EB; font-size: 14px; }
+  .sim-row:last-of-type { border-bottom: 0; }
+  .sim-total {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 16px; padding-top: 16px; border-top: 2px solid #C41E3A;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 16px;
+  }
+  .sim-total strong { color: #C41E3A; font-size: 24px; }
+  .sim-bullets { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+  .sim-bullet { font-size: 14px; color: #2D2F36; }
+  .sim-bullet::first-letter { color: #22C55E; font-weight: 700; }
+
+  /* ── Duração ── */
+  .dur-titulo {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px;
+    text-transform: uppercase; letter-spacing: 0.06em; color: #2D2F36;
+    margin: 24px 0 12px;
+  }
+  .dur-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 24px; }
+  .dur-card {
+    border: 2px solid #E5E7EB; border-radius: 10px; padding: 14px 10px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    cursor: pointer; transition: all .15s; text-align: center; position: relative;
+    user-select: none;
+  }
+  .dur-card input { display: none; }
+  .dur-card:hover { border-color: #C41E3A; }
+  .dur-card.checked { border-color: #C41E3A; background: rgba(196,30,58,.05); }
+  .dur-card.recomendado { border-color: #E5E7EB; }
+  .dur-badge {
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    background: #C41E3A; color: #fff; font-size: 9px; font-weight: 700;
+    padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+    font-family: 'Montserrat', sans-serif; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .dur-nome { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px; color: #2D2F36; }
+  .dur-desc-tag { font-size: 11px; font-weight: 600; color: #22C55E; }
+  .dur-preco { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px; color: #C41E3A; margin-top: 4px; }
+  .dur-total { font-size: 11px; color: #6B7280; }
+
+  /* ── Contrato ── */
+  .contrato-box {
+    border: 1px solid #E5E7EB; border-radius: 8px;
+    padding: 20px; max-height: 320px; overflow-y: auto;
+    font-size: 13px; line-height: 1.7; color: #2D2F36;
+    margin-bottom: 20px; background: #FAFAFA;
+  }
+  .ctr-sem-contrato { color: #5B5F6B; }
+  .aceite-label {
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-bottom: 12px; font-size: 13px; cursor: pointer;
+  }
+  .aceite-label input { margin-top: 2px; flex-shrink: 0; accent-color: #C41E3A; }
+  .aceite-label a { color: #C41E3A; }
+
+  /* ── Resumo final ── */
+  .resumo-final { border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+  .resumo-linha { display: flex; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #E5E7EB; font-size: 14px; }
+  .resumo-linha:last-child { border-bottom: 0; }
+  .resumo-total { background: #FEF2F2; }
+  .resumo-total strong { color: #C41E3A; font-family: 'Montserrat', sans-serif; font-size: 18px; }
+
+  /* ── Actions ── */
+  .ctr-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+  .ctr-alert {
+    background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA;
+    padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-top: 16px;
+  }
+  .ctr-loading { color: #6B7280; text-align: center; padding: 24px; }
+  .ctr-sucesso { text-align: center; padding: 32px 0; }
+  .sucesso-icone {
+    width: 64px; height: 64px; border-radius: 50%; background: #22C55E; color: #fff;
+    font-size: 32px; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px;
+  }
+  .ctr-sucesso h3 { font-size: 22px; color: #15803D; margin: 0 0 8px; }
+  .ctr-sucesso p { color: #5B5F6B; }
+
+  @media (max-width: 600px) {
     .form-row { grid-template-columns: 1fr; }
-    .opcao { grid-template-columns: 24px 1fr; }
-    .opcao-preco, .opcao-preco-add { grid-column: 2 / 3; padding-top: 4px; }
+    .esp-grid { grid-template-columns: 1fr; }
+    .ctr-card { padding: 24px 16px; }
+    .ctr-step-label { display: none; }
   }
 </style>
