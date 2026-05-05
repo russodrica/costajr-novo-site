@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "../supabase";
 import { hashSenha, verificarSenha, signToken, gerarSenhaInicial } from "../auth";
 import { criarPreapproval } from "../mercadopago";
+import { enviarSenhaTemporaria, enviarSenhaReset } from "../mailer";
 
 const db = () => supabaseAdmin();
 
@@ -46,7 +47,7 @@ export async function clienteTrocarSenha(clienteId: string, senhaAtual: string, 
 export async function clienteResetSenha(email: string) {
   const { data: cli } = await db()
     .from("manut_clientes")
-    .select("id")
+    .select("id,nome,email")
     .eq("email", email.toLowerCase())
     .maybeSingle();
   if (!cli) return { ok: true }; // não vaza existência
@@ -55,8 +56,9 @@ export async function clienteResetSenha(email: string) {
     .from("manut_clientes")
     .update({ senha_hash: await hashSenha(novaSenha), senha_troca_obrigatoria: true })
     .eq("id", cli.id);
-  // TODO: enviar email com novaSenha
-  console.log(`[manut][reset] cliente ${email} nova senha: ${novaSenha}`);
+  await enviarSenhaReset(cli.email ?? email, cli.nome ?? "Cliente", novaSenha).catch(
+    (e) => console.error("[mailer][reset]", e.message)
+  );
   return { ok: true };
 }
 
@@ -152,7 +154,9 @@ export async function contratarSubmit(payload: {
       .single();
     if (error) throw new Error(error.message);
     cliente = data;
-    console.log(`[manut] novo cliente ${email} senha: ${senhaInicial}`);
+    await enviarSenhaTemporaria(email, loja.nomeResp, senhaInicial!).catch(
+      (e) => console.error("[mailer][contratar]", e.message)
+    );
   }
 
   // Loja
