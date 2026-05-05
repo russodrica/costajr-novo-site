@@ -7,14 +7,15 @@ export const prerender = false;
 export const GET: APIRoute = async ({ request }) => {
   try {
     await requireAdmin(request);
-    const { data } = await supabaseAdmin()
+    const { data, error } = await supabaseAdmin()
       .from("manut_clientes")
-      .select("id,nome,email,codigo,status,plano_selecionado,valor_mensal_contratado,visitas_contratadas,data_contratacao,data_proximo_vencimento,telefone,cnpj_cpf,endereco,cidade,uf")
+      .select("id,nome,email,codigo,status,plano_selecionado,valor_mensal_contratado,visitas_contratadas,data_contratacao,data_proximo_vencimento,telefone,cnpj_cpf")
       .order("data_contratacao", { ascending: false })
       .limit(500);
+    if (error) throw new Error(error.message);
     return jsonOk(data || []);
   } catch (e: any) {
-    return jsonErr(401, e.message);
+    return jsonErr(e.message === "Não autorizado" ? 401 : 500, e.message);
   }
 };
 

@@ -237,6 +237,13 @@ const nav = navs[tipo];
   <div class="main-area">
     <header class="portal-topbar">
       <h1>{title}</h1>
+      {tipo === "admin" && (
+        <button id="btnAtualizarPortal" title="Atualizar dados"
+          style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:8px;border:1.5px solid #E5E7EB;background:#fff;color:#2D2F36;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;transition:all .15s">
+          <svg id="iconRefresh" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span id="labelRefresh">Atualizar</span>
+        </button>
+      )}
     </header>
     <main class="portal-content">
       <slot />
@@ -264,6 +271,29 @@ const nav = navs[tipo];
     localStorage.removeItem(userKey);
     window.location.replace(loginHref);
   });
+
+  const btnRef = document.getElementById("btnAtualizarPortal");
+  if (btnRef) {
+    btnRef.addEventListener("click", () => {
+      if (btnRef.disabled) return;
+      btnRef.disabled = true;
+      const icon = document.getElementById("iconRefresh");
+      const label = document.getElementById("labelRefresh");
+      if (label) label.textContent = "Atualizando...";
+      if (icon) icon.style.animation = "spin-icon .7s linear infinite";
+      window.dispatchEvent(new CustomEvent("portal:refresh"));
+      setTimeout(() => {
+        btnRef.disabled = false;
+        if (label) label.textContent = "Atualizar";
+        if (icon) icon.style.animation = "";
+      }, 1400);
+    });
+    btnRef.addEventListener("mouseenter", () => { if (!btnRef.disabled) { btnRef.style.borderColor="#C41E3A"; btnRef.style.color="#C41E3A"; } });
+    btnRef.addEventListener("mouseleave", () => { btnRef.style.borderColor="#E5E7EB"; btnRef.style.color="#2D2F36"; });
+  }
 </script>
+<style is:global>
+  @keyframes spin-icon { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
 </body>
 </html>

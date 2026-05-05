@@ -27,8 +27,12 @@ export const PUT: APIRoute = async ({ request, params }) => {
     }
 
     if (Object.keys(update).length === 0) return jsonErr(400, "Nenhum campo para atualizar");
-    const { error } = await supabaseAdmin().from("manut_clientes").update(update).eq("id", id);
+    const db = supabaseAdmin();
+    const { error } = await db.from("manut_clientes").update(update).eq("id", id);
     if (error) throw new Error(error.message);
+    if (body.status === "ativo") {
+      await db.from("manut_lojas").update({ status: "ativa" }).eq("cliente_id", id).eq("status", "pendente");
+    }
     return jsonOk({ ok: true });
   } catch (e: any) {
     return jsonErr(e.message === "Não autorizado" ? 401 : 500, e.message);

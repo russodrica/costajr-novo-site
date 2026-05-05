@@ -5,7 +5,7 @@ export const prerender = false;
 <Portal title="Administração" tipo="admin" activePage="clientes">
 
   <!-- Atalhos rápidos -->
-  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
     <a href="/manutencao/cliente/login" target="_blank" class="btn btn-outline btn-sm">👤 Visualizar como Cliente</a>
     <a href="/manutencao/tecnico/login" target="_blank" class="btn btn-outline btn-sm">🔧 Visualizar como Técnico</a>
   </div>
@@ -535,6 +535,11 @@ export const prerender = false;
   // ────────────────────────────────────────────────────────────────
   // CLIENTES
   // ────────────────────────────────────────────────────────────────
+  function btnAtivar(c){
+    if(c.status!=='pendente') return '';
+    const n=c.nome.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return '<button class="btn btn-outline btn-sm" style="color:#15803D;border-color:#BBF7D0" onclick="ativarClienteManual(\''+c.id+'\',\''+n+'\')">✓ Ativar</button>';
+  }
   function renderClientes(){
     const busca=document.getElementById("buscaClientes").value.toLowerCase();
     const filtro=document.getElementById("filtroStatusClientes").value;
@@ -554,24 +559,34 @@ export const prerender = false;
         <td style="font-size:13px">${fmtMoney(c.valor_mensal_contratado)}</td>
         <td>${badge(c.status)}</td>
         <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_contratacao)}</td>
-        <td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="abrirEditarCliente('${c.id}')">Editar</button><button class="btn btn-outline btn-sm" style="color:#3B82F6;border-color:#BFDBFE" onclick="gerarLinkPagamento('${c.id}','${c.nome.replace(/'/g,"\\'")}')">💳 Link</button><button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirCliente('${c.id}','${c.nome.replace(/'/g,"\\'")}')">Excluir</button></div></td>
+        <td><div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="abrirEditarCliente('${c.id}')">Editar</button>
+          <button class="btn btn-outline btn-sm" style="color:#3B82F6;border-color:#BFDBFE" onclick="gerarLinkPagamento('${c.id}','${c.nome.replace(/'/g,"\\'")}')">💳 Link</button>
+          ${btnAtivar(c)}
+          <button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirCliente('${c.id}','${c.nome.replace(/'/g,"\\'")}')">Excluir</button>
+        </div></td>
       </tr>
     `).join("");
   }
   async function loadClientes(){
-    document.getElementById("loadingClientes").style.display="";
-    document.getElementById("loadingClientes").textContent="Carregando...";
-    document.getElementById("cardClientes").style.display="none";
+    const elLoading=document.getElementById("loadingClientes");
+    const elCard=document.getElementById("cardClientes");
+    elLoading.style.display="";
+    elLoading.textContent="Carregando...";
+    elCard.style.display="none";
     try{
       const res=await api("/api/manut/admin/clientes");
       if(res.status===401){localStorage.removeItem(TOKEN_KEY);window.location.replace("/manutencao/admin/login");return}
-      allClientes=await res.json();
-      document.getElementById("loadingClientes").style.display="none";
-      document.getElementById("cardClientes").style.display="";
+      const raw=await res.json();
+      allClientes=Array.isArray(raw)?raw:[];
+      console.log("[admin] clientes carregados:",allClientes.length, allClientes.map(c=>c.email));
+      elLoading.style.display="none";
+      elCard.style.display="";
       renderClientes();
       loaded.clientes=true;
-    }catch{
-      document.getElementById("loadingClientes").textContent="Erro ao carregar. Recarregue a página.";
+    }catch(e){
+      console.error("[admin] erro loadClientes:",e);
+      elLoading.textContent="Erro ao carregar ("+e.message+"). Clique em Atualizar.";
     }
   }
   document.getElementById("buscaClientes").addEventListener("input",renderClientes);
@@ -665,7 +680,9 @@ export const prerender = false;
   function renderLeads(){
     const tbody=document.getElementById("tbodyLeads");
     const empty=document.getElementById("emptyLeads");
-    const list=filtroLeadEtapa?allLeads.filter(l=>l.etapa===filtroLeadEtapa):allLeads;
+    const list=filtroLeadEtapa
+      ? allLeads.filter(l=>l.etapa===filtroLeadEtapa)
+      : allLeads.filter(l=>l.etapa!=="convertido");
     if(!list.length){tbody.innerHTML="";empty.style.display="";return}
     empty.style.display="none";
     tbody.innerHTML=list.map(l=>`
@@ -711,7 +728,7 @@ export const prerender = false;
     const idx=allLeads.findIndex(l=>l.id===id);if(idx>=0)allLeads[idx].etapa=etapa;
     renderLeads();
 
-    // Ao converter: cria cliente com status "pendente" e vai para aba Clientes
+    // Ao converter: cria cliente, apaga o lead de pré-cadastros e vai para Clientes
     if(etapa==="convertido"){
       const lead=allLeads.find(l=>l.id===id);
       if(lead&&lead.email){
@@ -723,12 +740,18 @@ export const prerender = false;
           valor_mensal_contratado:lead.valor||null,
         })});
         const data=await res.json();
-        if(res.ok&&data.senhaInicial){
-          alert(`✓ Cliente criado!\n\nCódigo: ${data.codigo}\nEmail: ${data.email}\nSenha inicial: ${data.senhaInicial}\n\nStatus: Pendente (aguardando pagamento)`);
-          irParaAba("clientes");
-        }else if(res.status===409){
-          alert(`Lead convertido. O email "${lead.email}" já tinha cadastro de cliente — veja na aba Clientes.`);
-          irParaAba("clientes");
+        const clienteCriado = res.ok && data.senhaInicial;
+        const emailJaCadastrado = res.status===409;
+        if(clienteCriado || emailJaCadastrado){
+          // Apaga o lead — ele agora vive como cliente
+          await api(`/api/manut/admin/leads/${id}`,{method:"DELETE"}).catch(()=>{});
+          allLeads=allLeads.filter(l=>l.id!==id);
+          renderLeads();
+          if(clienteCriado){
+            alert(`✓ Cliente criado!\n\nCódigo: ${data.codigo}\nEmail: ${data.email}\nSenha inicial: ${data.senhaInicial}\n\nStatus: Pendente (aguardando pagamento)`);
+          }
+          // Vai para Clientes e filtra pelo email para o cliente aparecer imediatamente
+          await irParaAbaEBuscar("clientes", lead.email);
         }
       }
     }
@@ -758,6 +781,17 @@ export const prerender = false;
     }
   }
   window.gerarLinkPagamento=gerarLinkPagamento;
+
+  async function ativarClienteManual(id, nome){
+    if(!confirm(`Ativar manualmente o cliente "${nome}"?\n\nUse apenas se o pagamento já foi confirmado e o webhook não processou automaticamente.`)) return;
+    try {
+      const res = await api(`/api/manut/admin/clientes/${id}`, {method:"PUT", body:JSON.stringify({status:"ativo"})});
+      if(!res.ok) { const d=await res.json(); throw new Error(d.error||"Erro"); }
+      alert("Cliente ativado com sucesso!");
+      irParaAba("clientes");
+    } catch(e){ alert("Erro: "+e.message); }
+  }
+  window.ativarClienteManual=ativarClienteManual;
 
   function copiarLink(){
     const input = document.getElementById("linkPagUrl");
@@ -1205,6 +1239,28 @@ export const prerender = false;
     loaded[tab]=false;
     loadTab(tab);
   }
+
+  async function irParaAbaEBuscar(tab, email){
+    // Troca para a aba e aguarda o carregamento, depois filtra pelo email
+    irParaAba(tab);
+    if(tab==="clientes" && email){
+      // Aguarda o loadClientes terminar (poll rápido)
+      for(let i=0;i<20;i++){
+        await new Promise(r=>setTimeout(r,100));
+        if(loaded.clientes) break;
+      }
+      const input=document.getElementById("buscaClientes");
+      if(input){ input.value=email; renderClientes(); }
+    }
+  }
+
+  function atualizarPainel(){
+    Object.keys(loaded).forEach(k=>loaded[k]=false);
+    const tabAtiva=document.querySelector(".tab.active")?.dataset?.tab||"dashboard";
+    loadTab(tabAtiva);
+  }
+  window.atualizarPainel=atualizarPainel;
+  window.addEventListener("portal:refresh", atualizarPainel);
 
   // Inicia com Dashboard
   loadDashboard();

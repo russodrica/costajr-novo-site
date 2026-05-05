@@ -95,3 +95,11 @@ export async function buscarPreapproval(id: string): Promise<any | null> {
   if (!res.ok) return null;
   return res.json();
 }
+
+export async function buscarPayment(id: string): Promise<any | null> {
+  const res = await fetch(`${MP_API}/v1/payments/${id}`, {
+    headers: { Authorization: `Bearer ${token()}` }
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
