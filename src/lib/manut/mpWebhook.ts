@@ -23,7 +23,7 @@ export async function processarMpWebhook(payload: {
         .maybeSingle();
       if (pag?.mercado_pago_id) {
         preapprovalId = pag.mercado_pago_id;
-        pre = await buscarPreapproval(preapprovalId);
+        pre = await buscarPreapproval(preapprovalId!);
       }
     }
   }

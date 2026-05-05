@@ -1,0 +1,71 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const filtroStatus = Astro.url.searchParams.get("status") || "";
+const db = supabaseAdmin();
+let q = db.from("leads").select("*").order("created_at", { ascending: false });
+if (filtroStatus) q = q.eq("status", filtroStatus);
+const { data: leads } = await q;
+
+const badgeSt: Record<string, string> = { novo: "badge-blue", contatado: "badge-yellow", convertido: "badge-green", perdido: "badge-gray" };
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
+---
+<Admin title="Leads" current="leads">
+  <div class="toolbar">
+    <span class="toolbar-title">Leads ({leads?.length ?? 0})</span>
+    <select class="filter-select" onchange="filtrar(this.value)">
+      <option value="" selected={!filtroStatus}>Todos</option>
+      {["novo","contatado","convertido","perdido"].map(s => <option value={s} selected={s===filtroStatus}>{s}</option>)}
+    </select>
+    <input class="search-input" type="search" placeholder="Buscar nome, email…" oninput="buscar(this.value)" />
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table id="tabela">
+        <thead><tr><th>Nome</th><th>E-mail</th><th>Telefone</th><th>Empresa</th><th>Origem</th><th>Status</th><th>Data</th><th>Ação</th></tr></thead>
+        <tbody>
+          {leads?.length ? leads.map((l: any) => (
+            <tr data-search={`${l.nome} ${l.email}`.toLowerCase()}>
+              <td><strong>{l.nome}</strong></td>
+              <td>{l.email}</td>
+              <td>{l.telefone || "—"}</td>
+              <td>{l.empresa || "—"}</td>
+              <td>{l.origem}</td>
+              <td><span class={`badge ${badgeSt[l.status]}`}>{l.status}</span></td>
+              <td>{fmtDate(l.created_at)}</td>
+              <td>
+                <select class="filter-select" style="padding:3px 8px;font-size:0.8rem" onchange={`patchLead('${l.id}', this.value)`}>
+                  {["novo","contatado","convertido","perdido"].map(s => <option value={s} selected={s===l.status}>{s}</option>)}
+                </select>
+              </td>
+            </tr>
+          )) : <tr><td colspan="8" style="text-align:center;color:#999;padding:32px">Nenhum lead encontrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    function filtrar(s) {
+      const url = new URL(window.location.href);
+      if (s) url.searchParams.set("status", s); else url.searchParams.delete("status");
+      window.location.href = url.toString();
+    }
+    function buscar(q) {
+      document.querySelectorAll("#tabela tbody tr[data-search]").forEach(r => {
+        r.style.display = r.dataset.search.includes(q.toLowerCase()) ? "" : "none";
+      });
+    }
+    async function patchLead(id, status) {
+      await fetch(`/api/admin/leads/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+    }
+  </script>
+</Admin>

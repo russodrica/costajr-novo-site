@@ -1,0 +1,146 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: posts } = await db.from("blog_posts").select("id, slug, title, excerpt, author, published, published_at, tags, created_at").order("created_at", { ascending: false });
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
+---
+<Admin title="Blog" current="blog">
+  <div class="toolbar">
+    <span class="toolbar-title">Artigos ({posts?.length ?? 0})</span>
+    <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo artigo</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Título</th><th>Slug</th><th>Autor</th><th>Tags</th><th>Publicado</th><th>Data</th><th>Ações</th></tr></thead>
+        <tbody>
+          {posts?.length ? posts.map((p: any) => (
+            <tr>
+              <td><strong>{p.title}</strong>{p.excerpt && <div style="font-size:0.8rem;color:#666;margin-top:2px">{p.excerpt?.slice(0,60)}…</div>}</td>
+              <td><code style="font-size:0.78rem">{p.slug}</code></td>
+              <td>{p.author || "—"}</td>
+              <td style="font-size:0.8rem">{p.tags?.join(", ") || "—"}</td>
+              <td>
+                {p.published
+                  ? <span class="badge badge-green">Publicado</span>
+                  : <span class="badge badge-gray">Rascunho</span>}
+              </td>
+              <td>{fmtDate(p.published_at || p.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button class="btn btn-secondary btn-sm" onclick={`editarPost(${JSON.stringify(p).replace(/"/g,"'")})`}>Editar</button>
+                  {p.published
+                    ? <button class="btn btn-warning btn-sm" onclick={`publicar('${p.id}',false)`}>Despublicar</button>
+                    : <button class="btn btn-success btn-sm" onclick={`publicar('${p.id}',true)`}>Publicar</button>}
+                  <button class="btn btn-danger btn-sm" onclick={`deletar('${p.id}')`}>Excluir</button>
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="7" style="text-align:center;color:#999;padding:32px">Nenhum artigo. Crie o primeiro!</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal artigo -->
+  <div class="modal-overlay" id="modalPost">
+    <div class="modal" style="max-width:680px">
+      <div class="modal-title" id="modalPostTitle">Novo Artigo</div>
+      <div id="msgPost"></div>
+      <form id="formPost">
+        <input type="hidden" id="postId" />
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group" style="grid-column:span 2"><label>Título *</label><input id="postTitulo" required /></div>
+          <div class="form-group"><label>Slug *</label><input id="postSlug" required placeholder="meu-artigo-titulo" /></div>
+          <div class="form-group"><label>Autor</label><input id="postAutor" /></div>
+          <div class="form-group" style="grid-column:span 2"><label>Resumo</label><input id="postExcerpt" /></div>
+          <div class="form-group" style="grid-column:span 2"><label>Tags (vírgula)</label><input id="postTags" placeholder="manutenção, elétrica, dicas" /></div>
+          <div class="form-group" style="grid-column:span 2"><label>Conteúdo (HTML/Markdown) *</label><textarea id="postConteudo" required style="min-height:200px"></textarea></div>
+          <div class="form-group"><label>URL da imagem de capa</label><input id="postCapa" type="url" /></div>
+          <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:24px">
+            <input type="checkbox" id="postPublicado" style="width:16px;height:16px" />
+            <label for="postPublicado" style="margin:0;font-weight:600">Publicar imediatamente</label>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnSalvarPost">Criar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function fecharModal() { document.getElementById("modalPost").classList.remove("open"); }
+    function abrirModalNovo() {
+      document.getElementById("modalPostTitle").textContent = "Novo Artigo";
+      document.getElementById("postId").value = "";
+      document.getElementById("formPost").reset();
+      document.getElementById("btnSalvarPost").textContent = "Criar";
+      document.getElementById("modalPost").classList.add("open");
+    }
+    function editarPost(p) {
+      document.getElementById("modalPostTitle").textContent = "Editar Artigo";
+      document.getElementById("postId").value = p.id;
+      document.getElementById("postTitulo").value = p.title;
+      document.getElementById("postSlug").value = p.slug;
+      document.getElementById("postAutor").value = p.author || "";
+      document.getElementById("postExcerpt").value = p.excerpt || "";
+      document.getElementById("postTags").value = (p.tags || []).join(", ");
+      document.getElementById("postPublicado").checked = p.published;
+      document.getElementById("btnSalvarPost").textContent = "Salvar";
+      document.getElementById("modalPost").classList.add("open");
+    }
+    async function publicar(id, pub) {
+      const body = { published: pub };
+      if (pub) body.published_at = new Date().toISOString();
+      const res = await fetch(`/api/admin/blog/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload(); else alert("Erro ao atualizar");
+    }
+    async function deletar(id) {
+      if (!confirm("Excluir este artigo permanentemente?")) return;
+      const res = await fetch(`/api/admin/blog/${id}`, { method: "DELETE" });
+      if (res.ok) window.location.reload(); else alert("Erro ao excluir");
+    }
+    document.getElementById("formPost")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("postId").value;
+      const pub = document.getElementById("postPublicado").checked;
+      const body = {
+        title: document.getElementById("postTitulo").value,
+        slug: document.getElementById("postSlug").value,
+        author: document.getElementById("postAutor").value || null,
+        excerpt: document.getElementById("postExcerpt").value || null,
+        content: document.getElementById("postConteudo").value,
+        cover_image_url: document.getElementById("postCapa").value || null,
+        tags: document.getElementById("postTags").value.split(",").map(t => t.trim()).filter(Boolean),
+        published: pub,
+        published_at: pub ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      };
+      const url = id ? `/api/admin/blog/${id}` : "/api/admin/blog";
+      const method = id ? "PATCH" : "POST";
+      const msg = document.getElementById("msgPost");
+      const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) { window.location.reload(); }
+      else { const d = await res.json(); msg.innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
+    });
+    // Auto-gerar slug a partir do título
+    document.getElementById("postTitulo")?.addEventListener("input", (e) => {
+      if (!document.getElementById("postId").value) {
+        document.getElementById("postSlug").value = e.target.value.toLowerCase()
+          .normalize("NFD").replace(/[̀-ͯ]/g,"")
+          .replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+      }
+    });
+  </script>
+</Admin>

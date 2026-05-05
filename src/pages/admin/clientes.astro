@@ -1,0 +1,141 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const filtroStatus = Astro.url.searchParams.get("status") || "";
+const db = supabaseAdmin();
+let q = db.from("manut_clientes").select("*").order("created_at", { ascending: false });
+if (filtroStatus) q = q.eq("status", filtroStatus);
+const { data: clientes } = await q;
+
+const statusOpts = ["", "ativo", "pendente", "inadimplente", "cancelado"];
+const badgeMap: Record<string, string> = { ativo: "badge-green", pendente: "badge-yellow", inadimplente: "badge-red", cancelado: "badge-gray" };
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
+function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+---
+<Admin title="Clientes" current="clientes">
+  <div class="toolbar">
+    <span class="toolbar-title">Clientes ({clientes?.length ?? 0})</span>
+    <select class="filter-select" id="filtroStatus" onchange="filtrar()">
+      {statusOpts.map(s => <option value={s} selected={s === filtroStatus}>{s || "Todos"}</option>)}
+    </select>
+    <input class="search-input" type="search" placeholder="Buscar nome, email, código…" id="busca" oninput="filtrarTabela()" />
+    <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo cliente</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table id="tabela">
+        <thead>
+          <tr>
+            <th>Código</th><th>Nome</th><th>E-mail</th><th>Plano</th><th>Valor/mês</th><th>Status</th><th>Cadastro</th><th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {clientes?.length ? clientes.map((c: any) => (
+            <tr data-search={`${c.nome} ${c.email} ${c.codigo}`.toLowerCase()}>
+              <td><code>{c.codigo}</code></td>
+              <td><a href={`/admin/clientes/${c.id}`} style="color:#C41E3A;text-decoration:none;font-weight:600">{c.nome}</a></td>
+              <td>{c.email}</td>
+              <td>{c.plano_selecionado || "—"}</td>
+              <td>{fmtMoney(c.valor_mensal_contratado)}</td>
+              <td><span class={`badge ${badgeMap[c.status] || "badge-gray"}`}>{c.status}</span></td>
+              <td>{fmtDate(c.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:6px">
+                  <a href={`/admin/clientes/${c.id}`} class="btn btn-secondary btn-sm">Ver</a>
+                  {c.status === "pendente" && <button class="btn btn-success btn-sm" onclick={`ativar('${c.id}')`}>Ativar</button>}
+                  {c.status === "ativo" && <button class="btn btn-warning btn-sm" onclick={`inadimplir('${c.id}')`}>Inadimplir</button>}
+                  {c.status !== "cancelado" && <button class="btn btn-danger btn-sm" onclick={`cancelar('${c.id}')`}>Cancelar</button>}
+                </div>
+              </td>
+            </tr>
+          )) : (
+            <tr><td colspan="8" style="text-align:center;color:#999;padding:32px">Nenhum cliente encontrado</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal novo cliente -->
+  <div class="modal-overlay" id="modalNovo">
+    <div class="modal">
+      <div class="modal-title">Novo Cliente</div>
+      <div id="msgNovo"></div>
+      <form id="formNovo">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label>Nome *</label><input name="nome" required /></div>
+          <div class="form-group"><label>Código *</label><input name="codigo" required placeholder="ex: CLI-001" /></div>
+          <div class="form-group"><label>E-mail *</label><input name="email" type="email" required /></div>
+          <div class="form-group"><label>Telefone</label><input name="telefone" /></div>
+          <div class="form-group"><label>CNPJ/CPF</label><input name="cnpj_cpf" /></div>
+          <div class="form-group"><label>Senha inicial *</label><input name="senha" required placeholder="ex: ABCD1234" /></div>
+          <div class="form-group"><label>Plano</label>
+            <select name="plano_selecionado">
+              <option value="">Selecione</option>
+              <option>Essencial</option><option>Completo</option><option>Premium</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Valor/mês (R$)</label><input name="valor_mensal_contratado" type="number" step="0.01" /></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalNovo')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Criar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function filtrar() {
+      const s = (document.getElementById("filtroStatus") as HTMLSelectElement).value;
+      const url = new URL(window.location.href);
+      if (s) url.searchParams.set("status", s); else url.searchParams.delete("status");
+      window.location.href = url.toString();
+    }
+    function filtrarTabela() {
+      const q = (document.getElementById("busca") as HTMLInputElement).value.toLowerCase();
+      document.querySelectorAll<HTMLTableRowElement>("#tabela tbody tr[data-search]").forEach(row => {
+        row.style.display = row.dataset.search?.includes(q) ? "" : "none";
+      });
+    }
+    function abrirModalNovo() { document.getElementById("modalNovo")!.classList.add("open"); }
+    function fecharModal(id: string) { document.getElementById(id)!.classList.remove("open"); }
+
+    async function ativar(id: string) {
+      if (!confirm("Ativar este cliente?")) return;
+      await patchCliente(id, { status: "ativo" });
+    }
+    async function inadimplir(id: string) {
+      if (!confirm("Marcar como inadimplente?")) return;
+      await patchCliente(id, { status: "inadimplente" });
+    }
+    async function cancelar(id: string) {
+      if (!confirm("Cancelar contrato deste cliente?")) return;
+      await patchCliente(id, { status: "cancelado" });
+    }
+    async function patchCliente(id: string, body: object) {
+      const res = await fetch(`/api/admin/clientes/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else alert("Erro ao atualizar cliente");
+    }
+
+    document.getElementById("formNovo")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target as HTMLFormElement);
+      const body = Object.fromEntries(fd.entries());
+      if (body.valor_mensal_contratado) body.valor_mensal_contratado = parseFloat(body.valor_mensal_contratado as string) as any;
+      const msg = document.getElementById("msgNovo")!;
+      const res = await fetch("/api/admin/clientes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) { window.location.reload(); }
+      else { const d = await res.json(); msg.innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
+    });
+  </script>
+</Admin>

@@ -52,6 +52,42 @@ export async function criarPreapproval(args: CriarPreapprovalArgs): Promise<Cria
   return { ok: true, initPoint: (data as any).init_point, preapprovalId: (data as any).id };
 }
 
+// Checkout Pro — pagamento único sem exigir conta MP (funciona com cartão/pix/boleto)
+export async function criarPreference(args: {
+  cliente: { id: string; email: string; nome: string };
+  plano: { nome: string; valor: number };
+  externalReference: string;
+}): Promise<{ ok: boolean; initPoint: string | null; motivo?: string }> {
+  const body = {
+    items: [{
+      title: `CJR Manutenção — ${args.plano.nome}`,
+      quantity: 1,
+      unit_price: Number(Number(args.plano.valor).toFixed(2)),
+      currency_id: "BRL"
+    }],
+    payer: { email: args.cliente.email, name: args.cliente.nome },
+    external_reference: args.externalReference,
+    back_urls: {
+      success: `${SITE}/manutencao/cliente/dashboard`,
+      failure:  `${SITE}/manutencao/contratar?status=falha`,
+      pending:  `${SITE}/manutencao/cliente/dashboard`
+    },
+    auto_return: "approved",
+    statement_descriptor: "CJR MANUTENCAO"
+  };
+  const res = await fetch(`${MP_API}/checkout/preferences`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({} as any));
+  console.log("[MP][preference] status:", res.status, "body:", JSON.stringify(data));
+  if (!res.ok) {
+    return { ok: false, motivo: (data as any).message || JSON.stringify(data), initPoint: null };
+  }
+  return { ok: true, initPoint: (data as any).init_point };
+}
+
 export async function buscarPreapproval(id: string): Promise<any | null> {
   const res = await fetch(`${MP_API}/preapproval/${id}`, {
     headers: { Authorization: `Bearer ${token()}` }

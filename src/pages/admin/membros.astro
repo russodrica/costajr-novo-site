@@ -1,0 +1,151 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const filtroStatus = Astro.url.searchParams.get("status") || "pending";
+const db = supabaseAdmin();
+const { data: membros } = await db.from("portal_profiles")
+  .select("id, email, display_name, full_name, role, approval_status, last_login_at, created_at")
+  .eq("approval_status", filtroStatus)
+  .order("created_at", { ascending: false });
+
+const badgeSt: Record<string, string> = { pending: "badge-yellow", approved: "badge-green", rejected: "badge-red" };
+const badgeRole: Record<string, string> = { admin: "badge-red", coordenador: "badge-blue", financeiro: "badge-green", comercial: "badge-orange", rh: "badge-blue", operacional: "badge-gray", pendente: "badge-gray" };
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
+const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"];
+---
+<Admin title="Membros Portal" current="membros">
+  <div class="toolbar">
+    <span class="toolbar-title">Membros ({membros?.length ?? 0})</span>
+    <select class="filter-select" onchange="filtrar(this.value)">
+      {["pending","approved","rejected"].map(s => <option value={s} selected={s===filtroStatus}>{s}</option>)}
+    </select>
+    <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo membro</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>Status</th><th>Último acesso</th><th>Cadastro</th><th>Ações</th></tr></thead>
+        <tbody>
+          {membros?.length ? membros.map((m: any) => (
+            <tr>
+              <td><strong>{m.display_name || m.full_name || "—"}</strong></td>
+              <td>{m.email}</td>
+              <td><span class={`badge ${badgeRole[m.role]}`}>{m.role}</span></td>
+              <td><span class={`badge ${badgeSt[m.approval_status]}`}>{m.approval_status}</span></td>
+              <td>{fmtDate(m.last_login_at)}</td>
+              <td>{fmtDate(m.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  {m.approval_status === "pending" && (
+                    <>
+                      <button class="btn btn-success btn-sm" onclick={`aprovar('${m.id}')`}>Aprovar</button>
+                      <button class="btn btn-danger btn-sm" onclick={`rejeitar('${m.id}')`}>Rejeitar</button>
+                    </>
+                  )}
+                  <button class="btn btn-secondary btn-sm" onclick={`editarRole('${m.id}','${m.role}')`}>Cargo</button>
+                  <button class="btn btn-info btn-sm" onclick={`resetarSenha('${m.id}')`}>Reset senha</button>
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="7" style="text-align:center;color:#999;padding:32px">Nenhum membro encontrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal novo membro -->
+  <div class="modal-overlay" id="modalNovo">
+    <div class="modal">
+      <div class="modal-title">Novo Membro</div>
+      <div id="msgNovo"></div>
+      <form id="formNovo">
+        <div class="form-group"><label>Nome *</label><input name="display_name" required /></div>
+        <div class="form-group"><label>E-mail *</label><input name="email" type="email" required /></div>
+        <div class="form-group"><label>Cargo *</label>
+          <select name="role">
+            {roles.map(r => <option value={r}>{r}</option>)}
+          </select>
+        </div>
+        <div class="form-group"><label>Senha inicial</label><input name="senha" placeholder="Deixe em branco para gerar" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalNovo')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Criar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal editar cargo -->
+  <div class="modal-overlay" id="modalRole">
+    <div class="modal" style="max-width:360px">
+      <div class="modal-title">Alterar Cargo</div>
+      <form id="formRole">
+        <input type="hidden" id="roleMembroId" />
+        <div class="form-group"><label>Cargo</label>
+          <select id="roleSelect">
+            {roles.map(r => <option value={r}>{r}</option>)}
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalRole')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function filtrar(s) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("status", s);
+      window.location.href = url.toString();
+    }
+    function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
+    function abrirModalNovo() { document.getElementById("modalNovo").classList.add("open"); }
+    function editarRole(id, role) {
+      document.getElementById("roleMembroId").value = id;
+      document.getElementById("roleSelect").value = role;
+      document.getElementById("modalRole").classList.add("open");
+    }
+
+    async function patch(id, body) {
+      const res = await fetch(`/api/admin/membros/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload(); else alert("Erro ao atualizar membro");
+    }
+    function aprovar(id) { patch(id, { approval_status: "approved", approved_at: new Date().toISOString() }); }
+    function rejeitar(id) {
+      const motivo = prompt("Motivo da rejeição (opcional):") ?? "";
+      patch(id, { approval_status: "rejected", rejected_at: new Date().toISOString(), rejection_reason: motivo || null });
+    }
+    async function resetarSenha(id) {
+      const res = await fetch(`/api/admin/membros/${id}/resetar-senha`, { method: "POST" });
+      if (res.ok) { const d = await res.json(); alert(`Nova senha: ${d.senha}`); }
+      else alert("Erro ao resetar senha");
+    }
+
+    document.getElementById("formRole")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("roleMembroId").value;
+      const role = document.getElementById("roleSelect").value;
+      await patch(id, { role });
+    });
+
+    document.getElementById("formNovo")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = Object.fromEntries(fd.entries());
+      const msg = document.getElementById("msgNovo");
+      const res = await fetch("/api/admin/membros", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) { window.location.reload(); }
+      else { const d = await res.json(); msg.innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
+    });
+  </script>
+</Admin>

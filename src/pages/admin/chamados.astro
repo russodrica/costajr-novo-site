@@ -1,0 +1,142 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const filtroStatus = Astro.url.searchParams.get("status") || "";
+const filtroTipo   = Astro.url.searchParams.get("tipo")   || "";
+const db = supabaseAdmin();
+
+let q = db.from("manut_chamados")
+  .select("*, manut_clientes(nome), manut_tecnicos(nome), manut_lojas(nome)")
+  .order("data_abertura", { ascending: false });
+if (filtroStatus) q = q.eq("status", filtroStatus);
+if (filtroTipo)   q = q.eq("tipo", filtroTipo);
+const { data: chamados } = await q;
+
+const { data: tecnicos } = await db.from("manut_tecnicos").select("id, nome").eq("status", "ativo").order("nome");
+
+const badgeSt: Record<string, string> = { aberto: "badge-red", em_andamento: "badge-blue", aguardando_material: "badge-orange", concluido: "badge-green", cancelado: "badge-gray" };
+const badgePr: Record<string, string> = { urgente: "badge-red", alta: "badge-orange", normal: "badge-gray", baixa: "badge-gray" };
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
+---
+<Admin title="Chamados" current="chamados">
+  <div class="toolbar">
+    <span class="toolbar-title">Chamados ({chamados?.length ?? 0})</span>
+    <select class="filter-select" onchange="filtrar('status', this.value)">
+      <option value="" selected={!filtroStatus}>Todos os status</option>
+      {["aberto","em_andamento","aguardando_material","concluido","cancelado"].map(s =>
+        <option value={s} selected={s === filtroStatus}>{s.replace("_"," ")}</option>)}
+    </select>
+    <select class="filter-select" onchange="filtrar('tipo', this.value)">
+      <option value="" selected={!filtroTipo}>Todos os tipos</option>
+      {["eletrica","hidraulica","civil"].map(t =>
+        <option value={t} selected={t === filtroTipo}>{t}</option>)}
+    </select>
+    <input class="search-input" type="search" placeholder="Buscar cliente, descrição…" oninput="buscar(this.value)" />
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table id="tabela">
+        <thead>
+          <tr><th>Cliente</th><th>Loja</th><th>Tipo</th><th>Descrição</th><th>Técnico</th><th>Status</th><th>Prioridade</th><th>Data</th><th>Ações</th></tr>
+        </thead>
+        <tbody>
+          {chamados?.length ? chamados.map((c: any) => (
+            <tr data-search={`${(c.manut_clientes as any)?.nome ?? ""} ${c.descricao}`.toLowerCase()}>
+              <td>{(c.manut_clientes as any)?.nome ?? "—"}</td>
+              <td>{(c.manut_lojas as any)?.nome ?? "—"}</td>
+              <td><span class="badge badge-gray">{c.tipo}</span></td>
+              <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title={c.descricao}>{c.descricao}</td>
+              <td>{(c.manut_tecnicos as any)?.nome ?? <span style="color:#999">Não atribuído</span>}</td>
+              <td><span class={`badge ${badgeSt[c.status]}`}>{c.status.replace("_"," ")}</span></td>
+              <td><span class={`badge ${badgePr[c.prioridade]}`}>{c.prioridade}</span></td>
+              <td>{fmtDate(c.data_abertura)}</td>
+              <td>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  <button class="btn btn-secondary btn-sm" onclick={`abrirChamado(${JSON.stringify(c)})`}>Editar</button>
+                  {c.status === "aberto" && <button class="btn btn-info btn-sm" onclick={`patchChamado('${c.id}',{status:'em_andamento'})`}>Iniciar</button>}
+                  {["aberto","em_andamento","aguardando_material"].includes(c.status) && <button class="btn btn-success btn-sm" onclick={`patchChamado('${c.id}',{status:'concluido',data_conclusao:new Date().toISOString()})`}>Concluir</button>}
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="9" style="text-align:center;color:#999;padding:32px">Nenhum chamado encontrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal editar chamado -->
+  <div class="modal-overlay" id="modalChamado">
+    <div class="modal" style="max-width:540px">
+      <div class="modal-title">Editar Chamado</div>
+      <form id="formChamado">
+        <input type="hidden" id="chamadoId" />
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label>Status</label>
+            <select id="chamadoStatus" name="status">
+              {["aberto","em_andamento","aguardando_material","concluido","cancelado"].map(s =>
+                <option value={s}>{s.replace("_"," ")}</option>)}
+            </select>
+          </div>
+          <div class="form-group"><label>Prioridade</label>
+            <select id="chamadoPrioridade" name="prioridade">
+              {["baixa","normal","alta","urgente"].map(p => <option value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:span 2"><label>Técnico atribuído</label>
+            <select id="chamadoTecnico" name="tecnico_atribuido_id">
+              <option value="">Não atribuído</option>
+              {tecnicos?.map((t: any) => <option value={t.id}>{t.nome}</option>)}
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function filtrar(key, val) {
+      const url = new URL(window.location.href);
+      if (val) url.searchParams.set(key, val); else url.searchParams.delete(key);
+      window.location.href = url.toString();
+    }
+    function buscar(q) {
+      document.querySelectorAll("#tabela tbody tr[data-search]").forEach(r => {
+        r.style.display = r.dataset.search.includes(q.toLowerCase()) ? "" : "none";
+      });
+    }
+    function fecharModal() { document.getElementById("modalChamado").classList.remove("open"); }
+    function abrirChamado(c) {
+      document.getElementById("chamadoId").value = c.id;
+      document.getElementById("chamadoStatus").value = c.status;
+      document.getElementById("chamadoPrioridade").value = c.prioridade;
+      document.getElementById("chamadoTecnico").value = c.tecnico_atribuido_id || "";
+      document.getElementById("modalChamado").classList.add("open");
+    }
+    async function patchChamado(id, body) {
+      const res = await fetch(`/api/admin/chamados/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload(); else alert("Erro ao atualizar chamado");
+    }
+    document.getElementById("formChamado")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("chamadoId").value;
+      const body = {
+        status: document.getElementById("chamadoStatus").value,
+        prioridade: document.getElementById("chamadoPrioridade").value,
+        tecnico_atribuido_id: document.getElementById("chamadoTecnico").value || null,
+      };
+      await patchChamado(id, body);
+    });
+  </script>
+</Admin>

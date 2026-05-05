@@ -1,0 +1,83 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const filtroStatus = Astro.url.searchParams.get("status") || "pendente_aprovacao";
+const db = supabaseAdmin();
+let q = db.from("manut_materiais")
+  .select("*, manut_clientes(nome), manut_tecnicos(nome), manut_lojas(nome)")
+  .order("created_at", { ascending: false });
+if (filtroStatus) q = q.eq("status", filtroStatus);
+const { data: materiais } = await q;
+
+const badgeSt: Record<string, string> = { pendente_aprovacao: "badge-yellow", aprovado: "badge-green", aguardando_pagamento: "badge-blue", pago: "badge-green", recusado: "badge-red" };
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
+function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+---
+<Admin title="Materiais" current="materiais">
+  <div class="toolbar">
+    <span class="toolbar-title">Materiais ({materiais?.length ?? 0})</span>
+    <select class="filter-select" onchange="filtrar(this.value)">
+      {["pendente_aprovacao","aprovado","aguardando_pagamento","pago","recusado"].map(s =>
+        <option value={s} selected={s===filtroStatus}>{s.replace(/_/g," ")}</option>)}
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Descrição</th><th>Valor</th><th>Técnico</th><th>Cliente</th><th>Loja</th><th>Status</th><th>Data</th><th>Ações</th></tr></thead>
+        <tbody>
+          {materiais?.length ? materiais.map((m: any) => (
+            <tr>
+              <td>{m.descricao}</td>
+              <td><strong>{fmtMoney(m.valor)}</strong></td>
+              <td>{(m.manut_tecnicos as any)?.nome ?? "—"}</td>
+              <td>{(m.manut_clientes as any)?.nome ?? "—"}</td>
+              <td>{(m.manut_lojas as any)?.nome ?? "—"}</td>
+              <td><span class={`badge ${badgeSt[m.status]}`}>{m.status.replace(/_/g," ")}</span></td>
+              <td>{fmtDate(m.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  {m.status === "pendente_aprovacao" && (
+                    <>
+                      <button class="btn btn-success btn-sm" onclick={`aprovar('${m.id}')`}>Aprovar</button>
+                      <button class="btn btn-danger btn-sm" onclick={`recusar('${m.id}')`}>Recusar</button>
+                    </>
+                  )}
+                  {m.status === "aguardando_pagamento" && (
+                    <button class="btn btn-info btn-sm" onclick={`marcarPago('${m.id}')`}>Marcar pago</button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="8" style="text-align:center;color:#999;padding:32px">Nenhum material encontrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    function filtrar(s) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("status", s);
+      window.location.href = url.toString();
+    }
+    async function patch(id, body) {
+      const res = await fetch(`/api/admin/materiais/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload(); else alert("Erro ao atualizar");
+    }
+    function aprovar(id) { patch(id, { status: "aguardando_pagamento", aprovado_em: new Date().toISOString() }); }
+    function recusar(id) {
+      if (!confirm("Recusar este material?")) return;
+      patch(id, { status: "recusado" });
+    }
+    function marcarPago(id) { patch(id, { status: "pago", pago_em: new Date().toISOString() }); }
+  </script>
+</Admin>

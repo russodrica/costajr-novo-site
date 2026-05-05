@@ -398,6 +398,30 @@ export const prerender = false;
     </div>
   </div>
 
+  <!-- Modal link de pagamento -->
+  <div class="modal-bg" id="modalLinkPag">
+    <div class="modal" style="max-width:480px">
+      <h2>Link de Pagamento</h2>
+      <p style="font-size:14px;color:#5B5F6B;margin-bottom:16px">Copie o link abaixo e envie ao cliente por WhatsApp ou e-mail. O cliente paga com cartão, pix ou boleto — <strong>sem precisar de conta no Mercado Pago.</strong></p>
+      <div id="linkPagLoading" class="loading">Gerando link...</div>
+      <div id="linkPagContent" style="display:none">
+        <div class="form-group">
+          <label>Link de pagamento</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="linkPagUrl" readonly style="flex:1;background:#F4F6F9;font-size:13px">
+            <button class="btn btn-primary btn-sm" onclick="copiarLink()">Copiar</button>
+          </div>
+        </div>
+        <div id="linkPagMsg" style="display:none;font-size:13px;padding:8px 12px;border-radius:6px;margin-top:4px"></div>
+        <div style="text-align:right;margin-top:12px">
+          <a id="linkPagAbrir" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Abrir →</a>
+          <button class="btn btn-outline btn-sm" onclick="closeModal('modalLinkPag')" style="margin-left:8px">Fechar</button>
+        </div>
+      </div>
+      <div id="linkPagError" style="display:none;color:#B91C1C;font-size:14px"></div>
+    </div>
+  </div>
+
   <!-- Modal responder suporte -->
   <div class="modal-bg" id="modalSuporte">
     <div class="modal">
@@ -530,11 +554,14 @@ export const prerender = false;
         <td style="font-size:13px">${fmtMoney(c.valor_mensal_contratado)}</td>
         <td>${badge(c.status)}</td>
         <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_contratacao)}</td>
-        <td><div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="abrirEditarCliente('${c.id}')">Editar</button><button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirCliente('${c.id}','${c.nome.replace(/'/g,"\\'")}')">Excluir</button></div></td>
+        <td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="abrirEditarCliente('${c.id}')">Editar</button><button class="btn btn-outline btn-sm" style="color:#3B82F6;border-color:#BFDBFE" onclick="gerarLinkPagamento('${c.id}','${c.nome.replace(/'/g,"\\'")}')">💳 Link</button><button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirCliente('${c.id}','${c.nome.replace(/'/g,"\\'")}')">Excluir</button></div></td>
       </tr>
     `).join("");
   }
   async function loadClientes(){
+    document.getElementById("loadingClientes").style.display="";
+    document.getElementById("loadingClientes").textContent="Carregando...";
+    document.getElementById("cardClientes").style.display="none";
     try{
       const res=await api("/api/manut/admin/clientes");
       if(res.status===401){localStorage.removeItem(TOKEN_KEY);window.location.replace("/manutencao/admin/login");return}
@@ -543,7 +570,9 @@ export const prerender = false;
       document.getElementById("cardClientes").style.display="";
       renderClientes();
       loaded.clientes=true;
-    }catch{document.getElementById("loadingClientes").textContent="Erro ao carregar.";}
+    }catch{
+      document.getElementById("loadingClientes").textContent="Erro ao carregar. Recarregue a página.";
+    }
   }
   document.getElementById("buscaClientes").addEventListener("input",renderClientes);
   document.getElementById("filtroStatusClientes").addEventListener("change",renderClientes);
@@ -572,7 +601,7 @@ export const prerender = false;
       if(!res.ok)throw new Error(data.error||"Erro ao cadastrar");
       closeModal("modalCliente");
       alert(`✓ Cliente cadastrado!\nCódigo: ${data.codigo}\nSenha inicial: ${data.senhaInicial}\n\nAnote e repasse ao cliente.`);
-      loaded.clientes=false;loadClientes();
+      irParaAba("clientes");
     }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
     finally{btn.disabled=false;btn.textContent="Cadastrar";}
   });
@@ -682,7 +711,7 @@ export const prerender = false;
     const idx=allLeads.findIndex(l=>l.id===id);if(idx>=0)allLeads[idx].etapa=etapa;
     renderLeads();
 
-    // Ao converter: cria cliente com status "pendente"
+    // Ao converter: cria cliente com status "pendente" e vai para aba Clientes
     if(etapa==="convertido"){
       const lead=allLeads.find(l=>l.id===id);
       if(lead&&lead.email){
@@ -695,15 +724,52 @@ export const prerender = false;
         })});
         const data=await res.json();
         if(res.ok&&data.senhaInicial){
-          alert(`✓ Cliente criado automaticamente!\n\nCódigo: ${data.codigo}\nEmail: ${data.email}\nSenha inicial: ${data.senhaInicial}\n\nAnote e repasse ao cliente.\nStatus: Pendente (aguardando pagamento)`);
-          loaded.clientes=false;
+          alert(`✓ Cliente criado!\n\nCódigo: ${data.codigo}\nEmail: ${data.email}\nSenha inicial: ${data.senhaInicial}\n\nStatus: Pendente (aguardando pagamento)`);
+          irParaAba("clientes");
         }else if(res.status===409){
-          alert(`Lead marcado como Convertido.\nObs: o email "${lead.email}" já possui cadastro de cliente existente.`);
+          alert(`Lead convertido. O email "${lead.email}" já tinha cadastro de cliente — veja na aba Clientes.`);
+          irParaAba("clientes");
         }
       }
     }
   }
   window.atualizarEtapaLead=atualizarEtapaLead;
+
+  // ─── Link de pagamento (Checkout Pro — sem conta MP) ──────────────
+  async function gerarLinkPagamento(id, nome){
+    const modal = document.getElementById("modalLinkPag");
+    document.getElementById("linkPagLoading").style.display="";
+    document.getElementById("linkPagContent").style.display="none";
+    document.getElementById("linkPagError").style.display="none";
+    modal.classList.add("open");
+    try {
+      const res = await api(`/api/manut/admin/clientes/${id}/link-pagamento`, {method:"POST", body:JSON.stringify({})});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao gerar link");
+      document.getElementById("linkPagLoading").style.display="none";
+      document.getElementById("linkPagContent").style.display="";
+      document.getElementById("linkPagUrl").value = data.linkPagamento;
+      document.getElementById("linkPagAbrir").href = data.linkPagamento;
+    } catch(e){
+      document.getElementById("linkPagLoading").style.display="none";
+      const err = document.getElementById("linkPagError");
+      err.textContent = e.message;
+      err.style.display="";
+    }
+  }
+  window.gerarLinkPagamento=gerarLinkPagamento;
+
+  function copiarLink(){
+    const input = document.getElementById("linkPagUrl");
+    input.select();
+    navigator.clipboard.writeText(input.value).then(()=>{
+      const msg = document.getElementById("linkPagMsg");
+      msg.style.background="#F0FDF4"; msg.style.color="#15803D";
+      msg.textContent="✓ Link copiado!"; msg.style.display="";
+      setTimeout(()=>msg.style.display="none", 2000);
+    });
+  }
+  window.copiarLink=copiarLink;
 
   // ────────────────────────────────────────────────────────────────
   // CHAMADOS
@@ -1128,6 +1194,16 @@ export const prerender = false;
     else if(tab==="contrato")loadContrato();
     else if(tab==="orcamentos")loadOrcamentos();
     else if(tab==="suporte")loadSuporte();
+  }
+
+  function irParaAba(tab){
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    document.querySelector(`.tab[data-tab="${tab}"]`)?.classList.add("active");
+    ["dashboard","clientes","precadastros","chamados","tecnicos","valores","cupons","contrato","orcamentos","suporte"].forEach(t=>{
+      document.getElementById("tab-"+t).style.display=t===tab?"":"none";
+    });
+    loaded[tab]=false;
+    loadTab(tab);
   }
 
   // Inicia com Dashboard
