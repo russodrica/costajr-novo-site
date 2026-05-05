@@ -139,6 +139,27 @@ create table if not exists manut_planos (
   created_at timestamptz not null default now()
 );
 
+-- Motor de precificação editavel pelo admin.
+-- Preco final = preco_base do tipo_loja + (qtd_especialidades_extras * custo_especialidade)
+create table if not exists manut_precificacao (
+  tipo_loja text primary key check (tipo_loja in ('quiosque','ate40','41a80','81a120','121a250')),
+  label text not null,
+  descricao text,
+  preco_base numeric(10,2) not null,
+  custo_especialidade numeric(10,2) not null default 50,
+  ordem integer not null default 0,
+  ativo boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+insert into manut_precificacao (tipo_loja, label, descricao, preco_base, ordem) values
+  ('quiosque',  'Quiosque',      'Ponto compacto, baixa metragem',                            250, 1),
+  ('ate40',     'Até 40 m²',     'Loja pequena de rua ou shopping',                           280, 2),
+  ('41a80',     '41 a 80 m²',    'Loja média',                                                300, 3),
+  ('81a120',    '81 a 120 m²',   'Loja grande',                                               400, 4),
+  ('121a250',   '121 a 250 m²',  'Loja âncora ou centro de distribuição pequeno',             650, 5)
+on conflict (tipo_loja) do nothing;
+
 create table if not exists manut_clientes (
   id text primary key default gen_random_uuid()::text,
   email text unique not null,

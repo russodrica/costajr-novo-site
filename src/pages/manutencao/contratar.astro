@@ -1,109 +1,140 @@
 ---
 import Base from "~/layouts/Base.astro";
 
-// PLACEHOLDER de planos — Adriana, ajustar valores reais antes de divulgar
-const planos = [
-  {
-    id: "essencial",
-    nome: "Essencial",
-    valorMensal: 890,
-    visitas: 1,
-    destaque: false,
-    bullets: [
-      "1 visita preventiva mensal",
-      "Chamados ilimitados via plataforma",
-      "Técnico responsável vinculado",
-      "Relatório mensal em PDF",
-      "Suporte em horário comercial",
-    ],
-  },
-  {
-    id: "completo",
-    nome: "Completo",
-    valorMensal: 1490,
-    visitas: 2,
-    destaque: true,
-    bullets: [
-      "2 visitas preventivas mensais",
-      "Chamados ilimitados via plataforma",
-      "Técnico responsável vinculado",
-      "Relatório mensal + checklist técnico",
-      "Suporte em horário comercial",
-      "Aprovação de orçamentos online",
-    ],
-  },
-  {
-    id: "premium",
-    nome: "Premium",
-    valorMensal: 2290,
-    visitas: 4,
-    destaque: false,
-    bullets: [
-      "4 visitas preventivas mensais",
-      "Chamados ilimitados + plantão 24/7",
-      "Técnico exclusivo dedicado",
-      "Relatório mensal + dashboard online",
-      "Engenharia consultiva inclusa",
-      "Aprovação de orçamentos online",
-    ],
-  },
+// Regra base de precificação — espelha a tabela `manut_precificacao` do banco.
+// Estes valores podem ser editados pelo admin. Quando a API GET /api/manut/precificacao
+// estiver implementada, o front passa a buscar de lá; por ora usa este fallback.
+const tiposLoja = [
+  { id: "quiosque",   label: "Quiosque",       descricao: "Ponto compacto, baixa metragem", precoBase: 250 },
+  { id: "ate40",      label: "Até 40 m²",      descricao: "Loja pequena de rua ou shopping",  precoBase: 280 },
+  { id: "41a80",      label: "41 a 80 m²",     descricao: "Loja média",                       precoBase: 300 },
+  { id: "81a120",     label: "81 a 120 m²",    descricao: "Loja grande",                      precoBase: 400 },
+  { id: "121a250",    label: "121 a 250 m²",   descricao: "Loja âncora ou centro de distribuição pequeno", precoBase: 650 },
 ];
 
-const especialidadesLista = ["Elétrica", "Hidráulica", "Civil", "Refrigeração / HVAC", "Pintura", "Marcenaria"];
+const especialidades = [
+  { id: "civil",      label: "Civil",     descricao: "Pintura, alvenaria, gesso, marcenaria, esquadrias" },
+  { id: "eletrica",   label: "Elétrica",  descricao: "Quadros, iluminação, tomadas, instalações de baixa tensão" },
+  { id: "hidraulica", label: "Hidráulica", descricao: "Águas, esgoto, louças, registros e infraestrutura sanitária" },
+];
+
+const custoEspecialidade = 50; // R$ por especialidade adicional
 ---
 <Base
   title="Contratar manutenção predial — Costa Júnior"
-  description="Plataforma digital de manutenção predial. Técnico vinculado, chamados ilimitados, visitas preventivas e assinatura via Mercado Pago. Monte seu plano em 2 minutos."
+  description="Plataforma digital de manutenção predial. Técnico vinculado, chamados ilimitados, visitas preventivas e assinatura via Mercado Pago. Preço sob medida pra sua loja."
 >
   <section class="page-hero">
     <div class="container page-hero-content">
       <span class="hero-eyebrow">Manutenção predial sem dor de cabeça</span>
       <h1>Sua loja sob cuidado da <span class="hl">engenharia certa</span>.</h1>
       <p class="page-hero-sub">
-        Técnico responsável vinculado, chamados ilimitados, visitas preventivas e relatórios em PDF. Pagamento via Mercado Pago — assinatura mensal automatizada.
+        Técnico responsável vinculado, chamados ilimitados, visita preventiva mensal e relatórios em PDF. Pagamento via Mercado Pago — assinatura mensal automatizada.
       </p>
     </div>
   </section>
 
-  <!-- 1. PLANOS -->
+  <!-- 1. CALCULADORA -->
   <section class="section">
     <div class="container">
       <div style="text-align:center;max-width:680px;margin:0 auto 56px">
-        <span class="kicker">1. Escolha seu plano</span>
-        <h2>Plano sob medida pro seu metro quadrado</h2>
-        <p class="lead">Você pode mudar de plano a qualquer momento. Sem fidelidade.</p>
+        <span class="kicker">1. Monte seu plano</span>
+        <h2>Preço sob medida pro seu metro quadrado</h2>
+        <p class="lead">Selecione o porte da loja e as especialidades necessárias. Sem fidelidade, sem letra miúda.</p>
       </div>
 
-      <div class="planos-grid">
-        {planos.map(p => (
-          <article class={`plano-card ${p.destaque ? "destaque" : ""}`} data-plano={p.id}>
-            {p.destaque && <span class="plano-badge">Mais escolhido</span>}
-            <h3>{p.nome}</h3>
-            <div class="plano-preco">
-              <span class="moeda">R$</span>
-              <strong>{p.valorMensal.toLocaleString("pt-BR")}</strong>
-              <span class="periodo">/mês</span>
+      <div class="calc-grid">
+        <!-- COLUNA ESQUERDA — opções -->
+        <div class="calc-opcoes">
+          <h3 class="calc-titulo">Porte da loja</h3>
+          <div class="opcoes-stack" role="radiogroup" aria-label="Tipo de loja">
+            {tiposLoja.map((t, i) => (
+              <label class={`opcao ${i === 1 ? "checked" : ""}`} data-tipo={t.id}>
+                <input type="radio" name="tipoLoja" value={t.id} checked={i === 1} data-preco={t.precoBase}>
+                <span class="opcao-radio"></span>
+                <span class="opcao-conteudo">
+                  <strong>{t.label}</strong>
+                  <span>{t.descricao}</span>
+                </span>
+                <span class="opcao-preco">R$ {t.precoBase}<small>/mês</small></span>
+              </label>
+            ))}
+          </div>
+
+          <h3 class="calc-titulo">Especialidades incluídas</h3>
+          <p class="calc-aux">Toda manutenção inclui no mínimo uma especialidade. Cada adicional soma R$ {custoEspecialidade}/mês.</p>
+          <div class="opcoes-stack">
+            {especialidades.map((e, i) => (
+              <label class={`opcao opcao-check ${i === 0 ? "checked" : ""}`} data-esp={e.id}>
+                <input type="checkbox" name="especialidades" value={e.id} checked={i === 0} data-custo={custoEspecialidade}>
+                <span class="opcao-check-mark">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <span class="opcao-conteudo">
+                  <strong>{e.label}</strong>
+                  <span>{e.descricao}</span>
+                </span>
+                <span class="opcao-preco-add">+R$ {custoEspecialidade}<small>/mês</small></span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <!-- COLUNA DIREITA — resumo / preço -->
+        <aside class="calc-resumo">
+          <span class="kicker" style="color:#fff;opacity:.85">Seu plano</span>
+          <h3 id="resumo-tipo">Até 40 m²</h3>
+          <p id="resumo-esp">1 especialidade · Civil</p>
+
+          <div class="resumo-preco">
+            <div class="preco-linha">
+              <span>Base</span>
+              <strong id="preco-base">R$ 280</strong>
             </div>
-            <p class="plano-visitas">{p.visitas} {p.visitas === 1 ? "visita" : "visitas"} preventiva{p.visitas === 1 ? "" : "s"}/mês</p>
-            <ul>
-              {p.bullets.map(b => (
-                <li>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  <span>{b}</span>
-                </li>
-              ))}
-            </ul>
-            <button type="button" class={`btn ${p.destaque ? "btn-primary" : "btn-outline"} plano-cta`} data-plano-id={p.id}>
-              Escolher {p.nome}
-            </button>
-          </article>
-        ))}
+            <div class="preco-linha">
+              <span id="preco-extras-label">+0 especialidade extra</span>
+              <strong id="preco-extras">R$ 0</strong>
+            </div>
+            <div class="preco-total">
+              <span>Total mensal</span>
+              <strong><span class="moeda">R$</span><span id="preco-total">280</span><small>/mês</small></strong>
+            </div>
+          </div>
+
+          <ul class="resumo-bullets">
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>1 visita preventiva mensal</span>
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Chamados ilimitados via plataforma</span>
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Técnico responsável vinculado</span>
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Relatório mensal em PDF</span>
+            </li>
+            <li>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Sem fidelidade · cancele quando quiser</span>
+            </li>
+          </ul>
+
+          <button type="button" class="btn btn-primary calc-cta" id="btn-avancar">
+            Avançar para cadastro
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+          </button>
+        </aside>
       </div>
     </div>
   </section>
 
-  <!-- 2. FORMULÁRIO -->
-  <section class="section section-soft">
+  <!-- 2. CADASTRO -->
+  <section class="section section-soft" id="cadastro">
     <div class="container">
       <div style="text-align:center;max-width:680px;margin:0 auto 40px">
         <span class="kicker">2. Cadastre sua loja</span>
@@ -112,30 +143,10 @@ const especialidadesLista = ["Elétrica", "Hidráulica", "Civil", "Refrigeraçã
       </div>
 
       <form id="contratar-form" class="contratar-form" novalidate>
-        <input type="hidden" name="planoId" id="planoId" required>
-
         <h3 class="form-section">Loja / unidade</h3>
-        <div class="form-row">
-          <label>
-            <span>Nome da loja *</span>
-            <input type="text" name="nomeLoja" required>
-          </label>
-          <label>
-            <span>Tamanho aproximado (m²)</span>
-            <input type="number" name="tamanho" min="1">
-          </label>
-        </div>
-
         <label>
-          <span>Especialidades necessárias</span>
-          <div class="checkboxes">
-            {especialidadesLista.map(e => (
-              <label class="check-item">
-                <input type="checkbox" name="especialidades" value={e.toLowerCase()}>
-                <span>{e}</span>
-              </label>
-            ))}
-          </div>
+          <span>Nome da loja *</span>
+          <input type="text" name="nomeLoja" required>
         </label>
 
         <h3 class="form-section">Responsável</h3>
@@ -196,45 +207,84 @@ const especialidadesLista = ["Elétrica", "Hidráulica", "Civil", "Refrigeraçã
   </section>
 </Base>
 
-<script define:vars={{ planos }}>
-  // Seleção de plano
-  const cards = document.querySelectorAll(".plano-card");
-  const planoIdInput = document.getElementById("planoId");
+<script define:vars={{ tiposLoja, especialidades, custoEspecialidade }}>
+  const tipos = tiposLoja;
+  const espMap = Object.fromEntries(especialidades.map(e => [e.id, e]));
 
-  function selecionarPlano(id) {
-    cards.forEach(c => c.classList.toggle("selected", c.dataset.plano === id));
-    if (planoIdInput) planoIdInput.value = id;
-    document.getElementById("contratar-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const $ = (s) => document.querySelector(s);
+
+  function lerSelecao() {
+    const tipoEl = document.querySelector('input[name="tipoLoja"]:checked');
+    const tipoId = tipoEl ? tipoEl.value : tipos[0].id;
+    const tipo = tipos.find(t => t.id === tipoId) || tipos[0];
+
+    const espIds = Array.from(document.querySelectorAll('input[name="especialidades"]:checked'))
+      .map(el => el.value);
+
+    return { tipo, espIds };
   }
 
-  document.querySelectorAll(".plano-cta").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-plano-id");
-      if (id) selecionarPlano(id);
+  function calcular() {
+    const { tipo, espIds } = lerSelecao();
+    const numEsp = espIds.length;
+    const extras = Math.max(0, numEsp - 1);
+    const valorExtras = extras * custoEspecialidade;
+    const total = tipo.precoBase + valorExtras;
+
+    $("#resumo-tipo").textContent = tipo.label;
+    $("#resumo-esp").textContent =
+      numEsp === 0
+        ? "Selecione ao menos 1 especialidade"
+        : `${numEsp} especialidade${numEsp > 1 ? "s" : ""} · ${espIds.map(id => espMap[id].label).join(", ")}`;
+    $("#preco-base").textContent = `R$ ${tipo.precoBase}`;
+    $("#preco-extras-label").textContent =
+      extras === 0 ? "Nenhuma especialidade extra" : `+${extras} especialidade${extras > 1 ? "s" : ""} extra`;
+    $("#preco-extras").textContent = `R$ ${valorExtras}`;
+    $("#preco-total").textContent = total.toLocaleString("pt-BR");
+
+    const cta = $("#btn-avancar");
+    if (cta) cta.disabled = numEsp === 0;
+  }
+
+  // Atualização visual das opções
+  function refreshVisual() {
+    document.querySelectorAll('label.opcao').forEach(label => {
+      const input = label.querySelector('input');
+      if (!input) return;
+      label.classList.toggle("checked", input.checked);
     });
+  }
+
+  document.querySelectorAll('input[name="tipoLoja"], input[name="especialidades"]').forEach(input => {
+    input.addEventListener("change", () => { refreshVisual(); calcular(); });
   });
 
-  // Submit
+  // CTA → scroll para cadastro
+  $("#btn-avancar")?.addEventListener("click", () => {
+    const { espIds } = lerSelecao();
+    if (espIds.length === 0) return;
+    document.getElementById("cadastro")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // Submit do form
   const form = document.getElementById("contratar-form");
   const status = document.getElementById("contratar-status");
 
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!status) return;
-    const data = new FormData(form);
-    const planoId = data.get("planoId");
-    if (!planoId) {
+
+    const { tipo, espIds } = lerSelecao();
+    if (espIds.length === 0) {
       status.hidden = false;
       status.className = "form-status form-status-erro";
-      status.textContent = "Selecione um plano antes de enviar.";
+      status.textContent = "Selecione ao menos 1 especialidade antes de continuar.";
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    const plano = planos.find(p => p.id === planoId);
-    if (!plano) return;
 
-    const especialidades = Array.from(form.querySelectorAll('input[name="especialidades"]:checked'))
-      .map(el => el.value);
+    const valorMensal = tipo.precoBase + Math.max(0, espIds.length - 1) * custoEspecialidade;
+    const data = new FormData(form);
 
     const payload = {
       loja: {
@@ -242,10 +292,14 @@ const especialidadesLista = ["Elétrica", "Hidráulica", "Civil", "Refrigeraçã
         nomeResp: data.get("nomeResp"),
         nomeLoja: data.get("nomeLoja"),
         telefone: data.get("telefone"),
-        tamanho: data.get("tamanho") ? Number(data.get("tamanho")) : undefined,
-        especialidades,
+        especialidades: espIds,
       },
-      plano: { id: plano.id, nome: plano.nome, valorMensal: plano.valorMensal, visitas: plano.visitas },
+      plano: {
+        id: `${tipo.id}-${espIds.join("_")}`,
+        nome: `${tipo.label} · ${espIds.map(id => espMap[id].label).join(" + ")}`,
+        valorMensal,
+        visitas: 1,
+      },
       cadastro: {
         cnpjCpf: data.get("cnpjCpf"),
         endereco: data.get("endereco") || undefined,
@@ -281,6 +335,10 @@ const especialidadesLista = ["Elétrica", "Hidráulica", "Civil", "Refrigeraçã
       btn?.removeAttribute("disabled");
     }
   });
+
+  // Inicial
+  refreshVisual();
+  calcular();
 </script>
 
 <style>
@@ -308,48 +366,122 @@ const especialidadesLista = ["Elétrica", "Hidráulica", "Civil", "Refrigeraçã
     letter-spacing: 0.2em; text-transform: uppercase; color: var(--brand); margin-bottom: 16px;
   }
 
-  /* PLANOS */
-  .planos-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 24px; align-items: stretch;
+  /* CALCULADORA */
+  .calc-grid {
+    display: grid; grid-template-columns: 1.4fr 1fr; gap: 40px;
+    align-items: flex-start;
   }
-  .plano-card {
-    background: #fff; border: 1px solid var(--border); border-radius: 12px;
-    padding: 36px 32px;
-    display: flex; flex-direction: column; gap: 14px;
+  .calc-titulo {
+    margin: 0 0 12px; font-size: 14px;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--ink);
+  }
+  .calc-titulo:not(:first-child) { margin-top: 32px; }
+  .calc-aux { font-size: 13px; color: var(--ink-mid); margin: 0 0 12px; }
+  .opcoes-stack { display: grid; gap: 10px; }
+  .opcao {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    background: #fff; border: 2px solid var(--border); border-radius: 10px;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .opcao input { position: absolute; opacity: 0; pointer-events: none; }
+  .opcao:hover { border-color: var(--brand-soft); background: #FAFAFB; }
+  .opcao.checked { border-color: var(--brand); background: var(--brand-soft); }
+  .opcao-radio {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid var(--border);
     position: relative;
-    transition: all .2s ease;
   }
-  .plano-card:hover { transform: translateY(-3px); box-shadow: 0 14px 32px rgba(0,0,0,.06); }
-  .plano-card.destaque {
-    border: 2px solid var(--brand);
-    box-shadow: 0 14px 40px rgba(196,30,58,.12);
+  .opcao.checked .opcao-radio { border-color: var(--brand); }
+  .opcao.checked .opcao-radio::after {
+    content: ""; position: absolute; inset: 4px;
+    border-radius: 50%; background: var(--brand);
   }
-  .plano-card.selected { border: 2px solid var(--brand); background: var(--brand-soft); }
-  .plano-badge {
-    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
-    background: var(--brand); color: #fff;
-    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px;
-    letter-spacing: 0.1em; text-transform: uppercase;
-    padding: 5px 14px; border-radius: 99px;
+  .opcao-check-mark {
+    width: 20px; height: 20px; border-radius: 4px;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: transparent;
   }
-  .plano-card h3 { margin: 0; font-size: 22px; }
-  .plano-preco { display: flex; align-items: baseline; gap: 4px; }
-  .plano-preco .moeda { font-size: 14px; color: var(--ink-mid); font-weight: 600; }
-  .plano-preco strong { font-family: 'Montserrat', sans-serif; font-size: 44px; font-weight: 800; color: var(--ink); line-height: 1; }
-  .plano-preco .periodo { font-size: 14px; color: var(--ink-mid); }
-  .plano-visitas {
+  .opcao.checked .opcao-check-mark {
+    border-color: var(--brand); background: var(--brand); color: #fff;
+  }
+  .opcao-conteudo { display: flex; flex-direction: column; gap: 2px; }
+  .opcao-conteudo strong {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px;
+    color: var(--ink);
+  }
+  .opcao-conteudo span { font-size: 13px; color: var(--ink-mid); line-height: 1.4; }
+  .opcao-preco, .opcao-preco-add {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px;
+    color: var(--ink); white-space: nowrap;
+  }
+  .opcao-preco-add { color: var(--brand); font-size: 13px; }
+  .opcao-preco small, .opcao-preco-add small { font-weight: 500; color: var(--ink-light); margin-left: 2px; }
+
+  /* RESUMO */
+  .calc-resumo {
+    background: linear-gradient(135deg, #1F2126 0%, #2D2F36 100%);
+    color: #fff;
+    border-radius: 16px;
+    padding: 36px 32px;
+    position: sticky; top: 96px;
+    overflow: hidden;
+  }
+  .calc-resumo::before {
+    content: ""; position: absolute; top: -30%; right: -15%;
+    width: 360px; height: 360px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(196,30,58,.25) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .calc-resumo > * { position: relative; }
+  .calc-resumo h3 { color: #fff; font-size: 22px; margin: 0 0 4px; }
+  #resumo-esp { color: #C8CACE; font-size: 14px; margin: 0 0 24px; }
+
+  .resumo-preco {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 10px; padding: 18px 20px; margin-bottom: 24px;
+  }
+  .preco-linha {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0; color: #C8CACE; font-size: 14px;
+  }
+  .preco-linha strong { color: #fff; font-family: 'Montserrat', sans-serif; }
+  .preco-total {
+    border-top: 1px solid rgba(255,255,255,.18); margin-top: 8px; padding-top: 14px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    color: #fff;
+  }
+  .preco-total > span {
     font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
-    letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand);
-    margin: 0 0 8px;
+    letter-spacing: 0.1em; text-transform: uppercase;
   }
-  .plano-card ul { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 10px; flex: 1; }
-  .plano-card li {
+  .preco-total strong {
+    font-family: 'Montserrat', sans-serif; font-weight: 800;
+    display: flex; align-items: baseline; gap: 2px;
+  }
+  .preco-total .moeda { font-size: 16px; color: #C8CACE; font-weight: 600; }
+  .preco-total #preco-total { font-size: 40px; line-height: 1; }
+  .preco-total small { font-size: 13px; color: #C8CACE; font-weight: 500; margin-left: 4px; }
+
+  .resumo-bullets {
+    list-style: none; padding: 0; margin: 0 0 24px;
+    display: grid; gap: 10px;
+  }
+  .resumo-bullets li {
     display: flex; gap: 10px; align-items: flex-start;
-    font-size: 14px; color: var(--ink-mid); line-height: 1.55;
+    font-size: 13px; color: #E5E7EB; line-height: 1.5;
   }
-  .plano-card li svg { flex: none; margin-top: 4px; }
-  .plano-cta { justify-content: center; width: 100%; }
+  .resumo-bullets svg { flex: none; margin-top: 3px; }
+
+  .calc-cta { width: 100%; justify-content: center; }
+  .calc-cta:disabled { opacity: .5; cursor: not-allowed; }
 
   /* FORM */
   .contratar-form {
@@ -370,24 +502,16 @@ const especialidadesLista = ["Elétrica", "Hidráulica", "Civil", "Refrigeraçã
     color: var(--ink); letter-spacing: 0.02em;
   }
   .contratar-form input,
-  .contratar-form select,
-  .contratar-form textarea {
+  .contratar-form select {
     font-family: 'Open Sans', sans-serif; font-size: 15px; padding: 12px 14px;
     border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--ink);
     transition: border-color .15s ease, box-shadow .15s ease;
   }
   .contratar-form input:focus,
-  .contratar-form select:focus,
-  .contratar-form textarea:focus {
+  .contratar-form select:focus {
     outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(196,30,58,.12);
   }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .checkboxes {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;
-    background: var(--bg-soft); padding: 14px; border-radius: 6px;
-  }
-  .check-item { display: flex; gap: 8px; align-items: center; font-size: 14px; }
-  .check-item input { width: 16px; height: 16px; }
   .checkbox { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--ink-mid); }
   .checkbox input { width: 16px; height: 16px; margin-top: 3px; }
   .checkbox a { color: var(--brand); border-bottom: 1px solid var(--brand-soft); }
@@ -400,9 +524,15 @@ const especialidadesLista = ["Elétrica", "Hidráulica", "Civil", "Refrigeraçã
   }
   .form-status-erro { background: #FEE2E2; color: #B91C1C; }
 
+  @media (max-width: 980px) {
+    .calc-grid { grid-template-columns: 1fr; }
+    .calc-resumo { position: static; }
+  }
   @media (max-width: 900px) {
     .page-hero-content { padding: 64px 0 56px; }
     .contratar-form { padding: 28px; }
     .form-row { grid-template-columns: 1fr; }
+    .opcao { grid-template-columns: 24px 1fr; }
+    .opcao-preco, .opcao-preco-add { grid-column: 2 / 3; padding-top: 4px; }
   }
 </style>
