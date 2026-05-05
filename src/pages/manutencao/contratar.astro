@@ -76,7 +76,7 @@ const custoEsp = 50;
       <div class="form-group">
         <label>Tamanho da Loja *</label>
         <select id="e1-tamanho">
-          {tiposLoja.map(t => <option value={t.id} data-preco={t.precoBase}>{t.label} — R$ {t.precoBase}/mês</option>)}
+          {tiposLoja.map(t => <option value={t.id} data-preco={t.precoBase}>{t.label}</option>)}
         </select>
       </div>
     </div>
@@ -124,15 +124,8 @@ const custoEsp = 50;
     <!-- Duração / desconto -->
     <div class="dur-titulo">Escolha a duração do plano</div>
     <div class="dur-grid">
-      <label class="dur-card" data-meses="1" data-desc="0">
-        <input type="radio" name="duracao" value="1" checked>
-        <div class="dur-nome">Mensal</div>
-        <div class="dur-desc-tag" style="visibility:hidden">—</div>
-        <div class="dur-preco" id="dur-preco-1">—</div>
-        <div class="dur-total" id="dur-total-1"></div>
-      </label>
       <label class="dur-card" data-meses="3" data-desc="5">
-        <input type="radio" name="duracao" value="3">
+        <input type="radio" name="duracao" value="3" checked>
         <div class="dur-nome">Trimestral</div>
         <div class="dur-desc-tag">5% de desconto</div>
         <div class="dur-preco" id="dur-preco-3">—</div>
@@ -283,7 +276,7 @@ const custoEsp = 50;
     tamanho: "", especialidades: [],
     cnpj: "", cep: "", endereco: "", cidade: "", uf: "SP",
     valorMensal: 0, planoLabel: "",
-    duracaoMeses: 1, desconto: 0,
+    duracaoMeses: 3, desconto: 5,
   };
 
   const duracaoLabels = { 1: "mensal", 3: "trimestral", 6: "semestral", 12: "anual" };
@@ -343,6 +336,23 @@ const custoEsp = 50;
     } catch {}
   }
 
+  // ─── Máscaras de input ───────────────────────────────────────────
+  $("e1-tel").addEventListener("input", (e) => {
+    let v = e.target.value.replace(/\D/g, "").slice(0, 11);
+    if (v.length > 6) v = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+    else if (v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
+    e.target.value = v;
+  });
+
+  $("e3-cnpj").addEventListener("input", (e) => {
+    let v = e.target.value.replace(/\D/g, "").slice(0, 14);
+    if (v.length > 12) v = `${v.slice(0,2)}.${v.slice(2,5)}.${v.slice(5,8)}/${v.slice(8,12)}-${v.slice(12)}`;
+    else if (v.length > 8) v = `${v.slice(0,2)}.${v.slice(2,5)}.${v.slice(5,8)}/${v.slice(8)}`;
+    else if (v.length > 5) v = `${v.slice(0,2)}.${v.slice(2,5)}.${v.slice(5)}`;
+    else if (v.length > 2) v = `${v.slice(0,2)}.${v.slice(2)}`;
+    e.target.value = v;
+  });
+
   // ─── ETAPA 1 ─────────────────────────────────────────────────────
   // Visual das especialidades
   document.querySelectorAll('.esp-card').forEach(card => {
@@ -362,6 +372,11 @@ const custoEsp = 50;
 
     if (!nome || !tel || !email || !loja) {
       alert.textContent = "Preencha todos os campos obrigatórios.";
+      alert.style.display = "";
+      return;
+    }
+    if (nome.trim().split(/\s+/).filter(Boolean).length < 2) {
+      alert.textContent = "Por favor, informe o nome completo (nome e sobrenome).";
       alert.style.display = "";
       return;
     }
@@ -401,14 +416,14 @@ const custoEsp = 50;
   // ─── Duração ─────────────────────────────────────────────────────
   function atualizarDuracao() {
     const base = dados.valorMensal;
-    [1, 3, 6, 12].forEach(m => {
-      const desc = { 1: 0, 3: 5, 6: 10, 12: 15 }[m];
+    [3, 6, 12].forEach(m => {
+      const desc = { 3: 5, 6: 10, 12: 15 }[m];
       const comDesc = base * (1 - desc / 100);
       const totalPeriodo = comDesc * m;
       const el = $(`dur-preco-${m}`);
       const elT = $(`dur-total-${m}`);
       if (el) el.textContent = fmtMoney(comDesc) + "/mês";
-      if (elT) elT.textContent = m > 1 ? `Total: ${fmtMoney(totalPeriodo)}` : "";
+      if (elT) elT.textContent = `Total: ${fmtMoney(totalPeriodo)}`;
     });
     atualizarVisualDuracao();
   }
@@ -421,11 +436,11 @@ const custoEsp = 50;
     const sel = document.querySelector("input[name=duracao]:checked");
     if (sel) {
       const m = parseInt(sel.value);
-      const desc = { 1: 0, 3: 5, 6: 10, 12: 15 }[m];
+      const desc = { 3: 5, 6: 10, 12: 15 }[m] || 0;
       dados.duracaoMeses = m;
       dados.desconto = desc;
       const comDesc = dados.valorMensal * (1 - desc / 100);
-      $("sim-total").textContent = fmtMoney(comDesc) + (m > 1 ? `/mês · ${duracaoLabels[m]}` : "/mês");
+      $("sim-total").textContent = fmtMoney(comDesc) + `/mês · ${duracaoLabels[m]}`;
     }
   }
 
@@ -679,7 +694,7 @@ const custoEsp = 50;
     text-transform: uppercase; letter-spacing: 0.06em; color: #2D2F36;
     margin: 24px 0 12px;
   }
-  .dur-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 24px; }
+  .dur-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 24px; }
   .dur-card {
     border: 2px solid #E5E7EB; border-radius: 10px; padding: 14px 10px;
     display: flex; flex-direction: column; align-items: center; gap: 4px;
