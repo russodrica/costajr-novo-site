@@ -950,9 +950,10 @@ export const prerender = false;
         <td style="font-size:13px">${c.duracao_meses} mês(es)</td>
         <td style="font-size:13px">${c.usos_atuais||0}/${c.usos_maximos||"∞"}</td>
         <td style="font-size:12px;color:#6B7280">${fmtDate(c.validade)}</td>
-        <td>${c.ativo?'<span class="badge badge-ativo">Ativo</span>':'<span class="badge badge-cancelado">Pausado</span>'}</td>
+        <td>${!c.ativo?'<span class="badge badge-cancelado">Pausado</span>':c.validade&&new Date(c.validade)<new Date()?'<span class="badge badge-inadimplente">Expirado</span>':c.usos_maximos&&(c.usos_atuais||0)>=c.usos_maximos?'<span class="badge badge-cancelado">Esgotado</span>':'<span class="badge badge-ativo">Ativo</span>'}</td>
         <td style="display:flex;gap:6px">
           <button class="btn btn-outline btn-sm" onclick="toggleCupom('${c.id}',${!c.ativo})">${c.ativo?"Pausar":"Reativar"}</button>
+          ${c.validade&&new Date(c.validade)<new Date()?'<span style="font-size:11px;color:#9CA3AF">Validade expirada</span>':""}
           <button class="btn btn-outline btn-sm" style="color:#EF4444;border-color:#FECACA" onclick="excluirCupom('${c.id}')">Excluir</button>
         </td>
       </tr>
