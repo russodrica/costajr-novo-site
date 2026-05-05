@@ -295,6 +295,11 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
       <div class="sucesso-icone">✓</div>
       <h3>Cadastro realizado!</h3>
       <p id="e5-sucesso-msg">Redirecionando para o pagamento...</p>
+      <p style="margin-top:20px">
+        <a href="/manutencao/contratar" style="font-size:13px;color:#9CA3AF;text-decoration:underline">
+          Precisa corrigir algum dado? Clique aqui para recomeçar.
+        </a>
+      </p>
     </div>
   </div>
 
@@ -617,10 +622,10 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
           .replace(/\{\{DATA\}\}/g, dataHoje)
           .replace(/\[Nome da empresa\]/gi, dados.nomeLoja || "—")
           .replace(/\[Nome do Responsável\]/gi, dados.nome || "—")
-          .replace(/^(CNPJ[^:\n]*:\s*)\[•\]/gim, `$1${dados.cnpj || "—"}`)
-          .replace(/^(Endere[çc]o[^:\n]*:\s*)\[•\]/gim, `$1${endFull}`)
-          .replace(/^(Respons[aá]vel[^:\n]*:\s*)\[•\]/gim, `$1${dados.nome || "—"}`)
-          .replace(/\[•\]/g, "—");
+          .replace(/^(CNPJ[^:\n]*:\s*)\[\S{1,10}\]/gim, `$1${dados.cnpj || "—"}`)
+          .replace(/^(Endere[çc]o[^:\n]*:\s*)\[\S{1,10}\]/gim, `$1${endFull}`)
+          .replace(/^(Respons[aá]vel[^:\n]*:\s*)\[\S{1,10}\]/gim, `$1${dados.nome || "—"}`)
+          .replace(/\[\S{1,10}\]/g, "—");
         contratoBox.innerHTML = `<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.7">${textoPreenchido}</pre>`;
       } else {
         contratoBox.innerHTML = `<div class="ctr-sem-contrato">
@@ -706,8 +711,11 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
       $("e5-loading").style.display = "none";
       $("e5-sucesso").style.display = "";
       if (d.linkPagamento) {
-        $("e5-sucesso-msg").textContent = "Redirecionando para o pagamento...";
-        setTimeout(() => { window.location.href = d.linkPagamento; }, 1500);
+        $("e5-sucesso-msg").innerHTML = `Seu cadastro foi criado com sucesso!<br><br>
+          <a href="${d.linkPagamento}" target="_blank" rel="noopener" class="btn btn-primary" style="display:inline-block;font-size:15px;padding:12px 28px">
+            Ir para o pagamento →
+          </a>
+          <br><small style="color:#9CA3AF;margin-top:8px;display:block">O link também foi enviado por e-mail.</small>`;
       } else {
         $("e5-sucesso-msg").textContent = "Cadastro realizado! Em breve você receberá o link de pagamento por e-mail.";
       }
