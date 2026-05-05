@@ -1,0 +1,173 @@
+---
+export const prerender = false;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Login — Portal do Cliente — Costa Júnior</title>
+  <meta name="theme-color" content="#C41E3A">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;500;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root { --brand: #C41E3A; --brand-dark: #A01828; --ink: #2D2F36; --ink-mid: #5B5F6B; --border: #E5E7EB; }
+    body { margin: 0; font-family: 'Open Sans', sans-serif; background: #F4F6F9; color: var(--ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .login-wrap { width: 100%; max-width: 420px; padding: 24px; }
+    .login-logo { text-align: center; margin-bottom: 32px; }
+    .logo-mark { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 36px; height: 36px; margin: 0 auto 12px; }
+    .logo-mark span:nth-child(1), .logo-mark span:nth-child(4) { background: #C41E3A; }
+    .logo-mark span:nth-child(2), .logo-mark span:nth-child(3) { background: #CBD5E1; }
+    .login-logo h1 { font-family: 'Montserrat', sans-serif; font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+    .login-logo p { font-size: 14px; color: var(--ink-mid); margin: 0; }
+    .card { background: #fff; border-radius: 12px; padding: 36px; box-shadow: 0 2px 20px rgba(0,0,0,.06); }
+    .card h2 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 20px; margin: 0 0 24px; text-align: center; }
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .form-group input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 15px; font-family: 'Open Sans', sans-serif; color: var(--ink); outline: none; transition: border .15s; }
+    .form-group input:focus { border-color: var(--brand); }
+    .btn-submit {
+      width: 100%; padding: 14px; background: var(--brand); color: #fff; border: 0;
+      border-radius: 8px; font-family: 'Montserrat', sans-serif; font-weight: 700;
+      font-size: 15px; letter-spacing: 0.04em; cursor: pointer; transition: all .15s; margin-top: 4px;
+    }
+    .btn-submit:hover { background: var(--brand-dark); }
+    .btn-submit:disabled { opacity: .6; cursor: not-allowed; }
+    .alert { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+    .alert-error { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+    .alert-success { background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; }
+    .link-forgot { display: block; text-align: center; margin-top: 16px; font-size: 13px; color: var(--ink-mid); cursor: pointer; }
+    .link-forgot:hover { color: var(--brand); }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+    .link-back { display: block; text-align: center; font-size: 13px; color: var(--ink-mid); margin-top: 20px; }
+    .link-back:hover { color: var(--brand); }
+    .reset-section { display: none; }
+    .reset-section.visible { display: block; }
+    .login-section.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-logo">
+      <div class="logo-mark"><span></span><span></span><span></span><span></span></div>
+      <h1>Costa Júnior</h1>
+      <p>Portal do Cliente — Manutenção Predial</p>
+    </div>
+
+    <div class="card">
+      <!-- LOGIN -->
+      <div id="loginSection">
+        <h2>Entrar</h2>
+        <div id="loginAlert" class="alert alert-error" style="display:none"></div>
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="email">E-mail</label>
+            <input type="email" id="email" name="email" placeholder="seu@email.com" required autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label for="senha">Senha</label>
+            <input type="password" id="senha" name="senha" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn-submit" id="loginBtn">Entrar</button>
+        </form>
+        <span class="link-forgot" id="showReset">Esqueci minha senha</span>
+      </div>
+
+      <!-- RESET SENHA -->
+      <div id="resetSection" class="reset-section">
+        <h2>Recuperar senha</h2>
+        <p style="font-size:14px;color:#5B5F6B;margin:0 0 20px">Informe seu e-mail cadastrado. Enviaremos uma nova senha temporária.</p>
+        <div id="resetAlert" class="alert" style="display:none"></div>
+        <div class="form-group">
+          <label for="resetEmail">E-mail</label>
+          <input type="email" id="resetEmail" placeholder="seu@email.com">
+        </div>
+        <button class="btn-submit" id="resetBtn">Enviar nova senha</button>
+        <hr class="divider">
+        <span class="link-forgot" id="showLogin">Voltar para o login</span>
+      </div>
+    </div>
+
+    <a href="/manutencao/contratar" class="link-back">Ainda não é cliente? Contrate agora →</a>
+    <a href="/" class="link-back" style="margin-top:8px">← Voltar ao site</a>
+  </div>
+
+  <script>
+    const TOKEN_KEY = "manut_cliente_token";
+    const USER_KEY  = "manut_cliente_token_user";
+
+    // Já logado → vai pro dashboard
+    if (localStorage.getItem(TOKEN_KEY)) {
+      window.location.replace("/manutencao/cliente/dashboard");
+    }
+
+    // Toggle login / reset
+    document.getElementById("showReset").addEventListener("click", () => {
+      document.getElementById("loginSection").style.display = "none";
+      document.getElementById("resetSection").classList.add("visible");
+    });
+    document.getElementById("showLogin").addEventListener("click", () => {
+      document.getElementById("loginSection").style.display = "";
+      document.getElementById("resetSection").classList.remove("visible");
+    });
+
+    // Login
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("loginBtn");
+      const alert = document.getElementById("loginAlert");
+      alert.style.display = "none";
+      btn.disabled = true;
+      btn.textContent = "Entrando...";
+      try {
+        const res = await fetch("/api/manut/cliente/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: document.getElementById("email").value.trim(),
+            senha: document.getElementById("senha").value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro ao fazer login");
+        localStorage.setItem(TOKEN_KEY, data.token);
+        localStorage.setItem(USER_KEY, JSON.stringify(data.cliente));
+        if (data.trocaObrigatoria) {
+          window.location.replace("/manutencao/cliente/trocar-senha");
+        } else {
+          window.location.replace("/manutencao/cliente/dashboard");
+        }
+      } catch (err) {
+        alert.textContent = err.message;
+        alert.style.display = "";
+        btn.disabled = false;
+        btn.textContent = "Entrar";
+      }
+    });
+
+    // Reset senha
+    document.getElementById("resetBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("resetBtn");
+      const alert = document.getElementById("resetAlert");
+      const email = document.getElementById("resetEmail").value.trim();
+      if (!email) { alert.className = "alert alert-error"; alert.textContent = "Informe o e-mail"; alert.style.display = ""; return; }
+      btn.disabled = true; btn.textContent = "Enviando...";
+      try {
+        await fetch("/api/manut/cliente/reset-senha", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email })
+        });
+        alert.className = "alert alert-success";
+        alert.textContent = "Se o e-mail estiver cadastrado, uma nova senha temporária será enviada em breve.";
+        alert.style.display = "";
+      } finally {
+        btn.disabled = false; btn.textContent = "Enviar nova senha";
+      }
+    });
+  </script>
+</body>
+</html>

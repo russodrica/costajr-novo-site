@@ -1,0 +1,88 @@
+---
+export const prerender = false;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Criar senha — Portal do Cliente — Costa Júnior</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root { --brand: #C41E3A; --brand-dark: #A01828; --ink: #2D2F36; --border: #E5E7EB; }
+    body { margin: 0; font-family: 'Open Sans', sans-serif; background: #F4F6F9; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .wrap { width: 100%; max-width: 420px; padding: 24px; }
+    .card { background: #fff; border-radius: 12px; padding: 36px; box-shadow: 0 2px 20px rgba(0,0,0,.06); }
+    h2 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 22px; margin: 0 0 8px; }
+    p { font-size: 14px; color: #5B5F6B; margin: 0 0 24px; }
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .form-group input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 15px; font-family: 'Open Sans', sans-serif; outline: none; transition: border .15s; }
+    .form-group input:focus { border-color: var(--brand); }
+    .btn { width: 100%; padding: 14px; background: var(--brand); color: #fff; border: 0; border-radius: 8px; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; cursor: pointer; transition: background .15s; }
+    .btn:hover { background: var(--brand-dark); }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .alert { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+    .alert-error { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+    .badge-aviso { background: #FFF7ED; color: #C2410C; border: 1px solid #FED7AA; padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="badge-aviso">Antes de continuar, crie sua senha pessoal de acesso.</div>
+      <h2>Criar nova senha</h2>
+      <p>A senha deve ter ao menos 6 caracteres.</p>
+      <div id="alert" class="alert alert-error" style="display:none"></div>
+      <form id="form">
+        <div class="form-group">
+          <label>Senha temporária recebida</label>
+          <input type="password" id="senhaAtual" placeholder="Digite a senha temporária" required>
+        </div>
+        <div class="form-group">
+          <label>Nova senha</label>
+          <input type="password" id="novaSenha" placeholder="Mínimo 6 caracteres" required>
+        </div>
+        <div class="form-group">
+          <label>Confirmar nova senha</label>
+          <input type="password" id="confirmSenha" placeholder="Repita a nova senha" required>
+        </div>
+        <button type="submit" class="btn" id="btn">Salvar senha e continuar</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN_KEY = "manut_cliente_token";
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) window.location.replace("/manutencao/cliente/login");
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const alert = document.getElementById("alert");
+      const btn = document.getElementById("btn");
+      const nova = document.getElementById("novaSenha").value;
+      const confirm = document.getElementById("confirmSenha").value;
+      alert.style.display = "none";
+      if (nova !== confirm) { alert.textContent = "As senhas não coincidem"; alert.style.display = ""; return; }
+      if (nova.length < 6) { alert.textContent = "A senha deve ter ao menos 6 caracteres"; alert.style.display = ""; return; }
+      btn.disabled = true; btn.textContent = "Salvando...";
+      try {
+        const res = await fetch("/api/manut/cliente/trocar-senha", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-cliente-auth": token },
+          body: JSON.stringify({ senhaAtual: document.getElementById("senhaAtual").value, novaSenha: nova })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro ao salvar");
+        window.location.replace("/manutencao/cliente/dashboard");
+      } catch (err) {
+        alert.textContent = err.message; alert.style.display = "";
+        btn.disabled = false; btn.textContent = "Salvar senha e continuar";
+      }
+    });
+  </script>
+</body>
+</html>

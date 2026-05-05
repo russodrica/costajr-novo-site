@@ -87,6 +87,21 @@ export async function requireAdmin(req: Request): Promise<AdminClaims> {
   return claims;
 }
 
+// ─── Admin via cookie (páginas SSR) ──────────────────────────────────────────
+export function getAdminTokenFromCookie(request: Request): string {
+  const cookie = request.headers.get("cookie") || "";
+  const match = cookie.match(/(?:^|;\s*)admin_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+export async function requireAdminCookie(request: Request): Promise<AdminClaims> {
+  const tok = getAdminTokenFromCookie(request);
+  if (!tok) throw new Error("Não autenticado");
+  const claims = await verifyToken<AdminClaims>(tok);
+  if (claims.tipo !== "admin") throw new Error("Token inválido");
+  return claims;
+}
+
 // JSON helpers
 export function jsonOk(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

@@ -1,0 +1,288 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Administração" tipo="admin" activePage="clientes">
+  <!-- Tabs -->
+  <div style="display:flex;gap:4px;margin-bottom:24px;border-bottom:2px solid #E5E7EB;padding-bottom:0">
+    <button class="tab active" data-tab="clientes">Clientes</button>
+    <button class="tab" data-tab="chamados">Chamados</button>
+    <button class="tab" data-tab="tecnicos">Técnicos</button>
+  </div>
+
+  <!-- CLIENTES -->
+  <div id="tab-clientes">
+    <div id="loadingClientes" class="loading">Carregando clientes...</div>
+    <div class="card" id="cardClientes" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Código</th><th>Nome</th><th>Email</th><th>Plano</th>
+            <th>Valor/mês</th><th>Status</th><th>Contratação</th>
+          </tr></thead>
+          <tbody id="tbodyClientes"></tbody>
+        </table>
+      </div>
+      <div id="emptyClientes" class="loading" style="display:none">Nenhum cliente cadastrado.</div>
+    </div>
+  </div>
+
+  <!-- CHAMADOS -->
+  <div id="tab-chamados" style="display:none">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm filtro-ch active" data-status="">Todos</button>
+      <button class="btn btn-outline btn-sm filtro-ch" data-status="aberto">Abertos</button>
+      <button class="btn btn-outline btn-sm filtro-ch" data-status="em_andamento">Em andamento</button>
+      <button class="btn btn-outline btn-sm filtro-ch" data-status="concluido">Concluídos</button>
+    </div>
+    <div id="loadingChamados" class="loading">Carregando chamados...</div>
+    <div class="card" id="cardChamados" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Tipo</th><th>Loja</th><th>Cliente</th><th>Status</th>
+            <th>Prioridade</th><th>Técnico</th><th>Aberto em</th><th>Ação</th>
+          </tr></thead>
+          <tbody id="tbodyChamados"></tbody>
+        </table>
+      </div>
+      <div id="emptyChamados" class="loading" style="display:none">Nenhum chamado encontrado.</div>
+    </div>
+  </div>
+
+  <!-- TÉCNICOS -->
+  <div id="tab-tecnicos" style="display:none">
+    <div id="loadingTecnicos" class="loading">Carregando técnicos...</div>
+    <div class="card" id="cardTecnicos" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Nome</th><th>Email</th><th>Telefone</th><th>Especialidades</th><th>Status</th><th>Último acesso</th>
+          </tr></thead>
+          <tbody id="tbodyTecnicos"></tbody>
+        </table>
+      </div>
+      <div id="emptyTecnicos" class="loading" style="display:none">Nenhum técnico cadastrado.</div>
+    </div>
+  </div>
+
+  <!-- Modal atribuir técnico -->
+  <div class="modal-bg" id="modalAtribuir">
+    <div class="modal">
+      <h2>Atribuir Técnico</h2>
+      <div id="atribuirAlert" class="alert alert-error" style="display:none"></div>
+      <div class="form-group">
+        <label>Técnico</label>
+        <select id="tecnicoSelect"><option value="">Selecione...</option></select>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button class="btn btn-outline" id="btnCancelarAtribuir">Cancelar</button>
+        <button class="btn btn-primary" id="btnConfirmarAtribuir">Atribuir</button>
+      </div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .tab {
+    padding: 10px 20px; border: 0; background: transparent; cursor: pointer;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px;
+    color: #6B7280; border-bottom: 2px solid transparent; margin-bottom: -2px;
+    transition: all .15s;
+  }
+  .tab.active { color: #C41E3A; border-bottom-color: #C41E3A; }
+  .tab:hover { color: #2D2F36; }
+  .filtro-ch.active { background: #C41E3A; color: #fff; border-color: #C41E3A; }
+  .tipo-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .tipo-eletrica { background: #EFF6FF; color: #1D4ED8; }
+  .tipo-hidraulica { background: #F0FDF4; color: #15803D; }
+  .tipo-civil { background: #FFF7ED; color: #C2410C; }
+  .prio-urgente { color: #B91C1C; font-weight: 700; }
+  .prio-alta { color: #C2410C; font-weight: 600; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_portal_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/admin/login");
+
+  let allChamados = [];
+  let tecnicos = [];
+  let filtroChStatus = "";
+  let chamadoAtribuirId = null;
+  let loaded = { clientes: false, chamados: false, tecnicos: false };
+
+  function badge(status) {
+    const labels = { aberto: "Aberto", em_andamento: "Em andamento", aguardando_material: "Aguard. material", concluido: "Concluído", cancelado: "Cancelado", ativo: "Ativo", pendente: "Pendente", inadimplente: "Inadimplente" };
+    return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
+  }
+  function tipoBadge(tipo) { return `<span class="tipo-badge tipo-${tipo}">${tipo}</span>`; }
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+  function fmtMoney(v) { return v ? "R$ " + Number(v).toLocaleString("pt-BR", {minimumFractionDigits:2}) : "—"; }
+
+  // ── Tabs ──
+  const tabEls = document.querySelectorAll(".tab");
+  tabEls.forEach(btn => btn.addEventListener("click", () => {
+    tabEls.forEach(t => t.classList.remove("active"));
+    btn.classList.add("active");
+    const tab = btn.dataset.tab;
+    document.getElementById("tab-clientes").style.display = tab === "clientes" ? "" : "none";
+    document.getElementById("tab-chamados").style.display = tab === "chamados" ? "" : "none";
+    document.getElementById("tab-tecnicos").style.display = tab === "tecnicos" ? "" : "none";
+    if (!loaded[tab]) loadTab(tab);
+  }));
+
+  // ── Clientes ──
+  async function loadClientes() {
+    try {
+      const res = await fetch("/api/manut/admin/clientes", { headers: { "x-portal-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/admin/login"); return; }
+      const clientes = await res.json();
+      document.getElementById("loadingClientes").style.display = "none";
+      document.getElementById("cardClientes").style.display = "";
+      if (!clientes.length) { document.getElementById("emptyClientes").style.display = ""; return; }
+      document.getElementById("tbodyClientes").innerHTML = clientes.map(c => `
+        <tr>
+          <td><code style="font-size:12px">${c.codigo}</code></td>
+          <td><strong>${c.nome}</strong><div style="font-size:12px;color:#6B7280">${c.telefone || ""}</div></td>
+          <td style="font-size:13px">${c.email}</td>
+          <td style="font-size:13px">${c.plano_selecionado || "—"}</td>
+          <td style="font-size:13px">${fmtMoney(c.valor_mensal_contratado)}</td>
+          <td>${badge(c.status)}</td>
+          <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_contratacao)}</td>
+        </tr>
+      `).join("");
+      loaded.clientes = true;
+    } catch {
+      document.getElementById("loadingClientes").textContent = "Erro ao carregar clientes.";
+    }
+  }
+
+  // ── Chamados ──
+  function renderChamados() {
+    const tbody = document.getElementById("tbodyChamados");
+    const empty = document.getElementById("emptyChamados");
+    const filtered = filtroChStatus ? allChamados.filter(c => c.status === filtroChStatus) : allChamados;
+    if (!filtered.length) { tbody.innerHTML = ""; empty.style.display = ""; return; }
+    empty.style.display = "none";
+    tbody.innerHTML = filtered.map(c => `
+      <tr>
+        <td>${tipoBadge(c.tipo)}</td>
+        <td style="font-size:13px">${c.manut_lojas?.nome || "—"}</td>
+        <td style="font-size:13px">${c.manut_clientes?.nome || "—"}</td>
+        <td>${badge(c.status)}</td>
+        <td class="${"prio-" + c.prioridade}" style="font-size:13px">${c.prioridade}</td>
+        <td style="font-size:13px;color:#5B5F6B">${c.manut_tecnicos?.nome || '<span style="color:#9CA3AF">—</span>'}</td>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_abertura)}</td>
+        <td>
+          ${c.status !== "concluido" && c.status !== "cancelado" ? `<button class="btn btn-outline btn-sm" onclick="abrirAtribuir('${c.id}')">Atribuir técnico</button>` : ""}
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  async function loadChamados() {
+    try {
+      const res = await fetch("/api/manut/admin/chamados", { headers: { "x-portal-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/admin/login"); return; }
+      allChamados = await res.json();
+      document.getElementById("loadingChamados").style.display = "none";
+      document.getElementById("cardChamados").style.display = "";
+      renderChamados();
+      loaded.chamados = true;
+    } catch {
+      document.getElementById("loadingChamados").textContent = "Erro ao carregar chamados.";
+    }
+  }
+
+  document.querySelectorAll(".filtro-ch").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".filtro-ch").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filtroChStatus = btn.dataset.status;
+      renderChamados();
+    });
+  });
+
+  // ── Técnicos ──
+  async function loadTecnicos() {
+    try {
+      const res = await fetch("/api/manut/admin/tecnicos", { headers: { "x-portal-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/admin/login"); return; }
+      tecnicos = await res.json();
+      // Popula select do modal
+      const sel = document.getElementById("tecnicoSelect");
+      tecnicos.forEach(t => { const o = document.createElement("option"); o.value = t.id; o.textContent = t.nome + " (" + (t.especialidades || []).join(", ") + ")"; sel.appendChild(o); });
+      document.getElementById("loadingTecnicos").style.display = "none";
+      document.getElementById("cardTecnicos").style.display = "";
+      if (!tecnicos.length) { document.getElementById("emptyTecnicos").style.display = ""; return; }
+      document.getElementById("tbodyTecnicos").innerHTML = tecnicos.map(t => `
+        <tr>
+          <td><strong>${t.nome}</strong></td>
+          <td style="font-size:13px">${t.email}</td>
+          <td style="font-size:13px">${t.telefone || "—"}</td>
+          <td style="font-size:12px">${(t.especialidades || []).join(", ") || "—"}</td>
+          <td>${badge(t.status)}</td>
+          <td style="font-size:12px;color:#6B7280">${fmtDate(t.last_login_at)}</td>
+        </tr>
+      `).join("");
+      loaded.tecnicos = true;
+    } catch {
+      document.getElementById("loadingTecnicos").textContent = "Erro ao carregar técnicos.";
+    }
+  }
+
+  // ── Modal atribuir técnico ──
+  function abrirAtribuir(chamadoId) {
+    chamadoAtribuirId = chamadoId;
+    document.getElementById("atribuirAlert").style.display = "none";
+    document.getElementById("tecnicoSelect").value = "";
+    document.getElementById("modalAtribuir").classList.add("open");
+    if (!loaded.tecnicos) loadTecnicos();
+  }
+  window.abrirAtribuir = abrirAtribuir;
+
+  document.getElementById("btnCancelarAtribuir").addEventListener("click", () => {
+    document.getElementById("modalAtribuir").classList.remove("open");
+  });
+  document.getElementById("modalAtribuir").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) document.getElementById("modalAtribuir").classList.remove("open");
+  });
+
+  document.getElementById("btnConfirmarAtribuir").addEventListener("click", async () => {
+    const alertEl = document.getElementById("atribuirAlert");
+    const tecnicoId = document.getElementById("tecnicoSelect").value;
+    const btn = document.getElementById("btnConfirmarAtribuir");
+    alertEl.style.display = "none";
+    if (!tecnicoId) { alertEl.textContent = "Selecione o técnico"; alertEl.style.display = ""; return; }
+    btn.disabled = true; btn.textContent = "Atribuindo...";
+    try {
+      const res = await fetch(`/api/manut/admin/chamados/${chamadoAtribuirId}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-portal-auth": token },
+        body: JSON.stringify({ tecnicoId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const idx = allChamados.findIndex(c => c.id === chamadoAtribuirId);
+      const tec = tecnicos.find(t => t.id === tecnicoId);
+      if (idx >= 0) allChamados[idx] = { ...allChamados[idx], ...data, manut_tecnicos: tec };
+      renderChamados();
+      document.getElementById("modalAtribuir").classList.remove("open");
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Atribuir";
+    }
+  });
+
+  // ── Tab loader ──
+  function loadTab(tab) {
+    if (tab === "clientes") loadClientes();
+    else if (tab === "chamados") loadChamados();
+    else if (tab === "tecnicos") loadTecnicos();
+  }
+
+  // Inicia com clientes
+  loadClientes();
+</script>

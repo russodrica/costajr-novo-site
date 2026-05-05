@@ -1,0 +1,208 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Chamados" tipo="cliente" activePage="chamados">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <div>
+      <p style="margin:0;font-size:14px;color:#5B5F6B">Acompanhe e abra chamados de manutenção para suas lojas.</p>
+    </div>
+    <button class="btn btn-primary" id="btnAbrirModal">+ Abrir chamado</button>
+  </div>
+
+  <!-- Filtros -->
+  <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+    <button class="btn btn-outline btn-sm filtro active" data-filtro="">Todos</button>
+    <button class="btn btn-outline btn-sm filtro" data-filtro="aberto">Abertos</button>
+    <button class="btn btn-outline btn-sm filtro" data-filtro="em_andamento">Em andamento</button>
+    <button class="btn btn-outline btn-sm filtro" data-filtro="aguardando_material">Aguard. material</button>
+    <button class="btn btn-outline btn-sm filtro" data-filtro="concluido">Concluídos</button>
+  </div>
+
+  <div id="loadingState" class="loading">Carregando chamados...</div>
+  <div class="card" id="chamadosCard" style="display:none">
+    <div class="table-wrap">
+      <table id="chamadosTable">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Loja</th>
+            <th>Descrição</th>
+            <th>Status</th>
+            <th>Técnico</th>
+            <th>Aberto em</th>
+          </tr>
+        </thead>
+        <tbody id="chamadosTbody"></tbody>
+      </table>
+    </div>
+    <div id="emptyMsg" class="empty" style="display:none;padding:24px">Nenhum chamado encontrado.</div>
+  </div>
+
+  <!-- Modal abrir chamado -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <h2>Abrir Chamado</h2>
+      <div id="modalAlert" class="alert alert-error" style="display:none"></div>
+      <div class="form-group">
+        <label>Loja</label>
+        <select id="lojaSelect"><option value="">Selecione a loja...</option></select>
+      </div>
+      <div class="form-group">
+        <label>Tipo de manutenção</label>
+        <select id="tipoSelect">
+          <option value="">Selecione...</option>
+          <option value="eletrica">Elétrica</option>
+          <option value="hidraulica">Hidráulica</option>
+          <option value="civil">Civil</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Local na loja (opcional)</label>
+        <input type="text" id="localInput" placeholder="Ex: Banheiro, Quadro elétrico, Laje...">
+      </div>
+      <div class="form-group">
+        <label>Descrição do problema</label>
+        <textarea id="descricaoInput" placeholder="Descreva o problema com o máximo de detalhes possível..."></textarea>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button class="btn btn-outline" id="btnCancelarModal">Cancelar</button>
+        <button class="btn btn-primary" id="btnSubmitChamado">Abrir chamado</button>
+      </div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .filtro.active { background: #C41E3A; color: #fff; border-color: #C41E3A; }
+  .empty { color: #9CA3AF; font-size: 14px; }
+  .tipo-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .tipo-eletrica { background: #EFF6FF; color: #1D4ED8; }
+  .tipo-hidraulica { background: #F0FDF4; color: #15803D; }
+  .tipo-civil { background: #FFF7ED; color: #C2410C; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_cliente_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/cliente/login");
+
+  let allChamados = [];
+  let lojas = [];
+  let filtroAtual = "";
+
+  function badge(status) {
+    const labels = { aberto: "Aberto", em_andamento: "Em andamento", aguardando_material: "Aguard. material", concluido: "Concluído", cancelado: "Cancelado" };
+    return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
+  }
+  function tipoBadge(tipo) {
+    return `<span class="tipo-badge tipo-${tipo}">${tipo}</span>`;
+  }
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+
+  function renderChamados() {
+    const tbody = document.getElementById("chamadosTbody");
+    const emptyMsg = document.getElementById("emptyMsg");
+    const filtered = filtroAtual ? allChamados.filter(c => c.status === filtroAtual) : allChamados;
+    if (!filtered.length) {
+      tbody.innerHTML = "";
+      emptyMsg.style.display = "";
+    } else {
+      emptyMsg.style.display = "none";
+      tbody.innerHTML = filtered.map(c => `
+        <tr>
+          <td>${tipoBadge(c.tipo)}</td>
+          <td>${c.manut_lojas?.nome || "—"}</td>
+          <td style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.descricao}</td>
+          <td>${badge(c.status)}</td>
+          <td style="font-size:13px;color:#5B5F6B">${c.manut_tecnicos?.nome || "Não atribuído"}</td>
+          <td style="font-size:13px;color:#5B5F6B">${fmtDate(c.data_abertura)}</td>
+        </tr>
+      `).join("");
+    }
+  }
+
+  async function load() {
+    try {
+      const [resMe, resChamados] = await Promise.all([
+        fetch("/api/manut/cliente/me", { headers: { "x-cliente-auth": token } }),
+        fetch("/api/manut/cliente/chamados", { headers: { "x-cliente-auth": token } })
+      ]);
+      if (resMe.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      const { dashboard } = await resMe.json();
+      lojas = dashboard.lojas || [];
+      allChamados = await resChamados.json();
+
+      // Popula select de lojas no modal
+      const sel = document.getElementById("lojaSelect");
+      lojas.forEach(l => {
+        const o = document.createElement("option");
+        o.value = l.id; o.textContent = l.nome;
+        sel.appendChild(o);
+      });
+
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("chamadosCard").style.display = "";
+      renderChamados();
+    } catch {
+      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+    }
+  }
+
+  // Filtros
+  document.querySelectorAll(".filtro").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".filtro").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filtroAtual = btn.dataset.filtro;
+      renderChamados();
+    });
+  });
+
+  // Modal
+  document.getElementById("btnAbrirModal").addEventListener("click", () => {
+    document.getElementById("modalBg").classList.add("open");
+    document.getElementById("modalAlert").style.display = "none";
+  });
+  document.getElementById("btnCancelarModal").addEventListener("click", () => {
+    document.getElementById("modalBg").classList.remove("open");
+  });
+  document.getElementById("modalBg").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) document.getElementById("modalBg").classList.remove("open");
+  });
+
+  document.getElementById("btnSubmitChamado").addEventListener("click", async () => {
+    const alertEl = document.getElementById("modalAlert");
+    alertEl.style.display = "none";
+    const lojaId = document.getElementById("lojaSelect").value;
+    const tipo = document.getElementById("tipoSelect").value;
+    const descricao = document.getElementById("descricaoInput").value.trim();
+    const localLoja = document.getElementById("localInput").value.trim();
+    if (!lojaId) { alertEl.textContent = "Selecione a loja"; alertEl.style.display = ""; return; }
+    if (!tipo)   { alertEl.textContent = "Selecione o tipo"; alertEl.style.display = ""; return; }
+    if (!descricao) { alertEl.textContent = "Descreva o problema"; alertEl.style.display = ""; return; }
+    const btn = document.getElementById("btnSubmitChamado");
+    btn.disabled = true; btn.textContent = "Abrindo...";
+    try {
+      const res = await fetch("/api/manut/cliente/chamados", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cliente-auth": token },
+        body: JSON.stringify({ lojaId, tipo, descricao, localLoja })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao abrir chamado");
+      allChamados.unshift(data);
+      renderChamados();
+      document.getElementById("modalBg").classList.remove("open");
+      document.getElementById("tipoSelect").value = "";
+      document.getElementById("descricaoInput").value = "";
+      document.getElementById("localInput").value = "";
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Abrir chamado";
+    }
+  });
+
+  load();
+</script>

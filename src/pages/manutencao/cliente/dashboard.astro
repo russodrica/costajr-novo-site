@@ -1,0 +1,149 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Dashboard" tipo="cliente" activePage="dashboard">
+  <div id="loadingState" class="loading">Carregando dados...</div>
+  <div id="dashContent" style="display:none">
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px" class="grid-dash">
+      <div class="card">
+        <h3>Minhas Lojas</h3>
+        <div id="lojasList"></div>
+      </div>
+      <div class="card">
+        <h3>Próximas Preventivas</h3>
+        <div id="prevList"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h3 style="margin:0">Chamados Abertos</h3>
+        <a href="/manutencao/cliente/chamados" class="btn btn-outline btn-sm">Ver todos</a>
+      </div>
+      <div id="chamadosList"></div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  @media (max-width:760px) { .grid-dash { grid-template-columns: 1fr !important; } }
+  .loja-item { padding: 12px 0; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; justify-content: space-between; }
+  .loja-item:last-child { border-bottom: 0; }
+  .loja-nome { font-weight: 600; font-size: 14px; }
+  .loja-sub { font-size: 12px; color: #6B7280; }
+  .prev-item { padding: 10px 0; border-bottom: 1px solid #E5E7EB; font-size: 14px; }
+  .prev-item:last-child { border-bottom: 0; }
+  .empty { color: #9CA3AF; font-size: 14px; padding: 12px 0; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_cliente_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/cliente/login");
+
+  function badge(status) {
+    const labels = { aberto: "Aberto", em_andamento: "Em andamento", aguardando_material: "Aguard. material", concluido: "Concluído", cancelado: "Cancelado" };
+    return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
+  }
+  function fmtDate(d) {
+    if (!d) return "—";
+    return new Date(d).toLocaleDateString("pt-BR");
+  }
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/cliente/me", { headers: { "x-cliente-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      const { cliente, dashboard } = await res.json();
+
+      // Se precisa trocar senha
+      if (cliente.senha_troca_obrigatoria) { window.location.replace("/manutencao/cliente/trocar-senha"); return; }
+
+      // Stats
+      const materiaisPend = dashboard.materiaisPendentes?.length || 0;
+      document.getElementById("statsGrid").innerHTML = `
+        <div class="stat-card">
+          <div class="stat-label">Chamados abertos</div>
+          <div class="stat-value">${dashboard.chamadosAbertos || 0}</div>
+          <div class="stat-sub"><a href="/manutencao/cliente/chamados" style="color:#C41E3A">Ver chamados →</a></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Lojas cadastradas</div>
+          <div class="stat-value">${dashboard.lojas?.length || 0}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Próx. preventiva</div>
+          <div class="stat-value" style="font-size:20px">${dashboard.proximasPreventivas?.[0] ? fmtDate(dashboard.proximasPreventivas[0].data_agendada) : "—"}</div>
+        </div>
+        ${materiaisPend > 0 ? `
+        <div class="stat-card accent">
+          <div class="stat-label">Materiais pend. aprovação</div>
+          <div class="stat-value">${materiaisPend}</div>
+        </div>` : ""}
+      `;
+
+      // Lojas
+      const lojaEl = document.getElementById("lojasList");
+      if (!dashboard.lojas?.length) {
+        lojaEl.innerHTML = '<div class="empty">Nenhuma loja cadastrada.</div>';
+      } else {
+        lojaEl.innerHTML = dashboard.lojas.map(l => `
+          <div class="loja-item">
+            <div>
+              <div class="loja-nome">${l.nome}</div>
+              <div class="loja-sub">${l.status}</div>
+            </div>
+            <span class="badge badge-${l.status}">${l.status}</span>
+          </div>
+        `).join("");
+      }
+
+      // Preventivas
+      const prevEl = document.getElementById("prevList");
+      if (!dashboard.proximasPreventivas?.length) {
+        prevEl.innerHTML = '<div class="empty">Nenhuma preventiva agendada.</div>';
+      } else {
+        prevEl.innerHTML = dashboard.proximasPreventivas.slice(0, 5).map(p => `
+          <div class="prev-item">
+            📅 <strong>${fmtDate(p.data_agendada)}</strong>
+            <span style="font-size:12px;color:#6B7280;margin-left:8px">${badge(p.status)}</span>
+          </div>
+        `).join("");
+      }
+
+      // Chamados (distribuição)
+      const ch = dashboard.distribuicao || {};
+      const total = (ch.eletrica || 0) + (ch.hidraulica || 0) + (ch.civil || 0);
+      const el = document.getElementById("chamadosList");
+      if (total === 0) {
+        el.innerHTML = '<div class="empty">Nenhum chamado aberto no momento.</div>';
+      } else {
+        el.innerHTML = `
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            <div style="text-align:center;padding:16px;background:#EFF6FF;border-radius:8px">
+              <div style="font-size:24px;font-weight:800;color:#1D4ED8">${ch.eletrica || 0}</div>
+              <div style="font-size:12px;color:#1D4ED8;font-weight:600;margin-top:4px">Elétrica</div>
+            </div>
+            <div style="text-align:center;padding:16px;background:#F0FDF4;border-radius:8px">
+              <div style="font-size:24px;font-weight:800;color:#15803D">${ch.hidraulica || 0}</div>
+              <div style="font-size:12px;color:#15803D;font-weight:600;margin-top:4px">Hidráulica</div>
+            </div>
+            <div style="text-align:center;padding:16px;background:#FFF7ED;border-radius:8px">
+              <div style="font-size:24px;font-weight:800;color:#C2410C">${ch.civil || 0}</div>
+              <div style="font-size:12px;color:#C2410C;font-weight:600;margin-top:4px">Civil</div>
+            </div>
+          </div>
+        `;
+      }
+
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("dashContent").style.display = "";
+    } catch (err) {
+      document.getElementById("loadingState").textContent = "Erro ao carregar dados. Tente recarregar.";
+    }
+  }
+  load();
+</script>

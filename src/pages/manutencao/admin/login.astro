@@ -1,0 +1,85 @@
+---
+export const prerender = false;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Admin — Manutenção — Costa Júnior</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Open Sans', sans-serif; background: #111318; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .wrap { width: 100%; max-width: 380px; padding: 24px; }
+    .logo { text-align: center; margin-bottom: 28px; }
+    .logo-mark { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 28px; height: 28px; margin: 0 auto 10px; }
+    .logo-mark span:nth-child(1), .logo-mark span:nth-child(4) { background: #C41E3A; }
+    .logo-mark span:nth-child(2), .logo-mark span:nth-child(3) { background: #374151; }
+    .logo h1 { font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 800; margin: 0 0 4px; color: #fff; }
+    .logo p { font-size: 12px; color: #4B5563; margin: 0; }
+    .card { background: #1E2128; border-radius: 12px; padding: 28px; border: 1px solid #2D3139; }
+    .card h2 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 17px; color: #E2E8F0; margin: 0 0 20px; text-align: center; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em; }
+    .form-group input { width: 100%; padding: 10px 13px; border: 1px solid #374151; border-radius: 7px; font-size: 14px; font-family: 'Open Sans', sans-serif; color: #E2E8F0; background: #111318; outline: none; transition: border .15s; }
+    .form-group input:focus { border-color: #C41E3A; }
+    .btn { width: 100%; padding: 12px; background: #C41E3A; color: #fff; border: 0; border-radius: 7px; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; cursor: pointer; transition: background .15s; }
+    .btn:hover { background: #A01828; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .alert { padding: 10px 13px; border-radius: 7px; font-size: 13px; margin-bottom: 14px; background: rgba(185,28,28,.2); color: #FCA5A5; border: 1px solid rgba(185,28,28,.3); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">
+      <div class="logo-mark"><span></span><span></span><span></span><span></span></div>
+      <h1>Costa Júnior</h1>
+      <p>Painel Administrativo — Manutenção</p>
+    </div>
+    <div class="card">
+      <h2>Acesso restrito</h2>
+      <div id="alert" class="alert" style="display:none"></div>
+      <form id="form">
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" id="email" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" id="senha" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn" id="btn">Entrar</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    const TOKEN_KEY = "manut_portal_token";
+    if (localStorage.getItem(TOKEN_KEY)) window.location.replace("/manutencao/admin");
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const alertEl = document.getElementById("alert");
+      const btn = document.getElementById("btn");
+      alertEl.style.display = "none";
+      btn.disabled = true; btn.textContent = "Verificando...";
+      try {
+        const res = await fetch("/api/manut/admin/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: document.getElementById("email").value.trim(), senha: document.getElementById("senha").value })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Acesso negado");
+        localStorage.setItem(TOKEN_KEY, data.token);
+        localStorage.setItem(TOKEN_KEY + "_user", JSON.stringify({ nome: "Admin", email: document.getElementById("email").value }));
+        window.location.replace("/manutencao/admin");
+      } catch (err) {
+        alertEl.textContent = err.message; alertEl.style.display = "";
+        btn.disabled = false; btn.textContent = "Entrar";
+      }
+    });
+  </script>
+</body>
+</html>

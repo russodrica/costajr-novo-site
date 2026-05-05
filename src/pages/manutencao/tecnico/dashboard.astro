@@ -1,0 +1,132 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Meus Chamados" tipo="tecnico" activePage="dashboard">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <p style="margin:0;font-size:14px;color:#5B5F6B">Chamados atribuídos a você que estão em aberto.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm filtro-tec active" data-status="">Todos</button>
+      <button class="btn btn-outline btn-sm filtro-tec" data-status="aberto">Abertos</button>
+      <button class="btn btn-outline btn-sm filtro-tec" data-status="em_andamento">Em andamento</button>
+      <button class="btn btn-outline btn-sm filtro-tec" data-status="aguardando_material">Aguard. material</button>
+    </div>
+  </div>
+
+  <div id="loadingState" class="loading">Carregando chamados...</div>
+  <div id="chamadosWrap" style="display:none"></div>
+  <div id="emptyMsg" style="display:none" class="card" style="text-align:center;padding:40px;color:#9CA3AF">
+    Nenhum chamado atribuído no momento.
+  </div>
+</Portal>
+
+<style>
+  .filtro-tec.active { background: #C41E3A; color: #fff; border-color: #C41E3A; }
+  .chamado-card {
+    background: #fff; border: 1px solid #E5E7EB; border-radius: 10px;
+    padding: 20px 24px; margin-bottom: 14px;
+  }
+  .chamado-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .chamado-title { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; }
+  .chamado-meta { font-size: 13px; color: #5B5F6B; margin-bottom: 8px; }
+  .chamado-desc { font-size: 14px; margin-bottom: 14px; color: #2D2F36; }
+  .chamado-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tipo-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .tipo-eletrica { background: #EFF6FF; color: #1D4ED8; }
+  .tipo-hidraulica { background: #F0FDF4; color: #15803D; }
+  .tipo-civil { background: #FFF7ED; color: #C2410C; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_tecnico_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/tecnico/login");
+
+  let allChamados = [];
+  let filtroStatus = "";
+
+  function badge(status) {
+    const labels = { aberto: "Aberto", em_andamento: "Em andamento", aguardando_material: "Aguard. material", concluido: "Concluído" };
+    return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
+  }
+  function tipoBadge(tipo) {
+    return `<span class="tipo-badge tipo-${tipo}">${tipo}</span>`;
+  }
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+
+  function renderChamados() {
+    const wrap = document.getElementById("chamadosWrap");
+    const empty = document.getElementById("emptyMsg");
+    const filtered = filtroStatus ? allChamados.filter(c => c.status === filtroStatus) : allChamados;
+    if (!filtered.length) {
+      wrap.innerHTML = ""; wrap.style.display = "none"; empty.style.display = "";
+    } else {
+      empty.style.display = "none"; wrap.style.display = "";
+      wrap.innerHTML = filtered.map(c => `
+        <div class="chamado-card" id="card-${c.id}">
+          <div class="chamado-header">
+            <div>
+              <div class="chamado-title">${c.manut_lojas?.nome || "—"} ${c.local_loja ? "· " + c.local_loja : ""}</div>
+              <div class="chamado-meta">${tipoBadge(c.tipo)} &nbsp; ${badge(c.status)} &nbsp; Aberto em ${fmtDate(c.data_abertura)}</div>
+              <div style="font-size:12px;color:#9CA3AF">${c.manut_lojas?.endereco || ""} ${c.manut_lojas?.cidade || ""}</div>
+            </div>
+          </div>
+          <div class="chamado-desc">${c.descricao}</div>
+          <div class="chamado-actions" id="actions-${c.id}">
+            ${c.status === "aberto" ? `<button class="btn btn-primary btn-sm" onclick="atualizarStatus('${c.id}','em_andamento')">Iniciar atendimento</button>` : ""}
+            ${c.status === "em_andamento" ? `
+              <button class="btn btn-outline btn-sm" onclick="atualizarStatus('${c.id}','aguardando_material')">Aguardando material</button>
+              <button class="btn btn-primary btn-sm" onclick="atualizarStatus('${c.id}','concluido')">Marcar concluído</button>
+            ` : ""}
+            ${c.status === "aguardando_material" ? `
+              <button class="btn btn-primary btn-sm" onclick="atualizarStatus('${c.id}','em_andamento')">Retomar atendimento</button>
+              <button class="btn btn-outline btn-sm" onclick="atualizarStatus('${c.id}','concluido')">Marcar concluído</button>
+            ` : ""}
+          </div>
+        </div>
+      `).join("");
+    }
+  }
+
+  async function atualizarStatus(id, status) {
+    const actEl = document.getElementById("actions-" + id);
+    if (actEl) actEl.innerHTML = '<span style="font-size:13px;color:#6B7280">Atualizando...</span>';
+    try {
+      const res = await fetch(`/api/manut/tecnico/chamados/${id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-tecnico-auth": token },
+        body: JSON.stringify({ status })
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const updated = await res.json();
+      const idx = allChamados.findIndex(c => c.id === id);
+      if (idx >= 0) allChamados[idx] = { ...allChamados[idx], ...updated };
+      renderChamados();
+    } catch (err) {
+      if (actEl) actEl.innerHTML = `<span style="color:#B91C1C;font-size:13px">Erro: ${err.message}</span>`;
+    }
+  }
+  window.atualizarStatus = atualizarStatus;
+
+  document.querySelectorAll(".filtro-tec").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".filtro-tec").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filtroStatus = btn.dataset.status;
+      renderChamados();
+    });
+  });
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/tecnico/chamados", { headers: { "x-tecnico-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/tecnico/login"); return; }
+      allChamados = await res.json();
+      document.getElementById("loadingState").style.display = "none";
+      renderChamados();
+    } catch {
+      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+    }
+  }
+  load();
+</script>
