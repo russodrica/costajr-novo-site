@@ -1,0 +1,181 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+}
+const { title = "Costa Júnior Engenharia e Construções", description = "Engenharia, manutenção predial e construção. Há mais de 30 anos cuidando do que é seu.", ogImage = "/og-default.jpg" } = Astro.props;
+const url = Astro.url.href;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{title}</title>
+  <meta name="description" content={description}>
+  <meta property="og:title" content={title}>
+  <meta property="og:description" content={description}>
+  <meta property="og:image" content={ogImage}>
+  <meta property="og:url" content={url}>
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <style is:global>
+    :root {
+      --brand: #E63946;
+      --brand-dark: #C42935;
+      --ink: #1F2937;
+      --ink-light: #6B7280;
+      --bg: #F8F9FA;
+      --bg-soft: #F1F3F5;
+      --border: #E5E7EB;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--ink);
+      background: #fff;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    a:hover { color: var(--brand); }
+    img { max-width: 100%; display: block; }
+    .container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 24px; border-radius: 10px; font-weight: 600;
+      transition: all .15s ease; cursor: pointer; border: 0;
+      font-size: 15px;
+    }
+    .btn-primary { background: var(--brand); color: #fff; }
+    .btn-primary:hover { background: var(--brand-dark); color: #fff; transform: translateY(-1px); }
+    .btn-outline {
+      background: transparent; color: var(--ink);
+      border: 1.5px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--brand); color: var(--brand); }
+    .section { padding: 96px 0; }
+    .section-soft { background: var(--bg-soft); }
+    h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.2; }
+    h1 { font-size: clamp(36px, 5vw, 56px); font-weight: 800; margin: 0 0 24px; }
+    h2 { font-size: clamp(28px, 3.5vw, 42px); font-weight: 700; margin: 0 0 16px; }
+    h3 { font-size: 22px; font-weight: 600; margin: 0 0 12px; }
+    p.lead { font-size: 18px; color: var(--ink-light); }
+    /* Header */
+    .header {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: saturate(180%) blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-row {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 72px;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; color: var(--ink); }
+    .logo-mark {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 24px; height: 24px;
+    }
+    .logo-mark span:nth-child(1) { background: var(--brand); }
+    .logo-mark span:nth-child(2) { background: var(--ink); }
+    .logo-mark span:nth-child(3) { background: var(--ink); }
+    .logo-mark span:nth-child(4) { background: var(--brand); }
+    .nav { display: flex; gap: 32px; align-items: center; }
+    .nav a { font-weight: 500; font-size: 15px; color: var(--ink); }
+    .nav a.active { color: var(--brand); }
+    /* Footer */
+    footer {
+      background: #1F2937; color: #D1D5DB; padding: 56px 0 32px;
+      margin-top: 80px;
+    }
+    footer h4 { color: #fff; margin: 0 0 16px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; }
+    footer a { color: #D1D5DB; font-size: 14px; }
+    footer a:hover { color: var(--brand); }
+    .footer-grid {
+      display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 40px;
+    }
+    .footer-bottom {
+      border-top: 1px solid #374151; padding-top: 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 13px; color: #9CA3AF;
+    }
+    @media (max-width: 768px) {
+      .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+      .nav a:not(.active) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="container header-row">
+      <a href="/" class="logo">
+        <div class="logo-mark"><span></span><span></span><span></span><span></span></div>
+        Costa Júnior
+      </a>
+      <nav class="nav">
+        <a href="/sobre">Sobre</a>
+        <a href="/servicos">Serviços</a>
+        <a href="/manutencao/contratar">Manutenção</a>
+        <a href="/artigos">Artigos</a>
+        <a href="/contato">Contato</a>
+        <a href="/intranet" class="btn btn-outline">Intranet</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <slot />
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <a href="/" class="logo" style="color:#fff;margin-bottom:16px">
+            <div class="logo-mark"><span></span><span></span><span></span><span></span></div>
+            Costa Júnior
+          </a>
+          <p style="font-size:14px;color:#9CA3AF;margin:12px 0 0;max-width:320px">
+            Engenharia, manutenção predial e construção. Mais de 30 anos cuidando do que é seu.
+          </p>
+        </div>
+        <div>
+          <h4>Empresa</h4>
+          <ul style="list-style:none;padding:0;margin:0;display:grid;gap:8px">
+            <li><a href="/sobre">Sobre</a></li>
+            <li><a href="/servicos">Serviços</a></li>
+            <li><a href="/artigos">Artigos</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Soluções</h4>
+          <ul style="list-style:none;padding:0;margin:0;display:grid;gap:8px">
+            <li><a href="/manutencao/contratar">Manutenção Predial</a></li>
+            <li><a href="/intranet">Portal Cliente</a></li>
+            <li><a href="/intranet">Portal Parceiro</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Contato</h4>
+          <ul style="list-style:none;padding:0;margin:0;display:grid;gap:8px">
+            <li>Av. Eng. Luís Carlos Berrini, 1140 — 7º andar</li>
+            <li>Brooklin — São Paulo / SP</li>
+            <li>(11) 2369-6462</li>
+            <li><a href="mailto:contato@costajr.com.br">contato@costajr.com.br</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 Costa Júnior Engenharia e Construções LTDA. Todos os direitos reservados.</span>
+        <span>CNPJ XX.XXX.XXX/0001-XX</span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

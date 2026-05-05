@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.local
+.env.production
+.astro
+.vercel
+.DS_Store
+*.log
+wp-dump.sql

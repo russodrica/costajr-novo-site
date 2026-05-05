@@ -1,0 +1,94 @@
+---
+import Base from "~/layouts/Base.astro";
+---
+<Base title="Costa Júnior — Engenharia, Manutenção e Construção" description="Há mais de 30 anos entregando engenharia, manutenção predial e construção com responsabilidade técnica. Atendemos varejo, indústria e instituições financeiras em todo o Brasil.">
+  <!-- Hero -->
+  <section style="padding:120px 0 80px;background:linear-gradient(180deg,#fff 0%,var(--bg-soft) 100%)">
+    <div class="container">
+      <div style="display:grid;grid-template-columns:1.1fr .9fr;gap:64px;align-items:center">
+        <div>
+          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(230,57,70,.1);color:var(--brand);padding:6px 14px;border-radius:99px;font-size:13px;font-weight:600;margin-bottom:24px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Há mais de 30 anos no mercado
+          </div>
+          <h1>Engenharia que <span style="color:var(--brand)">cuida</span><br>do seu patrimônio.</h1>
+          <p class="lead" style="margin-bottom:32px;max-width:520px">
+            Manutenção predial preventiva e corretiva, construção, reformas e acompanhamento técnico. Para varejo, indústrias e instituições financeiras de norte a sul do Brasil.
+          </p>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <a href="/manutencao/contratar" class="btn btn-primary">Contratar manutenção
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+            </a>
+            <a href="/servicos" class="btn btn-outline">Ver serviços</a>
+          </div>
+          <div style="display:flex;gap:32px;margin-top:48px;flex-wrap:wrap">
+            <div><strong style="font-size:28px;font-weight:800;display:block">+30</strong><span style="color:var(--ink-light);font-size:14px">anos de mercado</span></div>
+            <div><strong style="font-size:28px;font-weight:800;display:block">+800</strong><span style="color:var(--ink-light);font-size:14px">obras entregues</span></div>
+            <div><strong style="font-size:28px;font-weight:800;display:block">26</strong><span style="color:var(--ink-light);font-size:14px">estados atendidos</span></div>
+          </div>
+        </div>
+        <div style="aspect-ratio:4/5;background:linear-gradient(135deg,var(--ink) 0%,#374151 100%);border-radius:24px;position:relative;overflow:hidden">
+          <div style="position:absolute;inset:0;background:radial-gradient(circle at 20% 80%,rgba(230,57,70,.4) 0%,transparent 60%)"></div>
+          <div style="position:absolute;bottom:32px;left:32px;right:32px;color:#fff">
+            <h3 style="color:#fff;margin:0 0 8px">Plataforma de manutenção 24/7</h3>
+            <p style="margin:0;color:#D1D5DB;font-size:14px">Abra chamados, acompanhe preventivas e gerencie suas lojas em uma só tela.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Soluções -->
+  <section class="section">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 64px">
+        <h2>Soluções para cada etapa do imóvel</h2>
+        <p class="lead">Da construção à manutenção contínua, com equipe técnica própria e plataforma digital de gestão.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px">
+        {[
+          { t: "Manutenção Predial", d: "Preventiva, corretiva e emergencial. Visitas programadas, checklist digital e relatórios em PDF.", icon: "M3 21h18M5 21V7l8-4v18M19 21V11l-6-4" },
+          { t: "Construção e Reforma", d: "Projetos comerciais, retrofit e ampliação com gerenciamento de obra e cronograma transparente.", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
+          { t: "Acompanhamento Técnico", d: "Laudos, vistorias, ART/RRT, regularização junto a prefeitura e bombeiros.", icon: "M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" }
+        ].map(card => (
+          <article style="background:#fff;border:1px solid var(--border);border-radius:20px;padding:32px;transition:all .2s ease">
+            <div style="width:48px;height:48px;border-radius:12px;background:rgba(230,57,70,.1);display:flex;align-items:center;justify-content:center;margin-bottom:20px">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={`<path d="${card.icon}"/>`}></svg>
+            </div>
+            <h3>{card.t}</h3>
+            <p style="margin:0;color:var(--ink-light)">{card.d}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Manutenção -->
+  <section class="section section-soft">
+    <div class="container">
+      <div style="background:var(--ink);color:#fff;border-radius:24px;padding:64px;display:grid;grid-template-columns:1.5fr 1fr;gap:32px;align-items:center;position:relative;overflow:hidden">
+        <div style="position:absolute;top:-50%;right:-20%;width:600px;height:600px;background:radial-gradient(circle,rgba(230,57,70,.25) 0%,transparent 60%)"></div>
+        <div style="position:relative">
+          <h2 style="color:#fff">Manutenção predial sem dor de cabeça.</h2>
+          <p style="color:#D1D5DB;font-size:18px;margin:0 0 24px">A partir de R$ 200/mês por loja, com técnico vinculado, chamados ilimitados e visitas preventivas.</p>
+          <a href="/manutencao/contratar" class="btn btn-primary">Ver planos
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+        <ul style="list-style:none;padding:0;margin:0;display:grid;gap:14px;position:relative;color:#fff">
+          {[
+            "Técnico responsável vinculado à sua loja",
+            "Plataforma com chamados, agenda e checklist",
+            "Mercado Pago — assinatura mensal automatizada",
+            "Suporte direto com a engenharia"
+          ].map(item => (
+            <li style="display:flex;gap:10px;align-items:flex-start">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </section>
+</Base>
