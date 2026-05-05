@@ -129,10 +129,22 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
       <div class="sim-row"><span>Especialidades</span><strong id="sim-esps">—</strong></div>
       <div class="sim-row"><span>Preço base</span><strong id="sim-base">—</strong></div>
       <div class="sim-row" id="sim-extra-row"><span id="sim-extra-label">Especialidades extras</span><strong id="sim-extra">R$ 0</strong></div>
+      <div class="sim-row" id="sim-cupom-row" style="display:none"><span id="sim-cupom-label">Cupom</span><strong id="sim-cupom-val" style="color:#22C55E">—</strong></div>
       <div class="sim-total">
         <span>Total mensal</span>
         <strong id="sim-total">—</strong>
       </div>
+    </div>
+
+    <!-- Cupom de desconto -->
+    <div class="cupom-wrap">
+      <label class="form-label-block" style="margin-bottom:8px">Cupom de desconto <span style="font-size:11px;font-weight:400;color:#9CA3AF">(opcional)</span></label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="cupomInput" placeholder="Digite o código" style="flex:1;text-transform:uppercase;padding:10px 14px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:14px;outline:none">
+        <button class="btn btn-outline" id="btnAplicarCupom" style="white-space:nowrap">Aplicar</button>
+        <button class="btn btn-outline" id="btnRemoverCupom" style="display:none;color:#6B7280" title="Remover cupom">✕</button>
+      </div>
+      <div id="cupomMsg" style="display:none;margin-top:8px;font-size:13px;padding:8px 12px;border-radius:6px"></div>
     </div>
 
     <!-- Duração / desconto -->
@@ -232,6 +244,15 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
       </div>
     </div>
 
+    <!-- Dados do contratante preenchidos automaticamente -->
+    <div class="contratante-block">
+      <div class="contratante-titulo">CONTRATANTE</div>
+      <div class="contratante-linha"><span>Empresa</span><strong id="ctr-empresa">—</strong></div>
+      <div class="contratante-linha"><span>CNPJ / CPF</span><strong id="ctr-cnpj-disp">—</strong></div>
+      <div class="contratante-linha"><span>Endereço</span><strong id="ctr-end-disp">—</strong></div>
+      <div class="contratante-linha"><span>Responsável</span><strong id="ctr-resp-disp">—</strong></div>
+    </div>
+
     <div class="contrato-box" id="contrato-texto">
       <div class="ctr-loading">Carregando contrato...</div>
     </div>
@@ -285,6 +306,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
   // ─── Estado global ───────────────────────────────────────────────
   let leadId = null;
   let etapaAtual = 1;
+  let cupomAtivo = null; // { id, codigo, descricao, desconto_percentual }
   const dados = {
     nome: "", email: "", telefone: "", nomeLoja: "",
     tamanho: "", especialidades: [],
@@ -428,15 +450,20 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
   });
 
   // ─── Duração ─────────────────────────────────────────────────────
+  function precoFinal(base, durDesc, cupDesc) {
+    return base * (1 - durDesc / 100) * (1 - cupDesc / 100);
+  }
+
   function atualizarDuracao() {
     const base = dados.valorMensal;
+    const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
     [3, 6, 12].forEach(m => {
-      const desc = { 3: 5, 6: 10, 12: 15 }[m];
-      const comDesc = base * (1 - desc / 100);
-      const totalPeriodo = comDesc * m;
+      const durDesc = { 3: 5, 6: 10, 12: 15 }[m];
+      const final = precoFinal(base, durDesc, cupDesc);
+      const totalPeriodo = final * m;
       const el = $(`dur-preco-${m}`);
       const elT = $(`dur-total-${m}`);
-      if (el) el.textContent = fmtMoney(comDesc) + "/mês";
+      if (el) el.textContent = fmtMoney(final) + "/mês";
       if (elT) elT.textContent = `Total: ${fmtMoney(totalPeriodo)}`;
     });
     atualizarVisualDuracao();
@@ -450,11 +477,25 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
     const sel = document.querySelector("input[name=duracao]:checked");
     if (sel) {
       const m = parseInt(sel.value);
-      const desc = { 3: 5, 6: 10, 12: 15 }[m] || 0;
+      const durDesc = { 3: 5, 6: 10, 12: 15 }[m] || 0;
+      const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
       dados.duracaoMeses = m;
-      dados.desconto = desc;
-      const comDesc = dados.valorMensal * (1 - desc / 100);
-      $("sim-total").textContent = fmtMoney(comDesc) + `/mês · ${duracaoLabels[m]}`;
+      dados.desconto = durDesc;
+      const final = precoFinal(dados.valorMensal, durDesc, cupDesc);
+
+      // Atualiza total exibido
+      let totalStr = fmtMoney(final) + `/mês · ${duracaoLabels[m]}`;
+      $("sim-total").textContent = totalStr;
+
+      // Linha de cupom no sim-box
+      const cupomRow = $("sim-cupom-row");
+      if (cupomAtivo && cupDesc > 0) {
+        $("sim-cupom-label").textContent = `Cupom ${cupomAtivo.codigo}`;
+        $("sim-cupom-val").textContent = `-${cupDesc}%`;
+        cupomRow.style.display = "";
+      } else {
+        cupomRow.style.display = "none";
+      }
     }
   }
 
@@ -466,12 +507,61 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
   });
 
   // ─── ETAPA 2 ─────────────────────────────────────────────────────
+
+  // Validação e aplicação de cupom
+  $("btnAplicarCupom").addEventListener("click", async () => {
+    const codigo = $("cupomInput").value.trim().toUpperCase();
+    const msgEl = $("cupomMsg");
+    if (!codigo) return;
+    $("btnAplicarCupom").disabled = true;
+    $("btnAplicarCupom").textContent = "...";
+    try {
+      const res = await fetch(`/api/manut/cupom?codigo=${encodeURIComponent(codigo)}`);
+      const d = await res.json();
+      if (d.valido) {
+        cupomAtivo = d;
+        msgEl.style.background = "#F0FDF4";
+        msgEl.style.color = "#15803D";
+        msgEl.textContent = `✓ ${d.descricao || "Cupom válido"} — ${d.desconto_percentual}% de desconto aplicado`;
+        msgEl.style.display = "";
+        $("btnRemoverCupom").style.display = "";
+        atualizarDuracao();
+      } else {
+        const motivos = { nao_encontrado: "Cupom não encontrado.", expirado: "Este cupom está expirado.", esgotado: "Este cupom já atingiu o limite de usos." };
+        cupomAtivo = null;
+        msgEl.style.background = "#FEF2F2";
+        msgEl.style.color = "#B91C1C";
+        msgEl.textContent = motivos[d.motivo] || "Cupom inválido.";
+        msgEl.style.display = "";
+        $("btnRemoverCupom").style.display = "none";
+        atualizarDuracao();
+      }
+    } catch {
+      msgEl.style.background = "#FEF2F2";
+      msgEl.style.color = "#B91C1C";
+      msgEl.textContent = "Erro ao validar cupom. Tente novamente.";
+      msgEl.style.display = "";
+    } finally {
+      $("btnAplicarCupom").disabled = false;
+      $("btnAplicarCupom").textContent = "Aplicar";
+    }
+  });
+
+  $("btnRemoverCupom").addEventListener("click", () => {
+    cupomAtivo = null;
+    $("cupomInput").value = "";
+    $("cupomMsg").style.display = "none";
+    $("btnRemoverCupom").style.display = "none";
+    atualizarDuracao();
+  });
+
   $("btn-e2").addEventListener("click", async () => {
     const m = dados.duracaoMeses;
-    const desc = dados.desconto;
-    const comDesc = dados.valorMensal * (1 - desc / 100);
-    dados.valorMensal = comDesc;
+    const durDesc = dados.desconto;
+    const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
+    dados.valorMensal = precoFinal(dados.valorMensal, durDesc, cupDesc);
     dados.planoLabel = `${dados.planoLabel} · ${duracaoLabels[m]}`;
+    if (cupomAtivo) dados.planoLabel += ` · Cupom ${cupomAtivo.codigo}`;
     await salvarLead("proposta_enviada");
     irParaEtapa(3);
   });
@@ -493,6 +583,13 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
     dados.uf      = $("e3-uf").value;
 
     await salvarLead("negociando");
+
+    // Preenche bloco contratante
+    const endFull2 = [dados.endereco, dados.cidade, dados.uf].filter(Boolean).join(", ") || "—";
+    $("ctr-empresa").textContent = dados.nomeLoja || "—";
+    $("ctr-cnpj-disp").textContent = dados.cnpj || "—";
+    $("ctr-end-disp").textContent = endFull2;
+    $("ctr-resp-disp").textContent = dados.nome || "—";
 
     // Carrega contrato
     const contratoBox = $("contrato-texto");
@@ -739,6 +836,26 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
   .dur-desc-tag { font-size: 11px; font-weight: 600; color: #22C55E; }
   .dur-preco { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px; color: #C41E3A; margin-top: 4px; }
   .dur-total { font-size: 11px; color: #6B7280; }
+
+  /* ── Cupom ── */
+  .cupom-wrap { margin-bottom: 24px; padding: 16px; background: #F8FAFC; border: 1px solid #E5E7EB; border-radius: 8px; }
+
+  /* ── Contratante ── */
+  .contratante-block {
+    background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 16px;
+  }
+  .contratante-titulo {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.1em; color: #15803D; margin-bottom: 10px;
+  }
+  .contratante-linha {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 13px; padding: 4px 0; border-bottom: 1px solid #D1FAE5;
+  }
+  .contratante-linha:last-child { border-bottom: 0; }
+  .contratante-linha span { color: #5B5F6B; }
+  .contratante-linha strong { color: #2D2F36; }
 
   /* ── Contrato ── */
   .contrato-box {
