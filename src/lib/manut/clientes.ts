@@ -63,7 +63,7 @@ export async function clienteResetSenha(email: string) {
 // ─── Dashboard / dados básicos ─────────────────────────────────────────────
 export async function clienteDashboard(clienteId: string) {
   const [lojas, chamadosTotal, preventivasProx, materiaisPend] = await Promise.all([
-    db().from("manut_lojas").select("id,nome,status").eq("cliente_id", clienteId),
+    db().from("manut_lojas").select("id,nome,status,endereco,cidade,uf,cep,tamanho_m2,especialidades").eq("cliente_id", clienteId),
     db()
       .from("manut_chamados")
       .select("id,tipo,status")

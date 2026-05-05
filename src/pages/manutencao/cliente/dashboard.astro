@@ -4,6 +4,9 @@ export const prerender = false;
 ---
 <Portal title="Dashboard" tipo="cliente" activePage="dashboard">
   <div id="loadingState" class="loading">Carregando dados...</div>
+  <div id="bannerPendente" style="display:none;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:14px 18px;margin-bottom:20px;font-size:14px;color:#92400E">
+    ⏳ <strong>Plano aguardando confirmação de pagamento.</strong> Após o pagamento ser processado, seu acesso completo será liberado automaticamente.
+  </div>
   <div id="dashContent" style="display:none">
     <div class="stats-grid" id="statsGrid"></div>
 
@@ -61,6 +64,11 @@ export const prerender = false;
 
       // Se precisa trocar senha
       if (cliente.senha_troca_obrigatoria) { window.location.replace("/manutencao/cliente/trocar-senha"); return; }
+
+      // Banner plano pendente
+      if (cliente.status === "pendente") {
+        document.getElementById("bannerPendente").style.display = "";
+      }
 
       // Stats
       const materiaisPend = dashboard.materiaisPendentes?.length || 0;

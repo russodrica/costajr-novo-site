@@ -4,7 +4,7 @@ const db = () => supabaseAdmin();
 export async function listarChamadosCliente(clienteId: string) {
   const { data } = await db()
     .from("manut_chamados")
-    .select("*, manut_lojas(nome)")
+    .select("*, manut_lojas(nome), manut_tecnicos(nome)")
     .eq("cliente_id", clienteId)
     .order("data_abertura", { ascending: false });
   return data || [];
