@@ -389,6 +389,12 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
     e.target.value = v;
   });
 
+  $("e3-cep").addEventListener("input", (e) => {
+    let v = e.target.value.replace(/\D/g, "").slice(0, 8);
+    if (v.length > 5) v = `${v.slice(0,5)}-${v.slice(5)}`;
+    e.target.value = v;
+  });
+
   // ─── ETAPA 1 ─────────────────────────────────────────────────────
   // Visual das especialidades
   document.querySelectorAll('.esp-card').forEach(card => {
