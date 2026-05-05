@@ -1,0 +1,206 @@
+---
+import Base from "~/layouts/Base.astro";
+
+const direitos = [
+  { t: "Confirmação", d: "Saber se tratamos algum dado seu." },
+  { t: "Acesso", d: "Receber cópia dos seus dados pessoais que mantemos." },
+  { t: "Correção", d: "Atualizar dados incompletos, inexatos ou desatualizados." },
+  { t: "Anonimização ou eliminação", d: "Solicitar anonimização ou exclusão de dados desnecessários." },
+  { t: "Portabilidade", d: "Receber seus dados em formato estruturado para levar a outro fornecedor." },
+  { t: "Revogação", d: "Retirar consentimento previamente concedido a qualquer momento." },
+  { t: "Informação sobre compartilhamento", d: "Saber com quem compartilhamos seus dados." },
+  { t: "Oposição", d: "Opor-se a tratamentos realizados com base em legítimo interesse." },
+];
+---
+<Base
+  title="Canal LGPD — Costa Júnior"
+  description="Canal direto com o Encarregado de Dados (DPO) da Costa Júnior. Exerça seus direitos LGPD em até 15 dias úteis."
+>
+  <section class="page-hero">
+    <div class="container page-hero-content">
+      <span class="hero-eyebrow">Lei 13.709/2018</span>
+      <h1>Canal <span class="hl">LGPD</span>.</h1>
+      <p class="page-hero-sub">
+        A Costa Júnior está em conformidade com a Lei Geral de Proteção de Dados desde 01/10/2022. Aqui você exerce seus direitos diretamente com o nosso Encarregado de Dados (DPO).
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="dpo-card">
+        <span class="kicker" style="color:#fff;opacity:.85">Encarregado de Dados · DPO</span>
+        <h2 style="color:#fff;margin-bottom:8px">Adriana Russo da Costa</h2>
+        <p style="color:#D1D5DB;margin:0 0 24px">Sócia-diretora e responsável pelo tratamento de dados pessoais.</p>
+        <div class="dpo-info">
+          <div>
+            <strong>E-mail dedicado</strong>
+            <a href="mailto:adriana@costajr.com.br">adriana@costajr.com.br</a>
+          </div>
+          <div>
+            <strong>Endereço postal</strong>
+            <span>Av. Eng. Luís Carlos Berrini, 1140 — 7º andar<br>Brooklin · São Paulo / SP</span>
+          </div>
+          <div>
+            <strong>Prazo de resposta</strong>
+            <span>Até 15 dias úteis</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 56px">
+        <span class="kicker">Art. 18 da LGPD</span>
+        <h2>Seus direitos como titular</h2>
+        <p class="lead">Para exercer qualquer um destes direitos, fale com nosso DPO.</p>
+      </div>
+      <div class="direitos-grid">
+        {direitos.map(d => (
+          <article class="direito-card">
+            <h3>{d.t}</h3>
+            <p>{d.d}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 32px">
+        <span class="kicker">Como solicitar</span>
+        <h2>Passo a passo</h2>
+      </div>
+      <ol class="passos">
+        <li>
+          <span class="passo-num">1</span>
+          <div>
+            <h3>Identifique-se</h3>
+            <p>Envie e-mail para <a href="mailto:adriana@costajr.com.br">adriana@costajr.com.br</a> com nome completo, CPF/CNPJ e relacionamento com a Costa Júnior (cliente, parceiro, candidato etc).</p>
+          </div>
+        </li>
+        <li>
+          <span class="passo-num">2</span>
+          <div>
+            <h3>Descreva sua solicitação</h3>
+            <p>Indique qual direito você quer exercer (acesso, correção, exclusão etc) e, se aplicável, quais dados especificamente.</p>
+          </div>
+        </li>
+        <li>
+          <span class="passo-num">3</span>
+          <div>
+            <h3>Aguarde nossa resposta</h3>
+            <p>Respondemos em até 15 dias úteis. Se precisarmos de informações adicionais para confirmar sua identidade, avisamos no mesmo prazo.</p>
+          </div>
+        </li>
+      </ol>
+
+      <div style="text-align:center;margin-top:48px">
+        <a href="mailto:adriana@costajr.com.br?subject=Solicita%C3%A7%C3%A3o%20LGPD" class="btn btn-primary">
+          Falar com o DPO agora
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <p style="text-align:center;margin-top:32px;color:var(--ink-mid);font-size:14px">
+        Ainda com dúvidas? Consulte nossa <a href="/privacidade" style="color:var(--brand)">Política de Privacidade completa</a> ou a <a href="https://www.gov.br/anpd/" target="_blank" rel="noopener" style="color:var(--brand)">ANPD</a>.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .page-hero {
+    position: relative;
+    background:
+      radial-gradient(circle at 78% 30%, rgba(196,30,58,.45) 0%, transparent 55%),
+      linear-gradient(135deg, #1A1C20 0%, #2D2F36 60%, #3A1419 100%);
+    color: #fff; overflow: hidden;
+  }
+  .page-hero-content { position: relative; padding: 96px 0 80px; max-width: 820px; }
+  .hero-eyebrow {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--brand);
+    border-left: 3px solid var(--brand); padding-left: 12px; margin-bottom: 24px;
+  }
+  .page-hero h1 { color: #fff; margin: 0 0 20px; }
+  .page-hero h1 .hl { color: var(--brand); }
+  .page-hero-sub { font-size: clamp(16px, 1.4vw, 18px); line-height: 1.7; color: #E5E7EB; max-width: 680px; margin: 0; }
+  .kicker {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--brand); margin-bottom: 16px;
+  }
+
+  .dpo-card {
+    background: linear-gradient(135deg, #1F2126 0%, #2D2F36 100%);
+    border-radius: 16px;
+    padding: 56px 64px;
+    max-width: 920px; margin: 0 auto;
+    position: relative; overflow: hidden;
+  }
+  .dpo-card::before {
+    content: ""; position: absolute; top: -30%; right: -15%;
+    width: 500px; height: 500px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(196,30,58,.25) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .dpo-card > * { position: relative; }
+  .dpo-info {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 32px;
+    border-top: 1px solid rgba(255,255,255,.18);
+    padding-top: 28px;
+  }
+  .dpo-info > div { display: flex; flex-direction: column; gap: 6px; }
+  .dpo-info strong {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--brand);
+  }
+  .dpo-info a, .dpo-info span { color: #fff; font-size: 15px; line-height: 1.55; }
+  .dpo-info a:hover { color: var(--brand); }
+
+  .direitos-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+  }
+  .direito-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px;
+    border-left: 4px solid var(--brand);
+  }
+  .direito-card h3 { font-size: 16px; margin: 0 0 6px; }
+  .direito-card p { color: var(--ink-mid); font-size: 14px; line-height: 1.55; margin: 0; }
+
+  .passos {
+    list-style: none; padding: 0; margin: 0;
+    display: grid; gap: 24px;
+    max-width: 760px; margin: 0 auto;
+  }
+  .passos li {
+    display: grid; grid-template-columns: 64px 1fr; gap: 24px;
+    align-items: flex-start;
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px;
+  }
+  .passo-num {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--brand); color: #fff;
+    font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 24px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .passos h3 { margin: 0 0 6px; font-size: 18px; }
+  .passos p { color: var(--ink-mid); font-size: 14px; line-height: 1.65; margin: 0; }
+  .passos a { color: var(--brand); border-bottom: 1px solid var(--brand-soft); }
+
+  @media (max-width: 900px) {
+    .page-hero-content { padding: 64px 0 56px; }
+    .dpo-card { padding: 36px 28px; }
+    .passos li { grid-template-columns: 48px 1fr; gap: 18px; padding: 20px; }
+    .passo-num { width: 48px; height: 48px; font-size: 20px; }
+  }
+</style>

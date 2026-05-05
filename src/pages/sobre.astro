@@ -1,0 +1,423 @@
+---
+import Base from "~/layouts/Base.astro";
+
+const valores = [
+  { l: "C", t: "Colaboração",            d: "Equipe que troca, soma e entrega junto." },
+  { l: "O", t: "Organização",            d: "Processo claro, cronograma cumprido, obra sob controle." },
+  { l: "S", t: "Satisfação do Cliente",  d: "Ouvir, ajustar, entregar o que foi combinado." },
+  { l: "T", t: "Transparência",          d: "Custos, prazos e riscos sempre na mesa." },
+  { l: "A", t: "Atitude",                d: "Resolver antes de o problema crescer." },
+  { l: "S", t: "Segurança",              d: "Não há entrega que valha um acidente." },
+  { l: "J", t: "Justo",                  d: "Equilíbrio entre cliente, equipe e fornecedor." },
+  { l: "R", t: "Responsabilidade",       d: "Pelo que entregamos e pelo impacto que deixamos." },
+];
+
+const socios = [
+  {
+    nome: "Adriana Russo da Costa",
+    cargo: "Sócia-diretora · Construção e Manutenção",
+    bio: "Arquiteta e Urbanista pelo Mackenzie (2006), com MBA em Gerenciamento de Projetos pela FGV (2012) e certificação AQUA. Lidera as frentes de construção, manutenção predial e operações da empresa.",
+  },
+  {
+    nome: "José Ferreira da Costa Júnior",
+    cargo: "Sócio-diretor · Engenharia e Novos Negócios",
+    bio: "Engenheiro Civil pela FEI (2003), com especialização em Transportes, Fundação e Incorporação. 15 anos como consultor de solos e 13 anos em construtoras (Gafisa, Eztec, Enix). Lidera consultoria técnica e novos negócios.",
+  },
+];
+
+const esg = [
+  { t: "Zero tolerância", d: "Trabalho escravo ou infantil, discriminação, assédio." },
+  { t: "Materiais responsáveis", d: "Preferência por fornecedores certificados e materiais de menor impacto." },
+  { t: "Resíduos & reciclagem", d: "Triagem e destinação correta dos resíduos de construção." },
+  { t: "Segurança em primeiro lugar", d: "Padrão NR, EPI obrigatório, treinamento contínuo da equipe." },
+];
+---
+<Base
+  title="Sobre — Costa Júnior Engenharia e Construções"
+  description="Construtora paulistana fundada em 2004, especializada em obras corporativas, comerciais e industriais. Conheça nossa história, missão, valores e os sócios à frente da Costa Júnior."
+>
+  <!-- HERO COMPACTO -->
+  <section class="page-hero">
+    <div class="container page-hero-content">
+      <span class="hero-eyebrow">Sobre a Costa Júnior</span>
+      <h1>Engenharia que <span class="hl">não para</span> desde 2004.</h1>
+      <p class="page-hero-sub">
+        Construtora paulistana com sede no Brooklin, especializada em obras corporativas, comerciais, industriais e de saúde. Construindo sonhos há mais de 20 anos para quem não pode parar.
+      </p>
+    </div>
+  </section>
+
+  <!-- HISTÓRIA -->
+  <section class="section">
+    <div class="container historia">
+      <div>
+        <span class="kicker">Nossa história</span>
+        <h2>Mais de duas décadas<br>entregando obras<br><span style="color:var(--brand)">sem prazo perdido</span>.</h2>
+        <p class="lead">
+          Fundada em 2004, a Costa Júnior nasceu da união entre experiência técnica em engenharia de fundações e gestão de projetos arquitetônicos. Crescemos atendendo grandes redes — varejo, instituições financeiras, indústria e saúde — em todos os 26 estados brasileiros.
+        </p>
+        <p class="lead">
+          Nosso diferencial é simples: tratamos cada cronograma como inegociável. Por isso somos a engenharia de confiança de quem opera com loja aberta, dado em produção e cliente esperando.
+        </p>
+      </div>
+      <aside class="historia-stats">
+        <div><strong>2004</strong><span>fundada em São Paulo</span></div>
+        <div><strong>+2.000</strong><span>obras entregues</span></div>
+        <div><strong>26</strong><span>estados atendidos</span></div>
+        <div><strong>40+</strong><span>clientes-âncora</span></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- MISSÃO · VISÃO · PROPÓSITO -->
+  <section class="section section-soft">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 56px">
+        <span class="kicker">O que nos move</span>
+        <h2>Missão, visão e propósito</h2>
+      </div>
+      <div class="mvp-grid">
+        <article class="mvp-card">
+          <span class="mvp-label">Missão</span>
+          <p>Prestar serviço com responsabilidade, entendendo as necessidades do cliente e garantindo sua satisfação.</p>
+        </article>
+        <article class="mvp-card mvp-card-dark">
+          <span class="mvp-label">Visão</span>
+          <p>Ser referência no mercado com soluções diferenciadas e customizadas para cada cliente, através de uma equipe colaborativa e focada em resultados.</p>
+        </article>
+        <article class="mvp-card">
+          <span class="mvp-label">Propósito</span>
+          <p>Inspirar profissionais para transformar ambientes e trazer desenvolvimento.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- VALORES COSTASJR -->
+  <section class="section">
+    <div class="container">
+      <div style="text-align:center;max-width:720px;margin:0 auto 56px">
+        <span class="kicker">Valores · COSTASJR</span>
+        <h2>Os princípios que escolhemos defender</h2>
+        <p class="lead">Cada letra do nosso nome é um compromisso interno.</p>
+      </div>
+      <div class="valores-grid">
+        {valores.map(v => (
+          <article class="valor-card">
+            <span class="valor-letra">{v.l}</span>
+            <h3>{v.t}</h3>
+            <p>{v.d}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- TOLERÂNCIA ZERO -->
+  <section class="section section-soft">
+    <div class="container tolerancia">
+      <div>
+        <span class="kicker">Tolerância zero</span>
+        <h2>O que <span style="color:var(--brand)">não aceitamos</span>, nunca.</h2>
+        <p class="lead">Nossa cultura tem limites claros — e eles não negociam.</p>
+      </div>
+      <ul class="tolerancia-list">
+        {[
+          "Mentira",
+          "Deslealdade",
+          "Desonestidade",
+          "Comodismo",
+          "Desculpas",
+          "Arrogância",
+          "Improdutividade",
+          "Indiferença",
+          "Indisciplina",
+        ].map(item => (
+          <li>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <!-- SÓCIOS -->
+  <section class="section">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 56px">
+        <span class="kicker">Liderança</span>
+        <h2>Quem está à frente</h2>
+      </div>
+      <div class="socios-grid">
+        {socios.map(s => (
+          <article class="socio-card">
+            <div class="socio-avatar">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <h3>{s.nome}</h3>
+            <span class="socio-cargo">{s.cargo}</span>
+            <p>{s.bio}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ESG -->
+  <section class="section section-soft">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 56px">
+        <span class="kicker">Compromisso ESG</span>
+        <h2>Como construímos para além da obra</h2>
+      </div>
+      <div class="esg-grid">
+        {esg.map(e => (
+          <article class="esg-card">
+            <h3>{e.t}</h3>
+            <p>{e.d}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section class="section">
+    <div class="container">
+      <div class="cta-final">
+        <div>
+          <span class="kicker" style="color:#fff;opacity:.85">Vamos conversar</span>
+          <h2 style="color:#fff;margin-bottom:16px">Tem uma obra que não pode parar?</h2>
+          <p style="color:#D1D5DB;font-size:18px;margin:0 0 28px;max-width:520px">
+            Conte com a engenharia que entrega prazo, custo e qualidade — desde 2004.
+          </p>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <a href="/contato" class="btn btn-primary">
+              Solicite um orçamento
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+            </a>
+            <a href="/servicos" class="btn btn-ghost-light">Ver serviços</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  /* HERO COMPACTO */
+  .page-hero {
+    position: relative;
+    background:
+      radial-gradient(circle at 78% 30%, rgba(196,30,58,.45) 0%, transparent 55%),
+      linear-gradient(135deg, #1A1C20 0%, #2D2F36 60%, #3A1419 100%);
+    color: #fff;
+    overflow: hidden;
+  }
+  .page-hero::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: linear-gradient(135deg, rgba(0,0,0,.6) 0%, transparent 70%);
+    -webkit-mask-image: linear-gradient(135deg, rgba(0,0,0,.6) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .page-hero-content {
+    position: relative;
+    padding: 96px 0 80px;
+    max-width: 820px;
+  }
+  .hero-eyebrow {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--brand);
+    border-left: 3px solid var(--brand); padding-left: 12px;
+    margin-bottom: 24px;
+  }
+  .page-hero h1 { color: #fff; margin: 0 0 20px; }
+  .page-hero h1 .hl { color: var(--brand); }
+  .page-hero-sub {
+    font-size: clamp(16px, 1.4vw, 18px); line-height: 1.7;
+    color: #E5E7EB; max-width: 680px; margin: 0;
+  }
+
+  /* KICKER (compartilhado) */
+  .kicker {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--brand);
+    margin-bottom: 16px;
+  }
+
+  /* HISTÓRIA */
+  .historia {
+    display: grid; grid-template-columns: 1.4fr 1fr; gap: 64px;
+    align-items: center;
+  }
+  .historia-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
+    background: linear-gradient(135deg, var(--ink) 0%, #3A3D45 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 40px;
+    position: relative; overflow: hidden;
+  }
+  .historia-stats::after {
+    content: ""; position: absolute; top: -40%; right: -20%;
+    width: 280px; height: 280px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(196,30,58,.3) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .historia-stats > div { position: relative; }
+  .historia-stats strong {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 36px; font-weight: 800; color: #fff; display: block; line-height: 1;
+  }
+  .historia-stats span { font-size: 13px; color: #C8CACE; }
+
+  /* MVP */
+  .mvp-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px;
+  }
+  .mvp-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 36px 32px;
+    border-top: 4px solid var(--brand);
+  }
+  .mvp-card-dark {
+    background: linear-gradient(135deg, #1F2126 0%, #2D2F36 100%);
+    color: #fff;
+    border-color: transparent;
+    border-top-color: var(--brand);
+  }
+  .mvp-card-dark p { color: #D1D5DB; }
+  .mvp-label {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 11px;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--brand);
+    margin-bottom: 14px;
+  }
+  .mvp-card p { font-size: 16px; line-height: 1.7; margin: 0; color: var(--ink-mid); }
+  .mvp-card-dark p { color: #D1D5DB; }
+
+  /* VALORES */
+  .valores-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+  }
+  .valor-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px 24px;
+    transition: all .2s ease;
+    position: relative; overflow: hidden;
+  }
+  .valor-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 32px rgba(0,0,0,.06);
+    border-color: var(--brand-soft);
+  }
+  .valor-letra {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 48px; font-weight: 900; line-height: 1;
+    color: var(--brand-soft); display: block; margin-bottom: 10px;
+  }
+  .valor-card h3 { font-size: 18px; margin: 0 0 6px; }
+  .valor-card p { color: var(--ink-mid); font-size: 14px; margin: 0; line-height: 1.55; }
+
+  /* TOLERÂNCIA */
+  .tolerancia {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 64px;
+    align-items: center;
+  }
+  .tolerancia-list {
+    list-style: none; padding: 0; margin: 0;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  }
+  .tolerancia-list li {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700; font-size: 15px;
+    color: var(--ink); text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 14px 18px;
+    background: #fff; border: 1px solid var(--border); border-radius: 6px;
+  }
+
+  /* SÓCIOS */
+  .socios-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+    max-width: 980px; margin: 0 auto;
+  }
+  .socio-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 40px 32px;
+    text-align: left;
+    transition: all .2s ease;
+  }
+  .socio-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 32px rgba(0,0,0,.06);
+    border-color: var(--brand-soft);
+  }
+  .socio-avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: var(--brand-soft); color: var(--brand);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 20px;
+  }
+  .socio-card h3 { margin: 0 0 4px; font-size: 20px; }
+  .socio-cargo {
+    display: block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--brand);
+    margin-bottom: 16px;
+  }
+  .socio-card p { color: var(--ink-mid); font-size: 14px; line-height: 1.7; margin: 0; }
+
+  /* ESG */
+  .esg-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+  }
+  .esg-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px;
+    border-left: 4px solid var(--brand);
+  }
+  .esg-card h3 { font-size: 17px; margin: 0 0 8px; }
+  .esg-card p { color: var(--ink-mid); font-size: 14px; line-height: 1.6; margin: 0; }
+
+  /* CTA FINAL */
+  .cta-final {
+    background: linear-gradient(135deg, #1F2126 0%, #2D2F36 100%);
+    border-radius: 16px;
+    padding: 56px 64px;
+    position: relative; overflow: hidden;
+  }
+  .cta-final::before {
+    content: ""; position: absolute; top: -30%; right: -15%;
+    width: 500px; height: 500px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(196,30,58,.25) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .cta-final > * { position: relative; }
+
+  @media (max-width: 900px) {
+    .page-hero-content { padding: 64px 0 56px; }
+    .historia { grid-template-columns: 1fr; gap: 36px; }
+    .historia-stats { padding: 32px; }
+    .tolerancia { grid-template-columns: 1fr; gap: 32px; }
+    .tolerancia-list { grid-template-columns: 1fr; }
+    .socios-grid { grid-template-columns: 1fr; }
+    .cta-final { padding: 40px 28px; }
+  }
+</style>
