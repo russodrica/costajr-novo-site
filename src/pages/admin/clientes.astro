@@ -131,7 +131,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       if (!confirm(`Excluir permanentemente "${nome}"? Esta ação não pode ser desfeita.`)) return;
       const res = await fetch(`/api/admin/clientes/${id}`, { method: "DELETE" });
       if (res.ok) window.location.reload();
-      else alert("Erro ao excluir cliente");
+      else { const d = await res.json().catch(() => ({ error: `HTTP ${res.status}` })); alert("Erro: " + d.error); }
     });
     async function patchCliente(id: string, body: object) {
       const res = await fetch(`/api/admin/clientes/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
