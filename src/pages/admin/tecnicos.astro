@@ -17,6 +17,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
     <span class="toolbar-title">Técnicos ({tecnicos?.length ?? 0})</span>
     <input class="search-input" type="search" placeholder="Buscar nome, email…" oninput="filtrar(this.value)" />
     <button class="btn btn-primary" onclick="abrirModal()">+ Novo técnico</button>
+    <button class="btn btn-secondary" onclick="window.location.reload()">↻ Atualizar</button>
   </div>
 
   <div class="card">
@@ -42,6 +43,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
                   {t.status === "ativo"
                     ? <button class="btn btn-warning btn-sm" onclick={`patchStatus('${t.id}','inativo')`}>Inativar</button>
                     : <button class="btn btn-success btn-sm" onclick={`patchStatus('${t.id}','ativo')`}>Ativar</button>}
+                  <button class="btn btn-danger btn-sm" onclick={`excluirTecnico('${t.id}','${t.nome}')`}>🗑 Excluir</button>
                 </div>
               </td>
             </tr>
@@ -114,6 +116,11 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
     }
     function fecharModal() { document.getElementById("modalTec").classList.remove("open"); }
 
+    async function excluirTecnico(id, nome) {
+      if (!confirm(`Excluir permanentemente o técnico "${nome}"? Esta ação não pode ser desfeita.`)) return;
+      const res = await fetch(`/api/admin/tecnicos/${id}`, { method: "DELETE" });
+      if (res.ok) window.location.reload(); else alert("Erro ao excluir técnico");
+    }
     async function patchStatus(id, status) {
       if (!confirm(`Mudar status para "${status}"?`)) return;
       const res = await fetch(`/api/admin/tecnicos/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });

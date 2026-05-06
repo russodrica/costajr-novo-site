@@ -27,6 +27,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
     </select>
     <input class="search-input" type="search" placeholder="Buscar nome, email, código…" id="busca" oninput="filtrarTabela()" />
     <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo cliente</button>
+    <button class="btn btn-secondary" onclick="window.location.reload()">↻ Atualizar</button>
   </div>
 
   <div class="card">
@@ -53,6 +54,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
                   {c.status === "pendente" && <button class="btn btn-success btn-sm" onclick={`ativar('${c.id}')`}>Ativar</button>}
                   {c.status === "ativo" && <button class="btn btn-warning btn-sm" onclick={`inadimplir('${c.id}')`}>Inadimplir</button>}
                   {c.status !== "cancelado" && <button class="btn btn-danger btn-sm" onclick={`cancelar('${c.id}')`}>Cancelar</button>}
+                  <button class="btn btn-danger btn-sm" onclick={`excluir('${c.id}','${c.nome}')`}>🗑 Excluir</button>
                 </div>
               </td>
             </tr>
@@ -120,6 +122,12 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
     async function cancelar(id: string) {
       if (!confirm("Cancelar contrato deste cliente?")) return;
       await patchCliente(id, { status: "cancelado" });
+    }
+    async function excluir(id: string, nome: string) {
+      if (!confirm(`Excluir permanentemente o cliente "${nome}"? Esta ação não pode ser desfeita.`)) return;
+      const res = await fetch(`/api/admin/clientes/${id}`, { method: "DELETE" });
+      if (res.ok) window.location.reload();
+      else alert("Erro ao excluir cliente");
     }
     async function patchCliente(id: string, body: object) {
       const res = await fetch(`/api/admin/clientes/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });

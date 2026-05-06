@@ -14,3 +14,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
 };
+
+export const DELETE: APIRoute = async ({ request, params }) => {
+  try {
+    await requireAdminCookie(request);
+    const db = supabaseAdmin();
+    const { error } = await db.from("manut_leads").delete().eq("id", params.id!);
+    if (error) return jsonErr(400, error.message);
+    return jsonOk({ ok: true });
+  } catch (e: any) {
+    return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
+  }
+};

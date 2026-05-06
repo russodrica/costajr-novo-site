@@ -25,6 +25,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
       {["novo","contato_feito","proposta_enviada","negociando","convertido","perdido"].map(s => <option value={s} selected={s===filtroEtapa}>{s.replace(/_/g," ")}</option>)}
     </select>
     <input class="search-input" type="search" placeholder="Buscar nome, email…" oninput="buscar(this.value)" />
+    <button class="btn btn-secondary" onclick="window.location.reload()">↻ Atualizar</button>
   </div>
 
   <div class="card">
@@ -41,10 +42,11 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
               <td>{l.plano || "—"}</td>
               <td><span class={`badge ${badgeSt[l.etapa]}`}>{l.etapa?.replace(/_/g," ")}</span></td>
               <td>{fmtDate(l.created_at)}</td>
-              <td>
+              <td style="display:flex;gap:6px;align-items:center">
                 <select class="filter-select" style="padding:3px 8px;font-size:0.8rem" onchange={`patchLead('${l.id}', this.value)`}>
                   {["novo","contato_feito","proposta_enviada","negociando","convertido","perdido"].map(s => <option value={s} selected={s===l.etapa}>{s.replace(/_/g," ")}</option>)}
                 </select>
+                <button class="btn btn-danger btn-sm" onclick={`excluirLead('${l.id}','${l.nome}')`}>🗑</button>
               </td>
             </tr>
           )) : <tr><td colspan="8" style="text-align:center;color:#999;padding:32px">Nenhum pré-cadastro encontrado</td></tr>}
@@ -63,6 +65,11 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
       document.querySelectorAll("#tabela tbody tr[data-search]").forEach(r => {
         r.style.display = r.dataset.search.includes(q.toLowerCase()) ? "" : "none";
       });
+    }
+    async function excluirLead(id, nome) {
+      if (!confirm(`Excluir permanentemente o pré-cadastro de "${nome}"? Esta ação não pode ser desfeita.`)) return;
+      const res = await fetch(`/api/admin/leads/${id}`, { method: "DELETE" });
+      if (res.ok) window.location.reload(); else alert("Erro ao excluir");
     }
     async function patchLead(id, etapa) {
       await fetch(`/api/admin/leads/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ etapa }) });
