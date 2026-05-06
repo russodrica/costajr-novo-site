@@ -32,8 +32,17 @@ export const POST: APIRoute = async ({ request, params }) => {
     await requireAdminCookie(request);
     const body = await request.json();
     if (body.action !== "delete") return jsonErr(400, "Ação inválida");
+    const id = params.id!;
     const db = supabaseAdmin();
-    const { error } = await db.from("manut_clientes").delete().eq("id", params.id!);
+    // Deleta dependentes em ordem (FK sem CASCADE)
+    await db.from("manut_materiais").delete().eq("cliente_id", id);
+    await db.from("manut_pagamentos").delete().eq("cliente_id", id);
+    await db.from("manut_orcamentos").delete().eq("cliente_id", id);
+    await db.from("manut_chamados").delete().eq("cliente_id", id);
+    await db.from("manut_preventivas").delete().eq("cliente_id", id);
+    // manut_lojas tem ON DELETE CASCADE, mas deletamos explicitamente para garantir
+    await db.from("manut_lojas").delete().eq("cliente_id", id);
+    const { error } = await db.from("manut_clientes").delete().eq("id", id);
     if (error) return jsonErr(400, error.message);
     return jsonOk({ ok: true });
   } catch (e: any) {
