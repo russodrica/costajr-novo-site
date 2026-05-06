@@ -35,9 +35,9 @@ const diferenciais = [
 ];
 
 const planos = [
-  { nome: "Essencial", visitas: 12, desc: "1 visita preventiva por mês", ideal: "Lojas pequenas e escritórios" },
-  { nome: "Profissional", visitas: 24, desc: "2 visitas preventivas por mês", ideal: "Redes de médio porte", destaque: true },
-  { nome: "Enterprise", visitas: 48, desc: "4 visitas preventivas por mês", ideal: "Grandes redes e indústrias" },
+  { nome: "Trimestral", periodo: "3 meses", visitas: 3, extra: "+1 visita extra", desc: "1 visita preventiva por mês", ideal: "Ideal para conhecer o serviço" },
+  { nome: "Semestral", periodo: "6 meses", visitas: 6, extra: null, desc: "1 visita preventiva por mês", ideal: "Ideal para manutenção contínua", destaque: true },
+  { nome: "Anual", periodo: "12 meses", visitas: 12, extra: "+5 visitas extras", desc: "1 visita preventiva por mês", ideal: "Melhor custo-benefício" },
 ];
 ---
 <Base
@@ -280,10 +280,12 @@ const planos = [
         {planos.map(p => (
           <article class={`plano-card${p.destaque ? ' plano-destaque' : ''}`}>
             {p.destaque && <span class="plano-badge">Mais escolhido</span>}
+            <span class="plano-periodo">{p.periodo}</span>
             <h3>{p.nome}</h3>
-            <p class="plano-visitas">{p.visitas} visitas/ano</p>
+            <p class="plano-visitas">{p.visitas} visitas preventivas</p>
             <p class="plano-desc">{p.desc}</p>
-            <p class="plano-ideal">Ideal para: {p.ideal}</p>
+            {p.extra && <p class="plano-extra">{p.extra} incluída</p>}
+            <p class="plano-ideal">{p.ideal}</p>
             <a href="/manutencao/contratar" class={`btn ${p.destaque ? 'btn-primary' : 'btn-outline'}`} style="width:100%;justify-content:center;margin-top:auto">
               Contratar agora
             </a>
@@ -526,9 +528,21 @@ const planos = [
     letter-spacing: 0.08em; text-transform: uppercase;
     padding: 4px 14px; border-radius: 20px; white-space: nowrap;
   }
-  .plano-card h3 { font-size: 22px; margin: 0; }
-  .plano-visitas { font-family: 'Montserrat', sans-serif; font-size: 32px; font-weight: 800; color: var(--brand); margin: 0; }
-  .plano-desc { color: var(--ink-mid); font-size: 15px; margin: 0; }
+  .plano-periodo {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--ink-mid);
+  }
+  .plano-card h3 { font-size: 26px; margin: 0; }
+  .plano-visitas { font-family: 'Montserrat', sans-serif; font-size: 28px; font-weight: 800; color: var(--brand); margin: 0; }
+  .plano-desc { color: var(--ink-mid); font-size: 14px; margin: 0; }
+  .plano-extra {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px;
+    color: #15803d; background: #dcfce7; border-radius: 6px;
+    padding: 4px 10px; margin: 0;
+  }
+  .plano-extra::before { content: "✓"; }
   .plano-ideal { font-size: 13px; color: var(--ink-light); margin: 0; padding-top: 4px; border-top: 1px solid var(--border); }
 
   /* ─── CTA FINAL ─── */
