@@ -4,37 +4,46 @@ export const prerender = false;
 ---
 <Portal title="Materiais" tipo="cliente" activePage="materiais">
   <div style="margin-bottom:24px">
-    <p style="margin:0;font-size:14px;color:#5B5F6B">Materiais solicitados pelos técnicos durante o atendimento. Aprove ou rejeite cada solicitação.</p>
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Aprove ou rejeite materiais solicitados pelos técnicos durante o atendimento.</p>
   </div>
 
-  <div id="loadingState" class="loading">Carregando materiais...</div>
-  <div id="tableWrap" style="display:none"></div>
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando materiais...</div>
+  <div id="matWrap" style="display:none"></div>
 
   <!-- Modal aprovação -->
   <div class="modal-bg" id="modalAprovar">
     <div class="modal">
+      <button class="modal-close" id="btnFecharApr">×</button>
       <h2>Aprovar Material</h2>
       <div id="alertApr" class="alert alert-error" style="display:none"></div>
       <div id="modalAprBody"></div>
       <div class="form-group" style="margin-top:16px">
-        <label>Comprovante de pagamento (URL — opcional)</label>
+        <label>Comprovante de pagamento <span style="font-weight:400;color:#9CA3AF">(URL — opcional)</span></label>
         <input type="url" id="comprovanteUrl" placeholder="https://...">
+        <p class="form-hint">Cole o link do comprovante se já tiver realizado o pagamento.</p>
       </div>
-      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
         <button class="btn btn-outline" id="btnCancelarApr">Cancelar</button>
-        <button class="btn btn-primary" id="btnConfAprovar">Confirmar aprovação</button>
+        <button class="btn btn-primary" id="btnConfAprovar">✓ Confirmar aprovação</button>
       </div>
     </div>
   </div>
 </Portal>
 
 <style>
-  .mat-card { background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;margin-bottom:12px; }
+  .mat-card {
+    background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:20px 24px; margin-bottom:12px;
+    box-shadow: var(--shadow-sm); transition: var(--transition);
+  }
+  .mat-card:hover { box-shadow: var(--shadow); }
   .mat-card.pendente { border-left:4px solid #F59E0B; }
-  .mat-header { display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px; }
-  .mat-title { font-weight:700;font-size:15px; }
-  .mat-meta { font-size:13px;color:#5B5F6B; }
-  .mat-valor { font-family:'Montserrat',sans-serif;font-weight:800;font-size:20px;color:#C41E3A; }
+  .mat-header { display:flex;align-items:flex-start;justify-content:space-between;gap:16px; }
+  .mat-title { font-weight:700;font-size:15px;margin-bottom:5px;color:var(--ink); }
+  .mat-meta { font-size:12.5px;color:#5B5F6B;display:flex;flex-wrap:wrap;gap:6px;align-items:center; }
+  .mat-sep { color:#D1D5DB; }
+  .mat-valor { font-family:'Montserrat',sans-serif;font-weight:800;font-size:22px;color:#C41E3A; text-align:right;}
+  .mat-actions { display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-light); }
 </style>
 
 <script>
@@ -54,33 +63,40 @@ export const prerender = false;
   function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
 
   function render() {
-    const wrap = document.getElementById("tableWrap");
+    const wrap = document.getElementById("matWrap");
     if (!allMat.length) {
-      wrap.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:#9CA3AF">Nenhuma solicitação de material encontrada.</div>';
+      wrap.innerHTML = `<div class="card"><div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        <strong>Nenhuma solicitação de material</strong>
+        <p>Quando um técnico solicitar material, aparecerá aqui para sua aprovação.</p>
+      </div></div>`;
       return;
     }
     wrap.innerHTML = allMat.map(m => `
       <div class="mat-card ${m.status === 'pendente_aprovacao' ? 'pendente' : ''}">
         <div class="mat-header">
-          <div>
+          <div style="flex:1;min-width:0">
             <div class="mat-title">${m.descricao}</div>
             <div class="mat-meta">
-              Loja: <strong>${m.manut_lojas?.nome || "—"}</strong> &nbsp;|&nbsp;
-              Técnico: <strong>${m.manut_tecnicos?.nome || "—"}</strong> &nbsp;|&nbsp;
-              ${fmtDate(m.created_at)}
+              <span>🏪 ${m.manut_lojas?.nome || "—"}</span>
+              <span class="mat-sep">·</span>
+              <span>🔧 ${m.manut_tecnicos?.nome || "—"}</span>
+              <span class="mat-sep">·</span>
+              <span>${fmtDate(m.created_at)}</span>
+              <span class="mat-sep">·</span>
+              ${badge(m.status)}
             </div>
           </div>
-          <div style="text-align:right">
+          <div>
             <div class="mat-valor">${fmt(m.valor)}</div>
-            <div style="margin-top:4px">${badge(m.status)}</div>
           </div>
         </div>
         ${m.status === "pendente_aprovacao" ? `
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="btn btn-primary btn-sm" onclick="abrirAprovar('${m.id}')">Aprovar</button>
-          <button class="btn btn-outline btn-sm" style="border-color:#B91C1C;color:#B91C1C" onclick="rejeitar('${m.id}')">Rejeitar</button>
+        <div class="mat-actions">
+          <button class="btn btn-primary btn-sm" onclick="abrirAprovar('${m.id}')">✓ Aprovar</button>
+          <button class="btn btn-outline btn-sm" style="border-color:#B91C1C;color:#B91C1C" onclick="rejeitar('${m.id}')">✕ Rejeitar</button>
         </div>` : ""}
-        ${m.comprovante_url ? `<div style="margin-top:8px"><a href="${m.comprovante_url}" target="_blank" class="btn btn-outline btn-sm">📎 Comprovante</a></div>` : ""}
+        ${m.comprovante_url ? `<div style="margin-top:10px"><a href="${m.comprovante_url}" target="_blank" class="btn btn-outline btn-sm">📎 Ver comprovante</a></div>` : ""}
       </div>
     `).join("");
   }
@@ -91,15 +107,18 @@ export const prerender = false;
     document.getElementById("alertApr").style.display = "none";
     document.getElementById("comprovanteUrl").value = "";
     document.getElementById("modalAprBody").innerHTML = `
-      <p style="font-size:14px;color:#5B5F6B;margin:0 0 8px"><strong>Material:</strong> ${matAtivo.descricao}</p>
-      <p style="font-size:14px;color:#5B5F6B;margin:0 0 8px"><strong>Valor:</strong> ${fmt(matAtivo.valor)}</p>
-      <p style="font-size:14px;color:#5B5F6B;margin:0"><strong>Técnico:</strong> ${matAtivo.manut_tecnicos?.nome || "—"}</p>
+      <div style="background:#FFF9F0;border:1px solid #FDE68A;border-radius:8px;padding:16px;margin-bottom:4px">
+        <div style="font-size:12px;color:#92400E;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Confirmar aprovação</div>
+        <div style="font-size:13.5px;margin-bottom:4px"><strong>Material:</strong> ${matAtivo.descricao}</div>
+        <div style="font-size:13.5px;margin-bottom:4px"><strong>Técnico:</strong> ${matAtivo.manut_tecnicos?.nome || "—"}</div>
+        <div style="font-size:20px;font-weight:800;font-family:'Montserrat',sans-serif;color:#C41E3A;margin-top:10px">${fmt(matAtivo.valor)}</div>
+      </div>
     `;
     document.getElementById("modalAprovar").classList.add("open");
   };
 
   window.rejeitar = async function(id) {
-    if (!confirm("Rejeitar esta solicitação de material?")) return;
+    if (!confirm("Tem certeza que deseja rejeitar esta solicitação de material?")) return;
     try {
       const res = await fetch("/api/manut/cliente/materiais", {
         method: "PUT",
@@ -111,12 +130,15 @@ export const prerender = false;
       const idx = allMat.findIndex(m => m.id === id);
       if (idx >= 0) allMat[idx] = { ...allMat[idx], ...data };
       render();
+      window.toast?.("Material rejeitado.", "info");
     } catch (err) {
-      alert("Erro: " + err.message);
+      window.toast?.("Erro: " + err.message, "error");
     }
   };
 
   document.getElementById("btnCancelarApr").onclick = () => { document.getElementById("modalAprovar").classList.remove("open"); matAtivo = null; };
+  document.getElementById("btnFecharApr").onclick   = () => { document.getElementById("modalAprovar").classList.remove("open"); matAtivo = null; };
+
   document.getElementById("btnConfAprovar").onclick = async () => {
     if (!matAtivo) return;
     const alertEl = document.getElementById("alertApr");
@@ -137,10 +159,11 @@ export const prerender = false;
       document.getElementById("modalAprovar").classList.remove("open");
       matAtivo = null;
       render();
+      window.toast?.("Material aprovado com sucesso!", "success");
     } catch (err) {
       alertEl.textContent = err.message; alertEl.style.display = "";
     } finally {
-      btn.disabled = false; btn.textContent = "Confirmar aprovação";
+      btn.disabled = false; btn.textContent = "✓ Confirmar aprovação";
     }
   };
 
@@ -150,11 +173,12 @@ export const prerender = false;
       if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
       allMat = await res.json();
       document.getElementById("loadingState").style.display = "none";
-      document.getElementById("tableWrap").style.display = "";
+      document.getElementById("matWrap").style.display = "";
       render();
     } catch {
-      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
   }
   load();
+  window.addEventListener("portal:refresh", load);
 </script>

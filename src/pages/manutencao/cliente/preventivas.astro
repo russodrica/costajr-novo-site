@@ -3,9 +3,9 @@ import Portal from "~/layouts/Portal.astro";
 export const prerender = false;
 ---
 <Portal title="Preventivas" tipo="cliente" activePage="preventivas">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
-    <p style="margin:0;font-size:14px;color:#5B5F6B">Histórico e agenda de manutenções preventivas.</p>
-    <div style="display:flex;gap:8px">
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Histórico e agenda de manutenções preventivas das suas lojas.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-outline btn-sm filtro-prev active" data-status="">Todas</button>
       <button class="btn btn-outline btn-sm filtro-prev" data-status="agendada">Agendadas</button>
       <button class="btn btn-outline btn-sm filtro-prev" data-status="realizada">Realizadas</button>
@@ -13,8 +13,9 @@ export const prerender = false;
     </div>
   </div>
 
-  <div id="loadingState" class="loading">Carregando preventivas...</div>
-  <div id="tableWrap" style="display:none" class="card">
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando preventivas...</div>
+
+  <div class="card" id="tableWrap" style="display:none">
     <div class="table-wrap">
       <table>
         <thead>
@@ -29,12 +30,18 @@ export const prerender = false;
         <tbody id="tbody"></tbody>
       </table>
     </div>
-    <div id="emptyMsg" style="display:none;text-align:center;padding:32px;color:#9CA3AF;font-size:14px">Nenhuma preventiva encontrada.</div>
+    <div id="emptyMsg" style="display:none">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+        <strong>Nenhuma preventiva encontrada</strong>
+        <p>As preventivas agendadas pela equipe aparecerão aqui.</p>
+      </div>
+    </div>
   </div>
 </Portal>
 
 <style>
-  .filtro-prev.active { background:#C41E3A; color:#fff; border-color:#C41E3A; }
+  .filtro-prev.active { background:var(--brand);color:#fff;border-color:var(--brand); }
 </style>
 
 <script>
@@ -46,9 +53,9 @@ export const prerender = false;
   let filtro = "";
 
   function badge(status) {
-    const map = { agendada:"agendada", realizada:"concluido", cancelada:"cancelado" };
-    const label = { agendada:"Agendada", realizada:"Realizada", cancelada:"Cancelada" };
-    return `<span class="badge badge-${map[status] || status}">${label[status] || status}</span>`;
+    const m = { agendada:"badge-agendada", realizada:"badge-concluido", cancelada:"badge-cancelado" };
+    const l = { agendada:"Agendada", realizada:"Realizada", cancelada:"Cancelada" };
+    return `<span class="badge ${m[status]||""}">${l[status]||status}</span>`;
   }
   function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
 
@@ -59,21 +66,21 @@ export const prerender = false;
     if (!filtered.length) {
       tbody.innerHTML = "";
       empty.style.display = "";
-    } else {
-      empty.style.display = "none";
-      tbody.innerHTML = filtered.map(p => `
-        <tr>
-          <td><strong>${fmtDate(p.data_agendada)}</strong></td>
-          <td>${p.manut_lojas?.nome || "—"}</td>
-          <td>${p.manut_tecnicos?.nome || "—"}</td>
-          <td>${badge(p.status)}</td>
-          <td>${p.relatorio_pdf_url
-            ? `<a href="${p.relatorio_pdf_url}" target="_blank" class="btn btn-outline btn-sm">📄 Ver PDF</a>`
-            : '<span style="color:#9CA3AF;font-size:13px">—</span>'
-          }</td>
-        </tr>
-      `).join("");
+      return;
     }
+    empty.style.display = "none";
+    tbody.innerHTML = filtered.map(p => `
+      <tr>
+        <td><strong>${fmtDate(p.data_agendada)}</strong></td>
+        <td style="font-weight:600">${p.manut_lojas?.nome || "—"}<br><span style="font-size:11.5px;color:#9CA3AF;font-weight:400">${p.manut_lojas?.cidade||""}</span></td>
+        <td style="font-size:13px;color:#5B5F6B">${p.manut_tecnicos?.nome || "—"}</td>
+        <td>${badge(p.status)}</td>
+        <td>${p.relatorio_pdf_url
+          ? `<a href="${p.relatorio_pdf_url}" target="_blank" class="btn btn-outline btn-sm">📄 Ver relatório</a>`
+          : '<span style="color:#D1D5DB;font-size:13px">—</span>'
+        }</td>
+      </tr>
+    `).join("");
   }
 
   document.querySelectorAll(".filtro-prev").forEach(btn => {
@@ -94,8 +101,9 @@ export const prerender = false;
       document.getElementById("tableWrap").style.display = "";
       render();
     } catch {
-      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
   }
   load();
+  window.addEventListener("portal:refresh", load);
 </script>

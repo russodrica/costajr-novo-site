@@ -3,24 +3,27 @@ import Portal from "~/layouts/Portal.astro";
 export const prerender = false;
 ---
 <Portal title="Materiais" tipo="tecnico" activePage="materiais">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
-    <p style="margin:0;font-size:14px;color:#5B5F6B">Solicite materiais necessários para os atendimentos.</p>
-    <button class="btn btn-primary" id="btnNovo">+ Solicitar Material</button>
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Solicite materiais necessários para os atendimentos.</p>
+    <button class="btn btn-primary" id="btnNovo">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Solicitar Material
+    </button>
   </div>
 
-  <div id="loadingState" class="loading">Carregando solicitações...</div>
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando solicitações...</div>
   <div id="matWrap" style="display:none"></div>
 
   <!-- Modal novo material -->
   <div class="modal-bg" id="modalNovo">
     <div class="modal">
+      <button class="modal-close" id="btnFecharNovo">×</button>
       <h2>Solicitar Material</h2>
       <div id="alertNovo" class="alert alert-error" style="display:none"></div>
       <div class="form-group">
-        <label>Chamado relacionado (opcional)</label>
-        <select id="selChamado">
-          <option value="">Carregando chamados...</option>
-        </select>
+        <label>Chamado relacionado</label>
+        <select id="selChamado"><option value="">Carregando chamados...</option></select>
+        <p class="form-hint">Selecione o chamado para vincular o pedido de material.</p>
       </div>
       <div class="form-group">
         <label>Descrição do material</label>
@@ -30,7 +33,7 @@ export const prerender = false;
         <label>Valor estimado (R$)</label>
         <input type="number" id="valorMat" min="0.01" step="0.01" placeholder="0,00">
       </div>
-      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
         <button class="btn btn-outline" id="btnCancelar">Cancelar</button>
         <button class="btn btn-primary" id="btnSubmit">Solicitar</button>
       </div>
@@ -39,12 +42,18 @@ export const prerender = false;
 </Portal>
 
 <style>
-  .mat-card { background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;margin-bottom:12px; }
+  .mat-card {
+    background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:20px 24px; margin-bottom:12px;
+    box-shadow:var(--shadow-sm); transition:var(--transition);
+  }
+  .mat-card:hover { box-shadow:var(--shadow); }
   .mat-card.pendente { border-left:4px solid #F59E0B; }
-  .mat-header { display:flex;align-items:flex-start;justify-content:space-between;gap:12px; }
-  .mat-title { font-weight:700;font-size:15px;margin-bottom:4px; }
-  .mat-sub { font-size:13px;color:#5B5F6B; }
-  .mat-valor { font-family:'Montserrat',sans-serif;font-weight:800;font-size:20px;color:#C41E3A; }
+  .mat-header { display:flex;align-items:flex-start;justify-content:space-between;gap:16px; }
+  .mat-title  { font-weight:700;font-size:15px;margin-bottom:5px; }
+  .mat-meta   { font-size:12.5px;color:#5B5F6B;display:flex;flex-wrap:wrap;gap:6px;align-items:center; }
+  .mat-sep    { color:#D1D5DB; }
+  .mat-valor  { font-family:'Montserrat',sans-serif;font-weight:800;font-size:22px;color:#C41E3A;text-align:right; }
 </style>
 
 <script>
@@ -66,26 +75,33 @@ export const prerender = false;
   function render() {
     const wrap = document.getElementById("matWrap");
     if (!allMat.length) {
-      wrap.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:#9CA3AF">Nenhuma solicitação de material encontrada.</div>';
+      wrap.innerHTML = `<div class="card"><div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <strong>Nenhuma solicitação de material</strong>
+        <p>Use o botão acima para solicitar um material para um atendimento.</p>
+      </div></div>`;
       return;
     }
     wrap.innerHTML = allMat.map(m => `
       <div class="mat-card ${m.status === 'pendente_aprovacao' ? 'pendente' : ''}">
         <div class="mat-header">
-          <div>
+          <div style="flex:1;min-width:0">
             <div class="mat-title">${m.descricao}</div>
-            <div class="mat-sub">
-              Cliente: <strong>${m.manut_clientes?.nome || "—"}</strong> &nbsp;|&nbsp;
-              Loja: <strong>${m.manut_lojas?.nome || "—"}</strong> &nbsp;|&nbsp;
-              ${fmtDate(m.created_at)}
+            <div class="mat-meta">
+              <span>🏪 ${m.manut_lojas?.nome || "—"}</span>
+              <span class="mat-sep">·</span>
+              <span>👤 ${m.manut_clientes?.nome || "—"}</span>
+              <span class="mat-sep">·</span>
+              <span>${fmtDate(m.created_at)}</span>
+              <span class="mat-sep">·</span>
+              ${badge(m.status)}
             </div>
           </div>
-          <div style="text-align:right">
+          <div>
             <div class="mat-valor">${fmt(m.valor)}</div>
-            <div style="margin-top:4px">${badge(m.status)}</div>
           </div>
         </div>
-        ${m.comprovante_url ? `<div style="margin-top:10px"><a href="${m.comprovante_url}" target="_blank" class="btn btn-outline btn-sm">📎 Ver comprovante</a></div>` : ""}
+        ${m.comprovante_url ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-light)"><a href="${m.comprovante_url}" target="_blank" class="btn btn-outline btn-sm">📎 Ver comprovante de pagamento</a></div>` : ""}
       </div>
     `).join("");
   }
@@ -93,7 +109,7 @@ export const prerender = false;
   async function loadChamados() {
     try {
       const res = await fetch("/api/manut/tecnico/chamados", { headers: { "x-tecnico-auth": token } });
-      chamados = await res.json();
+      chamados = res.ok ? await res.json() : [];
     } catch {}
   }
 
@@ -101,13 +117,17 @@ export const prerender = false;
     document.getElementById("alertNovo").style.display = "none";
     if (!chamados.length) await loadChamados();
     const sel = document.getElementById("selChamado");
-    sel.innerHTML = '<option value="">Sem chamado relacionado</option>' +
-      chamados.map(c => `<option value="${c.id}" data-loja="${c.loja_id||''}" data-cli="${c.cliente_id||''}">${c.manut_lojas?.nome || c.id.slice(-6)} — ${c.tipo}</option>`).join("");
+    sel.innerHTML = chamados.length
+      ? '<option value="">Selecione o chamado...</option>' + chamados.map(c => `<option value="${c.id}" data-loja="${c.loja_id||''}" data-cli="${c.cliente_id||''}">${c.manut_lojas?.nome || "Loja"} — ${c.tipo}</option>`).join("")
+      : '<option value="">Nenhum chamado ativo</option>';
     document.getElementById("descMat").value = "";
     document.getElementById("valorMat").value = "";
     document.getElementById("modalNovo").classList.add("open");
   };
-  document.getElementById("btnCancelar").onclick = () => document.getElementById("modalNovo").classList.remove("open");
+
+  function fecharModal() { document.getElementById("modalNovo").classList.remove("open"); }
+  document.getElementById("btnCancelar").onclick = fecharModal;
+  document.getElementById("btnFecharNovo").onclick = fecharModal;
 
   document.getElementById("btnSubmit").onclick = async () => {
     const alertEl = document.getElementById("alertNovo");
@@ -117,17 +137,10 @@ export const prerender = false;
     const descricao = document.getElementById("descMat").value.trim();
     const valor = parseFloat(document.getElementById("valorMat").value);
 
-    if (!descricao) { alertEl.textContent = "Informe a descrição do material."; alertEl.style.display = ""; return; }
+    if (!sel.value)  { alertEl.textContent = "Selecione o chamado."; alertEl.style.display = ""; return; }
+    if (!chamadoSel) { alertEl.textContent = "Chamado inválido."; alertEl.style.display = ""; return; }
+    if (!descricao)  { alertEl.textContent = "Informe a descrição do material."; alertEl.style.display = ""; return; }
     if (!valor || valor <= 0) { alertEl.textContent = "Informe um valor válido."; alertEl.style.display = ""; return; }
-
-    // Se não tem chamado selecionado, precisamos de loja/cliente — mas simplificamos: obrigatório para solicitação avulsa
-    let loja_id = chamadoSel?.loja_id || null;
-    let cliente_id = chamadoSel?.cliente_id || null;
-    if (!loja_id || !cliente_id) {
-      alertEl.textContent = "Selecione um chamado para vincular o material.";
-      alertEl.style.display = "";
-      return;
-    }
 
     const btn = document.getElementById("btnSubmit");
     btn.disabled = true; btn.textContent = "Enviando...";
@@ -135,13 +148,14 @@ export const prerender = false;
       const res = await fetch("/api/manut/tecnico/materiais", {
         method: "POST",
         headers: { "content-type":"application/json","x-tecnico-auth":token },
-        body: JSON.stringify({ chamado_id: sel.value || null, loja_id, cliente_id, descricao, valor }),
+        body: JSON.stringify({ chamado_id: chamadoSel.id, loja_id: chamadoSel.loja_id, cliente_id: chamadoSel.cliente_id, descricao, valor }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       allMat.unshift({ ...data, manut_lojas: chamadoSel?.manut_lojas, manut_clientes: { nome: "" } });
-      document.getElementById("modalNovo").classList.remove("open");
+      fecharModal();
       render();
+      window.toast?.("Material solicitado! Aguardando aprovação do cliente.", "success");
     } catch (err) {
       alertEl.textContent = err.message; alertEl.style.display = "";
     } finally {
@@ -158,8 +172,9 @@ export const prerender = false;
       document.getElementById("matWrap").style.display = "";
       render();
     } catch {
-      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
   }
   load();
+  window.addEventListener("portal:refresh", load);
 </script>

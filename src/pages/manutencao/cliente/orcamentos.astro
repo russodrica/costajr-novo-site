@@ -3,13 +3,17 @@ import Portal from "~/layouts/Portal.astro";
 export const prerender = false;
 ---
 <Portal title="Orçamentos" tipo="cliente" activePage="orcamentos">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
-    <p style="margin:0;font-size:14px;color:#5B5F6B">Solicitações de orçamento para serviços fora do contrato.</p>
-    <button class="btn btn-primary" id="btnNovo">+ Solicitar Orçamento</button>
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Solicite orçamentos para serviços fora do contrato de manutenção.</p>
+    <button class="btn btn-primary" id="btnNovo">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Solicitar Orçamento
+    </button>
   </div>
 
-  <div id="loadingState" class="loading">Carregando orçamentos...</div>
-  <div id="tableWrap" style="display:none" class="card">
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando orçamentos...</div>
+
+  <div class="card" id="tableWrap" style="display:none">
     <div class="table-wrap">
       <table>
         <thead>
@@ -25,26 +29,31 @@ export const prerender = false;
         <tbody id="tbody"></tbody>
       </table>
     </div>
-    <div id="emptyMsg" style="display:none;text-align:center;padding:32px;color:#9CA3AF;font-size:14px">Nenhum orçamento encontrado.</div>
+    <div id="emptyMsg" style="display:none">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <strong>Nenhum orçamento ainda</strong>
+        <p>Solicite um orçamento para serviços extras.</p>
+      </div>
+    </div>
   </div>
 
-  <!-- Modal novo orçamento -->
+  <!-- Modal novo -->
   <div class="modal-bg" id="modalNovo">
     <div class="modal">
+      <button class="modal-close" onclick="document.getElementById('modalNovo').classList.remove('open')">×</button>
       <h2>Solicitar Orçamento</h2>
       <div id="alertNovo" class="alert alert-error" style="display:none"></div>
       <div class="form-group">
         <label>Loja</label>
-        <select id="selLoja">
-          <option value="">Carregando lojas...</option>
-        </select>
+        <select id="selLoja"><option value="">Carregando lojas...</option></select>
       </div>
       <div class="form-group">
         <label>Descrição do serviço solicitado</label>
-        <textarea id="descSol" placeholder="Descreva o serviço que você precisa..."></textarea>
+        <textarea id="descSol" placeholder="Descreva o serviço que você precisa, com o máximo de detalhes..."></textarea>
       </div>
-      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
-        <button class="btn btn-outline" id="btnCancelarNovo">Cancelar</button>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+        <button class="btn btn-outline" onclick="document.getElementById('modalNovo').classList.remove('open')">Cancelar</button>
         <button class="btn btn-primary" id="btnSubmitNovo">Solicitar</button>
       </div>
     </div>
@@ -53,25 +62,26 @@ export const prerender = false;
   <!-- Modal resposta -->
   <div class="modal-bg" id="modalResp">
     <div class="modal">
-      <h2 id="modalRespTitulo">Responder Orçamento</h2>
+      <button class="modal-close" id="btnFecharResp">×</button>
+      <h2>Responder Orçamento</h2>
       <div id="alertResp" class="alert alert-error" style="display:none"></div>
       <div id="modalRespBody"></div>
-      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
         <button class="btn btn-outline" id="btnCancelarResp">Fechar</button>
         <button class="btn btn-outline" id="btnRejeitar" style="border-color:#B91C1C;color:#B91C1C">Rejeitar</button>
-        <button class="btn btn-primary" id="btnAprovar">Aprovar</button>
+        <button class="btn btn-primary" id="btnAprovar">✓ Aprovar</button>
       </div>
     </div>
   </div>
 </Portal>
 
 <style>
-  .status-pill { display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;text-transform:uppercase }
+  .status-pill { display:inline-block;padding:3px 10px;border-radius:100px;font-size:10.5px;font-weight:700;text-transform:uppercase;white-space:nowrap }
   .status-aguardando_proposta { background:#EFF6FF;color:#1D4ED8 }
-  .status-proposta_enviada { background:#FFF7ED;color:#C2410C }
-  .status-aprovado { background:#F0FDF4;color:#15803D }
-  .status-rejeitado { background:#F9FAFB;color:#6B7280 }
-  .status-cancelado { background:#FEF2F2;color:#B91C1C }
+  .status-proposta_enviada    { background:#FFF7ED;color:#C2410C }
+  .status-aprovado            { background:#F0FDF4;color:#15803D }
+  .status-rejeitado           { background:#F3F4F6;color:#6B7280 }
+  .status-cancelado           { background:#FEF2F2;color:#B91C1C }
 </style>
 
 <script>
@@ -83,10 +93,7 @@ export const prerender = false;
   let lojas = [];
   let orcAtivo = null;
 
-  function statusLabel(s) {
-    const m = { aguardando_proposta:"Aguard. proposta", proposta_enviada:"Proposta enviada", aprovado:"Aprovado", rejeitado:"Rejeitado", cancelado:"Cancelado" };
-    return m[s] || s;
-  }
+  const statusLabel = { aguardando_proposta:"Aguard. proposta", proposta_enviada:"Proposta enviada", aprovado:"Aprovado", rejeitado:"Rejeitado", cancelado:"Cancelado" };
   function fmt(v) { return v != null ? "R$ " + Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2}) : "—"; }
   function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
 
@@ -97,12 +104,12 @@ export const prerender = false;
     empty.style.display = "none";
     tbody.innerHTML = allOrc.map(o => `
       <tr>
-        <td>${fmtDate(o.created_at)}</td>
-        <td>${o.manut_lojas?.nome || "—"}</td>
-        <td style="max-width:220px;word-break:break-word;font-size:13px">${o.descricao_solicitacao}</td>
-        <td>${fmt(o.valor)}</td>
-        <td><span class="status-pill status-${o.status}">${statusLabel(o.status)}</span></td>
-        <td>
+        <td style="color:#9CA3AF;font-size:12.5px">${fmtDate(o.created_at)}</td>
+        <td style="font-weight:600">${o.manut_lojas?.nome || "—"}</td>
+        <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;color:#5B5F6B">${o.descricao_solicitacao}</td>
+        <td style="font-weight:700;font-family:'Montserrat',sans-serif">${fmt(o.valor)}</td>
+        <td><span class="status-pill status-${o.status}">${statusLabel[o.status] || o.status}</span></td>
+        <td style="white-space:nowrap">
           ${o.proposta_pdf_url ? `<a href="${o.proposta_pdf_url}" target="_blank" class="btn btn-outline btn-sm" style="margin-right:6px">📄 PDF</a>` : ""}
           ${o.status === "proposta_enviada" ? `<button class="btn btn-primary btn-sm" onclick="abrirResposta('${o.id}')">Responder</button>` : ""}
         </td>
@@ -115,13 +122,16 @@ export const prerender = false;
     if (!orcAtivo) return;
     document.getElementById("alertResp").style.display = "none";
     document.getElementById("modalRespBody").innerHTML = `
-      <p style="font-size:14px;color:#5B5F6B;margin:0 0 12px"><strong>Loja:</strong> ${orcAtivo.manut_lojas?.nome || "—"}</p>
-      <p style="font-size:14px;color:#5B5F6B;margin:0 0 12px"><strong>Serviço:</strong> ${orcAtivo.descricao_solicitacao}</p>
-      <p style="font-size:14px;color:#5B5F6B;margin:0 0 16px"><strong>Valor proposto:</strong> ${fmt(orcAtivo.valor)}</p>
-      ${orcAtivo.proposta_pdf_url ? `<a href="${orcAtivo.proposta_pdf_url}" target="_blank" class="btn btn-outline btn-sm" style="margin-bottom:16px">📄 Ver proposta PDF</a>` : ""}
+      <div style="background:#F9FAFB;border-radius:8px;padding:16px;margin-bottom:16px">
+        <div style="font-size:12px;color:#9CA3AF;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Resumo do orçamento</div>
+        <div style="font-size:14px;margin-bottom:4px"><strong>Loja:</strong> ${orcAtivo.manut_lojas?.nome || "—"}</div>
+        <div style="font-size:14px;margin-bottom:4px"><strong>Serviço:</strong> ${orcAtivo.descricao_solicitacao}</div>
+        <div style="font-size:18px;font-weight:800;font-family:'Montserrat',sans-serif;color:#C41E3A;margin-top:8px">${fmt(orcAtivo.valor)}</div>
+      </div>
+      ${orcAtivo.proposta_pdf_url ? `<a href="${orcAtivo.proposta_pdf_url}" target="_blank" class="btn btn-outline btn-sm" style="margin-bottom:16px">📄 Ver proposta completa em PDF</a>` : ""}
       <div class="form-group">
-        <label>Comentário (opcional)</label>
-        <textarea id="comentarioResp" placeholder="Informe observações ou motivo da rejeição..."></textarea>
+        <label>Comentário <span style="font-weight:400;color:#9CA3AF">(opcional)</span></label>
+        <textarea id="comentarioResp" placeholder="Observações ou motivo da decisão..."></textarea>
       </div>
     `;
     document.getElementById("modalResp").classList.add("open");
@@ -132,6 +142,8 @@ export const prerender = false;
     const alertEl = document.getElementById("alertResp");
     alertEl.style.display = "none";
     const comentario = document.getElementById("comentarioResp")?.value || "";
+    const btn = acao === "aprovar" ? document.getElementById("btnAprovar") : document.getElementById("btnRejeitar");
+    btn.disabled = true;
     try {
       const res = await fetch("/api/manut/cliente/orcamentos", {
         method: "PUT",
@@ -145,23 +157,21 @@ export const prerender = false;
       document.getElementById("modalResp").classList.remove("open");
       orcAtivo = null;
       render();
+      window.toast?.(acao === "aprovar" ? "Orçamento aprovado!" : "Orçamento rejeitado.", acao === "aprovar" ? "success" : "info");
     } catch (err) {
       alertEl.textContent = err.message; alertEl.style.display = "";
-    }
+    } finally { btn.disabled = false; }
   }
 
   document.getElementById("btnAprovar").onclick = () => responder("aprovar");
   document.getElementById("btnRejeitar").onclick = () => responder("rejeitar");
   document.getElementById("btnCancelarResp").onclick = () => { document.getElementById("modalResp").classList.remove("open"); orcAtivo = null; };
+  document.getElementById("btnFecharResp").onclick  = () => { document.getElementById("modalResp").classList.remove("open"); orcAtivo = null; };
 
-  // Novo orçamento
   document.getElementById("btnNovo").onclick = async () => {
     document.getElementById("alertNovo").style.display = "none";
     if (!lojas.length) {
-      try {
-        const r = await fetch("/api/manut/cliente/lojas", { headers: { "x-cliente-auth": token } });
-        lojas = await r.json();
-      } catch {}
+      try { const r = await fetch("/api/manut/cliente/lojas",{ headers:{"x-cliente-auth":token} }); lojas = await r.json(); } catch {}
     }
     const sel = document.getElementById("selLoja");
     sel.innerHTML = lojas.length
@@ -170,7 +180,7 @@ export const prerender = false;
     document.getElementById("descSol").value = "";
     document.getElementById("modalNovo").classList.add("open");
   };
-  document.getElementById("btnCancelarNovo").onclick = () => document.getElementById("modalNovo").classList.remove("open");
+
   document.getElementById("btnSubmitNovo").onclick = async () => {
     const alertEl = document.getElementById("alertNovo");
     alertEl.style.display = "none";
@@ -190,6 +200,7 @@ export const prerender = false;
       allOrc.unshift({ ...data, manut_lojas: lojas.find(l => l.id === loja_id) });
       document.getElementById("modalNovo").classList.remove("open");
       render();
+      window.toast?.("Orçamento solicitado com sucesso!", "success");
     } catch (err) {
       alertEl.textContent = err.message; alertEl.style.display = "";
     } finally {
@@ -206,8 +217,9 @@ export const prerender = false;
       document.getElementById("tableWrap").style.display = "";
       render();
     } catch {
-      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
   }
   load();
+  window.addEventListener("portal:refresh", load);
 </script>

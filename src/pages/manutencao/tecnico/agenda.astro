@@ -3,28 +3,39 @@ import Portal from "~/layouts/Portal.astro";
 export const prerender = false;
 ---
 <Portal title="Agenda" tipo="tecnico" activePage="agenda">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
-    <p style="margin:0;font-size:14px;color:#5B5F6B">Suas preventivas agendadas.</p>
-    <div style="display:flex;align-items:center;gap:8px">
-      <button class="btn btn-outline btn-sm" id="btnMesAnterior">‹ Mês anterior</button>
-      <span id="labelMes" style="font-family:'Montserrat',sans-serif;font-weight:700;min-width:140px;text-align:center"></span>
-      <button class="btn btn-outline btn-sm" id="btnProxMes">Próx. mês ›</button>
+  <div class="section-header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn btn-outline btn-sm" id="btnMesAnterior">‹</button>
+      <span id="labelMes" style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:16px;min-width:160px;text-align:center"></span>
+      <button class="btn btn-outline btn-sm" id="btnProxMes">›</button>
     </div>
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Suas preventivas agendadas.</p>
   </div>
 
-  <div id="loadingState" class="loading">Carregando agenda...</div>
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando agenda...</div>
   <div id="agendaWrap" style="display:none"></div>
 </Portal>
 
 <style>
-  .prev-card { background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;margin-bottom:12px;display:flex;align-items:flex-start;gap:16px; }
-  .prev-date { background:#C41E3A;color:#fff;border-radius:8px;padding:8px 12px;text-align:center;min-width:60px;flex-shrink:0; }
-  .prev-date .dia { font-family:'Montserrat',sans-serif;font-weight:800;font-size:24px;line-height:1; }
-  .prev-date .mes { font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-top:2px; }
-  .prev-body { flex:1; }
-  .prev-title { font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px;margin-bottom:4px; }
-  .prev-sub { font-size:13px;color:#5B5F6B; }
-  .prev-addr { font-size:12px;color:#9CA3AF;margin-top:4px; }
+  .prev-card {
+    background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:18px 22px; margin-bottom:10px;
+    display:flex; align-items:flex-start; gap:18px;
+    box-shadow:var(--shadow-sm); transition:var(--transition);
+  }
+  .prev-card:hover { box-shadow:var(--shadow); transform:translateY(-1px); }
+  .prev-date {
+    background:var(--brand); color:#fff; border-radius:10px;
+    padding:10px 14px; text-align:center; min-width:64px; flex-shrink:0;
+    box-shadow:0 4px 8px rgba(196,30,58,.3);
+  }
+  .prev-date .dia { font-family:'Montserrat',sans-serif;font-weight:800;font-size:26px;line-height:1; }
+  .prev-date .mes { font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-top:3px;opacity:.85; }
+  .prev-body { flex:1;min-width:0; }
+  .prev-title { font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px;margin-bottom:5px; }
+  .prev-meta  { font-size:12.5px;color:#5B5F6B;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px; }
+  .prev-sep   { color:#D1D5DB; }
+  .prev-addr  { font-size:12px;color:#9CA3AF;margin-top:4px; }
 </style>
 
 <script>
@@ -32,28 +43,26 @@ export const prerender = false;
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) window.location.replace("/manutencao/tecnico/login");
 
-  const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const meses      = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
   const mesesCurtos = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
 
   let hoje = new Date();
-  let ano = hoje.getFullYear();
-  let mes = hoje.getMonth(); // 0-based
-
-  function fmtMes(m, a) { return meses[m] + " " + a; }
+  let ano  = hoje.getFullYear();
+  let mes  = hoje.getMonth();
 
   function badge(status) {
     const m = { agendada:"badge-aberto", realizada:"badge-concluido", cancelada:"badge-cancelado" };
     const l = { agendada:"Agendada", realizada:"Realizada", cancelada:"Cancelada" };
-    return `<span class="badge ${m[status] || ""}">${l[status] || status}</span>`;
+    return `<span class="badge ${m[status]||""}">${l[status]||status}</span>`;
   }
 
   async function load() {
-    document.getElementById("loadingState").style.display = "";
+    document.getElementById("loadingState").style.display = "flex";
     document.getElementById("agendaWrap").style.display = "none";
-    document.getElementById("labelMes").textContent = fmtMes(mes, ano);
+    document.getElementById("labelMes").textContent = meses[mes] + " " + ano;
 
-    const pad = n => String(n).padStart(2, "0");
-    const mesStr = `${ano}-${pad(mes + 1)}`;
+    const pad = n => String(n).padStart(2,"0");
+    const mesStr = `${ano}-${pad(mes+1)}`;
 
     try {
       const res = await fetch(`/api/manut/tecnico/agenda?mes=${mesStr}`, { headers: { "x-tecnico-auth": token } });
@@ -65,7 +74,11 @@ export const prerender = false;
       wrap.style.display = "";
 
       if (!prev.length) {
-        wrap.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:#9CA3AF">Nenhuma preventiva agendada para este mês.</div>';
+        wrap.innerHTML = `<div class="card"><div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <strong>Nenhuma preventiva em ${meses[mes]}</strong>
+          <p>Nenhuma manutenção preventiva agendada para este mês.</p>
+        </div></div>`;
         return;
       }
 
@@ -79,26 +92,25 @@ export const prerender = false;
             </div>
             <div class="prev-body">
               <div class="prev-title">${p.manut_lojas?.nome || "—"}</div>
-              <div class="prev-sub">${p.manut_clientes?.nome || "—"} &nbsp; ${badge(p.status)}</div>
-              <div class="prev-addr">${[p.manut_lojas?.endereco, p.manut_lojas?.cidade, p.manut_lojas?.uf].filter(Boolean).join(", ")}</div>
-              ${p.observacoes ? `<div style="font-size:13px;color:#5B5F6B;margin-top:6px;font-style:italic">${p.observacoes}</div>` : ""}
+              <div class="prev-meta">
+                <span>👤 ${p.manut_clientes?.nome || "—"}</span>
+                <span class="prev-sep">·</span>
+                ${badge(p.status)}
+              </div>
+              <div class="prev-addr">📍 ${[p.manut_lojas?.endereco, p.manut_lojas?.cidade, p.manut_lojas?.uf].filter(Boolean).join(", ")}</div>
+              ${p.observacoes ? `<div style="font-size:12.5px;color:#5B5F6B;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-light);font-style:italic">💬 ${p.observacoes}</div>` : ""}
             </div>
           </div>
         `;
       }).join("");
     } catch {
-      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
   }
 
-  document.getElementById("btnMesAnterior").onclick = () => {
-    mes--; if (mes < 0) { mes = 11; ano--; }
-    load();
-  };
-  document.getElementById("btnProxMes").onclick = () => {
-    mes++; if (mes > 11) { mes = 0; ano++; }
-    load();
-  };
+  document.getElementById("btnMesAnterior").onclick = () => { mes--; if (mes < 0) { mes=11; ano--; } load(); };
+  document.getElementById("btnProxMes").onclick     = () => { mes++; if (mes > 11) { mes=0;  ano++; } load(); };
 
   load();
+  window.addEventListener("portal:refresh", load);
 </script>
