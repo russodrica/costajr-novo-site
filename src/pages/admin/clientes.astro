@@ -54,7 +54,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
                   {c.status === "pendente" && <button class="btn btn-success btn-sm" onclick={`ativar('${c.id}')`}>Ativar</button>}
                   {c.status === "ativo" && <button class="btn btn-warning btn-sm" onclick={`inadimplir('${c.id}')`}>Inadimplir</button>}
                   {c.status !== "cancelado" && <button class="btn btn-danger btn-sm" onclick={`cancelar('${c.id}')`}>Cancelar</button>}
-                  <button class="btn btn-danger btn-sm" data-id={c.id} data-nome={c.nome} onclick="excluirCliente(this)">🗑 Excluir</button>
+                  <button class="btn btn-danger btn-sm" data-action="excluir" data-id={c.id} data-nome={c.nome}>🗑 Excluir</button>
                 </div>
               </td>
             </tr>
@@ -123,14 +123,16 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       if (!confirm("Cancelar contrato deste cliente?")) return;
       await patchCliente(id, { status: "cancelado" });
     }
-    async function excluirCliente(btn) {
-      const id = btn.dataset.id;
-      const nome = btn.dataset.nome;
-      if (!confirm(`Excluir permanentemente o cliente "${nome}"? Esta ação não pode ser desfeita.`)) return;
+    document.addEventListener("click", async (e) => {
+      const btn = (e.target as Element).closest<HTMLElement>("[data-action='excluir']");
+      if (!btn) return;
+      const id = btn.dataset.id!;
+      const nome = btn.dataset.nome!;
+      if (!confirm(`Excluir permanentemente "${nome}"? Esta ação não pode ser desfeita.`)) return;
       const res = await fetch(`/api/admin/clientes/${id}`, { method: "DELETE" });
       if (res.ok) window.location.reload();
       else alert("Erro ao excluir cliente");
-    }
+    });
     async function patchCliente(id: string, body: object) {
       const res = await fetch(`/api/admin/clientes/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (res.ok) window.location.reload();
