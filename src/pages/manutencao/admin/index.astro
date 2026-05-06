@@ -442,8 +442,9 @@ export const prerender = false;
 
       <!-- Tab: Preventivas -->
       <div class="mtab-panel" id="mtab-preventivas" style="display:none">
-        <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
-          <button class="btn btn-primary btn-sm" id="btnAgendarPreventiva">+ Agendar Preventiva</button>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" id="btnGerarAutomaticas">⟳ Gerar automaticamente</button>
+          <button class="btn btn-primary btn-sm" id="btnAgendarPreventiva">+ Agendar avulsa</button>
         </div>
         <div id="cliPrevLoading" class="loading">Carregando...</div>
         <div id="cliPrevList" style="display:none"></div>
@@ -979,6 +980,26 @@ export const prerender = false;
   }
 
   // ─── Tabs preventivas / chamados / orçamentos do cliente ──────────
+  document.getElementById("btnGerarAutomaticas").addEventListener("click",async()=>{
+    if(!clienteDetail)return;
+    const c=allClientes.find(x=>x.id===clienteAtualId);
+    const visitas=c?.visitas_contratadas||1;
+    const msg=`Gerar ${visitas} preventiva(s) automática(s) para este cliente?\n\n• 1ª preventiva: 10 dias a partir de hoje\n• Próximas: a cada 30 dias\n\nObs: só gera se não houver preventivas cadastradas.`;
+    if(!confirm(msg))return;
+    const btn=document.getElementById("btnGerarAutomaticas");
+    btn.disabled=true;btn.textContent="Gerando...";
+    try{
+      const res=await api(`/api/manut/admin/clientes/${clienteAtualId}/preventivas`,{method:"POST",body:JSON.stringify({action:"gerar_automaticas",visitas})});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error);
+      if(data.geradas===0){window.toast?.("Já existem preventivas cadastradas para este cliente.","info");return;}
+      clienteDetail.preventivas=([...(data.preventivas||[]),...(clienteDetail.preventivas||[])]);
+      renderCliPreventivas();
+      window.toast?.(`${data.geradas} preventiva(s) gerada(s) com sucesso!`,"success");
+    }catch(e){window.toast?.("Erro: "+e.message,"error");}
+    finally{btn.disabled=false;btn.textContent="⟳ Gerar automaticamente";}
+  });
+
   document.getElementById("btnAgendarPreventiva").addEventListener("click",()=>{
     if(!clienteDetail){alert("Aguarde o carregamento dos dados do cliente.");return;}
     // Popula técnicos no select
@@ -1016,30 +1037,57 @@ export const prerender = false;
     const el=document.getElementById("cliPrevList");
     document.getElementById("cliPrevLoading").style.display="none";
     el.style.display="";
-    const prevs=clienteDetail?.preventivas||[];
-    if(!prevs.length){el.innerHTML='<div class="empty-state" style="padding:20px"><strong>Nenhuma preventiva</strong><p>Use o botão + para agendar.</p></div>';return;}
-    el.innerHTML='<div class="table-wrap"><table><thead><tr><th>Data</th><th>Loja</th><th>Técnico</th><th>Status</th><th>Ações</th></tr></thead><tbody>'+
-      prevs.map(p=>`<tr>
-        <td><strong>${fmtDate(p.data_agendada)}</strong></td>
-        <td style="font-size:13px">${p.manut_lojas?.nome||"—"}</td>
-        <td style="font-size:13px;color:#5B5F6B">${p.manut_tecnicos?.nome||'<span style="color:#D1D5DB">A definir</span>'}</td>
-        <td>${badge(p.status)}</td>
-        <td><button class="btn btn-outline btn-sm" onclick="editarDataPreventiva('${p.id}','${p.data_agendada}')">✎ Data</button></td>
-      </tr>`).join("")+
+    const prevs=(clienteDetail?.preventivas||[]).slice().sort((a,b)=>a.data_agendada<b.data_agendada?-1:1);
+    if(!prevs.length){
+      el.innerHTML='<div class="empty-state" style="padding:24px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><strong>Nenhuma preventiva agendada</strong><p>Use "Gerar automaticamente" ou "+ Agendar avulsa".</p></div>';
+      return;
+    }
+    const tecOpts='<option value="">A definir</option>'+tecnicos.map(t=>`<option value="${t.id}">${t.nome}</option>`).join("");
+    const hoje=new Date().toISOString().slice(0,10);
+    el.innerHTML='<div class="table-wrap"><table><thead><tr><th>#</th><th>Data agendada</th><th>Loja</th><th>Técnico</th><th>Status</th><th style="min-width:120px">Ações</th></tr></thead><tbody>'+
+      prevs.map((p,i)=>{
+        const vencida=p.status==="agendada"&&p.data_agendada<hoje;
+        return`<tr style="${vencida?"background:#FEF2F2":""}">
+          <td style="color:#9CA3AF;font-weight:700;font-size:13px">${i+1}</td>
+          <td>
+            <input type="date" value="${p.data_agendada}" style="border:1px solid ${vencida?"#FCA5A5":"#E5E7EB"};border-radius:5px;padding:4px 8px;font-size:13px;font-family:inherit"
+              onchange="salvarCampoPreventiva('${p.id}','data_agendada',this.value)">
+            ${vencida?'<div style="font-size:10px;color:#EF4444;font-weight:600;margin-top:2px">Vencida</div>':""}
+          </td>
+          <td style="font-size:13px;color:#5B5F6B">${p.manut_lojas?.nome||'<span style="color:#D1D5DB">—</span>'}</td>
+          <td>
+            <select style="border:1px solid #E5E7EB;border-radius:5px;padding:4px 8px;font-size:12.5px;font-family:inherit;max-width:140px"
+              onchange="salvarCampoPreventiva('${p.id}','tecnico_id',this.value||null)">
+              ${tecOpts.replace(`value="${p.manut_tecnicos?.id||""}"`,`value="${p.manut_tecnicos?.id||""}" selected`)}
+            </select>
+          </td>
+          <td>${badge(p.status)}</td>
+          <td>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              ${p.status==="agendada"?`<button class="btn btn-outline btn-sm" style="font-size:11px;color:#15803D;border-color:#BBF7D0" onclick="salvarCampoPreventiva('${p.id}','status','realizada')">✓ Realizada</button>`:""}
+              ${p.status==="agendada"?`<button class="btn btn-outline btn-sm" style="font-size:11px;color:#B91C1C;border-color:#FECACA" onclick="salvarCampoPreventiva('${p.id}','status','cancelada')">✕</button>`:""}
+            </div>
+          </td>
+        </tr>`;
+      }).join("")+
     '</tbody></table></div>';
   }
 
-  window.editarDataPreventiva=async function(prevId,dataAtual){
-    const novaData=prompt("Nova data (YYYY-MM-DD):",dataAtual);
-    if(!novaData)return;
+  window.salvarCampoPreventiva=async function(prevId,campo,valor){
     try{
-      const res=await api(`/api/manut/admin/clientes/${clienteAtualId}/preventivas`,{method:"PUT",body:JSON.stringify({prev_id:prevId,data_agendada:novaData})});
+      const res=await api(`/api/manut/admin/clientes/${clienteAtualId}/preventivas`,{method:"PUT",body:JSON.stringify({prev_id:prevId,[campo]:valor})});
       if(!res.ok){const d=await res.json();throw new Error(d.error);}
       const idx=clienteDetail.preventivas.findIndex(p=>p.id===prevId);
-      if(idx>=0)clienteDetail.preventivas[idx].data_agendada=novaData;
-      renderCliPreventivas();
-      window.toast?.("Data atualizada!","success");
-    }catch(e){alert("Erro: "+e.message);}
+      if(idx>=0){
+        clienteDetail.preventivas[idx][campo]=valor;
+        if(campo==="tecnico_id"){
+          const tec=tecnicos.find(t=>t.id===valor);
+          clienteDetail.preventivas[idx].manut_tecnicos=tec?{id:tec.id,nome:tec.nome}:null;
+        }
+      }
+      if(campo==="status")renderCliPreventivas();
+      window.toast?.("Salvo!","success");
+    }catch(e){window.toast?.("Erro: "+e.message,"error");}
   };
 
   function renderCliChamados(){

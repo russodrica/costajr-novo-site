@@ -4,6 +4,7 @@ import { supabaseAdmin } from "~/lib/supabase";
 
 export const prerender = false;
 
+// POST — agendar uma preventiva avulsa OU gerar automaticamente o ciclo completo
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     await requireAdmin(request);
@@ -11,14 +12,52 @@ export const POST: APIRoute = async ({ request, params }) => {
     if (!id) return jsonErr(400, "id obrigatório");
 
     const body = await request.json();
+
+    // ── Geração automática do ciclo ──────────────────────────────
+    if (body.action === "gerar_automaticas") {
+      const db = supabaseAdmin();
+
+      // Busca dados do cliente
+      const { data: cliente } = await db
+        .from("manut_clientes")
+        .select("visitas_contratadas")
+        .eq("id", id)
+        .single();
+
+      const visitas = Math.max(1, Math.min(Number(body.visitas || cliente?.visitas_contratadas || 1), 60));
+      const dataBase = body.data_base ? new Date(body.data_base) : new Date();
+
+      const rows: Record<string, any>[] = [];
+      let data = new Date(dataBase);
+      data.setDate(data.getDate() + 10);
+
+      for (let i = 0; i < visitas; i++) {
+        rows.push({
+          cliente_id: id,
+          status: "agendada",
+          data_agendada: data.toISOString().slice(0, 10),
+        });
+        data = new Date(data);
+        data.setDate(data.getDate() + 30);
+      }
+
+      const { data: created, error } = await db
+        .from("manut_preventivas")
+        .insert(rows)
+        .select("id, data_agendada, status, observacoes, manut_lojas(id, nome), manut_tecnicos(id, nome)");
+      if (error) throw new Error(error.message);
+      return jsonOk({ geradas: created?.length || 0, preventivas: created || [] }, 201);
+    }
+
+    // ── Agendamento avulso ───────────────────────────────────────
     const { loja_id, tecnico_id, data_agendada, observacoes } = body;
-    if (!loja_id || !data_agendada) throw new Error("Loja e data são obrigatórios");
+    if (!data_agendada) throw new Error("Data é obrigatória");
 
     const { data, error } = await supabaseAdmin()
       .from("manut_preventivas")
       .insert({
         cliente_id: id,
-        loja_id,
+        loja_id: loja_id || null,
         tecnico_id: tecnico_id || null,
         data_agendada,
         observacoes: observacoes?.trim() || null,
@@ -33,6 +72,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
 };
 
+// PUT — editar data, técnico, status ou observações de uma preventiva
 export const PUT: APIRoute = async ({ request, params }) => {
   try {
     await requireAdmin(request);
