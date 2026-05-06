@@ -1,0 +1,133 @@
+---
+export const prerender = false;
+import Admin from "~/layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "~/lib/auth";
+import { supabaseAdmin } from "~/lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: kb } = await db
+  .from("portal_kb")
+  .select("*")
+  .order("category")
+  .order("created_at");
+
+function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+---
+<Admin title="Base de Conhecimento" current="portal-kb">
+  <div class="toolbar">
+    <span class="toolbar-title">Base de Conhecimento ({kb?.length ?? 0})</span>
+    <button class="btn btn-primary" onclick="openModal()">+ Nova pergunta</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Pergunta</th><th>Categoria</th><th>Acesso</th><th>Data</th><th>Ações</th></tr></thead>
+        <tbody>
+          {kb?.length ? kb.map((k: any) => (
+            <tr>
+              <td style="max-width:320px">
+                <strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{k.question}</strong>
+                <span style="font-size:12px;color:#888;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{k.answer}</span>
+              </td>
+              <td><span class="badge badge-blue">{k.category}</span></td>
+              <td style="font-size:12px">{(k.access_roles || ["all"]).join(", ")}</td>
+              <td>{fmtDate(k.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button class="btn btn-secondary btn-sm" onclick={`editar(${JSON.stringify(k)})`}>Editar</button>
+                  <button class="btn btn-danger btn-sm" onclick={`excluir('${k.id}')`}>Excluir</button>
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="5" style="text-align:center;color:#999;padding:32px">Nenhum item cadastrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="modal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="modal-title">Nova Pergunta</h2>
+        <button onclick="closeModal()" class="modal-close">✕</button>
+      </div>
+      <input type="hidden" id="edit-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria *</label>
+          <input type="text" id="f-cat" placeholder="ex: onboarding, financeiro, operacional">
+        </div>
+        <div class="form-group">
+          <label>Acesso (roles)</label>
+          <select id="f-roles" multiple style="height:80px">
+            <option value="all" selected>Todos (all)</option>
+            <option value="admin">Admin</option>
+            <option value="coordenador">Coordenador</option>
+            <option value="financeiro">Financeiro</option>
+            <option value="comercial">Comercial</option>
+            <option value="rh">RH</option>
+            <option value="operacional">Operacional</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Pergunta *</label>
+        <input type="text" id="f-question" placeholder="Qual é a pergunta frequente?">
+      </div>
+      <div class="form-group">
+        <label>Resposta *</label>
+        <textarea id="f-answer" rows="5" placeholder="Resposta completa..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvar" onclick="salvar()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openModal(k?: any) {
+      document.getElementById("edit-id")!.value = k?.id || "";
+      (document.getElementById("f-cat") as HTMLInputElement).value = k?.category || "";
+      (document.getElementById("f-question") as HTMLInputElement).value = k?.question || "";
+      (document.getElementById("f-answer") as HTMLTextAreaElement).value = k?.answer || "";
+      document.getElementById("modal-title")!.textContent = k ? "Editar Pergunta" : "Nova Pergunta";
+      document.getElementById("modal")!.style.display = "flex";
+    }
+    function closeModal() { document.getElementById("modal")!.style.display = "none"; }
+    function editar(k: any) { openModal(k); }
+
+    async function salvar() {
+      const id       = (document.getElementById("edit-id") as HTMLInputElement).value;
+      const category = (document.getElementById("f-cat") as HTMLInputElement).value.trim();
+      const question = (document.getElementById("f-question") as HTMLInputElement).value.trim();
+      const answer   = (document.getElementById("f-answer") as HTMLTextAreaElement).value.trim();
+      const sel      = document.getElementById("f-roles") as HTMLSelectElement;
+      const access_roles = Array.from(sel.selectedOptions).map(o => o.value);
+      if (!question || !answer || !category) return alert("Preencha todos os campos obrigatórios.");
+
+      const btn = document.getElementById("btnSalvar") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Salvando...";
+      const method = id ? "PUT" : "POST";
+      const url = id ? `/api/admin/portal/kb/${id}` : "/api/admin/portal/kb";
+      const res = await fetch(url, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify({ question, answer, category, access_roles }) });
+      btn.disabled = false; btn.textContent = "Salvar";
+      if (res.ok) { closeModal(); location.reload(); } else { alert("Erro ao salvar."); }
+    }
+
+    async function excluir(id: string) {
+      if (!confirm("Excluir esta pergunta?")) return;
+      const res = await fetch(`/api/admin/portal/kb/${id}`, { method: "DELETE" });
+      if (res.ok) location.reload(); else alert("Erro ao excluir.");
+    }
+
+    (window as any).openModal = openModal; (window as any).editar = editar;
+    (window as any).closeModal = closeModal; (window as any).salvar = salvar; (window as any).excluir = excluir;
+  </script>
+</Admin>

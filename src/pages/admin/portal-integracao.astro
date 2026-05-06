@@ -1,0 +1,169 @@
+---
+export const prerender = false;
+import Admin from "~/layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "~/lib/auth";
+import { supabaseAdmin } from "~/lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: docs } = await db
+  .from("portal_integration_pdfs")
+  .select("*")
+  .order("setor")
+  .order("ordem");
+
+function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+---
+<Admin title="Docs de Integração" current="portal-integracao">
+  <div class="toolbar">
+    <span class="toolbar-title">Documentos de Integração ({docs?.length ?? 0})</span>
+    <button class="btn btn-primary" onclick="openModal()">+ Novo documento</button>
+  </div>
+
+  <p style="font-size:13px;color:#888;margin-bottom:16px">
+    Manuais, políticas e guias exibidos na aba "Integração / Manual" dentro do módulo Documentos do portal.
+  </p>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Título</th><th>Setor</th><th>Versão</th><th>Acesso</th><th>Publicado</th><th>Atualização</th><th>Ações</th></tr></thead>
+        <tbody>
+          {docs?.length ? docs.map((d: any) => (
+            <tr>
+              <td>
+                <strong>{d.titulo}</strong>
+                {d.url && <a href={d.url} target="_blank" rel="noopener" style="display:block;font-size:11px;color:#C41E3A">Ver documento ↗</a>}
+              </td>
+              <td><span class="badge badge-blue">{d.setor}</span></td>
+              <td>{d.versao || "—"}</td>
+              <td style="font-size:12px">{(d.access_roles || ["all"]).join(", ")}</td>
+              <td><span class={`badge ${d.publicado ? "badge-green" : "badge-gray"}`}>{d.publicado ? "Sim" : "Não"}</span></td>
+              <td>{fmtDate(d.updated_at || d.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button class="btn btn-secondary btn-sm" onclick={`editar(${JSON.stringify(d)})`}>Editar</button>
+                  <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="7" style="text-align:center;color:#999;padding:32px">Nenhum documento cadastrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="modal" class="modal-overlay" style="display:none">
+    <div class="modal-box" style="max-width:600px">
+      <div class="modal-header">
+        <h2 id="modal-title">Novo Documento</h2>
+        <button onclick="closeModal()" class="modal-close">✕</button>
+      </div>
+      <input type="hidden" id="edit-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Setor *</label>
+          <select id="f-setor">
+            <option value="todos">Todos</option>
+            <option value="comercial">Comercial</option>
+            <option value="operacional">Operacional</option>
+            <option value="financeiro">Financeiro</option>
+            <option value="rh">RH</option>
+            <option value="coordenacao">Coordenação</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Versão</label>
+          <input type="text" id="f-versao" placeholder="ex: 1.0, 2024-01">
+        </div>
+        <div class="form-group">
+          <label>Ordem</label>
+          <input type="number" id="f-ordem" value="1" min="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Título *</label>
+        <input type="text" id="f-titulo" placeholder="Nome do documento">
+      </div>
+      <div class="form-group">
+        <label>URL do documento * (Google Drive, link direto, etc.)</label>
+        <input type="url" id="f-url" placeholder="https://...">
+      </div>
+      <div class="form-group">
+        <label>Descrição</label>
+        <textarea id="f-desc" rows="2" placeholder="Breve descrição do conteúdo..."></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Acesso</label>
+          <select id="f-roles" multiple style="height:80px">
+            <option value="all" selected>Todos</option>
+            <option value="admin">Admin</option><option value="coordenador">Coordenador</option>
+            <option value="financeiro">Financeiro</option><option value="comercial">Comercial</option>
+            <option value="rh">RH</option><option value="operacional">Operacional</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Publicado?</label>
+          <select id="f-pub"><option value="true">Sim</option><option value="false">Não</option></select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvar" onclick="salvar()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openModal(d?: any) {
+      document.getElementById("edit-id")!.setAttribute("value", d?.id || "");
+      (document.getElementById("f-setor") as HTMLSelectElement).value = d?.setor || "todos";
+      (document.getElementById("f-versao") as HTMLInputElement).value = d?.versao || "";
+      (document.getElementById("f-ordem") as HTMLInputElement).value = String(d?.ordem ?? 1);
+      (document.getElementById("f-titulo") as HTMLInputElement).value = d?.titulo || "";
+      (document.getElementById("f-url") as HTMLInputElement).value = d?.url || "";
+      (document.getElementById("f-desc") as HTMLTextAreaElement).value = d?.descricao || "";
+      (document.getElementById("f-pub") as HTMLSelectElement).value = d ? String(d.publicado) : "true";
+      document.getElementById("modal-title")!.textContent = d ? "Editar Documento" : "Novo Documento";
+      document.getElementById("modal")!.style.display = "flex";
+    }
+    function closeModal() { document.getElementById("modal")!.style.display = "none"; }
+    function editar(d: any) { openModal(d); }
+
+    async function salvar() {
+      const id = document.getElementById("edit-id")!.getAttribute("value") || "";
+      const titulo = (document.getElementById("f-titulo") as HTMLInputElement).value.trim();
+      const url = (document.getElementById("f-url") as HTMLInputElement).value.trim();
+      const setor = (document.getElementById("f-setor") as HTMLSelectElement).value;
+      const versao = (document.getElementById("f-versao") as HTMLInputElement).value.trim() || null;
+      const ordem = parseInt((document.getElementById("f-ordem") as HTMLInputElement).value) || 1;
+      const descricao = (document.getElementById("f-desc") as HTMLTextAreaElement).value.trim();
+      const publicado = (document.getElementById("f-pub") as HTMLSelectElement).value === "true";
+      const sel = document.getElementById("f-roles") as HTMLSelectElement;
+      const access_roles = Array.from(sel.selectedOptions).map(o => o.value);
+      if (!titulo || !url) return alert("Título e URL são obrigatórios.");
+
+      const btn = document.getElementById("btnSalvar") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Salvando...";
+      const method = id ? "PUT" : "POST";
+      const endpoint = id ? `/api/admin/portal/integracao/${id}` : "/api/admin/portal/integracao";
+      const res = await fetch(endpoint, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify({ titulo, url, setor, versao, ordem, descricao, publicado, access_roles }) });
+      btn.disabled = false; btn.textContent = "Salvar";
+      if (res.ok) { closeModal(); location.reload(); } else { alert("Erro ao salvar."); }
+    }
+
+    async function excluir(id: string) {
+      if (!confirm("Excluir este documento?")) return;
+      const res = await fetch(`/api/admin/portal/integracao/${id}`, { method: "DELETE" });
+      if (res.ok) location.reload(); else alert("Erro ao excluir.");
+    }
+
+    (window as any).openModal = openModal; (window as any).editar = editar;
+    (window as any).closeModal = closeModal; (window as any).salvar = salvar; (window as any).excluir = excluir;
+  </script>
+</Admin>

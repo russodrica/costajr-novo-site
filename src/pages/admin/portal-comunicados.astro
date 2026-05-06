@@ -1,0 +1,139 @@
+---
+export const prerender = false;
+import Admin from "~/layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "~/lib/auth";
+import { supabaseAdmin } from "~/lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: comunicados } = await db
+  .from("portal_announcements")
+  .select("*")
+  .order("created_at", { ascending: false });
+
+function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+const roleLabel: Record<string, string> = { all: "Todos", admin: "Admin", coordenador: "Coord.", financeiro: "Financeiro", comercial: "Comercial", rh: "RH", operacional: "Operacional" };
+---
+<Admin title="Comunicados" current="portal-comunicados">
+  <div class="toolbar">
+    <span class="toolbar-title">Comunicados ({comunicados?.length ?? 0})</span>
+    <button class="btn btn-primary" onclick="openModal()">+ Novo comunicado</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Título</th><th>Categoria</th><th>Público-alvo</th><th>Data</th><th>Ações</th></tr></thead>
+        <tbody>
+          {comunicados?.length ? comunicados.map((c: any) => (
+            <tr>
+              <td><strong>{c.title}</strong></td>
+              <td><span class="badge badge-blue">{c.category}</span></td>
+              <td><span class="badge badge-gray">{roleLabel[c.target_role] || c.target_role}</span></td>
+              <td>{fmtDate(c.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button class="btn btn-secondary btn-sm" onclick={`editarComunicado(${JSON.stringify(c)})`}>Editar</button>
+                  <button class="btn btn-danger btn-sm" onclick={`excluir('${c.id}')`}>Excluir</button>
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="5" style="text-align:center;color:#999;padding:32px">Nenhum comunicado cadastrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="modal-title">Novo Comunicado</h2>
+        <button onclick="closeModal()" class="modal-close">✕</button>
+      </div>
+      <input type="hidden" id="edit-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Título *</label>
+          <input type="text" id="f-titulo" placeholder="Título do comunicado">
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <select id="f-categoria">
+            <option value="comunicado">Comunicado</option>
+            <option value="aviso">Aviso</option>
+            <option value="novidade">Novidade</option>
+            <option value="urgente">Urgente</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Público-alvo</label>
+        <select id="f-target">
+          <option value="all">Todos os colaboradores</option>
+          <option value="admin">Admin</option>
+          <option value="coordenador">Coordenador</option>
+          <option value="financeiro">Financeiro</option>
+          <option value="comercial">Comercial</option>
+          <option value="rh">RH</option>
+          <option value="operacional">Operacional</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Conteúdo *</label>
+        <textarea id="f-content" rows="5" placeholder="Texto do comunicado..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvar" onclick="salvar()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openModal(c?: any) {
+      document.getElementById("edit-id")!.value = c?.id || "";
+      (document.getElementById("f-titulo") as HTMLInputElement).value = c?.title || "";
+      (document.getElementById("f-categoria") as HTMLSelectElement).value = c?.category || "comunicado";
+      (document.getElementById("f-target") as HTMLSelectElement).value = c?.target_role || "all";
+      (document.getElementById("f-content") as HTMLTextAreaElement).value = c?.content || "";
+      document.getElementById("modal-title")!.textContent = c ? "Editar Comunicado" : "Novo Comunicado";
+      document.getElementById("modal")!.style.display = "flex";
+    }
+    function closeModal() { document.getElementById("modal")!.style.display = "none"; }
+    function editarComunicado(c: any) { openModal(c); }
+
+    async function salvar() {
+      const id    = (document.getElementById("edit-id") as HTMLInputElement).value;
+      const title = (document.getElementById("f-titulo") as HTMLInputElement).value.trim();
+      const category = (document.getElementById("f-categoria") as HTMLSelectElement).value;
+      const target_role = (document.getElementById("f-target") as HTMLSelectElement).value;
+      const content = (document.getElementById("f-content") as HTMLTextAreaElement).value.trim();
+      if (!title || !content) return alert("Preencha título e conteúdo.");
+
+      const btn = document.getElementById("btnSalvar") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Salvando...";
+      const method = id ? "PUT" : "POST";
+      const url = id ? `/api/admin/portal/comunicados/${id}` : "/api/admin/portal/comunicados";
+      const res = await fetch(url, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify({ title, category, target_role, content }) });
+      btn.disabled = false; btn.textContent = "Salvar";
+      if (res.ok) { closeModal(); location.reload(); } else { alert("Erro ao salvar."); }
+    }
+
+    async function excluir(id: string) {
+      if (!confirm("Excluir este comunicado?")) return;
+      const res = await fetch(`/api/admin/portal/comunicados/${id}`, { method: "DELETE" });
+      if (res.ok) location.reload(); else alert("Erro ao excluir.");
+    }
+
+    (window as any).openModal = openModal;
+    (window as any).editarComunicado = editarComunicado;
+    (window as any).excluir = excluir;
+    (window as any).closeModal = closeModal;
+    (window as any).salvar = salvar;
+  </script>
+</Admin>

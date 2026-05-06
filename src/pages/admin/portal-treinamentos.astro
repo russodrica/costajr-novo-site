@@ -1,0 +1,278 @@
+---
+export const prerender = false;
+import Admin from "~/layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "~/lib/auth";
+import { supabaseAdmin } from "~/lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const [{ data: videos }, { data: pdfs }] = await Promise.all([
+  db.from("portal_treinamentos_videos").select("*").order("categoria").order("ordem"),
+  db.from("portal_treinamentos_pdfs").select("*").order("categoria").order("ordem"),
+]);
+
+function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+---
+<Admin title="Treinamentos" current="portal-treinamentos">
+  <div class="toolbar">
+    <span class="toolbar-title">Treinamentos</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="openModal('video')">+ Novo vídeo</button>
+      <button class="btn btn-secondary" onclick="openModal('pdf')">+ Novo PDF</button>
+    </div>
+  </div>
+
+  <!-- Vídeos -->
+  <h3 style="margin:0 0 12px;font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:#888">
+    Vídeos ({videos?.length ?? 0})
+  </h3>
+  <div class="card" style="margin-bottom:24px">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Título</th><th>Categoria</th><th>Duração</th><th>Acesso</th><th>Publicado</th><th>Cadastro</th><th>Ações</th></tr></thead>
+        <tbody>
+          {videos?.length ? videos.map((v: any) => (
+            <tr>
+              <td>
+                <strong>{v.titulo}</strong>
+                <span style="display:block;font-size:11px;color:#888;word-break:break-all">{v.url_video?.slice(0,50)}{v.url_video?.length > 50 ? "…" : ""}</span>
+              </td>
+              <td><span class="badge badge-blue">{v.categoria}</span></td>
+              <td>{v.duracao_minutos ? `${v.duracao_minutos} min` : "—"}</td>
+              <td style="font-size:12px">{(v.access_roles || ["all"]).join(", ")}</td>
+              <td><span class={`badge ${v.publicado ? "badge-green" : "badge-gray"}`}>{v.publicado ? "Sim" : "Não"}</span></td>
+              <td>{fmtDate(v.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button class="btn btn-secondary btn-sm" onclick={`editarVideo(${JSON.stringify(v)})`}>Editar</button>
+                  <button class="btn btn-danger btn-sm" onclick={`excluir('video','${v.id}')`}>Excluir</button>
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="7" style="text-align:center;color:#999;padding:24px">Nenhum vídeo cadastrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PDFs -->
+  <h3 style="margin:0 0 12px;font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:#888">
+    PDFs ({pdfs?.length ?? 0})
+  </h3>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Título</th><th>Categoria</th><th>Páginas</th><th>Acesso</th><th>Publicado</th><th>Cadastro</th><th>Ações</th></tr></thead>
+        <tbody>
+          {pdfs?.length ? pdfs.map((p: any) => (
+            <tr>
+              <td><strong>{p.titulo}</strong></td>
+              <td><span class="badge badge-blue">{p.categoria}</span></td>
+              <td>{p.paginas ? `${p.paginas}p` : "—"}</td>
+              <td style="font-size:12px">{(p.access_roles || ["all"]).join(", ")}</td>
+              <td><span class={`badge ${p.publicado ? "badge-green" : "badge-gray"}`}>{p.publicado ? "Sim" : "Não"}</span></td>
+              <td>{fmtDate(p.created_at)}</td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button class="btn btn-secondary btn-sm" onclick={`editarPdf(${JSON.stringify(p)})`}>Editar</button>
+                  <button class="btn btn-danger btn-sm" onclick={`excluir('pdf','${p.id}')`}>Excluir</button>
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="7" style="text-align:center;color:#999;padding:24px">Nenhum PDF cadastrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal vídeo -->
+  <div id="modal-video" class="modal-overlay" style="display:none">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header"><h2 id="mv-title">Novo Vídeo</h2><button onclick="closeModal('video')" class="modal-close">✕</button></div>
+      <input type="hidden" id="mv-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria *</label>
+          <input type="text" id="mv-cat" placeholder="ex: comercial, operacional, geral">
+        </div>
+        <div class="form-group">
+          <label>Ordem</label>
+          <input type="number" id="mv-ordem" value="1" min="1">
+        </div>
+        <div class="form-group">
+          <label>Duração (min)</label>
+          <input type="number" id="mv-dur" min="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Título *</label>
+        <input type="text" id="mv-titulo" placeholder="Nome do treinamento">
+      </div>
+      <div class="form-group">
+        <label>URL do Vídeo * (YouTube ou Vimeo)</label>
+        <input type="url" id="mv-url" placeholder="https://www.youtube.com/watch?v=...">
+      </div>
+      <div class="form-group">
+        <label>Descrição</label>
+        <textarea id="mv-desc" rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Acesso</label>
+        <select id="mv-roles" multiple style="height:80px">
+          <option value="all" selected>Todos</option>
+          <option value="admin">Admin</option><option value="coordenador">Coordenador</option>
+          <option value="financeiro">Financeiro</option><option value="comercial">Comercial</option>
+          <option value="rh">RH</option><option value="operacional">Operacional</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Publicado?</label>
+        <select id="mv-pub"><option value="true">Sim</option><option value="false">Não</option></select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('video')">Cancelar</button>
+        <button class="btn btn-primary" id="mv-btn" onclick="salvarVideo()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal PDF -->
+  <div id="modal-pdf" class="modal-overlay" style="display:none">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header"><h2 id="mp-title">Novo PDF</h2><button onclick="closeModal('pdf')" class="modal-close">✕</button></div>
+      <input type="hidden" id="mp-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria *</label>
+          <input type="text" id="mp-cat" placeholder="ex: comercial, operacional">
+        </div>
+        <div class="form-group">
+          <label>Ordem</label>
+          <input type="number" id="mp-ordem" value="1" min="1">
+        </div>
+        <div class="form-group">
+          <label>Páginas</label>
+          <input type="number" id="mp-pag" min="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Título *</label>
+        <input type="text" id="mp-titulo" placeholder="Nome do material">
+      </div>
+      <div class="form-group">
+        <label>URL do PDF * (Google Drive, link direto, etc.)</label>
+        <input type="url" id="mp-url" placeholder="https://...">
+      </div>
+      <div class="form-group">
+        <label>Descrição</label>
+        <textarea id="mp-desc" rows="2"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Acesso</label>
+        <select id="mp-roles" multiple style="height:80px">
+          <option value="all" selected>Todos</option>
+          <option value="admin">Admin</option><option value="coordenador">Coordenador</option>
+          <option value="financeiro">Financeiro</option><option value="comercial">Comercial</option>
+          <option value="rh">RH</option><option value="operacional">Operacional</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Publicado?</label>
+        <select id="mp-pub"><option value="true">Sim</option><option value="false">Não</option></select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('pdf')">Cancelar</button>
+        <button class="btn btn-primary" id="mp-btn" onclick="salvarPdf()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openModal(tipo: string, data?: any) {
+      document.getElementById(`modal-${tipo}`)!.style.display = "flex";
+    }
+    function closeModal(tipo: string) { document.getElementById(`modal-${tipo}`)!.style.display = "none"; }
+    function editarVideo(v: any) {
+      document.getElementById("mv-id")!.setAttribute("value", v.id);
+      (document.getElementById("mv-cat") as HTMLInputElement).value = v.categoria || "";
+      (document.getElementById("mv-ordem") as HTMLInputElement).value = String(v.ordem ?? 1);
+      (document.getElementById("mv-dur") as HTMLInputElement).value = v.duracao_minutos || "";
+      (document.getElementById("mv-titulo") as HTMLInputElement).value = v.titulo || "";
+      (document.getElementById("mv-url") as HTMLInputElement).value = v.url_video || "";
+      (document.getElementById("mv-desc") as HTMLTextAreaElement).value = v.descricao || "";
+      (document.getElementById("mv-pub") as HTMLSelectElement).value = String(v.publicado);
+      document.getElementById("mv-title")!.textContent = "Editar Vídeo";
+      openModal("video");
+    }
+    function editarPdf(p: any) {
+      document.getElementById("mp-id")!.setAttribute("value", p.id);
+      (document.getElementById("mp-cat") as HTMLInputElement).value = p.categoria || "";
+      (document.getElementById("mp-ordem") as HTMLInputElement).value = String(p.ordem ?? 1);
+      (document.getElementById("mp-pag") as HTMLInputElement).value = p.paginas || "";
+      (document.getElementById("mp-titulo") as HTMLInputElement).value = p.titulo || "";
+      (document.getElementById("mp-url") as HTMLInputElement).value = p.url || "";
+      (document.getElementById("mp-desc") as HTMLTextAreaElement).value = p.descricao || "";
+      (document.getElementById("mp-pub") as HTMLSelectElement).value = String(p.publicado);
+      document.getElementById("mp-title")!.textContent = "Editar PDF";
+      openModal("pdf");
+    }
+
+    async function salvarVideo() {
+      const id = document.getElementById("mv-id")!.getAttribute("value") || "";
+      const titulo = (document.getElementById("mv-titulo") as HTMLInputElement).value.trim();
+      const url_video = (document.getElementById("mv-url") as HTMLInputElement).value.trim();
+      const categoria = (document.getElementById("mv-cat") as HTMLInputElement).value.trim() || "geral";
+      const descricao = (document.getElementById("mv-desc") as HTMLTextAreaElement).value.trim();
+      const ordem = parseInt((document.getElementById("mv-ordem") as HTMLInputElement).value) || 1;
+      const duracao_minutos = parseInt((document.getElementById("mv-dur") as HTMLInputElement).value) || null;
+      const publicado = (document.getElementById("mv-pub") as HTMLSelectElement).value === "true";
+      const sel = document.getElementById("mv-roles") as HTMLSelectElement;
+      const access_roles = Array.from(sel.selectedOptions).map(o => o.value);
+      if (!titulo || !url_video) return alert("Título e URL são obrigatórios.");
+      const btn = document.getElementById("mv-btn") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Salvando...";
+      const method = id ? "PUT" : "POST";
+      const endpoint = id ? `/api/admin/portal/treinamentos/videos/${id}` : "/api/admin/portal/treinamentos/videos";
+      const res = await fetch(endpoint, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify({ titulo, url_video, categoria, descricao, ordem, duracao_minutos, publicado, access_roles }) });
+      btn.disabled = false; btn.textContent = "Salvar";
+      if (res.ok) { closeModal("video"); location.reload(); } else { alert("Erro ao salvar."); }
+    }
+
+    async function salvarPdf() {
+      const id = document.getElementById("mp-id")!.getAttribute("value") || "";
+      const titulo = (document.getElementById("mp-titulo") as HTMLInputElement).value.trim();
+      const url = (document.getElementById("mp-url") as HTMLInputElement).value.trim();
+      const categoria = (document.getElementById("mp-cat") as HTMLInputElement).value.trim() || "geral";
+      const descricao = (document.getElementById("mp-desc") as HTMLTextAreaElement).value.trim();
+      const ordem = parseInt((document.getElementById("mp-ordem") as HTMLInputElement).value) || 1;
+      const paginas = parseInt((document.getElementById("mp-pag") as HTMLInputElement).value) || null;
+      const publicado = (document.getElementById("mp-pub") as HTMLSelectElement).value === "true";
+      const sel = document.getElementById("mp-roles") as HTMLSelectElement;
+      const access_roles = Array.from(sel.selectedOptions).map(o => o.value);
+      if (!titulo || !url) return alert("Título e URL são obrigatórios.");
+      const btn = document.getElementById("mp-btn") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Salvando...";
+      const method = id ? "PUT" : "POST";
+      const endpoint = id ? `/api/admin/portal/treinamentos/pdfs/${id}` : "/api/admin/portal/treinamentos/pdfs";
+      const res = await fetch(endpoint, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify({ titulo, url, categoria, descricao, ordem, paginas, publicado, access_roles }) });
+      btn.disabled = false; btn.textContent = "Salvar";
+      if (res.ok) { closeModal("pdf"); location.reload(); } else { alert("Erro ao salvar."); }
+    }
+
+    async function excluir(tipo: string, id: string) {
+      if (!confirm("Excluir este item?")) return;
+      const endpoint = tipo === "video" ? `/api/admin/portal/treinamentos/videos/${id}` : `/api/admin/portal/treinamentos/pdfs/${id}`;
+      const res = await fetch(endpoint, { method: "DELETE" });
+      if (res.ok) location.reload(); else alert("Erro ao excluir.");
+    }
+
+    (window as any).openModal = openModal; (window as any).closeModal = closeModal;
+    (window as any).editarVideo = editarVideo; (window as any).editarPdf = editarPdf;
+    (window as any).salvarVideo = salvarVideo; (window as any).salvarPdf = salvarPdf;
+    (window as any).excluir = excluir;
+  </script>
+</Admin>

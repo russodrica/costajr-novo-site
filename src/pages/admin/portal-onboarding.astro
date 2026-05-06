@@ -1,0 +1,163 @@
+---
+export const prerender = false;
+import Admin from "~/layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "~/lib/auth";
+import { supabaseAdmin } from "~/lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: steps } = await db
+  .from("portal_onboarding_steps")
+  .select("*")
+  .order("ordem");
+
+const tipoLabel: Record<string, string> = { texto: "Texto", video: "Vídeo", pdf: "PDF", tarefa: "Tarefa" };
+---
+<Admin title="Onboarding" current="portal-onboarding">
+  <div class="toolbar">
+    <span class="toolbar-title">Etapas de Onboarding ({steps?.length ?? 0})</span>
+    <button class="btn btn-primary" onclick="openModal()">+ Nova etapa</button>
+  </div>
+
+  <p style="font-size:13px;color:#888;margin-bottom:16px">
+    Etapas exibidas para todos os colaboradores ao entrar no portal. Reordene pelo campo "Ordem".
+  </p>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ordem</th><th>Título</th><th>Tipo</th><th>Acesso</th><th>Obrigatório</th><th>Ações</th></tr></thead>
+        <tbody>
+          {steps?.length ? steps.map((s: any) => (
+            <tr>
+              <td style="text-align:center;font-weight:700;font-size:18px;color:#C41E3A">{s.ordem}</td>
+              <td>
+                <strong>{s.titulo}</strong>
+                <span style="display:block;font-size:12px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px">{s.conteudo}</span>
+              </td>
+              <td><span class="badge badge-blue">{tipoLabel[s.tipo] || s.tipo}</span></td>
+              <td style="font-size:12px">{(s.access_roles || ["all"]).join(", ")}</td>
+              <td><span class={`badge ${s.obrigatorio ? "badge-red" : "badge-gray"}`}>{s.obrigatorio ? "Sim" : "Não"}</span></td>
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button class="btn btn-secondary btn-sm" onclick={`editar(${JSON.stringify(s)})`}>Editar</button>
+                  <button class="btn btn-danger btn-sm" onclick={`excluir('${s.id}')`}>Excluir</button>
+                </div>
+              </td>
+            </tr>
+          )) : <tr><td colspan="6" style="text-align:center;color:#999;padding:32px">Nenhuma etapa cadastrada</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="modal" class="modal-overlay" style="display:none">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header">
+        <h2 id="modal-title">Nova Etapa</h2>
+        <button onclick="closeModal()" class="modal-close">✕</button>
+      </div>
+      <input type="hidden" id="edit-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="f-tipo">
+            <option value="texto">Texto</option>
+            <option value="video">Vídeo</option>
+            <option value="pdf">PDF</option>
+            <option value="tarefa">Tarefa</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ordem</label>
+          <input type="number" id="f-ordem" value="1" min="1">
+        </div>
+        <div class="form-group">
+          <label>Obrigatório?</label>
+          <select id="f-obrig">
+            <option value="true">Sim</option>
+            <option value="false">Não</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Título *</label>
+        <input type="text" id="f-titulo" placeholder="Título da etapa">
+      </div>
+      <div class="form-group">
+        <label>Conteúdo / Descrição *</label>
+        <textarea id="f-conteudo" rows="4" placeholder="Texto da etapa que aparece para o colaborador..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>URL do Recurso (link, vídeo ou PDF)</label>
+        <input type="url" id="f-url" placeholder="https://...">
+      </div>
+      <div class="form-group">
+        <label>Acesso restrito (deixe "all" para todos)</label>
+        <select id="f-roles" multiple style="height:80px">
+          <option value="all" selected>Todos (all)</option>
+          <option value="admin">Admin</option>
+          <option value="coordenador">Coordenador</option>
+          <option value="financeiro">Financeiro</option>
+          <option value="comercial">Comercial</option>
+          <option value="rh">RH</option>
+          <option value="operacional">Operacional</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvar" onclick="salvar()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openModal(s?: any) {
+      document.getElementById("edit-id")!.value = s?.id || "";
+      (document.getElementById("f-tipo") as HTMLSelectElement).value = s?.tipo || "texto";
+      (document.getElementById("f-ordem") as HTMLInputElement).value = String(s?.ordem ?? 1);
+      (document.getElementById("f-obrig") as HTMLSelectElement).value = s ? String(s.obrigatorio) : "true";
+      (document.getElementById("f-titulo") as HTMLInputElement).value = s?.titulo || "";
+      (document.getElementById("f-conteudo") as HTMLTextAreaElement).value = s?.conteudo || "";
+      (document.getElementById("f-url") as HTMLInputElement).value = s?.url_recurso || "";
+      document.getElementById("modal-title")!.textContent = s ? "Editar Etapa" : "Nova Etapa";
+      document.getElementById("modal")!.style.display = "flex";
+    }
+    function closeModal() { document.getElementById("modal")!.style.display = "none"; }
+    function editar(s: any) { openModal(s); }
+
+    async function salvar() {
+      const id = (document.getElementById("edit-id") as HTMLInputElement).value;
+      const titulo = (document.getElementById("f-titulo") as HTMLInputElement).value.trim();
+      const conteudo = (document.getElementById("f-conteudo") as HTMLTextAreaElement).value.trim();
+      const tipo = (document.getElementById("f-tipo") as HTMLSelectElement).value;
+      const ordem = parseInt((document.getElementById("f-ordem") as HTMLInputElement).value) || 1;
+      const obrigatorio = (document.getElementById("f-obrig") as HTMLSelectElement).value === "true";
+      const url_recurso = (document.getElementById("f-url") as HTMLInputElement).value.trim() || null;
+      const sel = document.getElementById("f-roles") as HTMLSelectElement;
+      const access_roles = Array.from(sel.selectedOptions).map(o => o.value);
+      if (!titulo || !conteudo) return alert("Preencha título e conteúdo.");
+
+      const btn = document.getElementById("btnSalvar") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Salvando...";
+      const method = id ? "PUT" : "POST";
+      const url = id ? `/api/admin/portal/onboarding/${id}` : "/api/admin/portal/onboarding";
+      const res = await fetch(url, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify({ titulo, conteudo, tipo, ordem, obrigatorio, url_recurso, access_roles }) });
+      btn.disabled = false; btn.textContent = "Salvar";
+      if (res.ok) { closeModal(); location.reload(); } else { alert("Erro ao salvar."); }
+    }
+
+    async function excluir(id: string) {
+      if (!confirm("Excluir esta etapa?")) return;
+      const res = await fetch(`/api/admin/portal/onboarding/${id}`, { method: "DELETE" });
+      if (res.ok) location.reload(); else alert("Erro ao excluir.");
+    }
+
+    (window as any).openModal = openModal; (window as any).editar = editar;
+    (window as any).closeModal = closeModal; (window as any).salvar = salvar; (window as any).excluir = excluir;
+  </script>
+</Admin>
