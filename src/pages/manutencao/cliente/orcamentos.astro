@@ -1,0 +1,213 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Orçamentos" tipo="cliente" activePage="orcamentos">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <p style="margin:0;font-size:14px;color:#5B5F6B">Solicitações de orçamento para serviços fora do contrato.</p>
+    <button class="btn btn-primary" id="btnNovo">+ Solicitar Orçamento</button>
+  </div>
+
+  <div id="loadingState" class="loading">Carregando orçamentos...</div>
+  <div id="tableWrap" style="display:none" class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Loja</th>
+            <th>Descrição</th>
+            <th>Valor proposto</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div id="emptyMsg" style="display:none;text-align:center;padding:32px;color:#9CA3AF;font-size:14px">Nenhum orçamento encontrado.</div>
+  </div>
+
+  <!-- Modal novo orçamento -->
+  <div class="modal-bg" id="modalNovo">
+    <div class="modal">
+      <h2>Solicitar Orçamento</h2>
+      <div id="alertNovo" class="alert alert-error" style="display:none"></div>
+      <div class="form-group">
+        <label>Loja</label>
+        <select id="selLoja">
+          <option value="">Carregando lojas...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Descrição do serviço solicitado</label>
+        <textarea id="descSol" placeholder="Descreva o serviço que você precisa..."></textarea>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-outline" id="btnCancelarNovo">Cancelar</button>
+        <button class="btn btn-primary" id="btnSubmitNovo">Solicitar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal resposta -->
+  <div class="modal-bg" id="modalResp">
+    <div class="modal">
+      <h2 id="modalRespTitulo">Responder Orçamento</h2>
+      <div id="alertResp" class="alert alert-error" style="display:none"></div>
+      <div id="modalRespBody"></div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-outline" id="btnCancelarResp">Fechar</button>
+        <button class="btn btn-outline" id="btnRejeitar" style="border-color:#B91C1C;color:#B91C1C">Rejeitar</button>
+        <button class="btn btn-primary" id="btnAprovar">Aprovar</button>
+      </div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .status-pill { display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;text-transform:uppercase }
+  .status-aguardando_proposta { background:#EFF6FF;color:#1D4ED8 }
+  .status-proposta_enviada { background:#FFF7ED;color:#C2410C }
+  .status-aprovado { background:#F0FDF4;color:#15803D }
+  .status-rejeitado { background:#F9FAFB;color:#6B7280 }
+  .status-cancelado { background:#FEF2F2;color:#B91C1C }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_cliente_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/cliente/login");
+
+  let allOrc = [];
+  let lojas = [];
+  let orcAtivo = null;
+
+  function statusLabel(s) {
+    const m = { aguardando_proposta:"Aguard. proposta", proposta_enviada:"Proposta enviada", aprovado:"Aprovado", rejeitado:"Rejeitado", cancelado:"Cancelado" };
+    return m[s] || s;
+  }
+  function fmt(v) { return v != null ? "R$ " + Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2}) : "—"; }
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+
+  function render() {
+    const tbody = document.getElementById("tbody");
+    const empty = document.getElementById("emptyMsg");
+    if (!allOrc.length) { tbody.innerHTML = ""; empty.style.display = ""; return; }
+    empty.style.display = "none";
+    tbody.innerHTML = allOrc.map(o => `
+      <tr>
+        <td>${fmtDate(o.created_at)}</td>
+        <td>${o.manut_lojas?.nome || "—"}</td>
+        <td style="max-width:220px;word-break:break-word;font-size:13px">${o.descricao_solicitacao}</td>
+        <td>${fmt(o.valor)}</td>
+        <td><span class="status-pill status-${o.status}">${statusLabel(o.status)}</span></td>
+        <td>
+          ${o.proposta_pdf_url ? `<a href="${o.proposta_pdf_url}" target="_blank" class="btn btn-outline btn-sm" style="margin-right:6px">📄 PDF</a>` : ""}
+          ${o.status === "proposta_enviada" ? `<button class="btn btn-primary btn-sm" onclick="abrirResposta('${o.id}')">Responder</button>` : ""}
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  window.abrirResposta = function(id) {
+    orcAtivo = allOrc.find(o => o.id === id);
+    if (!orcAtivo) return;
+    document.getElementById("alertResp").style.display = "none";
+    document.getElementById("modalRespBody").innerHTML = `
+      <p style="font-size:14px;color:#5B5F6B;margin:0 0 12px"><strong>Loja:</strong> ${orcAtivo.manut_lojas?.nome || "—"}</p>
+      <p style="font-size:14px;color:#5B5F6B;margin:0 0 12px"><strong>Serviço:</strong> ${orcAtivo.descricao_solicitacao}</p>
+      <p style="font-size:14px;color:#5B5F6B;margin:0 0 16px"><strong>Valor proposto:</strong> ${fmt(orcAtivo.valor)}</p>
+      ${orcAtivo.proposta_pdf_url ? `<a href="${orcAtivo.proposta_pdf_url}" target="_blank" class="btn btn-outline btn-sm" style="margin-bottom:16px">📄 Ver proposta PDF</a>` : ""}
+      <div class="form-group">
+        <label>Comentário (opcional)</label>
+        <textarea id="comentarioResp" placeholder="Informe observações ou motivo da rejeição..."></textarea>
+      </div>
+    `;
+    document.getElementById("modalResp").classList.add("open");
+  };
+
+  async function responder(acao) {
+    if (!orcAtivo) return;
+    const alertEl = document.getElementById("alertResp");
+    alertEl.style.display = "none";
+    const comentario = document.getElementById("comentarioResp")?.value || "";
+    try {
+      const res = await fetch("/api/manut/cliente/orcamentos", {
+        method: "PUT",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: JSON.stringify({ id: orcAtivo.id, acao, comentario_cliente: comentario }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const idx = allOrc.findIndex(o => o.id === orcAtivo.id);
+      if (idx >= 0) allOrc[idx] = { ...allOrc[idx], ...data };
+      document.getElementById("modalResp").classList.remove("open");
+      orcAtivo = null;
+      render();
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    }
+  }
+
+  document.getElementById("btnAprovar").onclick = () => responder("aprovar");
+  document.getElementById("btnRejeitar").onclick = () => responder("rejeitar");
+  document.getElementById("btnCancelarResp").onclick = () => { document.getElementById("modalResp").classList.remove("open"); orcAtivo = null; };
+
+  // Novo orçamento
+  document.getElementById("btnNovo").onclick = async () => {
+    document.getElementById("alertNovo").style.display = "none";
+    if (!lojas.length) {
+      try {
+        const r = await fetch("/api/manut/cliente/lojas", { headers: { "x-cliente-auth": token } });
+        lojas = await r.json();
+      } catch {}
+    }
+    const sel = document.getElementById("selLoja");
+    sel.innerHTML = lojas.length
+      ? '<option value="">Selecione a loja...</option>' + lojas.map(l => `<option value="${l.id}">${l.nome}</option>`).join("")
+      : '<option value="">Nenhuma loja disponível</option>';
+    document.getElementById("descSol").value = "";
+    document.getElementById("modalNovo").classList.add("open");
+  };
+  document.getElementById("btnCancelarNovo").onclick = () => document.getElementById("modalNovo").classList.remove("open");
+  document.getElementById("btnSubmitNovo").onclick = async () => {
+    const alertEl = document.getElementById("alertNovo");
+    alertEl.style.display = "none";
+    const loja_id = document.getElementById("selLoja").value;
+    const descricao_solicitacao = document.getElementById("descSol").value.trim();
+    if (!loja_id || !descricao_solicitacao) { alertEl.textContent = "Preencha todos os campos."; alertEl.style.display = ""; return; }
+    const btn = document.getElementById("btnSubmitNovo");
+    btn.disabled = true; btn.textContent = "Enviando...";
+    try {
+      const res = await fetch("/api/manut/cliente/orcamentos", {
+        method: "POST",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: JSON.stringify({ loja_id, descricao_solicitacao }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      allOrc.unshift({ ...data, manut_lojas: lojas.find(l => l.id === loja_id) });
+      document.getElementById("modalNovo").classList.remove("open");
+      render();
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Solicitar";
+    }
+  };
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/cliente/orcamentos", { headers: { "x-cliente-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      allOrc = await res.json();
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("tableWrap").style.display = "";
+      render();
+    } catch {
+      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+    }
+  }
+  load();
+</script>

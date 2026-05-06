@@ -1,0 +1,124 @@
+---
+export const prerender = false;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Criar nova senha — Portal do Técnico — Costa Júnior</title>
+  <meta name="theme-color" content="#C41E3A">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root { --brand: #C41E3A; --brand-dark: #A01828; --border: #E5E7EB; }
+    body { margin: 0; font-family: 'Open Sans', sans-serif; background: #1E2128; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .wrap { width: 100%; max-width: 400px; padding: 24px; }
+    .login-logo { text-align: center; margin-bottom: 28px; }
+    .login-logo img { max-width: 160px; height: auto; display: block; margin: 0 auto 12px; filter: brightness(0) invert(1); }
+    .login-logo p { font-size: 13px; color: #6B7280; margin: 0; }
+    .card { background: #fff; border-radius: 12px; padding: 32px; }
+    .card h2 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 19px; margin: 0 0 8px; text-align: center; }
+    .card p { font-size: 13px; color: #6B7280; text-align: center; margin: 0 0 22px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .form-group input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; font-family: 'Open Sans', sans-serif; outline: none; transition: border .15s; }
+    .form-group input:focus { border-color: var(--brand); }
+    .btn { width: 100%; padding: 13px; background: var(--brand); color: #fff; border: 0; border-radius: 8px; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; cursor: pointer; transition: background .15s; }
+    .btn:hover { background: var(--brand-dark); }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .alert { padding: 11px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
+    .alert-error { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+    .alert-success { background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; }
+    .req { font-size: 12px; color: #9CA3AF; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="login-logo">
+      <img src="/logo-cjr.png" alt="Costa Júnior">
+      <p>Portal do Técnico</p>
+    </div>
+    <div class="card">
+      <h2>Criar nova senha</h2>
+      <p>Por segurança, crie uma senha pessoal para continuar.</p>
+      <div id="alert" style="display:none"></div>
+      <form id="form">
+        <div class="form-group">
+          <label>Senha atual (provisória)</label>
+          <input type="password" id="senhaAtual" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label>Nova senha</label>
+          <input type="password" id="novaSenha" placeholder="••••••••" required autocomplete="new-password" minlength="6">
+          <div class="req">Mínimo 6 caracteres</div>
+        </div>
+        <div class="form-group">
+          <label>Confirmar nova senha</label>
+          <input type="password" id="confirmarSenha" placeholder="••••••••" required autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn" id="btn">Salvar nova senha</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN_KEY = "manut_tecnico_token";
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) window.location.replace("/manutencao/tecnico/login");
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const alertEl = document.getElementById("alert");
+      const btn = document.getElementById("btn");
+      const senhaAtual = document.getElementById("senhaAtual").value;
+      const novaSenha = document.getElementById("novaSenha").value;
+      const confirmar = document.getElementById("confirmarSenha").value;
+
+      alertEl.className = "alert alert-error";
+      alertEl.style.display = "none";
+
+      if (novaSenha.length < 6) {
+        alertEl.textContent = "A nova senha deve ter ao menos 6 caracteres.";
+        alertEl.style.display = "";
+        return;
+      }
+      if (novaSenha !== confirmar) {
+        alertEl.textContent = "As senhas não coincidem.";
+        alertEl.style.display = "";
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = "Salvando...";
+      try {
+        const res = await fetch("/api/manut/tecnico/trocar-senha", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-tecnico-auth": token },
+          body: JSON.stringify({ senhaAtual, novaSenha }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro ao salvar senha");
+
+        // Atualiza o user no localStorage para remover o flag de troca
+        const userKey = TOKEN_KEY + "_user";
+        try {
+          const u = JSON.parse(localStorage.getItem(userKey) || "{}");
+          u.senha_troca_obrigatoria = false;
+          localStorage.setItem(userKey, JSON.stringify(u));
+        } catch {}
+
+        alertEl.className = "alert alert-success";
+        alertEl.textContent = "Senha alterada com sucesso! Redirecionando...";
+        alertEl.style.display = "";
+        setTimeout(() => window.location.replace("/manutencao/tecnico/dashboard"), 1500);
+      } catch (err) {
+        alertEl.className = "alert alert-error";
+        alertEl.textContent = err.message;
+        alertEl.style.display = "";
+        btn.disabled = false; btn.textContent = "Salvar nova senha";
+      }
+    });
+  </script>
+</body>
+</html>

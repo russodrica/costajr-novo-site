@@ -1,0 +1,101 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Preventivas" tipo="cliente" activePage="preventivas">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <p style="margin:0;font-size:14px;color:#5B5F6B">Histórico e agenda de manutenções preventivas.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm filtro-prev active" data-status="">Todas</button>
+      <button class="btn btn-outline btn-sm filtro-prev" data-status="agendada">Agendadas</button>
+      <button class="btn btn-outline btn-sm filtro-prev" data-status="realizada">Realizadas</button>
+      <button class="btn btn-outline btn-sm filtro-prev" data-status="cancelada">Canceladas</button>
+    </div>
+  </div>
+
+  <div id="loadingState" class="loading">Carregando preventivas...</div>
+  <div id="tableWrap" style="display:none" class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Loja</th>
+            <th>Técnico</th>
+            <th>Status</th>
+            <th>Relatório</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div id="emptyMsg" style="display:none;text-align:center;padding:32px;color:#9CA3AF;font-size:14px">Nenhuma preventiva encontrada.</div>
+  </div>
+</Portal>
+
+<style>
+  .filtro-prev.active { background:#C41E3A; color:#fff; border-color:#C41E3A; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_cliente_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/cliente/login");
+
+  let allPrev = [];
+  let filtro = "";
+
+  function badge(status) {
+    const map = { agendada:"agendada", realizada:"concluido", cancelada:"cancelado" };
+    const label = { agendada:"Agendada", realizada:"Realizada", cancelada:"Cancelada" };
+    return `<span class="badge badge-${map[status] || status}">${label[status] || status}</span>`;
+  }
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+
+  function render() {
+    const filtered = filtro ? allPrev.filter(p => p.status === filtro) : allPrev;
+    const tbody = document.getElementById("tbody");
+    const empty = document.getElementById("emptyMsg");
+    if (!filtered.length) {
+      tbody.innerHTML = "";
+      empty.style.display = "";
+    } else {
+      empty.style.display = "none";
+      tbody.innerHTML = filtered.map(p => `
+        <tr>
+          <td><strong>${fmtDate(p.data_agendada)}</strong></td>
+          <td>${p.manut_lojas?.nome || "—"}</td>
+          <td>${p.manut_tecnicos?.nome || "—"}</td>
+          <td>${badge(p.status)}</td>
+          <td>${p.relatorio_pdf_url
+            ? `<a href="${p.relatorio_pdf_url}" target="_blank" class="btn btn-outline btn-sm">📄 Ver PDF</a>`
+            : '<span style="color:#9CA3AF;font-size:13px">—</span>'
+          }</td>
+        </tr>
+      `).join("");
+    }
+  }
+
+  document.querySelectorAll(".filtro-prev").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".filtro-prev").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      filtro = btn.dataset.status;
+      render();
+    });
+  });
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/cliente/preventivas", { headers: { "x-cliente-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      allPrev = await res.json();
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("tableWrap").style.display = "";
+      render();
+    } catch {
+      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+    }
+  }
+  load();
+</script>

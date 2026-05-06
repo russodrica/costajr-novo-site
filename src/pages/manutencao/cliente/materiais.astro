@@ -1,0 +1,160 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Materiais" tipo="cliente" activePage="materiais">
+  <div style="margin-bottom:24px">
+    <p style="margin:0;font-size:14px;color:#5B5F6B">Materiais solicitados pelos técnicos durante o atendimento. Aprove ou rejeite cada solicitação.</p>
+  </div>
+
+  <div id="loadingState" class="loading">Carregando materiais...</div>
+  <div id="tableWrap" style="display:none"></div>
+
+  <!-- Modal aprovação -->
+  <div class="modal-bg" id="modalAprovar">
+    <div class="modal">
+      <h2>Aprovar Material</h2>
+      <div id="alertApr" class="alert alert-error" style="display:none"></div>
+      <div id="modalAprBody"></div>
+      <div class="form-group" style="margin-top:16px">
+        <label>Comprovante de pagamento (URL — opcional)</label>
+        <input type="url" id="comprovanteUrl" placeholder="https://...">
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-outline" id="btnCancelarApr">Cancelar</button>
+        <button class="btn btn-primary" id="btnConfAprovar">Confirmar aprovação</button>
+      </div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .mat-card { background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;margin-bottom:12px; }
+  .mat-card.pendente { border-left:4px solid #F59E0B; }
+  .mat-header { display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px; }
+  .mat-title { font-weight:700;font-size:15px; }
+  .mat-meta { font-size:13px;color:#5B5F6B; }
+  .mat-valor { font-family:'Montserrat',sans-serif;font-weight:800;font-size:20px;color:#C41E3A; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_cliente_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/cliente/login");
+
+  let allMat = [];
+  let matAtivo = null;
+
+  function badge(status) {
+    const m = { pendente_aprovacao:"badge-aguardando_material", aprovado:"badge-concluido", rejeitado:"badge-cancelado", pago:"badge-concluido" };
+    const l = { pendente_aprovacao:"Pend. aprovação", aprovado:"Aprovado", rejeitado:"Rejeitado", pago:"Pago" };
+    return `<span class="badge ${m[status] || ""}">${l[status] || status}</span>`;
+  }
+  function fmt(v) { return v != null ? "R$ " + Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2}) : "—"; }
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+
+  function render() {
+    const wrap = document.getElementById("tableWrap");
+    if (!allMat.length) {
+      wrap.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:#9CA3AF">Nenhuma solicitação de material encontrada.</div>';
+      return;
+    }
+    wrap.innerHTML = allMat.map(m => `
+      <div class="mat-card ${m.status === 'pendente_aprovacao' ? 'pendente' : ''}">
+        <div class="mat-header">
+          <div>
+            <div class="mat-title">${m.descricao}</div>
+            <div class="mat-meta">
+              Loja: <strong>${m.manut_lojas?.nome || "—"}</strong> &nbsp;|&nbsp;
+              Técnico: <strong>${m.manut_tecnicos?.nome || "—"}</strong> &nbsp;|&nbsp;
+              ${fmtDate(m.created_at)}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div class="mat-valor">${fmt(m.valor)}</div>
+            <div style="margin-top:4px">${badge(m.status)}</div>
+          </div>
+        </div>
+        ${m.status === "pendente_aprovacao" ? `
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-primary btn-sm" onclick="abrirAprovar('${m.id}')">Aprovar</button>
+          <button class="btn btn-outline btn-sm" style="border-color:#B91C1C;color:#B91C1C" onclick="rejeitar('${m.id}')">Rejeitar</button>
+        </div>` : ""}
+        ${m.comprovante_url ? `<div style="margin-top:8px"><a href="${m.comprovante_url}" target="_blank" class="btn btn-outline btn-sm">📎 Comprovante</a></div>` : ""}
+      </div>
+    `).join("");
+  }
+
+  window.abrirAprovar = function(id) {
+    matAtivo = allMat.find(m => m.id === id);
+    if (!matAtivo) return;
+    document.getElementById("alertApr").style.display = "none";
+    document.getElementById("comprovanteUrl").value = "";
+    document.getElementById("modalAprBody").innerHTML = `
+      <p style="font-size:14px;color:#5B5F6B;margin:0 0 8px"><strong>Material:</strong> ${matAtivo.descricao}</p>
+      <p style="font-size:14px;color:#5B5F6B;margin:0 0 8px"><strong>Valor:</strong> ${fmt(matAtivo.valor)}</p>
+      <p style="font-size:14px;color:#5B5F6B;margin:0"><strong>Técnico:</strong> ${matAtivo.manut_tecnicos?.nome || "—"}</p>
+    `;
+    document.getElementById("modalAprovar").classList.add("open");
+  };
+
+  window.rejeitar = async function(id) {
+    if (!confirm("Rejeitar esta solicitação de material?")) return;
+    try {
+      const res = await fetch("/api/manut/cliente/materiais", {
+        method: "PUT",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: JSON.stringify({ id, acao: "rejeitar" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const idx = allMat.findIndex(m => m.id === id);
+      if (idx >= 0) allMat[idx] = { ...allMat[idx], ...data };
+      render();
+    } catch (err) {
+      alert("Erro: " + err.message);
+    }
+  };
+
+  document.getElementById("btnCancelarApr").onclick = () => { document.getElementById("modalAprovar").classList.remove("open"); matAtivo = null; };
+  document.getElementById("btnConfAprovar").onclick = async () => {
+    if (!matAtivo) return;
+    const alertEl = document.getElementById("alertApr");
+    alertEl.style.display = "none";
+    const comprovante_url = document.getElementById("comprovanteUrl").value.trim() || null;
+    const btn = document.getElementById("btnConfAprovar");
+    btn.disabled = true; btn.textContent = "Aprovando...";
+    try {
+      const res = await fetch("/api/manut/cliente/materiais", {
+        method: "PUT",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: JSON.stringify({ id: matAtivo.id, acao: "aprovar", comprovante_url }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const idx = allMat.findIndex(m => m.id === matAtivo.id);
+      if (idx >= 0) allMat[idx] = { ...allMat[idx], ...data };
+      document.getElementById("modalAprovar").classList.remove("open");
+      matAtivo = null;
+      render();
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Confirmar aprovação";
+    }
+  };
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/cliente/materiais", { headers: { "x-cliente-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      allMat = await res.json();
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("tableWrap").style.display = "";
+      render();
+    } catch {
+      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+    }
+  }
+  load();
+</script>

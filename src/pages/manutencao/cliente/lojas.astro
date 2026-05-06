@@ -1,0 +1,75 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Minhas Lojas" tipo="cliente" activePage="lojas">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <p style="margin:0;font-size:14px;color:#5B5F6B">Lojas cadastradas no seu contrato de manutenção.</p>
+  </div>
+
+  <div id="loadingState" class="loading">Carregando lojas...</div>
+  <div id="lojasWrap" style="display:none"></div>
+</Portal>
+
+<style>
+  .loja-card { background:#fff; border:1px solid #E5E7EB; border-radius:10px; padding:24px; margin-bottom:14px; }
+  .loja-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .loja-nome { font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; }
+  .loja-info { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-top:12px; }
+  .info-item { font-size:13px; color:#5B5F6B; }
+  .info-item strong { display:block; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:#9CA3AF; margin-bottom:2px; }
+  .esp-tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; background:#F3F4F6; color:#374151; margin:2px; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_cliente_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/cliente/login");
+
+  function badge(status) {
+    const labels = { ativo:"Ativo", pendente:"Pendente", inativo:"Inativo" };
+    return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
+  }
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/cliente/lojas", { headers: { "x-cliente-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      const lojas = await res.json();
+
+      const wrap = document.getElementById("lojasWrap");
+      document.getElementById("loadingState").style.display = "none";
+      wrap.style.display = "";
+
+      if (!lojas.length) {
+        wrap.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:#9CA3AF">Nenhuma loja cadastrada.</div>';
+        return;
+      }
+
+      wrap.innerHTML = lojas.map(l => `
+        <div class="loja-card">
+          <div class="loja-header">
+            <div>
+              <div class="loja-nome">${l.nome}</div>
+              <div style="font-size:13px;color:#6B7280;margin-top:2px">${l.cidade || ""}${l.uf ? " — " + l.uf : ""}</div>
+            </div>
+            ${badge(l.status)}
+          </div>
+          <div class="loja-info">
+            <div class="info-item"><strong>Endereço</strong>${l.endereco || "—"}</div>
+            <div class="info-item"><strong>CEP</strong>${l.cep || "—"}</div>
+            <div class="info-item"><strong>Tamanho</strong>${l.tamanho_m2 ? l.tamanho_m2 + " m²" : "—"}</div>
+          </div>
+          ${l.especialidades?.length ? `
+          <div style="margin-top:12px">
+            <div class="info-item"><strong>Especialidades</strong></div>
+            <div style="margin-top:4px">${(l.especialidades || []).map(e => `<span class="esp-tag">${e}</span>`).join("")}</div>
+          </div>` : ""}
+        </div>
+      `).join("");
+    } catch {
+      document.getElementById("loadingState").textContent = "Erro ao carregar. Recarregue a página.";
+    }
+  }
+  load();
+</script>

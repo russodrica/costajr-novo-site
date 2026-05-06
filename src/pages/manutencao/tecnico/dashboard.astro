@@ -42,6 +42,12 @@ export const prerender = false;
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) window.location.replace("/manutencao/tecnico/login");
 
+  // Obriga troca de senha se flag estiver ativo
+  try {
+    const u = JSON.parse(localStorage.getItem(TOKEN_KEY + "_user") || "{}");
+    if (u.senha_troca_obrigatoria) window.location.replace("/manutencao/tecnico/trocar-senha");
+  } catch {}
+
   let allChamados = [];
   let filtroStatus = "";
 
@@ -129,4 +135,5 @@ export const prerender = false;
     }
   }
   load();
+  window.addEventListener("portal:refresh", load);
 </script>

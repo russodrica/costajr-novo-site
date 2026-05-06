@@ -8,12 +8,19 @@ const { title = "Portal", tipo, activePage = "" } = Astro.props;
 
 const navs = {
   cliente: [
-    { href: "/manutencao/cliente/dashboard",   label: "Dashboard",   id: "dashboard"   },
-    { href: "/manutencao/cliente/chamados",     label: "Chamados",    id: "chamados"    },
-    { href: "/manutencao/cliente/minha-conta",  label: "Minha Conta", id: "minha-conta" },
+    { href: "/manutencao/cliente/dashboard",   label: "Dashboard",    id: "dashboard"   },
+    { href: "/manutencao/cliente/chamados",     label: "Chamados",     id: "chamados"    },
+    { href: "/manutencao/cliente/lojas",        label: "Lojas",        id: "lojas"       },
+    { href: "/manutencao/cliente/preventivas",  label: "Preventivas",  id: "preventivas" },
+    { href: "/manutencao/cliente/orcamentos",   label: "Orçamentos",   id: "orcamentos"  },
+    { href: "/manutencao/cliente/materiais",    label: "Materiais",    id: "materiais"   },
+    { href: "/manutencao/cliente/meu-plano",    label: "Meu Plano",    id: "meu-plano"   },
+    { href: "/manutencao/cliente/minha-conta",  label: "Minha Conta",  id: "minha-conta" },
   ],
   tecnico: [
-    { href: "/manutencao/tecnico/dashboard", label: "Meus Chamados", id: "dashboard" },
+    { href: "/manutencao/tecnico/dashboard",  label: "Meus Chamados", id: "dashboard"  },
+    { href: "/manutencao/tecnico/agenda",     label: "Agenda",        id: "agenda"     },
+    { href: "/manutencao/tecnico/materiais",  label: "Materiais",     id: "materiais"  },
   ],
   admin: [
     { href: "/manutencao/admin",              label: "Clientes",  id: "clientes"  },
@@ -237,13 +244,11 @@ const nav = navs[tipo];
   <div class="main-area">
     <header class="portal-topbar">
       <h1>{title}</h1>
-      {tipo === "admin" && (
-        <button id="btnAtualizarPortal" title="Atualizar dados"
-          style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:8px;border:1.5px solid #E5E7EB;background:#fff;color:#2D2F36;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;transition:all .15s">
-          <svg id="iconRefresh" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          <span id="labelRefresh">Atualizar</span>
-        </button>
-      )}
+      <button id="btnAtualizarPortal" title="Atualizar dados"
+        style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:8px;border:1.5px solid #E5E7EB;background:#fff;color:#2D2F36;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;transition:all .15s">
+        <svg id="iconRefresh" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        <span id="labelRefresh">Atualizar</span>
+      </button>
     </header>
     <main class="portal-content">
       <slot />
