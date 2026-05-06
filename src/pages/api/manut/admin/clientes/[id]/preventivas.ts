@@ -44,13 +44,13 @@ export const POST: APIRoute = async ({ request, params }) => {
       const { data: created, error } = await db
         .from("manut_preventivas")
         .insert(rows)
-        .select("id, data_agendada, status, observacoes, manut_lojas(id, nome), manut_tecnicos(id, nome)");
+        .select("id, data_agendada, status, manut_lojas(id, nome), manut_tecnicos(id, nome)");
       if (error) throw new Error(error.message);
       return jsonOk({ geradas: created?.length || 0, preventivas: created || [] }, 201);
     }
 
     // ── Agendamento avulso ───────────────────────────────────────
-    const { loja_id, tecnico_id, data_agendada, observacoes } = body;
+    const { loja_id, tecnico_id, data_agendada } = body;
     if (!data_agendada) throw new Error("Data é obrigatória");
 
     const { data, error } = await supabaseAdmin()
@@ -60,10 +60,9 @@ export const POST: APIRoute = async ({ request, params }) => {
         loja_id: loja_id || null,
         tecnico_id: tecnico_id || null,
         data_agendada,
-        observacoes: observacoes?.trim() || null,
         status: "agendada",
       })
-      .select("id, data_agendada, status, observacoes, manut_lojas(id, nome), manut_tecnicos(id, nome)")
+      .select("id, data_agendada, status, manut_lojas(id, nome), manut_tecnicos(id, nome)")
       .single();
     if (error) throw new Error(error.message);
     return jsonOk(data, 201);
@@ -78,14 +77,13 @@ export const PUT: APIRoute = async ({ request, params }) => {
     await requireAdmin(request);
     const { id } = params;
     const body = await request.json();
-    const { prev_id, data_agendada, tecnico_id, status, observacoes } = body;
+    const { prev_id, data_agendada, tecnico_id, status } = body;
     if (!prev_id) return jsonErr(400, "prev_id obrigatório");
 
     const update: Record<string, any> = {};
     if (data_agendada !== undefined) update.data_agendada = data_agendada;
     if (tecnico_id !== undefined) update.tecnico_id = tecnico_id;
     if (status !== undefined) update.status = status;
-    if (observacoes !== undefined) update.observacoes = observacoes;
 
     const { error } = await supabaseAdmin()
       .from("manut_preventivas")

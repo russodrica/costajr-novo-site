@@ -18,7 +18,7 @@ export const GET: APIRoute = async ({ request, params }) => {
         .order("data_abertura", { ascending: false })
         .limit(50),
       db.from("manut_preventivas")
-        .select("id, data_agendada, status, observacoes, manut_lojas(id, nome), manut_tecnicos(id, nome)")
+        .select("id, data_agendada, status, manut_lojas(id, nome), manut_tecnicos(id, nome)")
         .eq("cliente_id", id)
         .order("data_agendada", { ascending: false })
         .limit(50),
