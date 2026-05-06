@@ -46,7 +46,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
                 <select class="filter-select" style="padding:3px 8px;font-size:0.8rem" onchange={`patchLead('${l.id}', this.value)`}>
                   {["novo","contato_feito","proposta_enviada","negociando","convertido","perdido"].map(s => <option value={s} selected={s===l.etapa}>{s.replace(/_/g," ")}</option>)}
                 </select>
-                <button class="btn btn-danger btn-sm" onclick={`excluirLead('${l.id}','${l.nome}')`}>🗑</button>
+                <button class="btn btn-danger btn-sm" data-id={l.id} data-nome={l.nome} onclick="excluirLead(this)">🗑</button>
               </td>
             </tr>
           )) : <tr><td colspan="8" style="text-align:center;color:#999;padding:32px">Nenhum pré-cadastro encontrado</td></tr>}
@@ -66,7 +66,9 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
         r.style.display = r.dataset.search.includes(q.toLowerCase()) ? "" : "none";
       });
     }
-    async function excluirLead(id, nome) {
+    async function excluirLead(btn) {
+      const id = btn.dataset.id;
+      const nome = btn.dataset.nome;
       if (!confirm(`Excluir permanentemente o pré-cadastro de "${nome}"? Esta ação não pode ser desfeita.`)) return;
       const res = await fetch(`/api/admin/leads/${id}`, { method: "DELETE" });
       if (res.ok) window.location.reload(); else alert("Erro ao excluir");
