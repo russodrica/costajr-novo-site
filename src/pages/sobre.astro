@@ -113,35 +113,6 @@ const esg = [
     </div>
   </section>
 
-  <!-- TOLERÂNCIA ZERO -->
-  <section class="section section-soft">
-    <div class="container tolerancia">
-      <div>
-        <span class="kicker">Tolerância zero</span>
-        <h2>O que <span style="color:var(--brand)">não aceitamos</span>, nunca.</h2>
-        <p class="lead">Nossa cultura tem limites claros — e eles não negociam.</p>
-      </div>
-      <ul class="tolerancia-list">
-        {[
-          "Mentira",
-          "Deslealdade",
-          "Desonestidade",
-          "Comodismo",
-          "Desculpas",
-          "Arrogância",
-          "Improdutividade",
-          "Indiferença",
-          "Indisciplina",
-        ].map(item => (
-          <li>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  </section>
-
   <!-- SÓCIOS -->
   <section class="section">
     <div class="container">
@@ -332,25 +303,6 @@ const esg = [
   .valor-card h3 { font-size: 18px; margin: 0 0 6px; }
   .valor-card p { color: var(--ink-mid); font-size: 14px; margin: 0; line-height: 1.55; }
 
-  /* TOLERÂNCIA */
-  .tolerancia {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 64px;
-    align-items: center;
-  }
-  .tolerancia-list {
-    list-style: none; padding: 0; margin: 0;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-  }
-  .tolerancia-list li {
-    display: flex; align-items: center; gap: 10px;
-    font-family: 'Montserrat', sans-serif;
-    font-weight: 700; font-size: 15px;
-    color: var(--ink); text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 14px 18px;
-    background: #fff; border: 1px solid var(--border); border-radius: 6px;
-  }
-
   /* SÓCIOS */
   .socios-grid {
     display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
@@ -415,9 +367,7 @@ const esg = [
     .page-hero-content { padding: 64px 0 56px; }
     .historia { grid-template-columns: 1fr; gap: 36px; }
     .historia-stats { padding: 32px; }
-    .tolerancia { grid-template-columns: 1fr; gap: 32px; }
-    .tolerancia-list { grid-template-columns: 1fr; }
-    .socios-grid { grid-template-columns: 1fr; }
+.socios-grid { grid-template-columns: 1fr; }
     .cta-final { padding: 40px 28px; }
   }
 </style>

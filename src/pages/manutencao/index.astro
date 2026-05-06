@@ -1,0 +1,558 @@
+---
+import Base from "~/layouts/Base.astro";
+
+const diferenciais = [
+  {
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M21 12c.552 0 1-.449 1-1V5a2 2 0 00-2-2H4a2 2 0 00-2 2v6c0 .551.448 1 1 1"/><path d="M3 16c0-1.1.9-2 2-2h14a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2z"/></svg>`,
+    titulo: "Dashboard em tempo real",
+    desc: "Visualize chamados abertos, preventivas agendadas e orçamentos pendentes em um único painel, de qualquer dispositivo.",
+  },
+  {
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,
+    titulo: "Checklist digital por visita",
+    desc: "O técnico preenche Civil, Hidráulica, Elétrica e demais especialidades diretamente no celular, com fotos e assinatura eletrônica.",
+  },
+  {
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>`,
+    titulo: "Gestão de materiais",
+    desc: "Controle o estoque por loja, registre consumo por chamado e acompanhe solicitações de reposição sem planilhas.",
+  },
+  {
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
+    titulo: "Ciclo automático de visitas",
+    desc: "Contrate o plano e o sistema agenda automaticamente todas as preventivas do ano, respeitando os intervalos do seu contrato.",
+  },
+  {
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>`,
+    titulo: "Chamados e orçamentos integrados",
+    desc: "Abra chamados corretivos diretamente no portal, acompanhe o status e aprove orçamentos com um clique.",
+  },
+  {
+    icon: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+    titulo: "Histórico completo da loja",
+    desc: "Todo serviço realizado fica registrado: data, técnico responsável, peças utilizadas e relatório fotográfico.",
+  },
+];
+
+const planos = [
+  { nome: "Essencial", visitas: 12, desc: "1 visita preventiva por mês", ideal: "Lojas pequenas e escritórios" },
+  { nome: "Profissional", visitas: 24, desc: "2 visitas preventivas por mês", ideal: "Redes de médio porte", destaque: true },
+  { nome: "Enterprise", visitas: 48, desc: "4 visitas preventivas por mês", ideal: "Grandes redes e indústrias" },
+];
+---
+<Base
+  title="Manutenção Predial Preventiva — Costa Júnior"
+  description="Plataforma de manutenção predial preventiva com dashboard, checklist digital, gestão de materiais e ciclo automático de visitas. Pare de apagar incêndio — previna."
+>
+  <!-- HERO -->
+  <section class="hero-manut">
+    <div class="container hero-inner">
+      <div class="hero-text">
+        <span class="eyebrow">Manutenção Predial Preventiva</span>
+        <h1>Pare de apagar incêndio.<br><span class="hl">Comece a prevenir.</span></h1>
+        <p class="hero-sub">
+          Plataforma completa para gestão de manutenção preventiva. Dashboard em tempo real, checklist digital por visita, controle de materiais e histórico completo de cada loja — tudo integrado.
+        </p>
+        <div class="hero-ctas">
+          <a href="/manutencao/contratar" class="btn btn-primary">
+            Contratar agora
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+          </a>
+          <a href="/contato" class="btn btn-ghost-dark">Falar com especialista</a>
+        </div>
+        <div class="hero-trust">
+          <span>✓ Sem fidelidade no 1º mês</span>
+          <span>✓ Plataforma incluída no contrato</span>
+          <span>✓ Atendimento 24/7 para emergências</span>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="screen-mockup screen-main">
+          <div class="mockup-bar">
+            <span></span><span></span><span></span>
+          </div>
+          <img src="/manut-dashboard.png" alt="Dashboard de manutenção — Costa Júnior" class="screen-img" onerror="this.parentElement.classList.add('no-img')" />
+          <div class="mockup-placeholder">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            <span>Dashboard</span>
+          </div>
+        </div>
+        <div class="screen-mockup screen-side">
+          <div class="mockup-bar small"><span></span><span></span><span></span></div>
+          <img src="/manut-checklist.png" alt="Checklist preventiva" class="screen-img" onerror="this.parentElement.classList.add('no-img')" />
+          <div class="mockup-placeholder">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+            <span>Checklist</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEMA / SOLUÇÃO -->
+  <section class="section">
+    <div class="container problema-grid">
+      <div class="problema-lado sem">
+        <span class="kicker kicker-red">Sem preventiva</span>
+        <h3>O ciclo do apaga-incêndio</h3>
+        <ul class="prob-list">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C41E3A" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Loja para por falha elétrica inesperada</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C41E3A" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Correção emergencial custa 3× mais</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C41E3A" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Sem histórico = diagnóstico lento</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C41E3A" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Fornecedor diferente a cada chamado</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C41E3A" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Gestão por planilha desatualizada</li>
+        </ul>
+      </div>
+      <div class="vs-divider">
+        <span>VS</span>
+      </div>
+      <div class="problema-lado com">
+        <span class="kicker kicker-green">Com Costa Júnior</span>
+        <h3>Manutenção sob controle</h3>
+        <ul class="prob-list">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg> Visitas regulares evitam falhas</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg> Custo fixo mensal previsível</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg> Histórico completo por loja no app</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg> Equipe fixa que conhece suas instalações</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg> Portal digital com relatório em tempo real</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLATAFORMA — screenshots -->
+  <section class="section section-soft">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 64px">
+        <span class="kicker">A plataforma</span>
+        <h2>Tudo que você precisa saber sobre sua manutenção</h2>
+        <p class="lead">O portal do cliente dá visibilidade total: do agendamento à conclusão, com foto e assinatura do técnico.</p>
+      </div>
+
+      <!-- Feature 1: Dashboard -->
+      <div class="feat-row">
+        <div class="feat-text">
+          <span class="feat-num">01</span>
+          <h3>Dashboard completo</h3>
+          <p>Veja de um lugar só: preventivas agendadas e realizadas, chamados abertos por status e prioridade, orçamentos pendentes e o próximo calendário de visitas — atualizado em tempo real.</p>
+          <ul class="feat-list">
+            <li>Preventivas do mês × realizadas</li>
+            <li>Chamados abertos por especialidade</li>
+            <li>Materiais aguardando aprovação</li>
+            <li>Orçamentos em análise</li>
+          </ul>
+        </div>
+        <div class="feat-screen">
+          <div class="screen-card">
+            <img src="/manut-dashboard.png" alt="Dashboard manutenção preventiva" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+            <div class="screen-fallback">
+              <div class="dash-mock">
+                <div class="dash-stat red"><strong>12</strong><span>Preventivas</span></div>
+                <div class="dash-stat"><strong>8</strong><span>Chamados</span></div>
+                <div class="dash-stat"><strong>5</strong><span>Materiais</span></div>
+                <div class="dash-stat"><strong>3</strong><span>Orçamentos</span></div>
+                <div class="dash-chart">
+                  <div class="pie-mock"></div>
+                  <div class="legend-mock">
+                    <span>Civil 40%</span>
+                    <span>Elétrica 35%</span>
+                    <span>Hidráulica 25%</span>
+                  </div>
+                </div>
+                <div class="dash-list">
+                  <p style="font-weight:700;font-size:13px;margin:0 0 8px">Próximas preventivas</p>
+                  <div class="list-item"><span class="dot green"></span> Loja SP-01 · 08/05</div>
+                  <div class="list-item"><span class="dot yellow"></span> Loja RJ-03 · 12/05</div>
+                  <div class="list-item"><span class="dot red"></span> Loja BH-02 · 15/05</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 2: Checklist -->
+      <div class="feat-row feat-row-reverse">
+        <div class="feat-text">
+          <span class="feat-num">02</span>
+          <h3>Checklist digital por visita</h3>
+          <p>O técnico preenche o checklist no celular durante a visita: Civil, Hidráulica, Elétrica e Ar Condicionado — cada item com status OK / Não Conforme / N/A. Fotos obrigatórias e assinatura eletrônica do responsável.</p>
+          <ul class="feat-list">
+            <li>Estruturado por especialidade</li>
+            <li>Fotos anexadas por item</li>
+            <li>Assinatura digital do cliente</li>
+            <li>Relatório gerado automaticamente</li>
+          </ul>
+        </div>
+        <div class="feat-screen">
+          <div class="screen-card screen-mobile">
+            <img src="/manut-checklist.png" alt="Checklist preventiva digital" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+            <div class="screen-fallback">
+              <div class="check-mock">
+                <p style="font-weight:700;font-size:14px;margin:0 0 12px;color:#2D2F36">Checklist Preventiva</p>
+                <div class="check-section">
+                  <span class="check-label">Civil</span>
+                  <div class="check-row"><span>Piso e revestimento</span><span class="badge ok">OK</span></div>
+                  <div class="check-row"><span>Impermeabilização</span><span class="badge ok">OK</span></div>
+                  <div class="check-row"><span>Fachada</span><span class="badge nc">N/C</span></div>
+                </div>
+                <div class="check-section">
+                  <span class="check-label">Hidráulica</span>
+                  <div class="check-row"><span>Registros e torneiras</span><span class="badge ok">OK</span></div>
+                  <div class="check-row"><span>Caixa d'água</span><span class="badge na">N/A</span></div>
+                </div>
+                <div class="check-section">
+                  <span class="check-label">Elétrica</span>
+                  <div class="check-row"><span>Quadro de distribuição</span><span class="badge ok">OK</span></div>
+                  <div class="check-row"><span>Iluminação de emergência</span><span class="badge ok">OK</span></div>
+                </div>
+                <div style="margin-top:12px;padding:10px;background:#F4F6F9;border-radius:6px;font-size:12px;color:#5B5F6B">
+                  📷 3 fotos anexadas · ✍️ Assinatura pendente
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 3: Materiais -->
+      <div class="feat-row">
+        <div class="feat-text">
+          <span class="feat-num">03</span>
+          <h3>Controle de materiais</h3>
+          <p>Cada chamado registra os materiais utilizados. O gestor aprova solicitações de reposição direto no portal, com visibilidade do consumo por loja e por especialidade.</p>
+          <ul class="feat-list">
+            <li>Inventário por unidade</li>
+            <li>Vinculação ao chamado</li>
+            <li>Aprovação de reposição online</li>
+            <li>Histórico de consumo</li>
+          </ul>
+        </div>
+        <div class="feat-screen">
+          <div class="screen-card screen-mobile">
+            <img src="/manut-materiais.png" alt="Gestão de materiais" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+            <div class="screen-fallback">
+              <div class="mat-mock">
+                <p style="font-weight:700;font-size:14px;margin:0 0 12px;color:#2D2F36">Materiais — Loja SP-01</p>
+                <div class="mat-row"><span>Lâmpada LED 9W</span><span class="mat-qty">×4</span><span class="mat-status usado">Usado</span></div>
+                <div class="mat-row"><span>Conector elétrico</span><span class="mat-qty">×12</span><span class="mat-status usado">Usado</span></div>
+                <div class="mat-row"><span>Vedante hidráulico</span><span class="mat-qty">×2</span><span class="mat-status pend">Pendente</span></div>
+                <div class="mat-row"><span>Espuma expansiva</span><span class="mat-qty">×1</span><span class="mat-status pend">Pendente</span></div>
+                <div style="margin-top:12px;padding:10px;background:#FEF3C7;border-radius:6px;font-size:12px;color:#92400E">
+                  ⚠️ 2 itens aguardando aprovação para reposição
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIFERENCIAIS -->
+  <section class="section">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 56px">
+        <span class="kicker">Por que Costa Júnior</span>
+        <h2>Tudo que um contrato de manutenção deve ter</h2>
+      </div>
+      <div class="dif-grid">
+        {diferenciais.map(d => (
+          <article class="dif-card">
+            <div class="dif-icon" set:html={d.icon} />
+            <h3>{d.titulo}</h3>
+            <p>{d.desc}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- PLANOS -->
+  <section class="section section-soft" id="planos">
+    <div class="container">
+      <div style="text-align:center;max-width:680px;margin:0 auto 56px">
+        <span class="kicker">Planos</span>
+        <h2>Escolha o ritmo da sua manutenção</h2>
+        <p class="lead">Todos os planos incluem plataforma digital, técnicos certificados e suporte 24/7 para emergências.</p>
+      </div>
+      <div class="planos-grid">
+        {planos.map(p => (
+          <article class={`plano-card${p.destaque ? ' plano-destaque' : ''}`}>
+            {p.destaque && <span class="plano-badge">Mais escolhido</span>}
+            <h3>{p.nome}</h3>
+            <p class="plano-visitas">{p.visitas} visitas/ano</p>
+            <p class="plano-desc">{p.desc}</p>
+            <p class="plano-ideal">Ideal para: {p.ideal}</p>
+            <a href="/manutencao/contratar" class={`btn ${p.destaque ? 'btn-primary' : 'btn-outline'}`} style="width:100%;justify-content:center;margin-top:auto">
+              Contratar agora
+            </a>
+          </article>
+        ))}
+      </div>
+      <p style="text-align:center;margin-top:32px;color:var(--ink-mid);font-size:14px">
+        Precisa de algo customizado? <a href="/contato" style="color:var(--brand);border-bottom:1px solid var(--brand-soft)">Fale com a nossa equipe</a> e montamos o plano ideal.
+      </p>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section class="section">
+    <div class="container">
+      <div class="cta-block">
+        <div>
+          <span class="kicker" style="color:#fff;opacity:.85">Pronto para começar?</span>
+          <h2 style="color:#fff;margin-bottom:16px">Sua primeira visita preventiva<br>em até 10 dias após a contratação.</h2>
+          <p style="color:#D1D5DB;font-size:18px;margin:0 0 32px;max-width:520px">
+            Sem burocracia. Você contrata online, a plataforma agenda automaticamente e nosso time entra em ação.
+          </p>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <a href="/manutencao/contratar" class="btn btn-primary">
+              Contratar agora
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+            </a>
+            <a href="/contato" class="btn btn-ghost-light">Tirar dúvidas primeiro</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  /* ─── HERO ─── */
+  .hero-manut {
+    position: relative;
+    background:
+      radial-gradient(circle at 70% 20%, rgba(196,30,58,.5) 0%, transparent 55%),
+      linear-gradient(135deg, #1A1C20 0%, #2D2F36 60%, #3A1419 100%);
+    color: #fff; overflow: hidden; padding: 80px 0 60px;
+  }
+  .hero-manut::before {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: linear-gradient(135deg, rgba(0,0,0,.5) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-inner {
+    position: relative;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 56px;
+    align-items: center;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--brand); border-left: 3px solid var(--brand); padding-left: 12px;
+    margin-bottom: 24px;
+  }
+  .hero-text h1 { color: #fff; margin: 0 0 20px; }
+  .hero-text .hl { color: var(--brand); }
+  .hero-sub { font-size: clamp(15px, 1.3vw, 17px); line-height: 1.7; color: #D1D5DB; margin: 0 0 32px; }
+  .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; }
+  .btn-ghost-dark {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 14px 28px; border-radius: 4px;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    background: transparent; color: #fff; border: 2px solid rgba(255,255,255,.5);
+    transition: all .18s ease;
+  }
+  .btn-ghost-dark:hover { background: rgba(255,255,255,.1); border-color: #fff; color: #fff; }
+  .hero-trust { display: flex; flex-wrap: wrap; gap: 16px; }
+  .hero-trust span { font-size: 13px; color: #9CA3AF; }
+
+  /* Hero visual */
+  .hero-visual { position: relative; height: 340px; }
+  .screen-mockup {
+    position: absolute; border-radius: 10px;
+    overflow: hidden; box-shadow: 0 24px 48px rgba(0,0,0,.4);
+    background: #1E2028;
+  }
+  .screen-main { width: 100%; height: 100%; top: 0; left: 0; }
+  .screen-side {
+    width: 40%; height: 55%; bottom: -20px; right: -16px;
+    z-index: 2; box-shadow: 0 20px 40px rgba(0,0,0,.5);
+  }
+  .mockup-bar {
+    display: flex; gap: 5px; padding: 8px 12px;
+    background: #16181f;
+  }
+  .mockup-bar span { width: 9px; height: 9px; border-radius: 50%; background: #3D4048; }
+  .mockup-bar.small { padding: 6px 10px; }
+  .mockup-bar.small span { width: 7px; height: 7px; }
+  .screen-img { width: 100%; height: calc(100% - 26px); object-fit: cover; display: block; }
+  .screen-mockup.no-img .screen-img { display: none; }
+  .mockup-placeholder {
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; height: calc(100% - 26px);
+    color: var(--brand); font-size: 13px; font-weight: 600;
+  }
+  .screen-mockup.no-img .mockup-placeholder { display: flex; }
+
+  /* ─── PROBLEMA ─── */
+  .problema-grid {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 40px;
+    align-items: center;
+  }
+  .problema-lado { padding: 40px; border-radius: 12px; }
+  .problema-lado.sem { background: rgba(196,30,58,.06); border: 1px solid rgba(196,30,58,.15); }
+  .problema-lado.com { background: rgba(22,163,74,.06); border: 1px solid rgba(22,163,74,.15); }
+  .kicker {
+    display: inline-block;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px;
+  }
+  .kicker-red { color: var(--brand); }
+  .kicker-green { color: #16a34a; }
+  .problema-lado h3 { margin: 0 0 20px; font-size: 20px; }
+  .prob-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  .prob-list li { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+  .vs-divider {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--ink); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  /* ─── FEATURES ─── */
+  .feat-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 64px;
+    align-items: center; margin-bottom: 80px;
+  }
+  .feat-row:last-child { margin-bottom: 0; }
+  .feat-row-reverse .feat-text { order: 2; }
+  .feat-row-reverse .feat-screen { order: 1; }
+  .feat-num {
+    font-family: 'Montserrat', sans-serif; font-weight: 900; font-size: 48px;
+    color: var(--brand-soft); display: block; line-height: 1; margin-bottom: 8px;
+  }
+  .feat-text h3 { font-size: 28px; margin: 0 0 14px; }
+  .feat-text p { color: var(--ink-mid); font-size: 16px; line-height: 1.7; margin: 0 0 20px; }
+  .feat-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .feat-list li {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; color: var(--ink-mid);
+  }
+  .feat-list li::before { content: "→"; color: var(--brand); font-weight: 700; }
+
+  .screen-card {
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 24px 48px rgba(0,0,0,.10);
+    border: 1px solid var(--border);
+    background: #fff;
+  }
+  .screen-card img { width: 100%; display: block; }
+  .screen-card.screen-mobile { max-width: 340px; margin: 0 auto; }
+  .screen-fallback {
+    display: none; padding: 20px;
+    flex-direction: column;
+  }
+
+  /* Dashboard mock */
+  .dash-mock { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .dash-stat {
+    background: #F4F6F9; border-radius: 8px; padding: 14px;
+    text-align: center; border: 1px solid var(--border);
+  }
+  .dash-stat.red { border-color: rgba(196,30,58,.2); background: rgba(196,30,58,.06); }
+  .dash-stat strong { font-family: 'Montserrat', sans-serif; font-size: 28px; font-weight: 800; color: var(--ink); display: block; }
+  .dash-stat span { font-size: 12px; color: var(--ink-mid); }
+  .dash-chart { grid-column: 1/-1; display: flex; gap: 16px; align-items: center; background: #F4F6F9; border-radius: 8px; padding: 14px; }
+  .pie-mock { width: 60px; height: 60px; border-radius: 50%; flex-shrink: 0; background: conic-gradient(#C41E3A 0% 40%, #2D2F36 40% 75%, #9CA3AF 75% 100%); }
+  .legend-mock { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-mid); }
+  .dash-list { grid-column: 1/-1; }
+  .list-item { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.green { background: #16a34a; }
+  .dot.yellow { background: #d97706; }
+  .dot.red { background: var(--brand); }
+
+  /* Checklist mock */
+  .check-mock { font-size: 13px; }
+  .check-section { margin-bottom: 12px; }
+  .check-label { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--brand); display: block; margin-bottom: 6px; }
+  .check-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; font-family: 'Montserrat', sans-serif; }
+  .badge.ok { background: #dcfce7; color: #15803d; }
+  .badge.nc { background: #fee2e2; color: #dc2626; }
+  .badge.na { background: #F4F6F9; color: var(--ink-mid); }
+
+  /* Materiais mock */
+  .mat-mock { font-size: 13px; }
+  .mat-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .mat-row span:first-child { flex: 1; }
+  .mat-qty { color: var(--ink-mid); font-size: 12px; }
+  .mat-status { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; font-family: 'Montserrat', sans-serif; }
+  .mat-status.usado { background: #dcfce7; color: #15803d; }
+  .mat-status.pend { background: #FEF3C7; color: #92400E; }
+
+  /* ─── DIFERENCIAIS ─── */
+  .dif-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+  .dif-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 28px; transition: all .2s ease;
+  }
+  .dif-card:hover { transform: translateY(-3px); box-shadow: 0 14px 32px rgba(0,0,0,.06); border-color: var(--brand-soft); }
+  .dif-icon {
+    width: 52px; height: 52px; border-radius: 10px;
+    background: var(--brand-soft); color: var(--brand);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .dif-card h3 { font-size: 17px; margin: 0 0 8px; }
+  .dif-card p { color: var(--ink-mid); font-size: 14px; line-height: 1.6; margin: 0; }
+
+  /* ─── PLANOS ─── */
+  .planos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; }
+  .plano-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 32px 28px; display: flex; flex-direction: column; gap: 12px;
+    position: relative;
+  }
+  .plano-destaque {
+    border-color: var(--brand); border-width: 2px;
+    box-shadow: 0 0 0 4px rgba(196,30,58,.08);
+  }
+  .plano-badge {
+    position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+    background: var(--brand); color: #fff;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 4px 14px; border-radius: 20px; white-space: nowrap;
+  }
+  .plano-card h3 { font-size: 22px; margin: 0; }
+  .plano-visitas { font-family: 'Montserrat', sans-serif; font-size: 32px; font-weight: 800; color: var(--brand); margin: 0; }
+  .plano-desc { color: var(--ink-mid); font-size: 15px; margin: 0; }
+  .plano-ideal { font-size: 13px; color: var(--ink-light); margin: 0; padding-top: 4px; border-top: 1px solid var(--border); }
+
+  /* ─── CTA FINAL ─── */
+  .cta-block {
+    background: linear-gradient(135deg, #1F2126 0%, #2D2F36 100%);
+    border-radius: 16px; padding: 56px 64px;
+    position: relative; overflow: hidden;
+  }
+  .cta-block::before {
+    content: ""; position: absolute; top: -30%; right: -15%;
+    width: 500px; height: 500px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(196,30,58,.25) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  .cta-block > * { position: relative; }
+
+  @media (max-width: 1000px) {
+    .hero-inner { grid-template-columns: 1fr; }
+    .hero-visual { height: 260px; }
+    .problema-grid { grid-template-columns: 1fr; }
+    .vs-divider { margin: 0 auto; }
+    .feat-row, .feat-row-reverse { grid-template-columns: 1fr; }
+    .feat-row-reverse .feat-text { order: 0; }
+    .feat-row-reverse .feat-screen { order: 0; }
+    .cta-block { padding: 40px 28px; }
+  }
+</style>

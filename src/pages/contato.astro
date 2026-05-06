@@ -23,28 +23,19 @@ import Base from "~/layouts/Base.astro";
         <h2 style="margin-bottom:24px">Como nos encontrar</h2>
 
         <div class="info-block">
-          <h3>Endereço</h3>
-          <p>
-            Av. Eng. Luís Carlos Berrini, 1140 — 7º andar<br>
-            Brooklin · São Paulo / SP<br>
-            CEP 04571-000
-          </p>
-        </div>
-
-        <div class="info-block">
-          <h3>Telefones</h3>
-          <p>
-            <a href="tel:+551123696462">(11) 2369-6462</a><br>
-            <a href="tel:+551148722377">(11) 4872-2377</a><br>
-            <a href="tel:+5511991431437">(11) 99143-1437</a> — WhatsApp
-          </p>
-        </div>
-
-        <div class="info-block">
           <h3>E-mail</h3>
           <p>
-            <a href="mailto:contato@costajr.com.br">contato@costajr.com.br</a><br>
-            <a href="mailto:comercial@costajr.com.br">comercial@costajr.com.br</a>
+            <a href="mailto:contato@costajr.com.br">contato@costajr.com.br</a>
+          </p>
+        </div>
+
+        <div class="info-block">
+          <h3>WhatsApp</h3>
+          <p>
+            <a href="https://wa.me/551123696462" target="_blank" rel="noopener" class="wa-link">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              Chamar no WhatsApp
+            </a>
           </p>
         </div>
 
@@ -128,27 +119,46 @@ import Base from "~/layouts/Base.astro";
 <script>
   const form = document.getElementById("contato-form") as HTMLFormElement | null;
   const status = document.getElementById("form-status") as HTMLParagraphElement | null;
-  if (form && status) {
-    form.addEventListener("submit", (e) => {
+  const btn = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+  if (form && status && btn) {
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      btn.disabled = true;
+      btn.textContent = "Enviando…";
       const data = new FormData(form);
-      const corpo = [
-        `Nome: ${data.get("nome")}`,
-        `Empresa: ${data.get("empresa") || "—"}`,
-        `Cargo: ${data.get("cargo") || "—"}`,
-        `E-mail: ${data.get("email")}`,
-        `Telefone: ${data.get("telefone")}`,
-        `Tipo: ${data.get("tipo")}`,
-        `Localização: ${data.get("localizacao") || "—"}`,
-        ``,
-        `Mensagem:`,
-        `${data.get("mensagem")}`
-      ].join("\n");
-      const assunto = `[Site] ${data.get("tipo")} — ${data.get("nome")}`;
-      window.location.href =
-        `mailto:comercial@costajr.com.br?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
-      status.hidden = false;
-      status.textContent = "Abrindo seu cliente de e-mail. Se nada acontecer, escreva para comercial@costajr.com.br.";
+      try {
+        const res = await fetch("/api/contato", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nome: data.get("nome"),
+            empresa: data.get("empresa") || "",
+            cargo: data.get("cargo") || "",
+            email: data.get("email"),
+            telefone: data.get("telefone"),
+            tipo: data.get("tipo"),
+            localizacao: data.get("localizacao") || "",
+            mensagem: data.get("mensagem"),
+          }),
+        });
+        if (res.ok) {
+          form.reset();
+          status.hidden = false;
+          status.style.background = "rgba(34,197,94,.12)";
+          status.style.color = "#15803d";
+          status.textContent = "✅ Mensagem enviada! Retornaremos em até 1 dia útil.";
+        } else {
+          throw new Error("erro");
+        }
+      } catch {
+        status.hidden = false;
+        status.style.background = "rgba(196,30,58,.08)";
+        status.style.color = "var(--brand)";
+        status.textContent = "Erro ao enviar. Por favor escreva diretamente para comercial@costajr.com.br.";
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Enviar mensagem <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>';
+      }
     });
   }
 </script>
@@ -190,6 +200,12 @@ import Base from "~/layouts/Base.astro";
   .contato-info p { color: var(--ink-mid); font-size: 15px; line-height: 1.75; margin: 0; }
   .contato-info a { color: var(--ink); border-bottom: 1px solid var(--border); }
   .contato-info a:hover { color: var(--brand); border-color: var(--brand); }
+  .wa-link {
+    display: inline-flex; align-items: center; gap: 8px;
+    color: #25D366 !important; border-color: transparent !important;
+    font-weight: 600;
+  }
+  .wa-link:hover { color: #128C7E !important; }
 
   .contato-form {
     background: #fff; border: 1px solid var(--border); border-radius: 12px;
