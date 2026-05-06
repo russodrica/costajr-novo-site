@@ -35,9 +35,9 @@ const diferenciais = [
 ];
 
 const planos = [
-  { nome: "Trimestral", periodo: "3 meses", visitas: 3, extra: "+1 visita extra", desc: "1 visita preventiva por mês", ideal: "Ideal para conhecer o serviço" },
-  { nome: "Semestral", periodo: "6 meses", visitas: 6, extra: null, desc: "1 visita preventiva por mês", ideal: "Ideal para manutenção contínua", destaque: true },
-  { nome: "Anual", periodo: "12 meses", visitas: 12, extra: "+5 visitas extras", desc: "1 visita preventiva por mês", ideal: "Melhor custo-benefício" },
+  { nome: "Trimestral", periodo: "3 meses", extra: null,              ideal: "Ideal para conhecer o serviço" },
+  { nome: "Semestral",  periodo: "6 meses", extra: "+2 visitas extras", ideal: "Ideal para manutenção contínua", destaque: true },
+  { nome: "Anual",      periodo: "12 meses", extra: "+5 visitas extras", ideal: "Melhor custo-benefício" },
 ];
 ---
 <Base
@@ -282,9 +282,8 @@ const planos = [
             {p.destaque && <span class="plano-badge">Mais escolhido</span>}
             <span class="plano-periodo">{p.periodo}</span>
             <h3>{p.nome}</h3>
-            <p class="plano-visitas">{p.visitas} visitas preventivas</p>
-            <p class="plano-desc">{p.desc}</p>
-            {p.extra && <p class="plano-extra">{p.extra} incluída</p>}
+            <p class="plano-desc">1 visita preventiva por mês</p>
+            {p.extra && <p class="plano-extra">{p.extra} durante o contrato</p>}
             <p class="plano-ideal">{p.ideal}</p>
             <a href="/manutencao/contratar" class={`btn ${p.destaque ? 'btn-primary' : 'btn-outline'}`} style="width:100%;justify-content:center;margin-top:auto">
               Contratar agora
