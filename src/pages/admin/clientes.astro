@@ -129,7 +129,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       const id = btn.dataset.id!;
       const nome = btn.dataset.nome!;
       if (!confirm(`Excluir permanentemente "${nome}"? Esta ação não pode ser desfeita.`)) return;
-      const res = await fetch(`/api/admin/clientes/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/clientes/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "delete" }) });
       if (res.ok) window.location.reload();
       else { const d = await res.json().catch(() => ({ error: `HTTP ${res.status}` })); alert("Erro: " + d.error); }
     });
