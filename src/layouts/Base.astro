@@ -55,6 +55,9 @@ const pathname = Astro.url.pathname;
     a:hover { color: var(--brand); }
     img { max-width: 100%; display: block; }
     .container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+    @media (max-width: 480px) {
+      .container { padding: 0 20px; }
+    }
 
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
