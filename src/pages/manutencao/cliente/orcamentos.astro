@@ -77,8 +77,9 @@ export const prerender = false;
 
 <style>
   .status-pill { display:inline-block;padding:3px 10px;border-radius:100px;font-size:10.5px;font-weight:700;text-transform:uppercase;white-space:nowrap }
-  .status-aguardando_proposta { background:#EFF6FF;color:#1D4ED8 }
-  .status-proposta_enviada    { background:#FFF7ED;color:#C2410C }
+  .status-em_analise          { background:#EFF6FF;color:#1D4ED8 }
+  .status-em_ajuste           { background:#FFF7ED;color:#C2410C }
+  .status-proposta_enviada    { background:#FEF3C7;color:#92400E }
   .status-aprovado            { background:#F0FDF4;color:#15803D }
   .status-rejeitado           { background:#F3F4F6;color:#6B7280 }
   .status-cancelado           { background:#FEF2F2;color:#B91C1C }
@@ -93,7 +94,7 @@ export const prerender = false;
   let lojas = [];
   let orcAtivo = null;
 
-  const statusLabel = { aguardando_proposta:"Aguard. proposta", proposta_enviada:"Proposta enviada", aprovado:"Aprovado", rejeitado:"Rejeitado", cancelado:"Cancelado" };
+  const statusLabel = { em_analise:"Em análise", em_ajuste:"Em ajuste", proposta_enviada:"Proposta enviada", aprovado:"Aprovado", rejeitado:"Rejeitado", cancelado:"Cancelado" };
   function fmt(v) { return v != null ? "R$ " + Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2}) : "—"; }
   function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
 

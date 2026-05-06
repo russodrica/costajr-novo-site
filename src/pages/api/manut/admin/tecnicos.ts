@@ -9,7 +9,7 @@ export const GET: APIRoute = async ({ request }) => {
     await requireAdmin(request);
     const { data } = await supabaseAdmin()
       .from("manut_tecnicos")
-      .select("id,nome,email,telefone,especialidades,status,last_login_at,created_at")
+      .select("id,nome,email,telefone,especialidades,lojas_ids,status,last_login_at,created_at")
       .order("nome");
     return jsonOk(data || []);
   } catch (e: any) {

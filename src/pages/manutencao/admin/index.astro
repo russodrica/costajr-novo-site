@@ -328,35 +328,109 @@ export const prerender = false;
     </div>
   </div>
 
-  <!-- Modal editar cliente -->
+  <!-- Modal ver/editar cliente (tabbed) -->
   <div class="modal-bg" id="modalEditarCliente">
-    <div class="modal">
-      <h2>Editar Cliente</h2>
-      <input type="hidden" id="editCliId">
-      <div id="editCliAlert" class="alert alert-error" style="display:none"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="form-group"><label>Nome</label><input type="text" id="editCliNome"></div>
-        <div class="form-group"><label>Telefone</label><input type="text" id="editCliTel"></div>
+    <div class="modal" style="max-width:900px;width:96vw">
+      <button class="modal-close" onclick="closeModal('modalEditarCliente')">×</button>
+      <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #E5E7EB">
+        <div style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:17px" id="editCliNomeHeader">—</div>
+        <div style="font-size:12.5px;color:#6B7280" id="editCliEmailHeader">—</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="form-group"><label>Plano</label><input type="text" id="editCliPlano"></div>
-        <div class="form-group"><label>Valor mensal (R$)</label><input type="number" id="editCliValor" min="0"></div>
+      <div style="display:flex;gap:0;margin-bottom:18px;border-bottom:2px solid #E5E7EB;overflow-x:auto">
+        <button class="modal-tab active" data-mtab="dados">Dados</button>
+        <button class="modal-tab" data-mtab="visao">Visão Geral</button>
+        <button class="modal-tab" data-mtab="preventivas">Preventivas</button>
+        <button class="modal-tab" data-mtab="chamados">Chamados</button>
+        <button class="modal-tab" data-mtab="orcamentos">Orçamentos</button>
+      </div>
+      <input type="hidden" id="editCliId">
+
+      <!-- Tab: Dados -->
+      <div class="mtab-panel" id="mtab-dados">
+        <div id="editCliAlert" class="alert alert-error" style="display:none"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>Nome</label><input type="text" id="editCliNome"></div>
+          <div class="form-group"><label>Telefone</label><input type="text" id="editCliTel"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group"><label>Plano</label><input type="text" id="editCliPlano"></div>
+          <div class="form-group"><label>Valor mensal (R$)</label><input type="number" id="editCliValor" min="0"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="form-group">
+            <label>Status</label>
+            <select id="editCliStatus">
+              <option value="pendente">Pendente</option>
+              <option value="ativo">Ativo</option>
+              <option value="inadimplente">Inadimplente</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Próx. vencimento</label><input type="date" id="editCliVenc"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+          <button class="btn btn-outline btn-sm" id="btnResetSenhaCliente" style="color:#C41E3A">Resetar Senha</button>
+          <div style="display:flex;gap:12px">
+            <button class="btn btn-outline" onclick="closeModal('modalEditarCliente')">Cancelar</button>
+            <button class="btn btn-primary" id="btnSalvarEditCli">Salvar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Visão Geral -->
+      <div class="mtab-panel" id="mtab-visao" style="display:none">
+        <div id="cliVisaoLoading" class="loading">Carregando análise...</div>
+        <div id="cliVisaoContent" style="display:none"></div>
+      </div>
+
+      <!-- Tab: Preventivas -->
+      <div class="mtab-panel" id="mtab-preventivas" style="display:none">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+          <button class="btn btn-primary btn-sm" id="btnAgendarPreventiva">+ Agendar Preventiva</button>
+        </div>
+        <div id="cliPrevLoading" class="loading">Carregando...</div>
+        <div id="cliPrevList" style="display:none"></div>
+      </div>
+
+      <!-- Tab: Chamados -->
+      <div class="mtab-panel" id="mtab-chamados" style="display:none">
+        <div id="cliChLoading" class="loading">Carregando...</div>
+        <div id="cliChList" style="display:none"></div>
+      </div>
+
+      <!-- Tab: Orçamentos -->
+      <div class="mtab-panel" id="mtab-orcamentos" style="display:none">
+        <div id="cliOrcLoading" class="loading">Carregando...</div>
+        <div id="cliOrcList" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal agendar preventiva -->
+  <div class="modal-bg" id="modalAgendarPrev">
+    <div class="modal" style="max-width:520px">
+      <button class="modal-close" onclick="closeModal('modalAgendarPrev')">×</button>
+      <h2>Agendar Preventiva</h2>
+      <div id="agendarPrevAlert" class="alert alert-error" style="display:none"></div>
+      <div class="form-group">
+        <label>Loja</label>
+        <select id="agendarPrevLoja"><option value="">Selecione a loja...</option></select>
       </div>
       <div class="form-group">
-        <label>Status</label>
-        <select id="editCliStatus">
-          <option value="pendente">Pendente</option>
-          <option value="ativo">Ativo</option>
-          <option value="inadimplente">Inadimplente</option>
-          <option value="cancelado">Cancelado</option>
-        </select>
+        <label>Técnico</label>
+        <select id="agendarPrevTecnico"><option value="">Nenhum (a definir)</option></select>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-        <button class="btn btn-outline btn-sm" id="btnResetSenhaCliente" style="color:#C41E3A">Resetar Senha</button>
-        <div style="display:flex;gap:12px">
-          <button class="btn btn-outline" onclick="closeModal('modalEditarCliente')">Cancelar</button>
-          <button class="btn btn-primary" id="btnSalvarEditCli">Salvar</button>
-        </div>
+      <div class="form-group">
+        <label>Data agendada</label>
+        <input type="date" id="agendarPrevData">
+      </div>
+      <div class="form-group">
+        <label>Observações <span style="font-weight:400;color:#9CA3AF">(opcional)</span></label>
+        <textarea id="agendarPrevObs" placeholder="Instruções especiais..."></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+        <button class="btn btn-outline" onclick="closeModal('modalAgendarPrev')">Cancelar</button>
+        <button class="btn btn-primary" id="btnConfAgendarPrev">Agendar</button>
       </div>
     </div>
   </div>
@@ -387,6 +461,13 @@ export const prerender = false;
           <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="etHidraulica" value="hidraulica"> Hidráulica</label>
           <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="etCivil" value="civil"> Civil</label>
         </div>
+      </div>
+      <div class="form-group">
+        <label>Lojas atribuídas</label>
+        <div id="editTecLojasContainer" style="max-height:160px;overflow-y:auto;border:1px solid #E5E7EB;border-radius:6px;padding:10px;margin-top:4px;font-size:13.5px">
+          <span style="color:#9CA3AF">Carregando lojas...</span>
+        </div>
+        <p class="form-hint">Lojas que este técnico poderá atender. (Requer coluna <code>lojas_ids text[]</code> na tabela manut_tecnicos)</p>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
         <button class="btn btn-outline btn-sm" id="btnResetSenhaTec" style="color:#C41E3A">Resetar Senha</button>
@@ -442,6 +523,16 @@ export const prerender = false;
   .tab { padding:10px 16px;border:0;background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;color:#6B7280;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:5px; }
   .tab.active { color:#C41E3A;border-bottom-color:#C41E3A; }
   .tab:hover:not(.active) { color:#2D2F36;background:#F9FAFB; }
+  .modal-tab { padding:8px 14px;border:0;background:transparent;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:700;font-size:12px;color:#6B7280;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;white-space:nowrap; }
+  .modal-tab.active { color:#C41E3A;border-bottom-color:#C41E3A; }
+  .modal-tab:hover:not(.active) { color:#2D2F36;background:#F9FAFB; }
+  .kpi-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px; }
+  .kpi-card { background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;text-align:center; }
+  .kpi-val { font-family:'Montserrat',sans-serif;font-weight:800;font-size:22px;line-height:1.1; }
+  .kpi-lbl { font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-top:3px; }
+  .prev-item { display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #E5E7EB; }
+  .prev-item:last-child { border-bottom:0; }
+  .prev-date-pill { background:var(--brand);color:#fff;border-radius:6px;padding:5px 10px;text-align:center;min-width:52px;font-family:'Montserrat',sans-serif;font-size:11px;font-weight:700; }
   .filtro-ch.active,.filtro-lead.active,.filtro-sup.active { background:#C41E3A!important;color:#fff!important;border-color:#C41E3A!important; }
   .tipo-badge { display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;text-transform:uppercase; }
   .tipo-eletrica{background:#EFF6FF;color:#1D4ED8}.tipo-hidraulica{background:#F0FDF4;color:#15803D}.tipo-civil{background:#FFF7ED;color:#C2410C}
@@ -460,6 +551,7 @@ export const prerender = false;
   let allChamados=[], tecnicos=[], allLeads=[], allClientes=[], allCupons=[], allOrc=[], allSup=[];
   let filtroChStatus="", filtroLeadEtapa="", filtroSupStatus="";
   let chamadoAtribuirId=null, supAtualId=null;
+  let allLojas=[], clienteAtualId=null, clienteDetail=null;
   let loaded={dashboard:false,clientes:false,precadastros:false,chamados:false,tecnicos:false,valores:false,cupons:false,contrato:false,orcamentos:false,suporte:false};
 
   // ─── helpers ───
@@ -621,31 +713,230 @@ export const prerender = false;
     finally{btn.disabled=false;btn.textContent="Cadastrar";}
   });
 
+  // ─── Modal tabs (editar cliente) ─────────────────────────────────
+  document.querySelectorAll(".modal-tab").forEach(btn=>btn.addEventListener("click",()=>{
+    const modal=btn.closest(".modal");
+    modal.querySelectorAll(".modal-tab").forEach(t=>t.classList.remove("active"));
+    btn.classList.add("active");
+    const tab=btn.dataset.mtab;
+    modal.querySelectorAll(".mtab-panel").forEach(p=>p.style.display="none");
+    const panel=document.getElementById("mtab-"+tab);
+    if(panel)panel.style.display="";
+    if(tab==="visao"&&clienteAtualId)renderVisaoGeral();
+  }));
+
   // ─── Editar cliente ───────────────────────────────────────────────
-  function abrirEditarCliente(id){
+  async function abrirEditarCliente(id){
     const c=allClientes.find(x=>x.id===id);if(!c)return;
+    clienteAtualId=id;
+    clienteDetail=null;
+    // Header
+    document.getElementById("editCliNomeHeader").textContent=c.nome||"—";
+    document.getElementById("editCliEmailHeader").textContent=c.email||"—";
+    // Dados
     document.getElementById("editCliId").value=id;
     document.getElementById("editCliNome").value=c.nome||"";
     document.getElementById("editCliTel").value=c.telefone||"";
     document.getElementById("editCliPlano").value=c.plano_selecionado||"";
     document.getElementById("editCliValor").value=c.valor_mensal_contratado||"";
     document.getElementById("editCliStatus").value=c.status||"pendente";
+    document.getElementById("editCliVenc").value=c.data_proximo_vencimento?c.data_proximo_vencimento.slice(0,10):"";
     document.getElementById("editCliAlert").style.display="none";
+    // Reset para aba Dados
+    document.querySelectorAll("#modalEditarCliente .modal-tab").forEach(t=>t.classList.remove("active"));
+    document.querySelector("#modalEditarCliente .modal-tab[data-mtab='dados']").classList.add("active");
+    document.querySelectorAll("#modalEditarCliente .mtab-panel").forEach(p=>p.style.display="none");
+    document.getElementById("mtab-dados").style.display="";
     document.getElementById("modalEditarCliente").classList.add("open");
+    // Pré-carrega detail em background
+    carregarDetalheCliente(id);
   }
   window.abrirEditarCliente=abrirEditarCliente;
+
+  async function carregarDetalheCliente(id){
+    try{
+      const res=await api(`/api/manut/admin/clientes/${id}/detail`);
+      clienteDetail=await res.json();
+      // Atualiza lojas do modal agendar preventiva
+      const sel=document.getElementById("agendarPrevLoja");
+      sel.innerHTML='<option value="">Selecione a loja...</option>';
+      (clienteDetail.lojas||[]).forEach(l=>{
+        const o=document.createElement("option");o.value=l.id;o.textContent=l.nome+(l.cidade?" — "+l.cidade:"");sel.appendChild(o);
+      });
+    }catch{}
+  }
+
+  function renderVisaoGeral(){
+    if(!clienteDetail){document.getElementById("cliVisaoContent").innerHTML='<div class="loading">Aguardando dados...</div>';return;}
+    const {chamados,preventivas,orcamentos}=clienteDetail;
+    const chAbertos=chamados.filter(c=>["aberto","em_andamento","aguardando_material"].includes(c.status)).length;
+    const chConcluidos=chamados.filter(c=>c.status==="concluido").length;
+    const prevAgendadas=preventivas.filter(p=>p.status==="agendada").length;
+    const prevRealizadas=preventivas.filter(p=>p.status==="realizada").length;
+    const orcPend=orcamentos.filter(o=>["em_analise","em_ajuste","proposta_enviada"].includes(o.status)).length;
+    const orcApr=orcamentos.filter(o=>o.status==="aprovado").length;
+    const satisfacao=chamados.length?Math.round((chConcluidos/chamados.length)*100):100;
+    const satisfacaoCor=satisfacao>=80?"#22C55E":satisfacao>=50?"#F59E0B":"#EF4444";
+
+    // Tendência chamados últimas 4 semanas (by week)
+    const agora=new Date();
+    const semanas=[0,1,2,3].map(i=>{
+      const fim=new Date(agora);fim.setDate(fim.getDate()-i*7);
+      const ini=new Date(fim);ini.setDate(ini.getDate()-7);
+      const count=chamados.filter(c=>{const d=new Date(c.data_abertura);return d>=ini&&d<fim;}).length;
+      return{label:`-${(i+1)*7}d`,count};
+    }).reverse();
+    const maxBar=Math.max(...semanas.map(s=>s.count),1);
+
+    document.getElementById("cliVisaoLoading").style.display="none";
+    document.getElementById("cliVisaoContent").style.display="";
+    document.getElementById("cliVisaoContent").innerHTML=`
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-val" style="color:${satisfacaoCor}">${satisfacao}%</div><div class="kpi-lbl">Satisfação</div></div>
+        <div class="kpi-card"><div class="kpi-val" style="color:${chAbertos>0?"#EF4444":"#22C55E"}">${chAbertos}</div><div class="kpi-lbl">Chamados abertos</div></div>
+        <div class="kpi-card"><div class="kpi-val">${chConcluidos}</div><div class="kpi-lbl">Chamados concluídos</div></div>
+        <div class="kpi-card"><div class="kpi-val" style="color:#3B82F6">${prevAgendadas}</div><div class="kpi-lbl">Prev. agendadas</div></div>
+        <div class="kpi-card"><div class="kpi-val" style="color:#22C55E">${prevRealizadas}</div><div class="kpi-lbl">Prev. realizadas</div></div>
+        <div class="kpi-card"><div class="kpi-val" style="color:${orcPend>0?"#F59E0B":"#22C55E"}">${orcPend}</div><div class="kpi-lbl">Orç. pendentes</div></div>
+      </div>
+      <div class="card" style="margin-bottom:12px;padding:16px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:12px">Chamados por semana (últimas 4)</div>
+        <div style="display:flex;align-items:flex-end;gap:8px;height:64px">
+          ${semanas.map(s=>`
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+              <div style="flex:1;display:flex;align-items:flex-end;width:100%">
+                <div style="width:100%;background:#C41E3A;border-radius:4px 4px 0 0;height:${Math.round((s.count/maxBar)*48)}px;min-height:${s.count?4:0}px"></div>
+              </div>
+              <div style="font-size:10px;color:#9CA3AF">${s.count}</div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+      ${chamados.length===0?'<div class="card" style="padding:16px;text-align:center;color:#9CA3AF;font-size:13px">Nenhum chamado registrado — cliente sem histórico de atendimentos.</div>':''}
+      ${orcPend>0?`<div style="background:#FFF9F0;border:1px solid #FDE68A;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400E"><strong>${orcPend} orçamento(s)</strong> aguardando resposta do cliente.</div>`:''}
+    `;
+  }
+
+  // ─── Tabs preventivas / chamados / orçamentos do cliente ──────────
+  document.getElementById("btnAgendarPreventiva").addEventListener("click",()=>{
+    if(!clienteDetail){alert("Aguarde o carregamento dos dados do cliente.");return;}
+    // Popula técnicos no select
+    const selTec=document.getElementById("agendarPrevTecnico");
+    selTec.innerHTML='<option value="">Nenhum (a definir)</option>';
+    tecnicos.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.nome;selTec.appendChild(o);});
+    document.getElementById("agendarPrevData").value="";
+    document.getElementById("agendarPrevObs").value="";
+    document.getElementById("agendarPrevAlert").style.display="none";
+    document.getElementById("modalAgendarPrev").classList.add("open");
+  });
+
+  document.getElementById("btnConfAgendarPrev").addEventListener("click",async()=>{
+    const alertEl=document.getElementById("agendarPrevAlert");
+    const btn=document.getElementById("btnConfAgendarPrev");
+    const loja_id=document.getElementById("agendarPrevLoja").value;
+    const tecnico_id=document.getElementById("agendarPrevTecnico").value||null;
+    const data_agendada=document.getElementById("agendarPrevData").value;
+    const observacoes=document.getElementById("agendarPrevObs").value.trim()||null;
+    alertEl.style.display="none";
+    if(!loja_id||!data_agendada){alertEl.textContent="Loja e data são obrigatórios.";alertEl.style.display="";return;}
+    btn.disabled=true;btn.textContent="Agendando...";
+    try{
+      const res=await api(`/api/manut/admin/clientes/${clienteAtualId}/preventivas`,{method:"POST",body:JSON.stringify({loja_id,tecnico_id,data_agendada,observacoes})});
+      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      clienteDetail.preventivas.unshift(data);
+      renderCliPreventivas();
+      closeModal("modalAgendarPrev");
+      window.toast?.("Preventiva agendada com sucesso!","success");
+    }catch(e){alertEl.textContent=e.message;alertEl.style.display="";}
+    finally{btn.disabled=false;btn.textContent="Agendar";}
+  });
+
+  function renderCliPreventivas(){
+    const el=document.getElementById("cliPrevList");
+    document.getElementById("cliPrevLoading").style.display="none";
+    el.style.display="";
+    const prevs=clienteDetail?.preventivas||[];
+    if(!prevs.length){el.innerHTML='<div class="empty-state" style="padding:20px"><strong>Nenhuma preventiva</strong><p>Use o botão + para agendar.</p></div>';return;}
+    el.innerHTML='<div class="table-wrap"><table><thead><tr><th>Data</th><th>Loja</th><th>Técnico</th><th>Status</th><th>Ações</th></tr></thead><tbody>'+
+      prevs.map(p=>`<tr>
+        <td><strong>${fmtDate(p.data_agendada)}</strong></td>
+        <td style="font-size:13px">${p.manut_lojas?.nome||"—"}</td>
+        <td style="font-size:13px;color:#5B5F6B">${p.manut_tecnicos?.nome||'<span style="color:#D1D5DB">A definir</span>'}</td>
+        <td>${badge(p.status)}</td>
+        <td><button class="btn btn-outline btn-sm" onclick="editarDataPreventiva('${p.id}','${p.data_agendada}')">✎ Data</button></td>
+      </tr>`).join("")+
+    '</tbody></table></div>';
+  }
+
+  window.editarDataPreventiva=async function(prevId,dataAtual){
+    const novaData=prompt("Nova data (YYYY-MM-DD):",dataAtual);
+    if(!novaData)return;
+    try{
+      const res=await api(`/api/manut/admin/clientes/${clienteAtualId}/preventivas`,{method:"PUT",body:JSON.stringify({prev_id:prevId,data_agendada:novaData})});
+      if(!res.ok){const d=await res.json();throw new Error(d.error);}
+      const idx=clienteDetail.preventivas.findIndex(p=>p.id===prevId);
+      if(idx>=0)clienteDetail.preventivas[idx].data_agendada=novaData;
+      renderCliPreventivas();
+      window.toast?.("Data atualizada!","success");
+    }catch(e){alert("Erro: "+e.message);}
+  };
+
+  function renderCliChamados(){
+    const el=document.getElementById("cliChList");
+    document.getElementById("cliChLoading").style.display="none";
+    el.style.display="";
+    const chs=clienteDetail?.chamados||[];
+    if(!chs.length){el.innerHTML='<div class="empty-state" style="padding:20px"><strong>Nenhum chamado</strong></div>';return;}
+    el.innerHTML='<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Loja</th><th>Status</th><th>Prioridade</th><th>Técnico</th><th>Data</th></tr></thead><tbody>'+
+      chs.map(c=>`<tr>
+        <td>${tipoBadge(c.tipo)}</td>
+        <td style="font-size:13px">${c.manut_lojas?.nome||"—"}</td>
+        <td>${badge(c.status)}</td>
+        <td style="font-size:13px;font-weight:600;color:${c.prioridade==="urgente"?"#B91C1C":c.prioridade==="alta"?"#C2410C":"inherit"}">${c.prioridade}</td>
+        <td style="font-size:13px;color:#5B5F6B">${c.manut_tecnicos?.nome||"—"}</td>
+        <td style="font-size:12px;color:#6B7280">${fmtDate(c.data_abertura)}</td>
+      </tr>`).join("")+
+    '</tbody></table></div>';
+  }
+
+  function renderCliOrcamentos(){
+    const el=document.getElementById("cliOrcList");
+    document.getElementById("cliOrcLoading").style.display="none";
+    el.style.display="";
+    const orcs=clienteDetail?.orcamentos||[];
+    if(!orcs.length){el.innerHTML='<div class="empty-state" style="padding:20px"><strong>Nenhum orçamento</strong></div>';return;}
+    el.innerHTML='<div class="table-wrap"><table><thead><tr><th>Data</th><th>Loja</th><th>Descrição</th><th>Valor</th><th>Status</th></tr></thead><tbody>'+
+      orcs.map(o=>`<tr>
+        <td style="font-size:12px;color:#9CA3AF">${fmtDate(o.created_at)}</td>
+        <td style="font-size:13px">${o.manut_lojas?.nome||"—"}</td>
+        <td style="font-size:12.5px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.descricao_solicitacao}</td>
+        <td style="font-weight:700">${o.valor?fmtMoney(o.valor):"—"}</td>
+        <td>${badge(o.status)}</td>
+      </tr>`).join("")+
+    '</tbody></table></div>';
+  }
+
+  // Quando muda para tab que precisa de dados, renderiza
+  document.querySelectorAll("#modalEditarCliente .modal-tab").forEach(btn=>btn.addEventListener("click",()=>{
+    const tab=btn.dataset.mtab;
+    if(!clienteDetail){carregarDetalheCliente(clienteAtualId).then(()=>{if(tab==="preventivas")renderCliPreventivas();else if(tab==="chamados")renderCliChamados();else if(tab==="orcamentos")renderCliOrcamentos();else if(tab==="visao")renderVisaoGeral();});}
+    else{if(tab==="preventivas")renderCliPreventivas();else if(tab==="chamados")renderCliChamados();else if(tab==="orcamentos")renderCliOrcamentos();else if(tab==="visao")renderVisaoGeral();}
+  }));
+
   document.getElementById("btnSalvarEditCli").addEventListener("click",async()=>{
     const alertEl=document.getElementById("editCliAlert");
     const btn=document.getElementById("btnSalvarEditCli");
     const id=document.getElementById("editCliId").value;
     alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
     try{
+      const venc=document.getElementById("editCliVenc").value||null;
       const res=await api(`/api/manut/admin/clientes/${id}`,{method:"PUT",body:JSON.stringify({
         nome:document.getElementById("editCliNome").value.trim(),
         telefone:document.getElementById("editCliTel").value.trim()||null,
         plano_selecionado:document.getElementById("editCliPlano").value.trim()||null,
         valor_mensal_contratado:document.getElementById("editCliValor").value||null,
         status:document.getElementById("editCliStatus").value,
+        ...(venc?{data_proximo_vencimento:venc}:{}),
       })});
       const data=await res.json();if(!res.ok)throw new Error(data.error);
       closeModal("modalEditarCliente");loaded.clientes=false;loadClientes();
@@ -921,7 +1212,7 @@ export const prerender = false;
   });
 
   // ─── Editar / Excluir técnico ────────────────────────────────────
-  function abrirEditarTecnico(id){
+  async function abrirEditarTecnico(id){
     const t=tecnicos.find(x=>x.id===id);if(!t)return;
     document.getElementById("editTecId").value=id;
     document.getElementById("editTecNome").value=t.nome||"";
@@ -933,14 +1224,23 @@ export const prerender = false;
     document.getElementById("etHidraulica").checked=esps.includes("hidraulica");
     document.getElementById("etCivil").checked=esps.includes("civil");
     document.getElementById("editTecAlert").style.display="none";
+    // Lojas
+    const container=document.getElementById("editTecLojasContainer");
+    container.innerHTML='<span style="color:#9CA3AF;font-size:13px">Carregando...</span>';
     document.getElementById("modalEditarTecnico").classList.add("open");
+    if(!allLojas.length){try{const r=await api("/api/manut/admin/lojas");allLojas=await r.json();}catch{}}
+    const lojasIds=t.lojas_ids||[];
+    container.innerHTML=allLojas.length
+      ? allLojas.map(l=>`<label style="display:flex;gap:8px;align-items:center;padding:4px 0;cursor:pointer;font-weight:400"><input type="checkbox" class="tec-loja-cb" value="${l.id}" ${lojasIds.includes(l.id)?"checked":""}> <span>${l.nome}${l.manut_clientes?.nome?" <span style='color:#9CA3AF;font-size:11px'>("+l.manut_clientes.nome+")</span>":""}</span></label>`).join("")
+      : '<span style="color:#9CA3AF;font-size:13px">Nenhuma loja cadastrada.</span>';
   }
   window.abrirEditarTecnico=abrirEditarTecnico;
   document.getElementById("btnSalvarEditTec").addEventListener("click",async()=>{
     const alertEl=document.getElementById("editTecAlert");
     const btn=document.getElementById("btnSalvarEditTec");
     const id=document.getElementById("editTecId").value;
-    const esps=["etEletrica","etHidraulica","etCivil"].filter(id=>document.getElementById(id).checked).map(id=>document.getElementById(id).value);
+    const esps=["etEletrica","etHidraulica","etCivil"].filter(eid=>document.getElementById(eid).checked).map(eid=>document.getElementById(eid).value);
+    const lojas_ids=Array.from(document.querySelectorAll(".tec-loja-cb:checked")).map(el=>el.value);
     alertEl.style.display="none";btn.disabled=true;btn.textContent="Salvando...";
     try{
       const res=await api(`/api/manut/admin/tecnicos/${id}`,{method:"PUT",body:JSON.stringify({
@@ -949,8 +1249,9 @@ export const prerender = false;
         telefone:document.getElementById("editTecTel").value.trim()||null,
         status:document.getElementById("editTecStatus").value,
         especialidades:esps,
+        lojas_ids,
       })});
-      const data=await res.json();if(!res.ok)throw new Error(data.error);
+      const data=await res.json();if(!res.ok)throw new Error(data.error||"Erro ao salvar");
       closeModal("modalEditarTecnico");loaded.tecnicos=false;loadTecnicos();
     }catch(e){alertEl.className="alert alert-error";alertEl.textContent=e.message;alertEl.style.display="";}
     finally{btn.disabled=false;btn.textContent="Salvar";}

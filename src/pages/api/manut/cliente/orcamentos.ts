@@ -42,7 +42,7 @@ export const POST: APIRoute = async ({ request }) => {
         cliente_id: claims.sub,
         loja_id,
         descricao_solicitacao: descricao_solicitacao.trim(),
-        status: "aguardando_proposta",
+        status: "em_analise",
       })
       .select("*")
       .single();

@@ -11,7 +11,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     if (!id) return jsonErr(400, "id obrigatório");
 
     const body = await request.json();
-    const allowed = ["nome", "email", "telefone", "cpf", "especialidades", "status"];
+    const allowed = ["nome", "email", "telefone", "cpf", "especialidades", "status", "lojas_ids"];
     const update: Record<string, any> = {};
     for (const k of allowed) {
       if (k in body) update[k] = body[k];
