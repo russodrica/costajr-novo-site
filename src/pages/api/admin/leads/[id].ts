@@ -7,7 +7,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     await requireAdminCookie(request);
     const body = await request.json();
     const db = supabaseAdmin();
-    const { data, error } = await db.from("leads").update(body).eq("id", params.id!).select().single();
+    const { data, error } = await db.from("manut_leads").update(body).eq("id", params.id!).select().single();
     if (error) return jsonErr(400, error.message);
     return jsonOk(data);
   } catch (e: any) {
