@@ -1,0 +1,109 @@
+---
+export const prerender = false;
+import Portal from "~/layouts/Portal.astro";
+---
+<Portal title="Onboarding" tipo="colaborador" activePage="onboarding">
+  <div class="section-header">
+    <h2>Onboarding — Integração</h2>
+    <span id="progresso-label" style="font-size:13px;color:var(--ink-light)"></span>
+  </div>
+
+  <div style="margin-bottom:24px">
+    <div style="height:8px;background:var(--border);border-radius:99px;overflow:hidden">
+      <div id="progress-bar" style="height:100%;background:var(--brand);border-radius:99px;width:0%;transition:width .4s ease"></div>
+    </div>
+  </div>
+
+  <div id="steps-list"><div class="loading"><div class="spinner"></div> Carregando etapas...</div></div>
+
+  <style>
+    .step-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 12px;
+      padding: 24px 28px; margin-bottom: 16px;
+      display: flex; gap: 20px; align-items: flex-start;
+      transition: all .2s;
+    }
+    .step-card.done { border-color: #BBF7D0; background: #F0FDF4; }
+    .step-check {
+      width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+      border: 2.5px solid var(--border); background: #fff;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all .2s; font-size: 16px;
+    }
+    .step-card.done .step-check { background: #22C55E; border-color: #22C55E; color: #fff; }
+    .step-body { flex: 1; }
+    .step-body h3 { margin: 0 0 6px; font-family:'Montserrat',sans-serif; font-size:15px; font-weight:800; color:var(--ink); }
+    .step-body p  { margin: 0; font-size: 14px; color: var(--ink-mid); line-height: 1.65; }
+    .step-tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; }
+    .tag-texto   { background:#EFF6FF; color:#1D4ED8; }
+    .tag-video   { background:#FFF7ED; color:#C2410C; }
+    .tag-pdf     { background:#F5F3FF; color:#7C3AED; }
+    .tag-tarefa  { background:#FEFCE8; color:#A16207; }
+    .step-link { display:inline-flex; align-items:center; gap:6px; margin-top:12px; font-size:13px; font-weight:700; color:var(--brand); }
+    .step-link:hover { text-decoration:underline; }
+    .step-obrigatorio { font-size:10.5px; font-weight:700; color:#EF4444; text-transform:uppercase; letter-spacing:.06em; margin-left:8px; }
+  </style>
+
+  <script>
+    const token = localStorage.getItem("portal_colab_token");
+    if (!token) { window.location.replace("/portal/login"); throw 0; }
+
+    let steps: any[] = [];
+    let progress: Record<string, boolean> = {};
+
+    async function load() {
+      const [sRes, pRes] = await Promise.all([
+        fetch("/api/portal/onboarding/steps", { headers: { "x-portal-auth": token! } }),
+        fetch("/api/portal/onboarding/progress", { headers: { "x-portal-auth": token! } }),
+      ]);
+      steps = sRes.ok ? await sRes.json() : [];
+      const prog = pRes.ok ? await pRes.json() : [];
+      progress = Object.fromEntries(prog.map((p: any) => [p.step_id, p.concluido]));
+      render();
+    }
+
+    function render() {
+      const el = document.getElementById("steps-list")!;
+      if (!steps.length) { el.innerHTML = '<div class="empty-state"><strong>Sem etapas configuradas</strong><p>O RH ainda não cadastrou etapas de onboarding.</p></div>'; return; }
+
+      const done = steps.filter(s => progress[s.id]).length;
+      const pct = Math.round((done / steps.length) * 100);
+      (document.getElementById("progress-bar") as HTMLElement).style.width = `${pct}%`;
+      document.getElementById("progresso-label")!.textContent = `${done} de ${steps.length} etapas concluídas (${pct}%)`;
+
+      el.innerHTML = steps.map((s: any) => {
+        const isDone = !!progress[s.id];
+        const tagMap: Record<string,string> = { texto:"texto", video:"vídeo", pdf:"PDF", tarefa:"tarefa" };
+        return `
+          <div class="step-card ${isDone ? "done" : ""}" id="step-${s.id}">
+            <div class="step-check" onclick="toggleStep('${s.id}')" title="${isDone ? "Marcar como pendente" : "Marcar como concluído"}">${isDone ? "✓" : ""}</div>
+            <div class="step-body">
+              <div>
+                <span class="step-tag tag-${s.tipo}">${tagMap[s.tipo] || s.tipo}</span>
+                ${s.obrigatorio ? '<span class="step-obrigatorio">obrigatório</span>' : ""}
+              </div>
+              <h3>${s.titulo}</h3>
+              <p>${s.conteudo}</p>
+              ${s.url_recurso ? `<a class="step-link" href="${s.url_recurso}" target="_blank" rel="noopener">
+                Acessar recurso →
+              </a>` : ""}
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    async function toggleStep(stepId: string) {
+      const current = !!progress[stepId];
+      progress[stepId] = !current;
+      render();
+      await fetch("/api/portal/onboarding/progress", {
+        method: "POST",
+        headers: { "x-portal-auth": token!, "Content-Type": "application/json" },
+        body: JSON.stringify({ step_id: stepId, concluido: !current }),
+      });
+    }
+
+    (window as any).toggleStep = toggleStep;
+    load();
+  </script>
+</Portal>

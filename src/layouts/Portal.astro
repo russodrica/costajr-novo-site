@@ -1,12 +1,19 @@
 ---
 interface Props {
   title?: string;
-  tipo: "cliente" | "tecnico" | "admin";
+  tipo: "cliente" | "tecnico" | "admin" | "colaborador";
   activePage?: string;
 }
 const { title = "Portal", tipo, activePage = "" } = Astro.props;
 
 const icons: Record<string, string> = {
+  home:         `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+  onboarding:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+  treinamentos: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
+  forum:        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  documentos:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  comercial:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+  gestao:       `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`,
   dashboard:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>`,
   chamados:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
   lojas:        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
@@ -20,7 +27,16 @@ const icons: Record<string, string> = {
   tecnicos:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
 };
 
-const navs = {
+const navs: Record<string, { href: string; label: string; id: string; badge?: boolean; roles?: string[] }[]> = {
+  colaborador: [
+    { href: "/portal",                    label: "Início",           id: "home"         },
+    { href: "/portal/onboarding",         label: "Onboarding",       id: "onboarding"   },
+    { href: "/portal/treinamentos",       label: "Treinamentos",     id: "treinamentos" },
+    { href: "/portal/forum",              label: "Fórum",            id: "forum"        },
+    { href: "/portal/documentos",         label: "Documentos",       id: "documentos"   },
+    { href: "/portal/gestao-comercial",   label: "Gest. Comercial",  id: "comercial",   roles: ["admin","coordenador","comercial"] },
+    { href: "/portal/gestao-manutencao",  label: "Gest. Manutenção", id: "gestao",      roles: ["admin","coordenador","operacional"] },
+  ],
   cliente: [
     { href: "/manutencao/cliente/dashboard",   label: "Dashboard",    id: "dashboard"   },
     { href: "/manutencao/cliente/chamados",     label: "Chamados",     id: "chamados"    },
@@ -42,9 +58,9 @@ const navs = {
     { href: "/manutencao/admin?tab=tecnicos", label: "Técnicos",  id: "tecnicos"  },
   ],
 };
-const loginHref = { cliente: "/manutencao/cliente/login", tecnico: "/manutencao/tecnico/login", admin: "/manutencao/admin/login" }[tipo];
-const nav = navs[tipo];
-const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico", admin: "Administração" }[tipo];
+const loginHref = { cliente: "/manutencao/cliente/login", tecnico: "/manutencao/tecnico/login", admin: "/manutencao/admin/login", colaborador: "/portal/login" }[tipo];
+const nav = navs[tipo] || [];
+const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico", admin: "Administração", colaborador: "Portal do Colaborador" }[tipo];
 ---
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -364,14 +380,16 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
       <span class="sidebar-badge-tipo">{tipoLabel}</span>
     </div>
 
-    <nav class="sidebar-nav">
+    <nav class="sidebar-nav" id="sidebarNav">
       {nav.map(item => (
         <a
           href={item.href}
-          class={activePage === item.id ? "active" : ""}
+          class={[activePage === item.id ? "active" : "", item.roles ? "role-gated" : ""].join(" ").trim()}
           id={`nav-item-${item.id}`}
+          data-roles={item.roles ? item.roles.join(",") : ""}
+          style={item.roles ? "display:none" : ""}
         >
-          <Fragment set:html={icons[item.id] || icons["chamados"]} />
+          <Fragment set:html={icons[item.id] || icons["documentos"]} />
           {item.label}
           {item.badge && <span class="nav-badge" id={`badge-${item.id}`}></span>}
         </a>
@@ -417,7 +435,7 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
 
 <script define:vars={{ tipo, loginHref }}>
   // ── Auth ──
-  const tokenKey = { cliente: "manut_cliente_token", tecnico: "manut_tecnico_token", admin: "manut_portal_token" }[tipo];
+  const tokenKey = { cliente: "manut_cliente_token", tecnico: "manut_tecnico_token", admin: "manut_portal_token", colaborador: "portal_colab_token" }[tipo];
   const userKey  = tokenKey + "_user";
   const token = localStorage.getItem(tokenKey);
   if (!token) window.location.replace(loginHref);
@@ -443,6 +461,21 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
       const topbarAv = document.getElementById("topbarAvatar");
       if (topbarAv) { topbarAv.textContent = initial; topbarAv.title = nome; }
     } catch {}
+  }
+
+  // ── Role-gated nav items (colaborador only) ──
+  if (tipo === "colaborador") {
+    const userData2 = localStorage.getItem(userKey);
+    let userRole = "operacional";
+    if (userData2) {
+      try { userRole = JSON.parse(userData2).role || "operacional"; } catch {}
+    }
+    document.querySelectorAll(".role-gated").forEach(el => {
+      const roles = el.getAttribute("data-roles")?.split(",") || [];
+      if (roles.length === 0 || roles.includes(userRole)) {
+        (el as HTMLElement).style.display = "";
+      }
+    });
   }
 
   // ── Logout ──

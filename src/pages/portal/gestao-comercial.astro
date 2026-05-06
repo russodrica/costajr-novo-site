@@ -1,0 +1,138 @@
+---
+export const prerender = false;
+import Portal from "~/layouts/Portal.astro";
+---
+<Portal title="Gestão Comercial" tipo="colaborador" activePage="comercial">
+  <div class="section-header">
+    <h2>Gestão Comercial</h2>
+    <a href="/admin/leads" class="btn btn-outline btn-sm">Ver painel admin completo →</a>
+  </div>
+
+  <div id="loading" class="loading"><div class="spinner"></div> Carregando dados...</div>
+  <div id="content" style="display:none">
+
+    <!-- Stats -->
+    <div class="stats-grid" style="margin-bottom:24px">
+      <div class="stat-card accent">
+        <div class="stat-icon" style="background:rgba(196,30,58,.1);color:var(--brand)">💰</div>
+        <div class="stat-label">Leads Novos</div>
+        <div class="stat-value" id="stat-novos">—</div>
+        <div class="stat-sub">este mês</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#ECFDF5;color:#22C55E">✅</div>
+        <div class="stat-label">Convertidos</div>
+        <div class="stat-value" id="stat-conv">—</div>
+        <div class="stat-sub">este mês</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#FFF7ED;color:#F59E0B">📋</div>
+        <div class="stat-label">Em negociação</div>
+        <div class="stat-value" id="stat-neg">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:#EFF6FF;color:#3B82F6">📬</div>
+        <div class="stat-label">Proposta enviada</div>
+        <div class="stat-value" id="stat-prop">—</div>
+      </div>
+    </div>
+
+    <!-- Tabela de leads -->
+    <div class="card">
+      <div class="section-header" style="margin-bottom:16px">
+        <h2 style="font-size:16px;margin:0">Leads de Manutenção</h2>
+        <select id="filtro-etapa" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Open Sans',sans-serif;outline:none;background:#fff">
+          <option value="">Todas as etapas</option>
+          <option value="novo">Novos</option>
+          <option value="contato_feito">Contato feito</option>
+          <option value="proposta_enviada">Proposta enviada</option>
+          <option value="negociando">Negociando</option>
+          <option value="convertido">Convertido</option>
+          <option value="perdido">Perdido</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome / Loja</th>
+              <th>Contato</th>
+              <th>Plano</th>
+              <th>Etapa</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody id="leads-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem("portal_colab_token");
+    if (!token) { window.location.replace("/portal/login"); throw 0; }
+    const userData = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
+    const role = userData.role || "operacional";
+    if (!["admin","coordenador","comercial"].includes(role)) {
+      document.getElementById("loading")!.innerHTML = '<div class="empty-state"><strong>Acesso restrito</strong><p>Esta área é exclusiva para o time comercial.</p></div>';
+    } else {
+      loadLeads();
+    }
+
+    let allLeads: any[] = [];
+
+    const etapaLabel: Record<string,string> = {
+      novo: "Novo", contato_feito: "Contato feito", proposta_enviada: "Proposta enviada",
+      negociando: "Negociando", convertido: "Convertido", perdido: "Perdido",
+    };
+    const etapaBadge: Record<string,string> = {
+      novo: "badge-aberto", contato_feito: "badge-em_andamento", proposta_enviada: "badge-aguardando_material",
+      negociando: "badge-pendente", convertido: "badge-concluido", perdido: "badge-cancelado",
+    };
+
+    function renderLeads(leads: any[]) {
+      const tbody = document.getElementById("leads-tbody")!;
+      tbody.innerHTML = leads.length
+        ? leads.map((l: any) => `
+          <tr>
+            <td><strong>${l.nome}</strong>${l.nome_loja ? `<br><span style="font-size:12px;color:var(--ink-light)">${l.nome_loja}</span>` : ""}</td>
+            <td><span style="font-size:13px">${l.email}<br>${l.telefone||""}</span></td>
+            <td>${l.plano ? `<span style="font-size:13px">${l.plano}</span>` : "—"}</td>
+            <td><span class="badge ${etapaBadge[l.etapa]||""}">${etapaLabel[l.etapa]||l.etapa}</span></td>
+            <td style="font-size:12.5px;color:var(--ink-light)">${new Date(l.created_at).toLocaleDateString("pt-BR")}</td>
+          </tr>`)
+          .join("")
+        : `<tr><td colspan="5" style="text-align:center;color:var(--ink-light);padding:32px">Nenhum lead encontrado.</td></tr>`;
+    }
+
+    async function loadLeads() {
+      try {
+        const res = await fetch("/api/portal/comercial/leads", { headers: { "x-portal-auth": token! } });
+        allLeads = res.ok ? await res.json() : [];
+        document.getElementById("loading")!.style.display = "none";
+        document.getElementById("content")!.style.display = "";
+
+        const mes = new Date().getMonth();
+        const ano = new Date().getFullYear();
+        const destesMes = (etapa: string) => allLeads.filter(l => {
+          const d = new Date(l.created_at);
+          return l.etapa === etapa && d.getMonth() === mes && d.getFullYear() === ano;
+        }).length;
+
+        document.getElementById("stat-novos")!.textContent = String(destesMes("novo"));
+        document.getElementById("stat-conv")!.textContent  = String(destesMes("convertido"));
+        document.getElementById("stat-neg")!.textContent   = String(allLeads.filter(l => l.etapa === "negociando").length);
+        document.getElementById("stat-prop")!.textContent  = String(allLeads.filter(l => l.etapa === "proposta_enviada").length);
+
+        renderLeads(allLeads);
+
+        document.getElementById("filtro-etapa")!.addEventListener("change", (e) => {
+          const val = (e.target as HTMLSelectElement).value;
+          renderLeads(val ? allLeads.filter(l => l.etapa === val) : allLeads);
+        });
+      } catch {
+        document.getElementById("loading")!.innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong></div>';
+      }
+    }
+  </script>
+</Portal>

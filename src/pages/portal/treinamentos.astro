@@ -1,0 +1,174 @@
+---
+export const prerender = false;
+import Portal from "~/layouts/Portal.astro";
+---
+<Portal title="Treinamentos" tipo="colaborador" activePage="treinamentos">
+  <div class="section-header">
+    <h2>Treinamentos</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="filtro-cat" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Open Sans',sans-serif;outline:none;background:#fff;color:var(--ink)">
+        <option value="">Todas as categorias</option>
+      </select>
+      <div style="display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden">
+        <button id="tab-videos" class="tab-btn active" onclick="setTab('videos')">Vídeos</button>
+        <button id="tab-pdfs"   class="tab-btn"        onclick="setTab('pdfs')">PDFs</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading" class="loading"><div class="spinner"></div> Carregando treinamentos...</div>
+  <div id="content-videos" style="display:none"></div>
+  <div id="content-pdfs"   style="display:none"></div>
+
+  <!-- Player modal -->
+  <div class="modal-bg" id="videoModal">
+    <div class="modal" style="max-width:700px;padding:0;overflow:hidden">
+      <div style="padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <h2 style="font-size:17px;margin:0" id="modalTitle"></h2>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div style="position:relative;padding-top:56.25%;background:#000">
+        <iframe id="videoFrame" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen allow="autoplay; fullscreen"></iframe>
+      </div>
+      <div style="padding:16px 24px">
+        <p id="modalDesc" style="font-size:14px;color:var(--ink-mid);margin:0"></p>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .tab-btn { padding: 7px 16px; border: 0; background: transparent; font-family:'Montserrat',sans-serif; font-size:12px; font-weight:700; cursor:pointer; color:var(--ink-light); transition:all .15s; }
+    .tab-btn.active { background: var(--brand); color: #fff; }
+    .videos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 18px; }
+    .video-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+      cursor: pointer; transition: all .2s;
+    }
+    .video-card:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0,0,0,.1); }
+    .thumb-wrap { position: relative; padding-top: 56.25%; background: #1A1C20; }
+    .thumb-wrap img { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
+    .play-icon {
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      width:48px; height:48px; background:rgba(196,30,58,.9); border-radius:50%;
+      display:flex; align-items:center; justify-content:center; color:#fff; font-size:18px;
+    }
+    .video-info { padding: 14px 16px; }
+    .video-info h3 { font-family:'Montserrat',sans-serif; font-size:14px; font-weight:800; margin:0 0 4px; color:var(--ink); }
+    .video-info p { font-size:12.5px; color:var(--ink-mid); margin:0; }
+    .video-dur { font-size:11px; font-weight:700; color:var(--ink-light); margin-top:6px; display:block; }
+    .pdf-list .pdf-item {
+      background:#fff; border:1px solid var(--border); border-radius:10px;
+      padding:16px 20px; margin-bottom:12px;
+      display:flex; align-items:center; gap:16px; transition:all .18s;
+    }
+    .pdf-item:hover { border-color:var(--brand); background: rgba(196,30,58,.02); }
+    .pdf-icon { font-size:28px; flex-shrink:0; }
+    .pdf-item h3 { font-family:'Montserrat',sans-serif; font-size:14px; font-weight:800; margin:0 0 3px; color:var(--ink); }
+    .pdf-item p  { font-size:12.5px; color:var(--ink-mid); margin:0; }
+    .pdf-item a  { margin-left:auto; flex-shrink:0; }
+    .cat-tag { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; background:rgba(196,30,58,.1); color:var(--brand); margin-bottom:4px; }
+  </style>
+
+  <script>
+    const token = localStorage.getItem("portal_colab_token");
+    if (!token) { window.location.replace("/portal/login"); throw 0; }
+
+    let currentTab = "videos";
+    let allVideos: any[] = [];
+    let allPdfs: any[] = [];
+
+    (window as any).setTab = function(tab: string) {
+      currentTab = tab;
+      document.getElementById("tab-videos")!.className = `tab-btn ${tab==="videos"?"active":""}`;
+      document.getElementById("tab-pdfs")!.className   = `tab-btn ${tab==="pdfs"  ?"active":""}`;
+      document.getElementById("content-videos")!.style.display = tab==="videos" ? "" : "none";
+      document.getElementById("content-pdfs")!.style.display   = tab==="pdfs"   ? "" : "none";
+    };
+
+    function toEmbedUrl(url: string): string {
+      const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
+      if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`;
+      const vmMatch = url.match(/vimeo\.com\/(\d+)/);
+      if (vmMatch) return `https://player.vimeo.com/video/${vmMatch[1]}?autoplay=1`;
+      return url;
+    }
+
+    (window as any).openVideo = function(url: string, title: string, desc: string) {
+      (document.getElementById("videoFrame") as HTMLIFrameElement).src = toEmbedUrl(url);
+      document.getElementById("modalTitle")!.textContent = title;
+      document.getElementById("modalDesc")!.textContent = desc || "";
+      document.getElementById("videoModal")!.classList.add("open");
+    };
+
+    (window as any).closeModal = function() {
+      (document.getElementById("videoFrame") as HTMLIFrameElement).src = "";
+      document.getElementById("videoModal")!.classList.remove("open");
+    };
+
+    function getThumb(url: string): string {
+      const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
+      if (ytMatch) return `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+      return "";
+    }
+
+    function renderVideos(items: any[]) {
+      const el = document.getElementById("content-videos")!;
+      if (!items.length) { el.innerHTML = '<div class="empty-state"><strong>Nenhum vídeo disponível</strong><p>Os treinamentos em vídeo serão publicados em breve.</p></div>'; return; }
+      el.innerHTML = `<div class="videos-grid">${items.map(v => `
+        <div class="video-card" onclick="openVideo('${v.url_video}','${v.titulo.replace(/'/g,"\\'")}','${(v.descricao||"").replace(/'/g,"\\'")}')">
+          <div class="thumb-wrap">
+            ${getThumb(v.url_video) ? `<img src="${getThumb(v.url_video)}" alt="${v.titulo}" loading="lazy">` : ""}
+            <div class="play-icon">▶</div>
+          </div>
+          <div class="video-info">
+            <div class="cat-tag">${v.categoria}</div>
+            <h3>${v.titulo}</h3>
+            <p>${v.descricao || ""}</p>
+            ${v.duracao_minutos ? `<span class="video-dur">⏱ ${v.duracao_minutos} min</span>` : ""}
+          </div>
+        </div>`).join("")}</div>`;
+    }
+
+    function renderPdfs(items: any[]) {
+      const el = document.getElementById("content-pdfs")!;
+      if (!items.length) { el.innerHTML = '<div class="empty-state"><strong>Nenhum PDF disponível</strong><p>Os materiais em PDF serão publicados em breve.</p></div>'; return; }
+      el.innerHTML = `<div class="pdf-list">${items.map(p => `
+        <div class="pdf-item">
+          <div class="pdf-icon">📕</div>
+          <div style="flex:1;min-width:0">
+            <div class="cat-tag">${p.categoria}</div>
+            <h3>${p.titulo}</h3>
+            <p>${p.descricao || ""}${p.paginas ? ` · ${p.paginas} páginas` : ""}</p>
+          </div>
+          ${p.url ? `<a href="${p.url}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Ver PDF</a>` : ""}
+        </div>`).join("")}</div>`;
+    }
+
+    function buildCategories(videos: any[], pdfs: any[]) {
+      const cats = new Set([...videos.map(v => v.categoria), ...pdfs.map(p => p.categoria)]);
+      const sel = document.getElementById("filtro-cat") as HTMLSelectElement;
+      cats.forEach(c => { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); });
+      sel.addEventListener("change", () => {
+        const val = sel.value;
+        renderVideos(val ? allVideos.filter(v => v.categoria === val) : allVideos);
+        renderPdfs(val   ? allPdfs.filter(p => p.categoria === val)   : allPdfs);
+      });
+    }
+
+    async function load() {
+      const [vRes, pRes] = await Promise.all([
+        fetch("/api/portal/treinamentos/videos", { headers: { "x-portal-auth": token! } }),
+        fetch("/api/portal/treinamentos/pdfs",   { headers: { "x-portal-auth": token! } }),
+      ]);
+      allVideos = vRes.ok ? await vRes.json() : [];
+      allPdfs   = pRes.ok ? await pRes.json() : [];
+      document.getElementById("loading")!.style.display = "none";
+      document.getElementById("content-videos")!.style.display = "";
+      renderVideos(allVideos);
+      renderPdfs(allPdfs);
+      buildCategories(allVideos, allPdfs);
+    }
+
+    load();
+  </script>
+</Portal>

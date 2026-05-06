@@ -1,0 +1,155 @@
+---
+export const prerender = false;
+import Portal from "~/layouts/Portal.astro";
+---
+<Portal title="Fórum" tipo="colaborador" activePage="forum">
+  <div class="section-header">
+    <h2>Fórum CJR</h2>
+    <button class="btn btn-primary" onclick="openModal()">+ Novo tópico</button>
+  </div>
+
+  <!-- Filtros -->
+  <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+    <select id="filtro-cat" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Open Sans',sans-serif;outline:none;background:#fff">
+      <option value="">Todas as categorias</option>
+      <option value="geral">Geral</option>
+      <option value="operacional">Operacional</option>
+      <option value="comercial">Comercial</option>
+      <option value="financeiro">Financeiro</option>
+      <option value="rh">RH</option>
+      <option value="sugestoes">Sugestões</option>
+    </select>
+    <input type="text" id="busca" placeholder="Buscar tópicos..." style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Open Sans',sans-serif;outline:none;flex:1;min-width:180px">
+  </div>
+
+  <div id="loading" class="loading"><div class="spinner"></div> Carregando fórum...</div>
+  <div id="forum-list" style="display:none"></div>
+
+  <!-- Modal novo tópico -->
+  <div class="modal-bg" id="novoModal">
+    <div class="modal">
+      <h2>Novo Tópico <button class="modal-close" onclick="closeModal()">✕</button></h2>
+      <div class="form-group">
+        <label>Título</label>
+        <input type="text" id="novo-titulo" placeholder="Assunto do tópico">
+      </div>
+      <div class="form-group">
+        <label>Categoria</label>
+        <select id="novo-cat">
+          <option value="geral">Geral</option>
+          <option value="operacional">Operacional</option>
+          <option value="comercial">Comercial</option>
+          <option value="financeiro">Financeiro</option>
+          <option value="rh">RH</option>
+          <option value="sugestoes">Sugestões</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Conteúdo</label>
+        <textarea id="novo-conteudo" rows="5" placeholder="Descreva o tópico..."></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnPublicar" onclick="publicar()">Publicar</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .topico-row {
+      background: #fff; border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px 20px; margin-bottom: 10px;
+      display: flex; gap: 16px; align-items: center; cursor: pointer;
+      text-decoration: none; color: inherit; transition: all .18s;
+    }
+    .topico-row:hover { border-color: var(--brand); transform: translateX(2px); }
+    .topico-row.fixado { border-left: 3px solid #F59E0B; }
+    .topico-icon { font-size: 22px; flex-shrink: 0; }
+    .topico-body { flex: 1; min-width: 0; }
+    .topico-body h3 { font-family:'Montserrat',sans-serif; font-size:14px; font-weight:800; margin:0 0 3px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .topico-meta { font-size:12px; color:var(--ink-light); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .topico-stats { flex-shrink:0; text-align:right; }
+    .topico-stats strong { display:block; font-family:'Montserrat',sans-serif; font-size:16px; font-weight:800; color:var(--ink); }
+    .topico-stats span  { font-size:11px; color:var(--ink-light); }
+    .cat-pill { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; background:rgba(196,30,58,.1); color:var(--brand); }
+  </style>
+
+  <script>
+    const token = localStorage.getItem("portal_colab_token");
+    if (!token) { window.location.replace("/portal/login"); throw 0; }
+    const userData = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
+
+    let allTopicos: any[] = [];
+
+    function renderTopicos(items: any[]) {
+      const el = document.getElementById("forum-list")!;
+      if (!items.length) { el.innerHTML = '<div class="empty-state"><strong>Nenhum tópico encontrado</strong><p>Seja o primeiro a criar um tópico!</p></div>'; return; }
+      el.innerHTML = items.map((t: any) => `
+        <a href="/portal/forum/${t.id}" class="topico-row ${t.fixado ? "fixado" : ""}">
+          <div class="topico-icon">${t.fechado ? "🔒" : t.fixado ? "📌" : "💬"}</div>
+          <div class="topico-body">
+            <h3>${t.fixado ? "📌 " : ""}${t.titulo}</h3>
+            <div class="topico-meta">
+              <span class="cat-pill">${t.categoria}</span>
+              <span>por <strong>${t.autor_nome}</strong></span>
+              <span>${new Date(t.created_at).toLocaleDateString("pt-BR")}</span>
+            </div>
+          </div>
+          <div class="topico-stats">
+            <strong>${t.respostas_count}</strong>
+            <span>respostas</span>
+          </div>
+        </a>`).join("");
+    }
+
+    async function load() {
+      const res = await fetch("/api/portal/forum/topicos", { headers: { "x-portal-auth": token! } });
+      allTopicos = res.ok ? await res.json() : [];
+      document.getElementById("loading")!.style.display = "none";
+      document.getElementById("forum-list")!.style.display = "";
+      renderTopicos(allTopicos);
+    }
+
+    function filtrar() {
+      const cat = (document.getElementById("filtro-cat") as HTMLSelectElement).value;
+      const q   = (document.getElementById("busca") as HTMLInputElement).value.toLowerCase();
+      renderTopicos(allTopicos.filter(t =>
+        (!cat || t.categoria === cat) &&
+        (!q   || t.titulo.toLowerCase().includes(q) || t.autor_nome.toLowerCase().includes(q))
+      ));
+    }
+
+    document.getElementById("filtro-cat")!.addEventListener("change", filtrar);
+    document.getElementById("busca")!.addEventListener("input", filtrar);
+
+    (window as any).openModal  = () => document.getElementById("novoModal")!.classList.add("open");
+    (window as any).closeModal = () => document.getElementById("novoModal")!.classList.remove("open");
+
+    (window as any).publicar = async () => {
+      const titulo   = (document.getElementById("novo-titulo")   as HTMLInputElement).value.trim();
+      const categoria= (document.getElementById("novo-cat")      as HTMLSelectElement).value;
+      const conteudo = (document.getElementById("novo-conteudo") as HTMLTextAreaElement).value.trim();
+      if (!titulo || !conteudo) return alert("Preencha título e conteúdo.");
+
+      const btn = document.getElementById("btnPublicar") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Publicando...";
+
+      const res = await fetch("/api/portal/forum/topicos", {
+        method: "POST",
+        headers: { "x-portal-auth": token!, "Content-Type": "application/json" },
+        body: JSON.stringify({ titulo, categoria, conteudo }),
+      });
+      btn.disabled = false; btn.textContent = "Publicar";
+
+      if (res.ok) {
+        (window as any).closeModal();
+        (window as any).toast("Tópico publicado!", "success");
+        await load();
+      } else {
+        (window as any).toast("Erro ao publicar.", "error");
+      }
+    };
+
+    load();
+  </script>
+</Portal>

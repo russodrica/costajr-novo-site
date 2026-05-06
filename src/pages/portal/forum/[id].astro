@@ -1,0 +1,116 @@
+---
+export const prerender = false;
+import Portal from "~/layouts/Portal.astro";
+const { id } = Astro.params;
+---
+<Portal title="Tópico" tipo="colaborador" activePage="forum">
+  <div style="margin-bottom:16px">
+    <a href="/portal/forum" style="font-size:13px;color:var(--ink-light);font-weight:600">← Voltar ao fórum</a>
+  </div>
+
+  <div id="topico-loading" class="loading"><div class="spinner"></div> Carregando...</div>
+  <div id="topico-content" style="display:none">
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="margin-bottom:8px" id="topico-meta"></div>
+          <h2 id="topico-titulo" style="margin:0;font-size:22px"></h2>
+        </div>
+        <div id="topico-badges" style="flex-shrink:0;display:flex;gap:6px"></div>
+      </div>
+      <hr class="divider">
+      <div id="topico-conteudo" style="font-size:15px;line-height:1.75;color:var(--ink);white-space:pre-wrap"></div>
+      <div style="margin-top:16px;font-size:12.5px;color:var(--ink-light)" id="topico-autor"></div>
+    </div>
+
+    <div class="section-header" style="margin-bottom:14px">
+      <h2 id="resp-count" style="font-size:16px;margin:0">Respostas</h2>
+    </div>
+
+    <div id="respostas-list"></div>
+
+    <div class="card mt-24" id="responder-area">
+      <h3 style="margin:0 0 14px">Responder</h3>
+      <div class="form-group">
+        <textarea id="resp-texto" rows="4" placeholder="Escreva sua resposta..."></textarea>
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn btn-primary" id="btnResponder" onclick="responder()">Enviar resposta</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .resposta-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 10px;
+      padding: 18px 22px; margin-bottom: 12px;
+    }
+    .resposta-card.melhor { border-color: #86EFAC; background: #F0FDF4; }
+    .resp-autor { font-size: 12.5px; color: var(--ink-light); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    .resp-autor strong { color: var(--ink); font-weight: 700; }
+    .resp-texto { font-size: 14px; line-height: 1.7; color: var(--ink); white-space: pre-wrap; }
+    .melhor-badge { padding:2px 8px; background:#22C55E; color:#fff; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; }
+  </style>
+
+  <script define:vars={{ topicoId: id }}>
+    const token = localStorage.getItem("portal_colab_token");
+    if (!token) { window.location.replace("/portal/login"); throw 0; }
+    const userData = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
+
+    async function load() {
+      const [tRes, rRes] = await Promise.all([
+        fetch(`/api/portal/forum/topicos/${topicoId}`, { headers: { "x-portal-auth": token } }),
+        fetch(`/api/portal/forum/respostas?topico_id=${topicoId}`, { headers: { "x-portal-auth": token } }),
+      ]);
+      const topico   = tRes.ok ? await tRes.json() : null;
+      const respostas = rRes.ok ? await rRes.json() : [];
+
+      document.getElementById("topico-loading").style.display = "none";
+      document.getElementById("topico-content").style.display = "";
+
+      if (!topico) { document.getElementById("topico-content").innerHTML = '<div class="empty-state"><strong>Tópico não encontrado</strong></div>'; return; }
+
+      document.title = `${topico.titulo} — Fórum CJR`;
+      document.getElementById("topico-titulo").textContent = topico.titulo;
+      document.getElementById("topico-conteudo").textContent = topico.conteudo;
+      document.getElementById("topico-autor").textContent = `Por ${topico.autor_nome} · ${new Date(topico.created_at).toLocaleDateString("pt-BR")} · ${topico.views} visualizações`;
+      document.getElementById("topico-meta").innerHTML = `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:rgba(196,30,58,.1);color:var(--brand)">${topico.categoria}</span>`;
+      if (topico.fechado) document.getElementById("responder-area").style.display = "none";
+
+      document.getElementById("resp-count").textContent = `${respostas.length} resposta${respostas.length !== 1 ? "s" : ""}`;
+      document.getElementById("respostas-list").innerHTML = respostas.length
+        ? respostas.map(r => `
+            <div class="resposta-card ${r.melhor_resposta ? "melhor" : ""}">
+              <div class="resp-autor">
+                <strong>${r.autor_nome}</strong>
+                <span>· ${new Date(r.created_at).toLocaleDateString("pt-BR")}</span>
+                ${r.melhor_resposta ? '<span class="melhor-badge">✓ Melhor resposta</span>' : ""}
+              </div>
+              <div class="resp-texto">${r.conteudo}</div>
+            </div>`).join("")
+        : '<div class="empty-state"><strong>Nenhuma resposta ainda</strong><p>Seja o primeiro a responder.</p></div>';
+    }
+
+    window.responder = async function() {
+      const texto = document.getElementById("resp-texto").value.trim();
+      if (!texto) return;
+      const btn = document.getElementById("btnResponder");
+      btn.disabled = true; btn.textContent = "Enviando...";
+      const res = await fetch("/api/portal/forum/respostas", {
+        method: "POST",
+        headers: { "x-portal-auth": token, "Content-Type": "application/json" },
+        body: JSON.stringify({ topico_id: topicoId, conteudo: texto }),
+      });
+      btn.disabled = false; btn.textContent = "Enviar resposta";
+      if (res.ok) {
+        document.getElementById("resp-texto").value = "";
+        window.toast("Resposta enviada!", "success");
+        load();
+      } else {
+        window.toast("Erro ao enviar.", "error");
+      }
+    };
+
+    load();
+  </script>
+</Portal>
