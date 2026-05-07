@@ -36,16 +36,32 @@ export const POST: APIRoute = async ({ request, params }) => {
         telefone: lead.telefone || null,
         plano_selecionado: lead.plano || null,
         valor_mensal_contratado: lead.valor || null,
+        data_contratacao: new Date().toISOString(),
         status: "pendente",
       })
       .select()
       .single();
     if (errCliente) return jsonErr(400, errCliente.message);
 
+    // Cria a loja automaticamente com os dados do lead
+    let loja = null;
+    if (lead.nome_loja) {
+      const { data: lojaData } = await db
+        .from("manut_lojas")
+        .insert({
+          cliente_id: cliente.id,
+          nome: lead.nome_loja,
+          status: "pendente",
+        })
+        .select()
+        .single();
+      loja = lojaData;
+    }
+
     // Remove o lead convertido
     await db.from("manut_leads").delete().eq("id", leadId);
 
-    return jsonOk({ cliente, senha_inicial: senhaInicial }, 201);
+    return jsonOk({ cliente, loja, senha_inicial: senhaInicial }, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
