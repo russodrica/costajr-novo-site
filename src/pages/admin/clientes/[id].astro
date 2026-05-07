@@ -235,81 +235,86 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
   </div>
 
   <script define:vars={{ clienteId: id }}>
-    // Event delegation — resolve problema de escopo ES module
-    document.addEventListener("click", async (e) => {
-      const btn = (e.target as Element).closest<HTMLElement>("[data-action]");
+    // define:vars força is:inline — sem TypeScript, só JS puro
+    document.addEventListener("click", async function(e) {
+      var btn = e.target.closest("[data-action]");
       if (!btn) return;
-      const { action, status, modal, id: dataId } = btn.dataset as Record<string, string>;
+      var action = btn.dataset.action;
+      var status = btn.dataset.status;
+      var modal  = btn.dataset.modal;
+      var dataId = btn.dataset.id;
 
       if (action === "fechar-modal") {
-        document.getElementById(modal)?.classList.remove("open");
+        document.getElementById(modal).classList.remove("open");
       }
-      if (action === "modal-editar") document.getElementById("modalEditar")?.classList.add("open");
-      if (action === "modal-loja")   document.getElementById("modalLoja")?.classList.add("open");
-      if (action === "modal-pgto")   document.getElementById("modalPgto")?.classList.add("open");
+      if (action === "modal-editar") document.getElementById("modalEditar").classList.add("open");
+      if (action === "modal-loja")   document.getElementById("modalLoja").classList.add("open");
+      if (action === "modal-pgto")   document.getElementById("modalPgto").classList.add("open");
 
       if (action === "patch-status") {
-        if (!confirm(`Mudar status para "${status}"?`)) return;
-        const res = await fetch(`/api/admin/clientes/${clienteId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
-        if (res.ok) window.location.reload(); else alert("Erro ao atualizar");
+        if (!confirm('Mudar status para "' + status + '"?')) return;
+        var r = await fetch("/api/admin/clientes/" + clienteId, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: status }) });
+        if (r.ok) window.location.reload(); else alert("Erro ao atualizar");
       }
 
       if (action === "resetar-senha") {
         if (!confirm("Resetar senha deste cliente? Uma senha inicial será gerada.")) return;
-        const res = await fetch(`/api/admin/clientes/${clienteId}/resetar-senha`, { method: "POST" });
-        if (res.ok) { const d = await res.json(); alert(`Nova senha: ${d.senha}`); }
+        var r = await fetch("/api/admin/clientes/" + clienteId + "/resetar-senha", { method: "POST" });
+        if (r.ok) { var d = await r.json(); alert("Nova senha: " + d.senha); }
         else alert("Erro ao resetar senha");
       }
 
       if (action === "marcar-pago") {
-        const res = await fetch(`/api/admin/pagamentos/${dataId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "pago", data_pagamento: new Date().toISOString() }) });
-        if (res.ok) window.location.reload(); else alert("Erro ao marcar como pago");
+        var r = await fetch("/api/admin/pagamentos/" + dataId, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "pago", data_pagamento: new Date().toISOString() }) });
+        if (r.ok) window.location.reload(); else alert("Erro ao marcar como pago");
       }
     });
 
-    document.getElementById("btnGerarPrev")?.addEventListener("click", async () => {
+    document.getElementById("btnGerarPrev").addEventListener("click", async function() {
       if (!confirm("Gerar preventivas automaticamente?\n\n• Quantidade: definida pelo plano (trimestral=3, semestral=6, anual=12)\n• 1ª visita: 10 dias após a contratação\n• Seguintes: a cada 30 dias\n\nPreventivas agendadas existentes serão substituídas.")) return;
-      const btn = document.getElementById("btnGerarPrev") as HTMLButtonElement;
+      var btn = document.getElementById("btnGerarPrev");
       btn.disabled = true; btn.textContent = "…";
-      const res = await fetch(`/api/admin/clientes/${clienteId}/gerar-preventivas`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-      if (res.ok) {
-        const d = await res.json();
-        alert(`✔ ${d.criadas} preventiva(s) gerada(s) com sucesso!`);
+      var r = await fetch("/api/admin/clientes/" + clienteId + "/gerar-preventivas", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (r.ok) {
+        var d = await r.json();
+        alert("✔ " + d.criadas + " preventiva(s) gerada(s) com sucesso!");
         window.location.reload();
       } else {
-        const d = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        var d = await r.json().catch(function() { return { error: "HTTP " + r.status }; });
         alert("Erro: " + d.error);
         btn.disabled = false; btn.textContent = "⚙ Gerar preventivas";
       }
     });
 
-    document.getElementById("formEditar")?.addEventListener("submit", async (e) => {
+    document.getElementById("formEditar").addEventListener("submit", async function(e) {
       e.preventDefault();
-      const fd = new FormData(e.target);
-      const body = Object.fromEntries(fd.entries());
+      var fd = new FormData(e.target);
+      var body = Object.fromEntries(fd.entries());
       if (body.valor_mensal_contratado) body.valor_mensal_contratado = parseFloat(body.valor_mensal_contratado);
       if (body.visitas_contratadas) body.visitas_contratadas = parseInt(body.visitas_contratadas);
-      const res = await fetch(`/api/admin/clientes/${clienteId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) window.location.reload(); else alert("Erro ao salvar");
+      var r = await fetch("/api/admin/clientes/" + clienteId, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (r.ok) window.location.reload(); else alert("Erro ao salvar");
     });
 
-    document.getElementById("formLoja")?.addEventListener("submit", async (e) => {
+    document.getElementById("formLoja").addEventListener("submit", async function(e) {
       e.preventDefault();
-      const fd = new FormData(e.target);
-      const body = { ...Object.fromEntries(fd.entries()), cliente_id: clienteId };
+      var fd = new FormData(e.target);
+      var body = Object.fromEntries(fd.entries());
+      body.cliente_id = clienteId;
       if (body.tamanho_m2) body.tamanho_m2 = parseInt(body.tamanho_m2);
-      const res = await fetch("/api/admin/lojas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) window.location.reload();
-      else { const d = await res.json(); document.getElementById("msgLoja").innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
+      var r = await fetch("/api/admin/lojas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (r.ok) window.location.reload();
+      else { var d = await r.json(); document.getElementById("msgLoja").innerHTML = '<div class="alert alert-error">' + d.error + "</div>"; }
     });
 
-    document.getElementById("formPgto")?.addEventListener("submit", async (e) => {
+    document.getElementById("formPgto").addEventListener("submit", async function(e) {
       e.preventDefault();
-      const fd = new FormData(e.target);
-      const body = { ...Object.fromEntries(fd.entries()), cliente_id: clienteId };
+      var fd = new FormData(e.target);
+      var body = Object.fromEntries(fd.entries());
+      body.cliente_id = clienteId;
       body.valor = parseFloat(body.valor);
-      const res = await fetch("/api/admin/pagamentos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) window.location.reload(); else alert("Erro ao lançar pagamento");
+      var r = await fetch("/api/admin/pagamentos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (r.ok) window.location.reload(); else alert("Erro ao lançar pagamento");
     });
   </script>
 
