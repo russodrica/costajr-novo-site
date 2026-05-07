@@ -43,8 +43,9 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
               <td><span class={`badge ${badgeSt[l.etapa]}`}>{l.etapa?.replace(/_/g," ")}</span></td>
               <td>{fmtDate(l.created_at)}</td>
               <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                <select class="filter-select" style="padding:3px 8px;font-size:0.8rem" onchange={`patchLead('${l.id}', this.value)`}>
-                  {["novo","contato_feito","proposta_enviada","negociando","perdido"].map(s => <option value={s} selected={s===l.etapa}>{s.replace(/_/g," ")}</option>)}
+                <select class="filter-select" style="padding:3px 8px;font-size:0.8rem" onchange={`patchLead('${l.id}', this.value); this.selectedIndex=0`}>
+                  <option value="">— mover para —</option>
+                  {["novo","contato_feito","proposta_enviada","negociando","perdido"].filter(s => s !== l.etapa).map(s => <option value={s}>{s.replace(/_/g," ")}</option>)}
                 </select>
                 <button class="btn btn-success btn-sm" data-action="converter" data-id={l.id} data-nome={l.nome}>✔ Converter</button>
                 <button class="btn btn-danger btn-sm" data-action="excluir" data-id={l.id} data-nome={l.nome}>🗑</button>
