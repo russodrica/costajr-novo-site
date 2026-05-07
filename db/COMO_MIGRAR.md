@@ -54,3 +54,5 @@
 | `001_portal_auth.sql` | Adiciona senha_hash ao portal_profiles | 2026-05-04 |
 | `002_manut_leads_cupons_contrato.sql` | Cria manut_leads, manut_cupons, manut_contrato | 2026-05-05 |
 | `003_manut_client_fields.sql` | Adiciona endereco/cidade/uf a manut_clientes | Pendente ⚠️ |
+| `004_portal_colaborador.sql` | Tabelas do Portal do Colaborador | — |
+| `005_analytics.sql` | Cria page_views + função page_views_cleanup() | Pendente ⚠️ |

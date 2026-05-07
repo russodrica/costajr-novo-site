@@ -1,0 +1,302 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let admin: AdminClaims;
+try {
+  admin = await verifyToken<AdminClaims>(token);
+  if (admin.tipo !== "admin") throw new Error();
+} catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+// ── Filtro de período ──────────────────────────────────────────
+const diasParam = Number(Astro.url.searchParams.get("dias") || 30);
+const dias = [7, 30, 90].includes(diasParam) ? diasParam : 30;
+const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+
+const db = supabaseAdmin();
+
+// Query única; agregações em JS (Supabase free não tem GROUP BY direto na API REST).
+// Limite alto pra não cortar; com cleanup 90d e tráfego normal cabe folgado.
+const { data: rows, error } = await db
+  .from("page_views")
+  .select("path, session_id, ref_kind, ref_host, device, os, browser, country, city, visited_at")
+  .gte("visited_at", desde)
+  .eq("is_bot", false)
+  .order("visited_at", { ascending: false })
+  .limit(50000);
+
+const views = rows ?? [];
+const totalViews = views.length;
+const sessoesUnicas = new Set(views.map((r: any) => r.session_id)).size;
+const paginasPorSessao = sessoesUnicas ? (totalViews / sessoesUnicas).toFixed(2) : "0";
+
+// ── Agregadores ─────────────────────────────────────────────────
+function topBy<T>(arr: T[], key: (r: T) => string | null, vistas = true): { label: string; count: number; sessoes: number }[] {
+  const map = new Map<string, { count: number; sids: Set<string> }>();
+  for (const r of arr) {
+    const k = key(r) || "(sem dado)";
+    const m = map.get(k) || { count: 0, sids: new Set<string>() };
+    m.count++;
+    m.sids.add((r as any).session_id);
+    map.set(k, m);
+  }
+  return Array.from(map.entries())
+    .map(([label, v]) => ({ label, count: v.count, sessoes: v.sids.size }))
+    .sort((a, b) => (vistas ? b.count - a.count : b.sessoes - a.sessoes));
+}
+
+const labelsRota: Record<string, string> = {
+  "/": "Home",
+  "/sobre": "Sobre",
+  "/servicos": "Serviços",
+  "/contato": "Contato",
+  "/manutencao/contratar": "Manutenção — Contratar",
+  "/manutencao": "Manutenção",
+  "/intranet": "Intranet",
+  "/artigos": "Artigos",
+  "/quero-ser-parceiro": "Quero ser Parceiro",
+  "/privacidade": "Privacidade",
+  "/lgpd": "LGPD",
+};
+function rotaLabel(p: string): string {
+  if (labelsRota[p]) return labelsRota[p];
+  if (p.startsWith("/artigos/")) return `Artigo: ${p.replace("/artigos/", "")}`;
+  return p;
+}
+
+const porPagina = topBy(views, (r: any) => r.path).map((x) => ({ ...x, label: rotaLabel(x.label), path: x.label }));
+const porOrigemKind = topBy(views, (r: any) => r.ref_kind);
+const porReferrer = topBy(views, (r: any) => r.ref_host).slice(0, 10);
+const porDevice = topBy(views, (r: any) => r.device);
+const porOS = topBy(views, (r: any) => r.os).slice(0, 8);
+const porBrowser = topBy(views, (r: any) => r.browser).slice(0, 8);
+const porPais = topBy(views, (r: any) => r.country).slice(0, 10);
+const porCidade = topBy(views, (r: any) => r.city).slice(0, 10);
+
+// Série diária pro gráfico
+const diasArr: { dia: string; views: number; sessoes: Set<string> }[] = [];
+for (let i = dias - 1; i >= 0; i--) {
+  const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+  diasArr.push({ dia: d.toISOString().slice(0, 10), views: 0, sessoes: new Set<string>() });
+}
+const idxByDia = new Map(diasArr.map((d, i) => [d.dia, i]));
+for (const r of views as any[]) {
+  const k = (r.visited_at as string).slice(0, 10);
+  const i = idxByDia.get(k);
+  if (i !== undefined) {
+    diasArr[i].views++;
+    diasArr[i].sessoes.add(r.session_id);
+  }
+}
+const serie = diasArr.map((d) => ({ dia: d.dia, views: d.views, sessoes: d.sessoes.size }));
+const maxView = Math.max(1, ...serie.map((s) => s.views));
+
+const labelKind: Record<string, string> = {
+  direct: "Direto",
+  search: "Busca",
+  social: "Redes sociais",
+  referral: "Outros sites",
+  internal: "Interno",
+};
+
+function fmtPct(n: number, total: number): string {
+  if (!total) return "0%";
+  return `${((n / total) * 100).toFixed(1)}%`;
+}
+---
+<Admin title="Analytics" current="analytics">
+  {error && <div class="alert alert-error">Erro ao carregar dados: {error.message}</div>}
+
+  <!-- Toolbar / filtro -->
+  <div class="toolbar">
+    <span class="toolbar-title">Visitas — últimos {dias} dias</span>
+    <a href="?dias=7"  class={`btn btn-sm ${dias === 7  ? "btn-primary" : "btn-secondary"}`}>7 dias</a>
+    <a href="?dias=30" class={`btn btn-sm ${dias === 30 ? "btn-primary" : "btn-secondary"}`}>30 dias</a>
+    <a href="?dias=90" class={`btn btn-sm ${dias === 90 ? "btn-primary" : "btn-secondary"}`}>90 dias</a>
+    <button class="btn btn-secondary btn-sm" onclick="rodarCleanup()">🧹 Limpar &gt; 90d</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="card-grid">
+    <div class="stat-card">
+      <div class="stat-value">{totalViews.toLocaleString("pt-BR")}</div>
+      <div class="stat-label">Visualizações</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#3B82F6">{sessoesUnicas.toLocaleString("pt-BR")}</div>
+      <div class="stat-label">Sessões únicas</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#22C55E">{paginasPorSessao}</div>
+      <div class="stat-label">Páginas / sessão</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#F59E0B">{porPagina.length}</div>
+      <div class="stat-label">Páginas distintas</div>
+    </div>
+  </div>
+
+  <!-- Gráfico simples (barras CSS) -->
+  <div class="card" style="margin-bottom:20px">
+    <strong style="display:block;margin-bottom:14px">Visitas por dia</strong>
+    <div class="chart">
+      {serie.map((s) => (
+        <div class="chart-col" title={`${s.dia} — ${s.views} views, ${s.sessoes} sessões`}>
+          <div class="chart-bar" style={`height:${(s.views / maxView) * 100}%`}></div>
+          <div class="chart-x">{s.dia.slice(5)}</div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <!-- Top páginas + Origem do tráfego -->
+  <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="card">
+      <strong style="display:block;margin-bottom:14px">Top páginas</strong>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Página</th><th style="text-align:right">Views</th><th style="text-align:right">Sessões</th><th style="text-align:right">%</th></tr></thead>
+          <tbody>
+            {porPagina.length ? porPagina.map((p) => (
+              <tr>
+                <td><span style="font-weight:600">{p.label}</span><br><span style="color:#9CA3AF;font-size:0.72rem">{(p as any).path}</span></td>
+                <td style="text-align:right">{p.count}</td>
+                <td style="text-align:right">{p.sessoes}</td>
+                <td style="text-align:right;color:#6B7280">{fmtPct(p.count, totalViews)}</td>
+              </tr>
+            )) : <tr><td colspan="4" style="text-align:center;color:#999;padding:20px">Nenhuma visita ainda</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong style="display:block;margin-bottom:14px">Origem do tráfego</strong>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tipo</th><th style="text-align:right">Sessões</th><th style="text-align:right">%</th></tr></thead>
+          <tbody>
+            {porOrigemKind.length ? porOrigemKind.map((o) => (
+              <tr>
+                <td>{labelKind[o.label] || o.label}</td>
+                <td style="text-align:right">{o.sessoes}</td>
+                <td style="text-align:right;color:#6B7280">{fmtPct(o.sessoes, sessoesUnicas)}</td>
+              </tr>
+            )) : <tr><td colspan="3" style="text-align:center;color:#999;padding:20px">—</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top referrers -->
+  <div class="card" style="margin-bottom:20px">
+    <strong style="display:block;margin-bottom:14px">De onde vieram (sites externos)</strong>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Origem</th><th style="text-align:right">Views</th><th style="text-align:right">Sessões</th></tr></thead>
+        <tbody>
+          {porReferrer.length ? porReferrer.map((r) => (
+            <tr>
+              <td>{r.label}</td>
+              <td style="text-align:right">{r.count}</td>
+              <td style="text-align:right">{r.sessoes}</td>
+            </tr>
+          )) : <tr><td colspan="3" style="text-align:center;color:#999;padding:20px">Sem referrers (todas as visitas foram diretas)</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Dispositivo / OS / Browser -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="card">
+      <strong style="display:block;margin-bottom:14px">Dispositivo</strong>
+      <table>
+        <tbody>
+          {porDevice.map((d) => (
+            <tr><td style="text-transform:capitalize">{d.label}</td><td style="text-align:right">{d.count}</td><td style="text-align:right;color:#6B7280">{fmtPct(d.count, totalViews)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <strong style="display:block;margin-bottom:14px">Sistema</strong>
+      <table>
+        <tbody>
+          {porOS.map((o) => (
+            <tr><td>{o.label}</td><td style="text-align:right">{o.count}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <strong style="display:block;margin-bottom:14px">Navegador</strong>
+      <table>
+        <tbody>
+          {porBrowser.map((b) => (
+            <tr><td>{b.label}</td><td style="text-align:right">{b.count}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- País / Cidade -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <strong style="display:block;margin-bottom:14px">País</strong>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>País</th><th style="text-align:right">Views</th><th style="text-align:right">Sessões</th></tr></thead>
+          <tbody>
+            {porPais.length ? porPais.map((p) => (
+              <tr><td>{p.label}</td><td style="text-align:right">{p.count}</td><td style="text-align:right">{p.sessoes}</td></tr>
+            )) : <tr><td colspan="3" style="text-align:center;color:#999;padding:20px">—</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <strong style="display:block;margin-bottom:14px">Cidade</strong>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Cidade</th><th style="text-align:right">Views</th><th style="text-align:right">Sessões</th></tr></thead>
+          <tbody>
+            {porCidade.length ? porCidade.map((c) => (
+              <tr><td>{c.label}</td><td style="text-align:right">{c.count}</td><td style="text-align:right">{c.sessoes}</td></tr>
+            )) : <tr><td colspan="3" style="text-align:center;color:#999;padding:20px">—</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function rodarCleanup() {
+      if (!confirm("Apagar registros com mais de 90 dias?")) return;
+      const r = await fetch("/api/admin/analytics/cleanup", { method: "POST" });
+      const j = await r.json();
+      if (r.ok) { alert(`✅ ${j.removed} registros removidos`); location.reload(); }
+      else alert("Erro: " + (j.error || r.status));
+    }
+    (window as any).rodarCleanup = rodarCleanup;
+  </script>
+
+  <style>
+    .chart { display: flex; align-items: flex-end; gap: 2px; height: 160px; padding: 4px 0; }
+    .chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; cursor: help; }
+    .chart-bar { width: 100%; min-height: 2px; background: linear-gradient(180deg,#C41E3A,#8B0F25); border-radius: 3px 3px 0 0; transition: opacity 0.15s; }
+    .chart-col:hover .chart-bar { opacity: 0.75; }
+    .chart-x { font-size: 0.6rem; color: #9CA3AF; transform: rotate(-45deg); white-space: nowrap; height: 14px; }
+    @media (max-width: 900px) {
+      div[style*="grid-template-columns:1.4fr 1fr"],
+      div[style*="grid-template-columns:1fr 1fr 1fr"],
+      div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+      .chart-x { display: none; }
+    }
+  </style>
+</Admin>
