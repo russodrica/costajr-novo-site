@@ -108,14 +108,14 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
   <!-- Preventivas -->
   <div class="card" style="margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <strong>Preventivas ({preventivas?.length ?? 0} agendadas / {cliente.visitas_contratadas ?? "—"} contratadas)</strong>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-primary btn-sm" id="btnGerarPrev">⚙ Gerar preventivas</button>
-      </div>
+      <strong>
+        Preventivas ({preventivas?.length ?? 0} agendadas
+        {cliente.plano_selecionado?.toLowerCase().includes("trimestral") ? " / 3 contratadas" :
+         cliente.plano_selecionado?.toLowerCase().includes("semestral") ? " / 6 contratadas" :
+         cliente.plano_selecionado?.toLowerCase().includes("anual") ? " / 12 contratadas" : ""})
+      </strong>
+      <button class="btn btn-primary btn-sm" id="btnGerarPrev">⚙ Gerar preventivas</button>
     </div>
-    {!cliente.visitas_contratadas && (
-      <div class="alert alert-error" style="margin-bottom:12px">Configure o número de visitas contratadas no cadastro do cliente antes de gerar preventivas.</div>
-    )}
     {!lojas?.length && (
       <div class="alert alert-error" style="margin-bottom:12px">Cadastre ao menos uma loja antes de gerar preventivas.</div>
     )}
@@ -259,7 +259,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
     }
 
     document.getElementById("btnGerarPrev")?.addEventListener("click", async () => {
-      if (!confirm("Gerar preventivas automaticamente?\n\n• 1ª visita: 10 dias após a contratação\n• Seguintes: a cada 30 dias\n\nPreventivas já agendadas serão substituídas.")) return;
+      if (!confirm("Gerar preventivas automaticamente?\n\n• Quantidade: definida pelo plano (trimestral=3, semestral=6, anual=12)\n• 1ª visita: 10 dias após a contratação\n• Seguintes: a cada 30 dias\n\nPreventivas agendadas existentes serão substituídas.")) return;
       const btn = document.getElementById("btnGerarPrev") as HTMLButtonElement;
       btn.disabled = true; btn.textContent = "…";
       const res = await fetch(`/api/admin/clientes/${clienteId}/gerar-preventivas`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });

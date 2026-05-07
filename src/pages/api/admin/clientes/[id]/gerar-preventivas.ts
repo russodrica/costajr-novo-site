@@ -10,10 +10,10 @@ export const POST: APIRoute = async ({ request, params }) => {
     const clienteId = params.id!;
     const db = supabaseAdmin();
 
-    // Busca cliente para pegar data de contratação e visitas
+    // Busca cliente
     const { data: cliente } = await db
       .from("manut_clientes")
-      .select("data_contratacao, visitas_contratadas, created_at")
+      .select("data_contratacao, visitas_contratadas, plano_selecionado, created_at")
       .eq("id", clienteId)
       .single();
     if (!cliente) return jsonErr(404, "Cliente não encontrado");
@@ -26,7 +26,13 @@ export const POST: APIRoute = async ({ request, params }) => {
       .neq("status", "cancelada");
     if (!lojas?.length) return jsonErr(400, "Cadastre ao menos uma loja antes de gerar preventivas");
 
-    const totalVisitas = cliente.visitas_contratadas || 12;
+    // Deriva total de visitas a partir do plano (nome contém trimestral/semestral/anual)
+    const plano = (cliente.plano_selecionado || "").toLowerCase();
+    let totalVisitas: number;
+    if (plano.includes("trimestral")) totalVisitas = 3;
+    else if (plano.includes("semestral")) totalVisitas = 6;
+    else if (plano.includes("anual")) totalVisitas = 12;
+    else totalVisitas = cliente.visitas_contratadas || 12;
     const base = new Date(cliente.data_contratacao || cliente.created_at);
 
     // Remove preventivas agendadas existentes (não altera concluídas/canceladas)
