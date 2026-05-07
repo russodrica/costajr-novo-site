@@ -121,18 +121,23 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
     )}
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Visita</th><th>Loja</th><th>Data agendada</th><th>Data executada</th><th>Técnico</th><th>Status</th></tr></thead>
+        <thead><tr><th>Visita</th><th>Loja</th><th>Data agendada</th><th>Data executada</th><th>Técnico</th><th>Status</th><th>Ação</th></tr></thead>
         <tbody>
           {preventivas?.length ? preventivas.map((p: any) => (
-            <tr>
+            <tr data-prev-id={p.id} data-agendada={p.data_agendada ? p.data_agendada.slice(0,10) : ""}>
               <td>#{p.numero_visita}</td>
               <td>{(p.manut_lojas as any)?.nome ?? "—"}</td>
-              <td>{fmtDate(p.data_agendada)}</td>
+              <td class="cell-data-agendada">{fmtDate(p.data_agendada)}</td>
               <td>{fmtDate(p.data_executada)}</td>
               <td>{(p.manut_tecnicos as any)?.nome ?? "—"}</td>
               <td><span class={`badge ${badgePv[p.status]}`}>{p.status.replace("_"," ")}</span></td>
+              <td>
+                {p.status === "agendada" && (
+                  <button class="btn btn-secondary btn-sm" data-action="editar-data-prev" data-prev-id={p.id}>📅 Data</button>
+                )}
+              </td>
             </tr>
-          )) : <tr><td colspan="6" style="text-align:center;color:#999;padding:20px">Nenhuma preventiva agendada. Clique em "Gerar preventivas".</td></tr>}
+          )) : <tr><td colspan="7" style="text-align:center;color:#999;padding:20px">Nenhuma preventiva agendada. Clique em "Gerar preventivas".</td></tr>}
         </tbody>
       </table>
     </div>
@@ -267,6 +272,32 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       if (action === "marcar-pago") {
         var r = await fetch("/api/admin/pagamentos/" + dataId, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "pago", data_pagamento: new Date().toISOString() }) });
         if (r.ok) window.location.reload(); else alert("Erro ao marcar como pago");
+      }
+
+      if (action === "editar-data-prev") {
+        var prevId = btn.dataset.prevId;
+        var tr = document.querySelector("tr[data-prev-id='" + prevId + "']");
+        var cell = tr.querySelector(".cell-data-agendada");
+        var dataAtual = tr.dataset.agendada || "";
+        // Troca célula por input + botões
+        cell.innerHTML =
+          '<input type="date" value="' + dataAtual + '" style="font-size:0.8rem;padding:3px 6px;border:1px solid #C41E3A;border-radius:4px" id="inp-' + prevId + '" />' +
+          ' <button class="btn btn-primary btn-sm" data-action="salvar-data-prev" data-prev-id="' + prevId + '" style="margin-left:4px">✔</button>' +
+          ' <button class="btn btn-secondary btn-sm" data-action="cancelar-data-prev" data-prev-id="' + prevId + '">✕</button>';
+        btn.style.display = "none";
+      }
+
+      if (action === "cancelar-data-prev") {
+        window.location.reload();
+      }
+
+      if (action === "salvar-data-prev") {
+        var prevId = btn.dataset.prevId;
+        var inp = document.getElementById("inp-" + prevId);
+        if (!inp || !inp.value) { alert("Selecione uma data."); return; }
+        var r = await fetch("/api/admin/preventivas/" + prevId, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ data_agendada: inp.value }) });
+        if (r.ok) window.location.reload();
+        else { var d = await r.json().catch(function(){ return { error: "HTTP " + r.status }; }); alert("Erro: " + d.error); }
       }
     });
 
