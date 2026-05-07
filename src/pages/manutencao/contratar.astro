@@ -356,6 +356,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
   };
 
   // ─── Persistir lead ──────────────────────────────────────────────
+  const etapaToPasso = { "contato_feito": 1, "proposta_enviada": 2, "negociando": 3, "convertido": 5 };
   async function salvarLead(etapa, extra = {}) {
     try {
       const res = await fetch("/api/manut/leads", {
@@ -369,6 +370,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
           plano: dados.planoLabel,
           valor: dados.valorMensal,
           etapa,
+          passo_wizard: etapaToPasso[etapa] ?? null,
           ...extra,
         }),
       });

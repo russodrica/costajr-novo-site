@@ -8,21 +8,43 @@ if (!token) return Astro.redirect("/admin/login");
 try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 
-const filtroEtapa = Astro.url.searchParams.get("etapa") || "";
+const filtroCrm = Astro.url.searchParams.get("crm") || "";
 const db = supabaseAdmin();
 let q = db.from("manut_leads").select("*").order("created_at", { ascending: false });
-if (filtroEtapa) q = q.eq("etapa", filtroEtapa);
+if (filtroCrm) q = q.eq("status_crm", filtroCrm);
 const { data: leads } = await q;
 
-const badgeSt: Record<string, string> = { novo: "badge-blue", contato_feito: "badge-yellow", proposta_enviada: "badge-orange", negociando: "badge-yellow", convertido: "badge-green", perdido: "badge-gray" };
+const passoLabel: Record<number, string> = {
+  1: "Etapa 1 — Sua Loja",
+  2: "Etapa 2 — Simulação",
+  3: "Etapa 3 — Cadastro",
+  4: "Etapa 4 — Contrato",
+  5: "Etapa 5 — Pagamento",
+};
+const crmLabel: Record<string, string> = {
+  novo: "Novo",
+  contato_feito: "Contato feito",
+  proposta_enviada: "Proposta enviada",
+  negociando: "Negociando",
+  convertido: "Convertido",
+  perdido: "Perdido",
+};
+const crmBadge: Record<string, string> = {
+  novo: "badge-blue",
+  contato_feito: "badge-yellow",
+  proposta_enviada: "badge-orange",
+  negociando: "badge-yellow",
+  convertido: "badge-green",
+  perdido: "badge-gray",
+};
 function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
 ---
 <Admin title="Leads" current="leads">
   <div class="toolbar">
     <span class="toolbar-title">Pré-cadastros / Leads ({leads?.length ?? 0})</span>
     <select class="filter-select" onchange="filtrar(this.value)">
-      <option value="" selected={!filtroEtapa}>Todos</option>
-      {["novo","contato_feito","proposta_enviada","negociando","convertido","perdido"].map(s => <option value={s} selected={s===filtroEtapa}>{s.replace(/_/g," ")}</option>)}
+      <option value="" selected={!filtroCrm}>Todos</option>
+      {["novo","contato_feito","proposta_enviada","negociando","perdido"].map(s => <option value={s} selected={s===filtroCrm}>{crmLabel[s]}</option>)}
     </select>
     <input class="search-input" type="search" placeholder="Buscar nome, email…" oninput="buscar(this.value)" />
     <button class="btn btn-secondary" onclick="window.location.reload()">↻ Atualizar</button>
@@ -31,7 +53,19 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
   <div class="card">
     <div class="table-wrap">
       <table id="tabela">
-        <thead><tr><th>Nome</th><th>E-mail</th><th>Telefone</th><th>Loja</th><th>Plano</th><th>Etapa</th><th>Data</th><th>Ação</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>E-mail</th>
+            <th>Telefone</th>
+            <th>Loja</th>
+            <th>Plano</th>
+            <th>Parou na etapa</th>
+            <th>Ação CRM</th>
+            <th>Data</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
         <tbody>
           {leads?.length ? leads.map((l: any) => (
             <tr data-search={`${l.nome} ${l.email} ${l.nome_loja||""}`.toLowerCase()}>
@@ -40,18 +74,27 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
               <td>{l.telefone || "—"}</td>
               <td>{l.nome_loja || "—"}</td>
               <td>{l.plano || "—"}</td>
-              <td><span class={`badge ${badgeSt[l.etapa]}`}>{l.etapa?.replace(/_/g," ")}</span></td>
+              <td>
+                {l.passo_wizard
+                  ? <span class="badge badge-blue">{passoLabel[l.passo_wizard] ?? `Etapa ${l.passo_wizard}`}</span>
+                  : <span style="color:#999">—</span>}
+              </td>
+              <td>
+                <span class={`badge ${crmBadge[l.status_crm] ?? "badge-gray"}`}>
+                  {crmLabel[l.status_crm] ?? l.status_crm}
+                </span>
+              </td>
               <td>{fmtDate(l.created_at)}</td>
               <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                <select class="filter-select" style="padding:3px 8px;font-size:0.8rem" onchange={`patchLead('${l.id}', this.value); this.selectedIndex=0`}>
-                  <option value="">— mover para —</option>
-                  {["novo","contato_feito","proposta_enviada","negociando","perdido"].filter(s => s !== l.etapa).map(s => <option value={s}>{s.replace(/_/g," ")}</option>)}
+                <select class="filter-select" style="padding:3px 8px;font-size:0.8rem" onchange={`patchCrm('${l.id}', this.value); this.selectedIndex=0`}>
+                  <option value="">— mover CRM —</option>
+                  {["novo","contato_feito","proposta_enviada","negociando","perdido"].filter(s => s !== l.status_crm).map(s => <option value={s}>{crmLabel[s]}</option>)}
                 </select>
                 <button class="btn btn-success btn-sm" data-action="converter" data-id={l.id} data-nome={l.nome}>✔ Converter</button>
                 <button class="btn btn-danger btn-sm" data-action="excluir" data-id={l.id} data-nome={l.nome}>🗑</button>
               </td>
             </tr>
-          )) : <tr><td colspan="8" style="text-align:center;color:#999;padding:32px">Nenhum pré-cadastro encontrado</td></tr>}
+          )) : <tr><td colspan="9" style="text-align:center;color:#999;padding:32px">Nenhum pré-cadastro encontrado</td></tr>}
         </tbody>
       </table>
     </div>
@@ -59,46 +102,49 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
 
   <script>
     function filtrar(s) {
-      const url = new URL(window.location.href);
-      if (s) url.searchParams.set("etapa", s); else url.searchParams.delete("etapa");
+      var url = new URL(window.location.href);
+      if (s) url.searchParams.set("crm", s); else url.searchParams.delete("crm");
       window.location.href = url.toString();
     }
     function buscar(q) {
-      document.querySelectorAll("#tabela tbody tr[data-search]").forEach(r => {
+      document.querySelectorAll("#tabela tbody tr[data-search]").forEach(function(r) {
         r.style.display = r.dataset.search.includes(q.toLowerCase()) ? "" : "none";
       });
     }
-    document.addEventListener("click", async (e) => {
-      const btn = (e.target as Element).closest<HTMLElement>("[data-action]");
+    document.addEventListener("click", async function(e) {
+      var btn = e.target.closest("[data-action]");
       if (!btn) return;
-      const { action, id, nome } = btn.dataset as { action: string; id: string; nome: string };
+      var action = btn.dataset.action;
+      var id = btn.dataset.id;
+      var nome = btn.dataset.nome;
 
       if (action === "excluir") {
-        if (!confirm(`Excluir permanentemente "${nome}"? Esta ação não pode ser desfeita.`)) return;
-        const res = await fetch(`/api/admin/leads/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "delete" }) });
+        if (!confirm('Excluir permanentemente "' + nome + '"? Esta ação não pode ser desfeita.')) return;
+        var res = await fetch("/api/admin/leads/" + id, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "delete" }) });
         if (res.ok) window.location.reload();
-        else { const d = await res.json().catch(() => ({ error: `HTTP ${res.status}` })); alert("Erro: " + d.error); }
+        else { var d = await res.json().catch(function() { return { error: "HTTP " + res.status }; }); alert("Erro: " + d.error); }
       }
 
       if (action === "converter") {
-        if (!confirm(`Converter "${nome}" em cliente? Um cadastro será criado automaticamente.`)) return;
+        if (!confirm('Converter "' + nome + '" em cliente? Um cadastro será criado automaticamente.')) return;
         btn.textContent = "…";
-        (btn as HTMLButtonElement).disabled = true;
-        const res = await fetch(`/api/admin/leads/${id}/converter`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-        if (res.ok) {
-          const d = await res.json();
-          alert(`✔ Cliente criado!\nCódigo: ${d.cliente.codigo}\nSenha inicial: ${d.senha_inicial}\n\nGuarde a senha antes de fechar.`);
+        btn.disabled = true;
+        var res2 = await fetch("/api/admin/leads/" + id + "/converter", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        if (res2.ok) {
+          var d2 = await res2.json();
+          alert("✔ Cliente criado!\nCódigo: " + d2.cliente.codigo + "\nSenha inicial: " + d2.senha_inicial + "\n\nGuarde a senha antes de fechar.");
           window.location.reload();
         } else {
-          const d = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-          alert("Erro: " + d.error);
+          var d3 = await res2.json().catch(function() { return { error: "HTTP " + res2.status }; });
+          alert("Erro: " + d3.error);
           btn.textContent = "✔ Converter";
-          (btn as HTMLButtonElement).disabled = false;
+          btn.disabled = false;
         }
       }
     });
-    async function patchLead(id, etapa) {
-      await fetch(`/api/admin/leads/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ etapa }) });
+    async function patchCrm(id, status_crm) {
+      await fetch("/api/admin/leads/" + id, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status_crm: status_crm }) });
+      window.location.reload();
     }
   </script>
 </Admin>
