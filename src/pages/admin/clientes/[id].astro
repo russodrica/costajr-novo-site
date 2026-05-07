@@ -53,11 +53,11 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
         <span class="info-label">Próx. vencto</span><span>{fmtDate(cliente.data_proximo_vencimento)}</span>
       </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
-        {cliente.status === "pendente" && <button class="btn btn-success btn-sm" onclick={`patchStatus('ativo')`}>Ativar</button>}
-        {cliente.status === "ativo" && <button class="btn btn-warning btn-sm" onclick={`patchStatus('inadimplente')`}>Inadimplir</button>}
-        {cliente.status !== "cancelado" && <button class="btn btn-danger btn-sm" onclick={`patchStatus('cancelado')`}>Cancelar</button>}
-        <button class="btn btn-secondary btn-sm" onclick="abrirModalEditar()">Editar</button>
-        <button class="btn btn-info btn-sm" onclick="resetarSenha()">Resetar senha</button>
+        {cliente.status === "pendente" && <button class="btn btn-success btn-sm" data-action="patch-status" data-status="ativo">Ativar</button>}
+        {cliente.status === "ativo" && <button class="btn btn-warning btn-sm" data-action="patch-status" data-status="inadimplente">Inadimplir</button>}
+        {cliente.status !== "cancelado" && <button class="btn btn-danger btn-sm" data-action="patch-status" data-status="cancelado">Cancelar</button>}
+        <button class="btn btn-secondary btn-sm" data-action="modal-editar">Editar</button>
+        <button class="btn btn-info btn-sm" data-action="resetar-senha">Resetar senha</button>
       </div>
     </div>
 
@@ -65,7 +65,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <strong>Lojas ({lojas?.length ?? 0})</strong>
-        <button class="btn btn-primary btn-sm" onclick="abrirModalLoja()">+ Loja</button>
+        <button class="btn btn-primary btn-sm" data-action="modal-loja">+ Loja</button>
       </div>
       {lojas?.length ? lojas.map((l: any) => (
         <div style="border:1px solid #F0F0F0;border-radius:8px;padding:12px;margin-bottom:8px">
@@ -142,7 +142,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <strong>Pagamentos</strong>
-      <button class="btn btn-primary btn-sm" onclick="abrirModalPgto()">+ Lançar</button>
+      <button class="btn btn-primary btn-sm" data-action="modal-pgto">+ Lançar</button>
     </div>
     <div class="table-wrap">
       <table>
@@ -157,7 +157,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
               <td><span class={`badge ${badgePg[p.status]}`}>{p.status}</span></td>
               <td>
                 {p.status !== "pago" && p.status !== "cancelado" &&
-                  <button class="btn btn-success btn-sm" onclick={`marcarPago('${p.id}')`}>Marcar pago</button>
+                  <button class="btn btn-success btn-sm" data-action="marcar-pago" data-id={p.id}>Marcar pago</button>
                 }
               </td>
             </tr>
@@ -186,7 +186,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
           <div class="form-group"><label>Visitas contratadas</label><input name="visitas_contratadas" type="number" value={cliente.visitas_contratadas || ""} /></div>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalEditar')">Cancelar</button>
+          <button type="button" class="btn btn-secondary" data-action="fechar-modal" data-modal="modalEditar">Cancelar</button>
           <button type="submit" class="btn btn-primary">Salvar</button>
         </div>
       </form>
@@ -208,7 +208,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
           <div class="form-group"><label>Tamanho (m²)</label><input name="tamanho_m2" type="number" /></div>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalLoja')">Cancelar</button>
+          <button type="button" class="btn btn-secondary" data-action="fechar-modal" data-modal="modalLoja">Cancelar</button>
           <button type="submit" class="btn btn-primary">Criar</button>
         </div>
       </form>
@@ -227,7 +227,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
           <select name="status"><option value="pendente">Pendente</option><option value="pago">Pago</option><option value="atrasado">Atrasado</option></select>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalPgto')">Cancelar</button>
+          <button type="button" class="btn btn-secondary" data-action="fechar-modal" data-modal="modalPgto">Cancelar</button>
           <button type="submit" class="btn btn-primary">Lançar</button>
         </div>
       </form>
@@ -235,28 +235,37 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
   </div>
 
   <script define:vars={{ clienteId: id }}>
-    function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
-    function abrirModalEditar() { document.getElementById("modalEditar").classList.add("open"); }
-    function abrirModalLoja() { document.getElementById("modalLoja").classList.add("open"); }
-    function abrirModalPgto() { document.getElementById("modalPgto").classList.add("open"); }
+    // Event delegation — resolve problema de escopo ES module
+    document.addEventListener("click", async (e) => {
+      const btn = (e.target as Element).closest<HTMLElement>("[data-action]");
+      if (!btn) return;
+      const { action, status, modal, id: dataId } = btn.dataset as Record<string, string>;
 
-    async function patchStatus(status) {
-      if (!confirm(`Mudar status para "${status}"?`)) return;
-      const res = await fetch(`/api/admin/clientes/${clienteId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
-      if (res.ok) window.location.reload(); else alert("Erro ao atualizar");
-    }
+      if (action === "fechar-modal") {
+        document.getElementById(modal)?.classList.remove("open");
+      }
+      if (action === "modal-editar") document.getElementById("modalEditar")?.classList.add("open");
+      if (action === "modal-loja")   document.getElementById("modalLoja")?.classList.add("open");
+      if (action === "modal-pgto")   document.getElementById("modalPgto")?.classList.add("open");
 
-    async function resetarSenha() {
-      if (!confirm("Resetar senha deste cliente? Uma senha inicial será gerada.")) return;
-      const res = await fetch(`/api/admin/clientes/${clienteId}/resetar-senha`, { method: "POST" });
-      if (res.ok) { const d = await res.json(); alert(`Nova senha: ${d.senha}`); }
-      else alert("Erro ao resetar senha");
-    }
+      if (action === "patch-status") {
+        if (!confirm(`Mudar status para "${status}"?`)) return;
+        const res = await fetch(`/api/admin/clientes/${clienteId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+        if (res.ok) window.location.reload(); else alert("Erro ao atualizar");
+      }
 
-    async function marcarPago(pgtoId) {
-      const res = await fetch(`/api/admin/pagamentos/${pgtoId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "pago", data_pagamento: new Date().toISOString() }) });
-      if (res.ok) window.location.reload(); else alert("Erro ao atualizar pagamento");
-    }
+      if (action === "resetar-senha") {
+        if (!confirm("Resetar senha deste cliente? Uma senha inicial será gerada.")) return;
+        const res = await fetch(`/api/admin/clientes/${clienteId}/resetar-senha`, { method: "POST" });
+        if (res.ok) { const d = await res.json(); alert(`Nova senha: ${d.senha}`); }
+        else alert("Erro ao resetar senha");
+      }
+
+      if (action === "marcar-pago") {
+        const res = await fetch(`/api/admin/pagamentos/${dataId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "pago", data_pagamento: new Date().toISOString() }) });
+        if (res.ok) window.location.reload(); else alert("Erro ao marcar como pago");
+      }
+    });
 
     document.getElementById("btnGerarPrev")?.addEventListener("click", async () => {
       if (!confirm("Gerar preventivas automaticamente?\n\n• Quantidade: definida pelo plano (trimestral=3, semestral=6, anual=12)\n• 1ª visita: 10 dias após a contratação\n• Seguintes: a cada 30 dias\n\nPreventivas agendadas existentes serão substituídas.")) return;
