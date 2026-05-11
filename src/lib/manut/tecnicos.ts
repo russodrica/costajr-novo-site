@@ -21,7 +21,46 @@ export async function tecnicoLogin({ email, senha }: { email: string; senha: str
 export async function tecnicoMe(tecnicoId: string) {
   const { data } = await db().from("manut_tecnicos").select("*").eq("id", tecnicoId).maybeSingle();
   if (!data) throw new Error("Técnico não encontrado");
-  return serializeTecnico(data);
+  const lojas = await listarLojasDoTecnico(tecnicoId);
+  return { ...serializeTecnico(data), lojas };
+}
+
+// ─── Vínculo técnico ↔ lojas (N:N) ─────────────────────────────────────────
+export async function listarLojaIdsDoTecnico(tecnicoId: string): Promise<string[]> {
+  const { data } = await db()
+    .from("manut_tecnico_lojas")
+    .select("loja_id")
+    .eq("tecnico_id", tecnicoId);
+  return (data || []).map((r: any) => r.loja_id);
+}
+
+export async function listarLojasDoTecnico(tecnicoId: string) {
+  const ids = await listarLojaIdsDoTecnico(tecnicoId);
+  if (ids.length === 0) return [];
+  const { data } = await db()
+    .from("manut_lojas")
+    .select("id,nome,endereco,cidade,uf,cliente_id,manut_clientes(nome)")
+    .in("id", ids);
+  return data || [];
+}
+
+export async function sincronizarLojasDoTecnico(tecnicoId: string, lojaIds: string[]) {
+  const atual = await listarLojaIdsDoTecnico(tecnicoId);
+  const novos = lojaIds.filter((id) => !atual.includes(id));
+  const removidos = atual.filter((id) => !lojaIds.includes(id));
+  if (novos.length) {
+    const rows = novos.map((loja_id) => ({ tecnico_id: tecnicoId, loja_id }));
+    const { error } = await db().from("manut_tecnico_lojas").insert(rows);
+    if (error) throw new Error(error.message);
+  }
+  if (removidos.length) {
+    const { error } = await db()
+      .from("manut_tecnico_lojas")
+      .delete()
+      .eq("tecnico_id", tecnicoId)
+      .in("loja_id", removidos);
+    if (error) throw new Error(error.message);
+  }
 }
 
 export async function tecnicoTrocarSenha(tecnicoId: string, senhaAtual: string, novaSenha: string) {

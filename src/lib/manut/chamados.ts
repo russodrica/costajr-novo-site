@@ -42,10 +42,17 @@ export async function criarChamadoCliente(args: {
 }
 
 export async function listarChamadosTecnico(tecnicoId: string) {
+  // Técnico vê: chamados atribuídos diretamente a ele + chamados de qualquer loja vinculada.
+  const { listarLojaIdsDoTecnico } = await import("./tecnicos");
+  const lojaIds = await listarLojaIdsDoTecnico(tecnicoId);
+
+  const filtros: string[] = [`tecnico_atribuido_id.eq.${tecnicoId}`];
+  if (lojaIds.length > 0) filtros.push(`loja_id.in.(${lojaIds.join(",")})`);
+
   const { data } = await db()
     .from("manut_chamados")
-    .select("*, manut_lojas(nome,endereco,cidade)")
-    .eq("tecnico_atribuido_id", tecnicoId)
+    .select("*, manut_lojas(nome,endereco,cidade), manut_clientes(nome)")
+    .or(filtros.join(","))
     .in("status", ["aberto", "em_andamento", "aguardando_material"])
     .order("prioridade", { ascending: false });
   return data || [];

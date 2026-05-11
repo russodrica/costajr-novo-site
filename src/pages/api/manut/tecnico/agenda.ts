@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireTecnico, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { listarLojaIdsDoTecnico } from "~/lib/manut/tecnicos";
 
 export const prerender = false;
 
@@ -10,10 +11,14 @@ export const GET: APIRoute = async ({ request }) => {
     const url = new URL(request.url);
     const mes = url.searchParams.get("mes"); // YYYY-MM
 
+    const lojaIds = await listarLojaIdsDoTecnico(claims.sub);
+    const filtros: string[] = [`tecnico_atribuido_id.eq.${claims.sub}`];
+    if (lojaIds.length > 0) filtros.push(`loja_id.in.(${lojaIds.join(",")})`);
+
     let q = supabaseAdmin()
       .from("manut_preventivas")
       .select("*, manut_lojas(nome,endereco,cidade,uf), manut_clientes(nome)")
-      .eq("tecnico_id", claims.sub)
+      .or(filtros.join(","))
       .order("data_agendada", { ascending: true });
 
     if (mes) {

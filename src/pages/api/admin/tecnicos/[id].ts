@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
+import { sincronizarLojasDoTecnico } from "../../../../lib/manut/tecnicos";
 
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
@@ -9,9 +10,23 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Nunca atualizar senha_hash via PATCH genérico
     delete body.senha_hash;
     delete body.senha;
+    // lojas é gerenciado em tabela separada
+    const lojas: string[] | undefined = Array.isArray(body.lojas) ? body.lojas : undefined;
+    delete body.lojas;
     const db = supabaseAdmin();
-    const { data, error } = await db.from("manut_tecnicos").update(body).eq("id", params.id!).select().single();
-    if (error) return jsonErr(400, error.message);
+    let data: any = null;
+    if (Object.keys(body).length > 0) {
+      const r = await db.from("manut_tecnicos").update(body).eq("id", params.id!).select().single();
+      if (r.error) return jsonErr(400, r.error.message);
+      data = r.data;
+    } else {
+      const r = await db.from("manut_tecnicos").select("*").eq("id", params.id!).single();
+      if (r.error) return jsonErr(400, r.error.message);
+      data = r.data;
+    }
+    if (lojas) {
+      await sincronizarLojasDoTecnico(params.id!, lojas);
+    }
     return jsonOk(data);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

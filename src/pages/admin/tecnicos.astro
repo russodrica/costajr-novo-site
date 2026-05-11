@@ -10,6 +10,30 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 
 const db = supabaseAdmin();
 const { data: tecnicos } = await db.from("manut_tecnicos").select("*").order("nome");
+const { data: lojas } = await db
+  .from("manut_lojas")
+  .select("id,nome,cidade,uf,cliente_id,manut_clientes(nome)")
+  .order("nome");
+const { data: vinculos } = await db.from("manut_tecnico_lojas").select("tecnico_id,loja_id");
+const lojasPorTecnico: Record<string, string[]> = {};
+(vinculos || []).forEach((v: any) => {
+  if (!lojasPorTecnico[v.tecnico_id]) lojasPorTecnico[v.tecnico_id] = [];
+  lojasPorTecnico[v.tecnico_id].push(v.loja_id);
+});
+// Agrupar lojas por cliente para exibição
+const lojasPorCliente: Record<string, { clienteNome: string; lojas: any[] }> = {};
+(lojas || []).forEach((l: any) => {
+  const cli = l.cliente_id;
+  if (!lojasPorCliente[cli]) {
+    lojasPorCliente[cli] = { clienteNome: l.manut_clientes?.nome || "—", lojas: [] };
+  }
+  lojasPorCliente[cli].lojas.push(l);
+});
+function nomeLoja(id: string): string {
+  const l = (lojas || []).find((x: any) => x.id === id);
+  if (!l) return "?";
+  return `${l.nome} (${l.manut_clientes?.nome || "—"})`;
+}
 function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
 ---
 <Admin title="Técnicos" current="tecnicos">
@@ -24,7 +48,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
     <div class="table-wrap">
       <table id="tabela">
         <thead>
-          <tr><th>Nome</th><th>E-mail</th><th>CPF</th><th>Telefone</th><th>Especialidades</th><th>Status</th><th>Último login</th><th>Ações</th></tr>
+          <tr><th>Nome</th><th>E-mail</th><th>CPF</th><th>Telefone</th><th>Especialidades</th><th>Lojas</th><th>Status</th><th>Último login</th><th>Ações</th></tr>
         </thead>
         <tbody>
           {tecnicos?.length ? tecnicos.map((t: any) => (
@@ -34,11 +58,14 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
               <td>{t.cpf || "—"}</td>
               <td>{t.telefone || "—"}</td>
               <td style="font-size:0.8rem">{t.especialidades?.join(", ") || "—"}</td>
+              <td style="font-size:0.8rem">{(lojasPorTecnico[t.id] || []).length > 0
+                ? (lojasPorTecnico[t.id] || []).map(id => nomeLoja(id)).join(", ")
+                : <span style="color:#999">—</span>}</td>
               <td><span class={`badge ${t.status === "ativo" ? "badge-green" : "badge-gray"}`}>{t.status}</span></td>
               <td>{fmtDate(t.last_login_at)}</td>
               <td>
                 <div style="display:flex;gap:6px">
-                  <button class="btn btn-secondary btn-sm" onclick={`editarTecnico(${JSON.stringify(t)})`}>Editar</button>
+                  <button class="btn btn-secondary btn-sm" onclick={`editarTecnico(${JSON.stringify({ ...t, lojas: lojasPorTecnico[t.id] || [] })})`}>Editar</button>
                   <button class="btn btn-info btn-sm" onclick={`resetarSenha('${t.id}')`}>Reset senha</button>
                   {t.status === "ativo"
                     ? <button class="btn btn-warning btn-sm" onclick={`patchStatus('${t.id}','inativo')`}>Inativar</button>
@@ -48,7 +75,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
               </td>
             </tr>
           )) : (
-            <tr><td colspan="8" style="text-align:center;color:#999;padding:32px">Nenhum técnico cadastrado</td></tr>
+            <tr><td colspan="9" style="text-align:center;color:#999;padding:32px">Nenhum técnico cadastrado</td></tr>
           )}
         </tbody>
       </table>
@@ -76,6 +103,24 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
               <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:400">
                 <input type="checkbox" name="especialidades" value={e} /> {e}
               </label>
+            ))}
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Lojas que este técnico atende</label>
+          <div style="max-height:220px;overflow-y:auto;border:1px solid #E5E7EB;border-radius:6px;padding:10px;margin-top:6px">
+            {Object.keys(lojasPorCliente).length === 0 ? (
+              <p style="color:#999;font-size:0.85rem;margin:0">Nenhuma loja cadastrada ainda. Cadastre clientes e lojas primeiro.</p>
+            ) : Object.values(lojasPorCliente).map(g => (
+              <div style="margin-bottom:10px">
+                <div style="font-size:0.75rem;font-weight:700;color:#666;text-transform:uppercase;margin-bottom:4px">{g.clienteNome}</div>
+                {g.lojas.map((l: any) => (
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;font-weight:400;padding:3px 0">
+                    <input type="checkbox" name="lojas" value={l.id} />
+                    <span>{l.nome}{l.cidade ? ` — ${l.cidade}/${l.uf || ""}` : ""}</span>
+                  </label>
+                ))}
+              </div>
             ))}
           </div>
         </div>
@@ -111,6 +156,8 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
       document.getElementById("tecTelefone").value = t.telefone || "";
       const cbs = document.querySelectorAll('input[name="especialidades"]');
       cbs.forEach(cb => { cb.checked = (t.especialidades || []).includes(cb.value); });
+      const lojasCbs = document.querySelectorAll('input[name="lojas"]');
+      lojasCbs.forEach(cb => { cb.checked = (t.lojas || []).includes(cb.value); });
       document.getElementById("btnSalvarTec").textContent = "Salvar";
       document.getElementById("modalTec").classList.add("open");
     }
@@ -150,6 +197,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
       e.preventDefault();
       const id = document.getElementById("tecId").value;
       const especialidades = [...document.querySelectorAll('input[name="especialidades"]:checked')].map(c => c.value);
+      const lojasSelecionadas = [...document.querySelectorAll('input[name="lojas"]:checked')].map(c => c.value);
       const body = {
         nome: document.getElementById("tecNome").value,
         email: document.getElementById("tecEmail").value,
@@ -157,6 +205,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
         telefone: document.getElementById("tecTelefone").value || null,
         senha: document.getElementById("tecSenha").value || null,
         especialidades,
+        lojas: lojasSelecionadas,
       };
       const msg = document.getElementById("msgTec");
       const url = id ? `/api/admin/tecnicos/${id}` : "/api/admin/tecnicos";
