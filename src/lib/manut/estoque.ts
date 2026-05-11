@@ -11,6 +11,27 @@ export async function listarEstoqueLoja(lojaId: string) {
   return data || [];
 }
 
+export async function listarEstoqueDeLojas(lojaIds: string[]) {
+  if (!lojaIds.length) return [];
+  const { data } = await db()
+    .from("manut_estoque")
+    .select("*, manut_lojas(nome,cidade,uf), manut_clientes:manut_lojas(manut_clientes(nome))")
+    .in("loja_id", lojaIds)
+    .order("nome");
+  return data || [];
+}
+
+export async function listarMovimentosDeLojas(lojaIds: string[]) {
+  if (!lojaIds.length) return [];
+  const { data } = await db()
+    .from("manut_estoque_movimentos")
+    .select("*, manut_estoque(nome,unidade), manut_lojas(nome)")
+    .in("loja_id", lojaIds)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  return data || [];
+}
+
 export async function listarEstoqueCliente(clienteId: string) {
   // Pega todas as lojas do cliente, depois o estoque de cada uma
   const { data: lojas } = await db()

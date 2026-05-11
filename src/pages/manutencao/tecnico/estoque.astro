@@ -1,0 +1,250 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Estoque" tipo="tecnico" activePage="estoque">
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Estoque das lojas que você atende. Marque baixas conforme usa material ou adicione itens novos.</p>
+    <button class="btn btn-primary" id="btnNovoItem">+ Adicionar item novo</button>
+  </div>
+
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando estoque...</div>
+
+  <div id="content" style="display:none">
+    <!-- Filtro loja -->
+    <div class="card" style="margin-bottom:18px">
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:13px;font-weight:600;color:var(--ink-mid)">Loja:</label>
+        <select id="filtroLoja" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13.5px;font-family:'Open Sans',sans-serif;outline:none;min-width:240px">
+          <option value="">Todas as minhas lojas</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <h3 style="margin:0 0 12px;font-family:'Montserrat',sans-serif;font-size:15px">📦 Itens disponíveis</h3>
+      <div id="listaItens"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 12px;font-family:'Montserrat',sans-serif;font-size:15px">📜 Suas movimentações recentes</h3>
+      <div id="listaHistorico"></div>
+    </div>
+  </div>
+
+  <!-- Modal novo item -->
+  <div class="modal-bg" id="modalNovo">
+    <div class="modal">
+      <button class="modal-close" id="btnFechar">×</button>
+      <h2>Adicionar item ao estoque da loja</h2>
+      <p style="font-size:12.5px;color:var(--ink-mid);margin:0 0 14px">Use quando um item NÃO estava no kit da loja mas você precisou trazer/usar. O cliente será notificado para reposição.</p>
+      <div id="alertNovo" class="alert alert-error" style="display:none"></div>
+      <div class="form-group">
+        <label>Loja *</label>
+        <select id="novoLoja"></select>
+      </div>
+      <div class="form-group"><label>Nome do item *</label><input id="novoNome" placeholder="Ex: Cabo flexível 2.5mm"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group"><label>Unidade</label><input id="novoUnidade" placeholder="un" value="un"></div>
+        <div class="form-group"><label>Qtd usada *</label><input id="novoQtd" type="number" min="0.01" step="0.01"></div>
+      </div>
+      <div class="form-group"><label>Observação (opcional)</label><textarea id="novoObs" rows="2" placeholder="Detalhes do uso"></textarea></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" id="btnCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .row-baixo td { background: #FEF2F2 !important; }
+  .baixa-input { width: 90px; padding: 6px 9px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; }
+  .baixa-input:focus { border-color: var(--brand); }
+  .mov-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 100px;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .mov-tag.baixa  { background: #FEF2F2; color: #B91C1C; }
+  .mov-tag.adicao { background: #FFFBEB; color: #92400E; }
+  .mov-tag.reposicao { background: #EFF6FF; color: #1D4ED8; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_tecnico_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/tecnico/login");
+
+  let dados = { itens: [], movimentos: [], lojas: [] };
+  let filtroLoja = "";
+
+  function api(path, opts = {}) {
+    return fetch(path, { ...opts, headers: { ...(opts.headers||{}), "x-tecnico-auth": token } });
+  }
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+
+  function render() {
+    const itens = filtroLoja ? dados.itens.filter(i => i.loja_id === filtroLoja) : dados.itens;
+    const listaEl = document.getElementById("listaItens");
+    if (!itens.length) {
+      listaEl.innerHTML = '<div style="color:var(--ink-light);padding:14px 0;font-size:13.5px;text-align:center">Nenhum item cadastrado nas suas lojas. Use "+ Adicionar item novo" para registrar.</div>';
+    } else {
+      listaEl.innerHTML = `<div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Loja</th>
+            <th style="text-align:right">Disponível</th>
+            <th style="text-align:right">Mínimo</th>
+            <th style="width:220px">Dar baixa</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itens.map(i => {
+            const baixo = Number(i.quantidade_atual) < Number(i.quantidade_minima);
+            return `<tr class="${baixo ? 'row-baixo' : ''}">
+              <td><strong>${i.nome}</strong></td>
+              <td>${i.manut_lojas?.nome || "—"}</td>
+              <td style="text-align:right;font-family:'Montserrat',sans-serif;font-weight:700;color:${baixo ? '#B91C1C' : 'var(--ink)'}">${Number(i.quantidade_atual)} ${i.unidade}</td>
+              <td style="text-align:right;color:var(--ink-mid)">${Number(i.quantidade_minima)} ${i.unidade}</td>
+              <td>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input type="number" min="0.01" step="0.01" placeholder="Qtd" data-qtd-baixa="${i.id}" class="baixa-input">
+                  <button type="button" class="btn btn-outline btn-sm" data-baixa-estoque="${i.id}">Baixa</button>
+                </div>
+              </td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table></div>`;
+    }
+
+    const movs = filtroLoja ? dados.movimentos.filter(m => m.loja_id === filtroLoja) : dados.movimentos;
+    const histEl = document.getElementById("listaHistorico");
+    if (!movs.length) {
+      histEl.innerHTML = '<div style="color:var(--ink-light);padding:14px 0;font-size:13.5px;text-align:center">Nenhuma movimentação ainda.</div>';
+    } else {
+      histEl.innerHTML = `<div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Tipo</th>
+            <th>Item</th>
+            <th style="text-align:right">Qtd</th>
+            <th>Loja</th>
+            <th>Reposição</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${movs.map(m => {
+            const tagCls = m.tipo === "baixa" ? "baixa" : m.tipo === "adicao" ? "adicao" : "reposicao";
+            const tagTxt = m.tipo === "baixa" ? "Baixa" : m.tipo === "adicao" ? "Item novo" : "Reposição";
+            let rep = '<span style="color:#D1D5DB">—</span>';
+            if (m.reposicao_status === "solicitada") rep = '<span style="background:#FFFBEB;color:#92400E;padding:2px 8px;border-radius:100px;font-size:10.5px;font-weight:700">Solicitada</span>';
+            else if (m.reposicao_status === "atendida") rep = '<span style="background:#D1FAE5;color:#15803D;padding:2px 8px;border-radius:100px;font-size:10.5px;font-weight:700">Reposto</span>';
+            return `<tr>
+              <td style="white-space:nowrap">${fmtDate(m.created_at)}</td>
+              <td><span class="mov-tag ${tagCls}">${tagTxt}</span></td>
+              <td><strong>${m.manut_estoque?.nome || "—"}</strong></td>
+              <td style="text-align:right;font-family:'Montserrat',sans-serif;font-weight:700">${Number(m.quantidade)} ${m.manut_estoque?.unidade || "un"}</td>
+              <td>${m.manut_lojas?.nome || "—"}</td>
+              <td>${rep}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table></div>`;
+    }
+  }
+
+  async function load() {
+    try {
+      const res = await api("/api/manut/tecnico/estoque");
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/tecnico/login"); return; }
+      const json = await res.json();
+      dados = { itens: json.itens || [], movimentos: json.movimentos || [], lojas: json.lojas || [] };
+
+      const sel = document.getElementById("filtroLoja");
+      sel.innerHTML = '<option value="">Todas as minhas lojas</option>' + dados.lojas.map(l => `<option value="${l.id}">${l.nome}</option>`).join("");
+      const selNovo = document.getElementById("novoLoja");
+      selNovo.innerHTML = dados.lojas.map(l => `<option value="${l.id}">${l.nome}</option>`).join("");
+
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("content").style.display = "";
+      render();
+    } catch (err) {
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
+    }
+  }
+
+  document.getElementById("filtroLoja").addEventListener("change", (e) => { filtroLoja = e.target.value; render(); });
+
+  // Dar baixa
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-baixa-estoque]");
+    if (!btn) return;
+    const estoqueId = btn.dataset.baixaEstoque;
+    const input = document.querySelector(`input[data-qtd-baixa="${estoqueId}"]`);
+    const qtd = parseFloat(input?.value || "0");
+    if (!qtd || qtd <= 0) { alert("Informe a quantidade usada."); return; }
+    btn.disabled = true; btn.textContent = "...";
+    try {
+      const res = await api("/api/manut/tecnico/estoque", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "baixa", estoque_id: estoqueId, quantidade: qtd }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
+      window.toast?.("Baixa registrada. Cliente será notificado para reposição.", "success");
+      await load();
+    } catch (err) {
+      alert("Erro: " + err.message);
+      btn.disabled = false; btn.textContent = "Baixa";
+    }
+  });
+
+  // Modal novo item
+  document.getElementById("btnNovoItem").addEventListener("click", () => {
+    if (!dados.lojas.length) { alert("Você ainda não está vinculado a nenhuma loja."); return; }
+    document.getElementById("alertNovo").style.display = "none";
+    document.getElementById("novoNome").value = "";
+    document.getElementById("novoUnidade").value = "un";
+    document.getElementById("novoQtd").value = "";
+    document.getElementById("novoObs").value = "";
+    document.getElementById("modalNovo").classList.add("open");
+  });
+  function fecharModal() { document.getElementById("modalNovo").classList.remove("open"); }
+  document.getElementById("btnFechar").addEventListener("click", fecharModal);
+  document.getElementById("btnCancelar").addEventListener("click", fecharModal);
+  document.getElementById("btnSalvar").addEventListener("click", async () => {
+    const alertEl = document.getElementById("alertNovo");
+    alertEl.style.display = "none";
+    const loja_id = document.getElementById("novoLoja").value;
+    const nome = document.getElementById("novoNome").value.trim();
+    const unidade = document.getElementById("novoUnidade").value.trim() || "un";
+    const quantidade_usada = parseFloat(document.getElementById("novoQtd").value || "0");
+    const observacao = document.getElementById("novoObs").value.trim() || null;
+    if (!loja_id) { alertEl.textContent = "Selecione a loja."; alertEl.style.display = ""; return; }
+    if (!nome) { alertEl.textContent = "Informe o nome."; alertEl.style.display = ""; return; }
+    if (!quantidade_usada || quantidade_usada <= 0) { alertEl.textContent = "Informe a quantidade usada."; alertEl.style.display = ""; return; }
+    const btn = document.getElementById("btnSalvar");
+    btn.disabled = true; btn.textContent = "Salvando...";
+    try {
+      const res = await api("/api/manut/tecnico/estoque", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "novo_item", loja_id, nome, unidade, quantidade_usada, observacao }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
+      fecharModal();
+      await load();
+      window.toast?.("Item adicionado. Cliente verá no painel para reposição.", "success");
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Salvar";
+    }
+  });
+
+  load();
+  window.addEventListener("portal:refresh", load);
+</script>
