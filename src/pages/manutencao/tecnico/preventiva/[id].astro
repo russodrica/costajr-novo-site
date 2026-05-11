@@ -1,0 +1,301 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+const { id } = Astro.params;
+---
+<Portal title="Preventiva" tipo="tecnico" activePage="agenda">
+  <div style="margin-bottom:16px"><a href="/manutencao/tecnico/agenda" class="btn btn-outline btn-sm">← Voltar para agenda</a></div>
+
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando preventiva...</div>
+  <div id="content" style="display:none">
+    <!-- Cabeçalho -->
+    <div class="card" style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <div>
+          <h2 style="margin:0 0 4px;font-family:'Montserrat',sans-serif" id="hLoja"></h2>
+          <div style="font-size:13px;color:var(--ink-mid)" id="hCliente"></div>
+          <div style="font-size:12.5px;color:var(--ink-light);margin-top:6px" id="hEndereco"></div>
+          <div style="font-size:12.5px;color:var(--ink-light);margin-top:2px" id="hExtras"></div>
+        </div>
+        <div style="text-align:right">
+          <div id="hStatusBadge" style="margin-bottom:6px"></div>
+          <div style="font-size:11.5px;color:var(--ink-light);text-transform:uppercase;letter-spacing:0.05em">Data agendada</div>
+          <div id="hData" style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ação inicial (preventiva agendada) -->
+    <div id="boxIniciar" class="card" style="display:none;text-align:center;padding:32px">
+      <p style="font-size:14px;color:var(--ink-mid);margin:0 0 16px">Quando estiver pronto para realizar esta preventiva, clique abaixo para iniciar o checklist.</p>
+      <button class="btn btn-primary" id="btnIniciar">▶ Iniciar preventiva</button>
+    </div>
+
+    <!-- Checklist -->
+    <div id="boxChecklist" style="display:none">
+      <div id="checklistGrupos"></div>
+
+      <div class="card" style="margin-top:18px">
+        <label style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;display:block;margin-bottom:8px">Observações gerais</label>
+        <textarea id="obsGerais" rows="4" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Open Sans',sans-serif;font-size:13.5px;outline:none;resize:vertical" placeholder="Anote aqui qualquer observação relevante sobre a visita..."></textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-outline" id="btnSalvar">💾 Salvar progresso</button>
+        <button class="btn btn-primary" id="btnConcluir">✓ Concluir preventiva</button>
+      </div>
+      <div id="msgSave" style="text-align:right;font-size:12.5px;color:var(--ink-light);margin-top:8px"></div>
+    </div>
+
+    <!-- Já concluída -->
+    <div id="boxConcluida" class="card" style="display:none;padding:32px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:48px;line-height:1">✅</div>
+        <h3 style="margin:8px 0 4px">Preventiva concluída</h3>
+        <p id="hExecutada" style="font-size:13px;color:var(--ink-mid);margin:0"></p>
+      </div>
+      <div id="checklistGruposRead"></div>
+      <div id="obsGeraisRead" style="margin-top:16px;font-size:13.5px;color:var(--ink-mid)"></div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .check-cat { margin-bottom: 18px; }
+  .check-cat-titulo {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: 0.09em; color: var(--ink-light);
+    padding: 0 16px 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border-light);
+  }
+  .check-item {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; margin-bottom: 8px;
+  }
+  .check-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .check-label { font-size: 13.5px; color: var(--ink); flex: 1; }
+  .check-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .check-btn {
+    padding: 5px 12px; border-radius: 6px; border: 1.5px solid var(--border);
+    background: #fff; cursor: pointer; font-size: 12px; font-weight: 700;
+    font-family: 'Open Sans', sans-serif; transition: all .15s;
+  }
+  .check-btn.ok    { color: #15803D; }
+  .check-btn.ok.active { background: #15803D; color: #fff; border-color: #15803D; }
+  .check-btn.nok   { color: #B91C1C; }
+  .check-btn.nok.active { background: #B91C1C; color: #fff; border-color: #B91C1C; }
+  .check-btn.na    { color: #6B7280; }
+  .check-btn.na.active { background: #6B7280; color: #fff; border-color: #6B7280; }
+  .check-obs {
+    margin-top: 8px; width: 100%; padding: 7px 10px;
+    border: 1px solid var(--border-light); border-radius: 6px;
+    font-family: 'Open Sans', sans-serif; font-size: 12.5px; outline: none;
+  }
+  .check-obs:focus { border-color: var(--brand); }
+  @media (max-width: 560px) {
+    .check-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .check-actions { justify-content: space-between; }
+    .check-btn { flex: 1; }
+  }
+</style>
+
+<script define:vars={{ preventivaId: id }}>
+  const TOKEN_KEY = "manut_tecnico_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/tecnico/login");
+
+  let preventiva = null;
+  let dirty = false;
+
+  function badge(status) {
+    const m = { agendada:"badge-aberto", em_execucao:"badge-em_andamento", concluida:"badge-concluido", cancelada:"badge-cancelado" };
+    const l = { agendada:"Agendada", em_execucao:"Em execução", concluida:"Concluída", cancelada:"Cancelada" };
+    return `<span class="badge ${m[status]||""}">${l[status]||status}</span>`;
+  }
+  function fmtDate(d, withTime=false) {
+    if (!d) return "—";
+    const dt = new Date(d);
+    const data = dt.toLocaleDateString("pt-BR");
+    return withTime ? data + " · " + dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : data;
+  }
+
+  function renderCabecalho() {
+    document.getElementById("hLoja").textContent = preventiva.manut_lojas?.nome || "—";
+    document.getElementById("hCliente").textContent = "👤 " + (preventiva.manut_clientes?.nome || "—");
+    document.getElementById("hEndereco").textContent = "📍 " + [preventiva.manut_lojas?.endereco, preventiva.manut_lojas?.cidade, preventiva.manut_lojas?.uf].filter(Boolean).join(", ");
+    const extras = [];
+    if (preventiva.numero_visita) extras.push("Visita #" + preventiva.numero_visita);
+    if (preventiva.manut_lojas?.tamanho_m2) extras.push(preventiva.manut_lojas.tamanho_m2 + " m²");
+    if (preventiva.manut_lojas?.especialidades?.length) extras.push("Especialidades: " + preventiva.manut_lojas.especialidades.join(", "));
+    document.getElementById("hExtras").textContent = extras.join(" · ");
+    document.getElementById("hStatusBadge").innerHTML = badge(preventiva.status);
+    document.getElementById("hData").textContent = fmtDate(preventiva.data_agendada);
+  }
+
+  function renderChecklist(readOnly = false) {
+    const wrapId = readOnly ? "checklistGruposRead" : "checklistGrupos";
+    const wrap = document.getElementById(wrapId);
+    const ck = preventiva.checklist;
+    if (!ck || !ck.itens) { wrap.innerHTML = "<p style='color:var(--ink-light)'>Checklist ainda não iniciado.</p>"; return; }
+
+    const porCategoria = {};
+    ck.itens.forEach(it => {
+      if (!porCategoria[it.categoria]) porCategoria[it.categoria] = [];
+      porCategoria[it.categoria].push(it);
+    });
+
+    wrap.innerHTML = Object.entries(porCategoria).map(([cat, items]) => `
+      <div class="check-cat">
+        <div class="check-cat-titulo">${cat}</div>
+        ${items.map(it => `
+          <div class="check-item" data-item-id="${it.id}">
+            <div class="check-row">
+              <div class="check-label">${it.label}</div>
+              <div class="check-actions">
+                <button class="check-btn ok  ${it.ok === true  ? 'active' : ''}" data-set="true"  ${readOnly?'disabled':''}>✓ OK</button>
+                <button class="check-btn nok ${it.ok === false ? 'active' : ''}" data-set="false" ${readOnly?'disabled':''}>✕ Falha</button>
+                <button class="check-btn na  ${it.ok === null  ? 'active' : ''}" data-set="null"  ${readOnly?'disabled':''}>— N/A</button>
+              </div>
+            </div>
+            ${readOnly
+              ? (it.obs ? `<div style="margin-top:8px;font-size:12.5px;color:var(--ink-mid);font-style:italic">💬 ${it.obs}</div>` : "")
+              : `<input class="check-obs" data-obs-for="${it.id}" placeholder="Observação (opcional)" value="${(it.obs||'').replace(/"/g,'&quot;')}">`
+            }
+          </div>
+        `).join("")}
+      </div>
+    `).join("");
+
+    if (!readOnly) {
+      wrap.querySelectorAll(".check-btn[data-set]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const itemEl = btn.closest("[data-item-id]");
+          const itemId = itemEl.dataset.itemId;
+          const valor = btn.dataset.set === "true" ? true : btn.dataset.set === "false" ? false : null;
+          const it = preventiva.checklist.itens.find(x => x.id === itemId);
+          if (!it) return;
+          it.ok = valor;
+          itemEl.querySelectorAll(".check-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          dirty = true;
+          marcarDirty();
+        });
+      });
+      wrap.querySelectorAll(".check-obs").forEach(inp => {
+        inp.addEventListener("input", () => {
+          const itemId = inp.dataset.obsFor;
+          const it = preventiva.checklist.itens.find(x => x.id === itemId);
+          if (it) { it.obs = inp.value; dirty = true; marcarDirty(); }
+        });
+      });
+    }
+  }
+
+  function marcarDirty() {
+    document.getElementById("msgSave").textContent = "Você tem alterações não salvas.";
+  }
+
+  function aplicarEstado() {
+    const s = preventiva.status;
+    document.getElementById("boxIniciar").style.display    = s === "agendada"   ? "" : "none";
+    document.getElementById("boxChecklist").style.display  = s === "em_execucao"? "" : "none";
+    document.getElementById("boxConcluida").style.display  = s === "concluida"  ? "" : "none";
+
+    if (s === "em_execucao") {
+      renderChecklist(false);
+      document.getElementById("obsGerais").value = preventiva.checklist?.observacoes_gerais || "";
+    } else if (s === "concluida") {
+      renderChecklist(true);
+      document.getElementById("hExecutada").textContent = "Executada em " + fmtDate(preventiva.data_executada, true);
+      const obs = preventiva.checklist?.observacoes_gerais;
+      if (obs) document.getElementById("obsGeraisRead").innerHTML = "<strong>Observações:</strong> " + obs;
+    }
+  }
+
+  async function load() {
+    try {
+      const res = await fetch(`/api/manut/tecnico/preventivas/${preventivaId}`, { headers: { "x-tecnico-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/tecnico/login"); return; }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        document.getElementById("loadingState").innerHTML = `<div class="empty-state"><strong>Erro</strong><p>${d.error || "Não foi possível carregar."}</p></div>`;
+        return;
+      }
+      preventiva = await res.json();
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("content").style.display = "";
+      renderCabecalho();
+      aplicarEstado();
+    } catch {
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro</strong><p>Recarregue a página.</p></div>';
+    }
+  }
+
+  document.getElementById("btnIniciar")?.addEventListener("click", async () => {
+    const btn = document.getElementById("btnIniciar");
+    btn.disabled = true; btn.textContent = "Iniciando...";
+    const res = await fetch(`/api/manut/tecnico/preventivas/${preventivaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-tecnico-auth": token },
+      body: JSON.stringify({ action: "iniciar" })
+    });
+    if (res.ok) {
+      preventiva = await res.json();
+      renderCabecalho();
+      aplicarEstado();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert("Erro: " + (d.error || "falha ao iniciar"));
+      btn.disabled = false; btn.textContent = "▶ Iniciar preventiva";
+    }
+  });
+
+  document.getElementById("btnSalvar")?.addEventListener("click", async () => {
+    if (!preventiva?.checklist) return;
+    preventiva.checklist.observacoes_gerais = document.getElementById("obsGerais").value;
+    const btn = document.getElementById("btnSalvar");
+    btn.disabled = true; btn.textContent = "Salvando...";
+    const res = await fetch(`/api/manut/tecnico/preventivas/${preventivaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-tecnico-auth": token },
+      body: JSON.stringify({ checklist: preventiva.checklist })
+    });
+    btn.disabled = false; btn.textContent = "💾 Salvar progresso";
+    if (res.ok) {
+      preventiva = await res.json();
+      dirty = false;
+      document.getElementById("msgSave").textContent = "✓ Progresso salvo às " + new Date().toLocaleTimeString("pt-BR");
+    } else {
+      const d = await res.json().catch(() => ({}));
+      document.getElementById("msgSave").textContent = "Erro: " + (d.error || "");
+    }
+  });
+
+  document.getElementById("btnConcluir")?.addEventListener("click", async () => {
+    const ck = preventiva.checklist;
+    const pendentes = ck.itens.filter(it => it.ok === null).length;
+    let msg = "Concluir esta preventiva?";
+    if (pendentes > 0) msg += `\n\nAtenção: ${pendentes} item(ns) ainda sem avaliação (marcados como N/A).`;
+    if (!confirm(msg)) return;
+    preventiva.checklist.observacoes_gerais = document.getElementById("obsGerais").value;
+    const btn = document.getElementById("btnConcluir");
+    btn.disabled = true; btn.textContent = "Concluindo...";
+    const res = await fetch(`/api/manut/tecnico/preventivas/${preventivaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "x-tecnico-auth": token },
+      body: JSON.stringify({ action: "concluir", checklist: preventiva.checklist })
+    });
+    if (res.ok) {
+      preventiva = await res.json();
+      renderCabecalho();
+      aplicarEstado();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert("Erro: " + (d.error || ""));
+      btn.disabled = false; btn.textContent = "✓ Concluir preventiva";
+    }
+  });
+
+  load();
+</script>
