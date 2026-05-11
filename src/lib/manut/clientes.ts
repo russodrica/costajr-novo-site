@@ -50,16 +50,19 @@ export async function clienteResetSenha(email: string) {
     .select("id,nome,email")
     .eq("email", email.toLowerCase())
     .maybeSingle();
-  if (!cli) return { ok: true }; // não vaza existência
+  if (!cli) return { ok: true, emailEnviado: false }; // não vaza existência
   const novaSenha = gerarSenhaInicial();
   await db()
     .from("manut_clientes")
     .update({ senha_hash: await hashSenha(novaSenha), senha_troca_obrigatoria: true })
     .eq("id", cli.id);
-  await enviarSenhaReset(cli.email ?? email, cli.nome ?? "Cliente", novaSenha).catch(
-    (e) => console.error("[mailer][reset]", e.message)
-  );
-  return { ok: true };
+  try {
+    await enviarSenhaReset(cli.email ?? email, cli.nome ?? "Cliente", novaSenha);
+    return { ok: true, emailEnviado: true };
+  } catch (e: any) {
+    console.error("[mailer][reset]", e.message);
+    return { ok: true, emailEnviado: false, emailErro: e.message };
+  }
 }
 
 // ─── Dashboard / dados básicos ─────────────────────────────────────────────

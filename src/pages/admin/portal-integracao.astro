@@ -159,7 +159,7 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
 
     async function excluir(id: string) {
       if (!confirm("Excluir este documento?")) return;
-      const res = await fetch(`/api/admin/portal/integracao/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/portal/integracao/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) location.reload(); else alert("Erro ao excluir.");
     }
 

@@ -81,7 +81,7 @@ const nav = [
 
   <script>
     function logout() {
-      fetch("/api/admin/logout", { method: "POST" }).finally(() => {
+      fetch("/api/admin/logout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).finally(() => {
         window.location.href = "/admin/login";
       });
     }

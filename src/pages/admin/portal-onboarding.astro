@@ -153,7 +153,7 @@ const tipoLabel: Record<string, string> = { texto: "Texto", video: "Vídeo", pdf
 
     async function excluir(id: string) {
       if (!confirm("Excluir esta etapa?")) return;
-      const res = await fetch(`/api/admin/portal/onboarding/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/portal/onboarding/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) location.reload(); else alert("Erro ao excluir.");
     }
 

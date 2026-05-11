@@ -126,7 +126,7 @@ const roleLabel: Record<string, string> = { all: "Todos", admin: "Admin", coorde
 
     async function excluir(id: string) {
       if (!confirm("Excluir este comunicado?")) return;
-      const res = await fetch(`/api/admin/portal/comunicados/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/portal/comunicados/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) location.reload(); else alert("Erro ao excluir.");
     }
 

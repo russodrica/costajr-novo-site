@@ -264,9 +264,17 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
 
       if (action === "resetar-senha") {
         if (!confirm("Resetar senha deste cliente? Uma senha inicial será gerada.")) return;
-        var r = await fetch("/api/admin/clientes/" + clienteId + "/resetar-senha", { method: "POST" });
-        if (r.ok) { var d = await r.json(); alert("Nova senha: " + d.senha); }
-        else alert("Erro ao resetar senha");
+        var r = await fetch("/api/admin/clientes/" + clienteId + "/resetar-senha", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        if (r.ok) {
+          var d = await r.json();
+          var msg = "Nova senha: " + d.senha;
+          if (d.emailEnviado) msg += "\n\n✅ Email enviado para o cliente.";
+          else if (d.emailErro) msg += "\n\n⚠ Email NÃO foi enviado: " + d.emailErro;
+          alert(msg);
+        } else {
+          var de = await r.json().catch(function(){ return { error: "HTTP " + r.status }; });
+          alert("Erro ao resetar senha: " + (de.error || ""));
+        }
       }
 
       if (action === "marcar-pago") {

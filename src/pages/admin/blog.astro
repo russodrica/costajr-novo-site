@@ -108,7 +108,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
     }
     async function deletar(id) {
       if (!confirm("Excluir este artigo permanentemente?")) return;
-      const res = await fetch(`/api/admin/blog/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/blog/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) window.location.reload(); else alert("Erro ao excluir");
     }
     document.getElementById("formPost")?.addEventListener("submit", async (e) => {

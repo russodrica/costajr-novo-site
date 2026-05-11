@@ -278,7 +278,7 @@ function fmtPct(n: number, total: number): string {
   <script>
     async function rodarCleanup() {
       if (!confirm("Apagar registros com mais de 90 dias?")) return;
-      const r = await fetch("/api/admin/analytics/cleanup", { method: "POST" });
+      const r = await fetch("/api/admin/analytics/cleanup", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
       const j = await r.json();
       if (r.ok) { alert(`✅ ${j.removed} registros removidos`); location.reload(); }
       else alert("Erro: " + (j.error || r.status));

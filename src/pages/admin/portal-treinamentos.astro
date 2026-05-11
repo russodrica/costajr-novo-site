@@ -266,7 +266,7 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
     async function excluir(tipo: string, id: string) {
       if (!confirm("Excluir este item?")) return;
       const endpoint = tipo === "video" ? `/api/admin/portal/treinamentos/videos/${id}` : `/api/admin/portal/treinamentos/pdfs/${id}`;
-      const res = await fetch(endpoint, { method: "DELETE" });
+      const res = await fetch(endpoint, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) location.reload(); else alert("Erro ao excluir.");
     }
 

@@ -126,9 +126,17 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
       patch(id, { approval_status: "rejected", rejected_at: new Date().toISOString(), rejection_reason: motivo || null });
     }
     async function resetarSenha(id) {
-      const res = await fetch(`/api/admin/membros/${id}/resetar-senha`, { method: "POST" });
-      if (res.ok) { const d = await res.json(); alert(`Nova senha: ${d.senha}`); }
-      else alert("Erro ao resetar senha");
+      const res = await fetch(`/api/admin/membros/${id}/resetar-senha`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (res.ok) {
+        const d = await res.json();
+        let msg = `Nova senha: ${d.senha}`;
+        if (d.emailEnviado) msg += "\n\n✅ Email enviado para o membro.";
+        else if (d.emailErro) msg += "\n\n⚠ Email NÃO foi enviado: " + d.emailErro;
+        alert(msg);
+      } else {
+        const d = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        alert("Erro ao resetar senha: " + (d.error || ""));
+      }
     }
 
     document.getElementById("formRole")?.addEventListener("submit", async (e) => {

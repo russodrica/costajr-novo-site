@@ -5,7 +5,6 @@ export const prerender = false;
 
 const resend = new Resend(import.meta.env.RESEND_API_KEY);
 const FROM = import.meta.env.EMAIL_FROM || "onboarding@resend.dev";
-const FROM_SAFE = FROM === "contato@costajr.com.br" ? "onboarding@resend.dev" : FROM;
 
 export const POST: APIRoute = async ({ request }) => {
   try {
@@ -53,7 +52,7 @@ export const POST: APIRoute = async ({ request }) => {
     `;
 
     await resend.emails.send({
-      from: `Site Costa Júnior <${FROM_SAFE}>`,
+      from: `Site Costa Júnior <${FROM}>`,
       to: "comercial@costajr.com.br",
       replyTo: email,
       subject: `[Site] ${tipoLabel[tipo] || tipo} — ${nome}`,
