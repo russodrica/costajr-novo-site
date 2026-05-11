@@ -70,17 +70,7 @@ export const prerender = false;
 </Portal>
 
 <style>
-  .estoque-row {
-    display: flex; align-items: center; gap: 14px;
-    padding: 12px 14px; border-bottom: 1px solid var(--border-light);
-  }
-  .estoque-row:last-child { border-bottom: 0; }
-  .estoque-row.baixo { background: #FEF2F2; }
-  .estoque-nome  { flex: 1; font-weight: 600; font-size: 14px; }
-  .estoque-loja  { font-size: 11.5px; color: var(--ink-light); text-transform: uppercase; letter-spacing: 0.04em; }
-  .estoque-qtd   { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 16px; flex-shrink: 0; }
-  .estoque-qtd.baixo { color: #B91C1C; }
-  .estoque-unid  { font-size: 12px; color: var(--ink-mid); font-weight: 500; }
+  .row-baixo td { background: #FEF2F2 !important; }
 
   .mov-row {
     display: flex; align-items: center; gap: 12px;
@@ -128,16 +118,31 @@ export const prerender = false;
     if (!itens.length) {
       listaEl.innerHTML = '<div style="color:var(--ink-light);padding:14px 0;font-size:13.5px;text-align:center">Nenhum item cadastrado. Clique em "+ Cadastrar item" para começar.</div>';
     } else {
-      listaEl.innerHTML = itens.map(i => {
-        const baixo = Number(i.quantidade_atual) < Number(i.quantidade_minima);
-        return `<div class="estoque-row ${baixo ? 'baixo' : ''}">
-          <div style="flex:1;min-width:0">
-            <div class="estoque-nome">${i.nome}</div>
-            <div class="estoque-loja">🏪 ${i.manut_lojas?.nome || "—"} · mín. ${Number(i.quantidade_minima)} ${i.unidade}</div>
-          </div>
-          <div class="estoque-qtd ${baixo ? 'baixo' : ''}">${Number(i.quantidade_atual)} <span class="estoque-unid">${i.unidade}</span></div>
-        </div>`;
-      }).join("");
+      listaEl.innerHTML = `<div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Loja</th>
+            <th style="text-align:right">Qtd atual</th>
+            <th style="text-align:right">Mínimo</th>
+            <th>Unidade</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itens.map(i => {
+            const baixo = Number(i.quantidade_atual) < Number(i.quantidade_minima);
+            return `<tr class="${baixo ? 'row-baixo' : ''}">
+              <td><strong>${i.nome}</strong></td>
+              <td>${i.manut_lojas?.nome || "—"}</td>
+              <td style="text-align:right;font-family:'Montserrat',sans-serif;font-weight:700;color:${baixo ? '#B91C1C' : 'var(--ink)'}">${Number(i.quantidade_atual)}</td>
+              <td style="text-align:right;color:var(--ink-mid)">${Number(i.quantidade_minima)}</td>
+              <td style="color:var(--ink-mid)">${i.unidade}</td>
+              <td>${baixo ? '<span class="badge badge-inadimplente">Em baixa</span>' : '<span class="badge badge-ativo">OK</span>'}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table></div>`;
     }
 
     // Reposições pendentes (movimentos de baixa/adição sem reposição pedida)
@@ -169,21 +174,35 @@ export const prerender = false;
     if (!movs.length) {
       histEl.innerHTML = '<div style="color:var(--ink-light);padding:14px 0;font-size:13.5px;text-align:center">Nenhuma movimentação ainda.</div>';
     } else {
-      histEl.innerHTML = movs.map(m => {
-        const tagCls = m.tipo === "baixa" ? "baixa" : m.tipo === "adicao" ? "adicao" : "reposicao";
-        const tagTxt = m.tipo === "baixa" ? "Baixa" : m.tipo === "adicao" ? "Item novo" : "Reposição";
-        let repHtml = "";
-        if (m.reposicao_status === "solicitada") repHtml = '<span class="rep-status solicitada">Reposição solicitada</span>';
-        else if (m.reposicao_status === "atendida") repHtml = '<span class="rep-status atendida">Reposto</span>';
-        return `<div class="mov-row">
-          <span class="mov-tag ${tagCls}">${tagTxt}</span>
-          <div style="flex:1;min-width:0">
-            <strong>${m.manut_estoque?.nome || "—"}</strong> — ${Number(m.quantidade)} ${m.manut_estoque?.unidade || "un"}
-            <div style="font-size:11.5px;color:var(--ink-light);margin-top:2px">${m.manut_lojas?.nome || "—"} · ${fmtDate(m.created_at)}</div>
-          </div>
-          ${repHtml}
-        </div>`;
-      }).join("");
+      histEl.innerHTML = `<div class="table-wrap"><table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Tipo</th>
+            <th>Item</th>
+            <th style="text-align:right">Qtd</th>
+            <th>Loja</th>
+            <th>Reposição</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${movs.map(m => {
+            const tagCls = m.tipo === "baixa" ? "baixa" : m.tipo === "adicao" ? "adicao" : "reposicao";
+            const tagTxt = m.tipo === "baixa" ? "Baixa" : m.tipo === "adicao" ? "Item novo" : "Reposição";
+            let repHtml = '<span style="color:#D1D5DB">—</span>';
+            if (m.reposicao_status === "solicitada") repHtml = '<span class="rep-status solicitada">Solicitada</span>';
+            else if (m.reposicao_status === "atendida") repHtml = '<span class="rep-status atendida">Reposto</span>';
+            return `<tr>
+              <td style="white-space:nowrap">${fmtDate(m.created_at)}</td>
+              <td><span class="mov-tag ${tagCls}">${tagTxt}</span></td>
+              <td><strong>${m.manut_estoque?.nome || "—"}</strong></td>
+              <td style="text-align:right;font-family:'Montserrat',sans-serif;font-weight:700">${Number(m.quantidade)} ${m.manut_estoque?.unidade || "un"}</td>
+              <td>${m.manut_lojas?.nome || "—"}</td>
+              <td>${repHtml}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table></div>`;
     }
   }
 
