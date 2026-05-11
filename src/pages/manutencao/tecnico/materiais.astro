@@ -152,6 +152,7 @@ export const prerender = false;
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      if (!Array.isArray(allMat)) allMat = [];
       allMat.unshift({ ...data, manut_lojas: chamadoSel?.manut_lojas, manut_clientes: { nome: "" } });
       fecharModal();
       render();
@@ -167,7 +168,8 @@ export const prerender = false;
     try {
       const res = await fetch("/api/manut/tecnico/materiais", { headers: { "x-tecnico-auth": token } });
       if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/tecnico/login"); return; }
-      allMat = await res.json();
+      const json = await res.json();
+      allMat = Array.isArray(json) ? json : [];
       document.getElementById("loadingState").style.display = "none";
       document.getElementById("matWrap").style.display = "";
       render();
