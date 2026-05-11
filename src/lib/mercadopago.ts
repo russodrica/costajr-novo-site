@@ -103,3 +103,41 @@ export async function buscarPayment(id: string): Promise<any | null> {
   if (!res.ok) return null;
   return res.json();
 }
+
+// Preference para pagamento de material aprovado pelo lojista.
+// Pix aparece em destaque no Checkout Pro. Cartão e boleto continuam disponíveis.
+export async function criarPreferenceMaterial(args: {
+  cliente: { id: string; email: string; nome: string };
+  material: { id: string; descricao: string; valor: number };
+}): Promise<{ ok: boolean; initPoint: string | null; preferenceId: string | null; motivo?: string }> {
+  const body = {
+    items: [{
+      title: `Material — ${args.material.descricao}`.slice(0, 250),
+      quantity: 1,
+      unit_price: Number(Number(args.material.valor).toFixed(2)),
+      currency_id: "BRL",
+    }],
+    payer: { email: args.cliente.email, name: args.cliente.nome },
+    external_reference: `CJR-MAT-${args.material.id}`,
+    back_urls: {
+      success: `${SITE}/manutencao/cliente/materiais?status=pago&mat=${args.material.id}`,
+      failure: `${SITE}/manutencao/cliente/materiais?status=falha&mat=${args.material.id}`,
+      pending: `${SITE}/manutencao/cliente/materiais?status=pendente&mat=${args.material.id}`,
+    },
+    auto_return: "approved",
+    statement_descriptor: "CJR MATERIAIS",
+    // Pix recebe destaque visual no checkout; demais formas continuam habilitadas
+    payment_methods: { installments: 1 },
+  };
+  const res = await fetch(`${MP_API}/checkout/preferences`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({} as any));
+  console.log("[MP][material-preference] status:", res.status, "body:", JSON.stringify(data));
+  if (!res.ok) {
+    return { ok: false, motivo: (data as any).message || JSON.stringify(data), initPoint: null, preferenceId: null };
+  }
+  return { ok: true, initPoint: (data as any).init_point, preferenceId: (data as any).id };
+}
