@@ -5,6 +5,14 @@
 const MP_API = "https://api.mercadopago.com";
 const SITE = import.meta.env.SITE_BASE_URL || "https://costajr.com.br";
 
+// URL absoluta do webhook MP. Força www. para evitar o redirect 307
+// do Vercel (costajr.com.br → www.costajr.com.br) que faz alguns clientes
+// HTTP perderem o body ao seguir POST + 307.
+function webhookUrl(): string {
+  const base = SITE.replace(/^https?:\/\/(?:www\.)?/, "https://www.").replace(/\/+$/, "");
+  return `${base}/api/manut/mp_webhook`;
+}
+
 function token(): string {
   const t = import.meta.env.MP_ACCESS_TOKEN;
   if (!t) throw new Error("MP_ACCESS_TOKEN não configurado");
@@ -173,7 +181,7 @@ export async function criarPagamentoPix(args: {
     description: `Material — ${args.material.descricao}`.slice(0, 200),
     payment_method_id: "pix",
     external_reference: `CJR-MAT-${args.material.id}`,
-    notification_url: `${SITE}/api/manut/mp_webhook`,
+    notification_url: webhookUrl(),
     payer: {
       email: args.cliente.email,
       first_name: firstName,
