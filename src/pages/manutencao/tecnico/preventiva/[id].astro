@@ -59,6 +59,48 @@ const { id } = Astro.params;
       <!-- ETAPAS: disciplinas (renderizadas dinamicamente) -->
       <div id="etapasDisciplinas"></div>
 
+      <!-- ETAPA: Estoque -->
+      <div class="etapa-card" id="etapa-estoque" style="display:none">
+        <h3 class="etapa-titulo">📦 Estoque de material da loja</h3>
+        <p class="etapa-desc">Dê baixa nos itens do kit da loja que foram usados, ou adicione um item novo que você precisou trazer.</p>
+
+        <div id="estoqueLista" style="margin-bottom:18px"></div>
+
+        <div style="display:flex;justify-content:flex-end;margin-bottom:18px">
+          <button type="button" class="btn btn-outline btn-sm" id="btnNovoItemEstoque">+ Adicionar item novo</button>
+        </div>
+
+        <h4 style="font-size:13px;font-weight:700;margin:24px 0 10px;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.05em">Movimentações desta visita</h4>
+        <div id="estoqueMovs"></div>
+
+        <div class="etapa-actions" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <button type="button" class="btn btn-outline" data-voltar-estoque>← Voltar</button>
+            <button type="button" class="btn btn-primary" id="btnAvancarEstoque">Avançar para Assinatura →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal novo item de estoque -->
+      <div class="modal-bg" id="modalNovoEstoque">
+        <div class="modal">
+          <button class="modal-close" id="btnFecharNovoEstoque">×</button>
+          <h2>Adicionar item ao estoque</h2>
+          <p style="font-size:12.5px;color:var(--ink-mid);margin:0 0 14px">Use quando um item NÃO estava no kit da loja mas você precisou trazer/usar. O cliente verá no painel para reposição.</p>
+          <div id="alertNovoEstoque" class="alert alert-error" style="display:none"></div>
+          <div class="form-group"><label>Nome do item *</label><input id="novoEstoqueNome" placeholder="Ex: Cabo flexível 2.5mm"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="form-group"><label>Unidade</label><input id="novoEstoqueUnidade" placeholder="un, m, kg..." value="un"></div>
+            <div class="form-group"><label>Qtd usada *</label><input id="novoEstoqueQtd" type="number" min="0.01" step="0.01"></div>
+          </div>
+          <div class="form-group"><label>Observação (opcional)</label><textarea id="novoEstoqueObs" rows="2" placeholder="Ex: vedador trazido para emergência"></textarea></div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-outline" id="btnCancelarNovoEstoque">Cancelar</button>
+            <button class="btn btn-primary" id="btnSalvarNovoEstoque">Salvar</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ETAPA: Assinatura -->
       <div class="etapa-card" id="etapa-assinatura" style="display:none">
         <h3 class="etapa-titulo">✍️ Assinatura do gerente da loja</h3>
@@ -245,6 +287,15 @@ const { id } = Astro.params;
   }
   .form-group input:focus, .form-group textarea:focus { border-color: var(--brand); }
 
+  /* Estoque */
+  .estoque-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 8px;
+    background: #fff; transition: var(--transition);
+  }
+  .estoque-item.baixo { border-color: #FECACA; background: #FEF2F2; }
+  .estoque-item:hover { box-shadow: var(--shadow-sm); }
+
   /* Resumo */
   .resumo-disc { padding: 12px 14px; border-bottom: 1px solid var(--border-light); }
   .resumo-disc:last-child { border-bottom: 0; }
@@ -325,10 +376,11 @@ const { id } = Astro.params;
       { id: "hidraulica",  label: "Hidráulica"       },
       { id: "civil",       label: "Civil"            },
       { id: "eletrica",    label: "Elétrica"         },
+      { id: "estoque",     label: "Estoque"          },
       { id: "assinatura",  label: "Assinatura"       },
     ];
     const atual = preventiva.checklist?.etapa_atual || (preventiva.status === "concluida" ? "concluido" : "inicial");
-    const order = ["inicial","hidraulica","civil","eletrica","assinatura","concluido"];
+    const order = ["inicial","hidraulica","civil","eletrica","estoque","assinatura","concluido"];
     const idxAtual = order.indexOf(atual);
     document.getElementById("stepper").innerHTML = etapas.map(e => {
       const idx = order.indexOf(e.id);
@@ -445,7 +497,7 @@ const { id } = Astro.params;
     wrap.innerHTML = DISCIPLINAS.map(d => {
       const idx = DISCIPLINAS.indexOf(d);
       const proxima = idx < DISCIPLINAS.length - 1 ? DISCIPLINAS[idx + 1] : null;
-      const proxLabel = proxima ? `Avançar para ${proxima.nome}` : "Avançar para assinatura";
+      const proxLabel = proxima ? `Avançar para ${proxima.nome}` : "Avançar para Estoque";
       return `
         <div class="etapa-card etapa-disc" id="etapa-${d.id}" style="display:none">
           <h3 class="etapa-titulo">${d.icone} ${d.nome}</h3>
@@ -788,8 +840,61 @@ const { id } = Astro.params;
         salvarSilencioso();
       });
       atualizarBotaoAvancar(etapa);
+    } else if (etapa === "estoque") {
+      renderEstoque();
     } else if (etapa === "assinatura") {
       setupAssinatura();
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // Render: etapa estoque
+  // ───────────────────────────────────────────────────────────────────
+  async function renderEstoque() {
+    const lista = document.getElementById("estoqueLista");
+    const movsEl = document.getElementById("estoqueMovs");
+    if (!lista) return;
+    lista.innerHTML = '<div style="color:var(--ink-light);padding:12px 0;font-size:13px">Carregando estoque...</div>';
+    try {
+      const res = await api(`/api/manut/tecnico/preventivas/${preventivaId}/estoque`);
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
+      const { itens, movimentos } = await res.json();
+      if (!itens.length) {
+        lista.innerHTML = '<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:14px;font-size:13px;color:#92400E">Esta loja ainda não tem itens cadastrados no kit de estoque. Use o botão abaixo para adicionar materiais que você usou nesta visita.</div>';
+      } else {
+        lista.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px">' + itens.map(it => {
+          const baixo = Number(it.quantidade_atual) < Number(it.quantidade_minima);
+          return `<div class="estoque-item ${baixo ? 'baixo' : ''}">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:14px">${it.nome}</div>
+              <div style="font-size:12px;color:var(--ink-light)">Disponível: <strong style="color:${baixo ? '#B91C1C' : 'var(--ink)'}">${Number(it.quantidade_atual)} ${it.unidade}</strong> · mín. ${Number(it.quantidade_minima)} ${it.unidade}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+              <input type="number" min="0.01" step="0.01" placeholder="Qtd usada" data-qtd-baixa="${it.id}" style="width:90px;padding:7px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;outline:none">
+              <button type="button" class="btn btn-outline btn-sm" data-baixa-estoque="${it.id}">Dar baixa</button>
+            </div>
+          </div>`;
+        }).join("") + '</div>';
+      }
+      if (movsEl) {
+        if (!movimentos.length) {
+          movsEl.innerHTML = '<div style="color:var(--ink-light);font-size:12.5px;padding:8px 0">Nenhuma baixa ou adição registrada nesta visita ainda.</div>';
+        } else {
+          movsEl.innerHTML = movimentos.map(m => {
+            const nome = m.manut_estoque?.nome || "—";
+            const unid = m.manut_estoque?.unidade || "un";
+            const tipoBadge = m.tipo === "baixa"
+              ? '<span style="background:#FEF2F2;color:#B91C1C;padding:2px 8px;border-radius:100px;font-size:10.5px;font-weight:700;text-transform:uppercase">Baixa</span>'
+              : '<span style="background:#FFFBEB;color:#92400E;padding:2px 8px;border-radius:100px;font-size:10.5px;font-weight:700;text-transform:uppercase">Item novo</span>';
+            return `<div style="padding:8px 12px;border-bottom:1px solid var(--border-light);font-size:13px">
+              ${tipoBadge} <strong>${nome}</strong> — ${Number(m.quantidade)} ${unid}
+              ${m.observacao ? `<div style="font-size:11.5px;color:var(--ink-mid);margin-top:2px">💬 ${m.observacao}</div>` : ""}
+            </div>`;
+          }).join("");
+        }
+      }
+    } catch (err) {
+      lista.innerHTML = `<div style="color:#B91C1C;font-size:13px;padding:8px 0">Erro: ${err.message}</div>`;
     }
   }
 
@@ -824,9 +929,86 @@ const { id } = Astro.params;
     if (target.dataset.avancar) {
       const discId = target.dataset.avancar;
       const idx = DISCIPLINAS.findIndex(d => d.id === discId);
-      const proxima = idx < DISCIPLINAS.length - 1 ? DISCIPLINAS[idx + 1].id : "assinatura";
+      const proxima = idx < DISCIPLINAS.length - 1 ? DISCIPLINAS[idx + 1].id : "estoque";
       await patchPreventiva({ checklist: { ...preventiva.checklist, etapa_atual: proxima } });
       renderTudo();
+      return;
+    }
+
+    // Voltar da etapa Estoque (volta para a última disciplina)
+    if (target.dataset.voltarEstoque !== undefined) {
+      await patchPreventiva({ checklist: { ...preventiva.checklist, etapa_atual: DISCIPLINAS[DISCIPLINAS.length - 1].id } });
+      renderTudo();
+      return;
+    }
+
+    // Avançar da etapa Estoque para Assinatura
+    if (target.id === "btnAvancarEstoque") {
+      await patchPreventiva({ checklist: { ...preventiva.checklist, etapa_atual: "assinatura" } });
+      renderTudo();
+      return;
+    }
+
+    // Abrir modal de novo item de estoque
+    if (target.id === "btnNovoItemEstoque") {
+      document.getElementById("alertNovoEstoque").style.display = "none";
+      document.getElementById("novoEstoqueNome").value = "";
+      document.getElementById("novoEstoqueUnidade").value = "un";
+      document.getElementById("novoEstoqueQtd").value = "";
+      document.getElementById("novoEstoqueObs").value = "";
+      document.getElementById("modalNovoEstoque").classList.add("open");
+      return;
+    }
+    if (target.id === "btnFecharNovoEstoque" || target.id === "btnCancelarNovoEstoque") {
+      document.getElementById("modalNovoEstoque").classList.remove("open");
+      return;
+    }
+    if (target.id === "btnSalvarNovoEstoque") {
+      const alertEl = document.getElementById("alertNovoEstoque");
+      alertEl.style.display = "none";
+      const nome = document.getElementById("novoEstoqueNome").value.trim();
+      const unidade = document.getElementById("novoEstoqueUnidade").value.trim() || "un";
+      const qtd = parseFloat(document.getElementById("novoEstoqueQtd").value);
+      const obs = document.getElementById("novoEstoqueObs").value.trim();
+      if (!nome) { alertEl.textContent = "Informe o nome do item."; alertEl.style.display = ""; return; }
+      if (!qtd || qtd <= 0) { alertEl.textContent = "Informe a quantidade usada."; alertEl.style.display = ""; return; }
+      target.disabled = true; target.textContent = "Salvando...";
+      try {
+        const res = await api(`/api/manut/tecnico/preventivas/${preventivaId}/estoque`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "novo_item", nome, unidade, quantidade_usada: qtd, observacao: obs }),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
+        document.getElementById("modalNovoEstoque").classList.remove("open");
+        await renderEstoque();
+      } catch (err) {
+        alertEl.textContent = err.message; alertEl.style.display = "";
+      } finally {
+        target.disabled = false; target.textContent = "Salvar";
+      }
+      return;
+    }
+
+    // Dar baixa em item de estoque (botão dentro da lista)
+    if (target.dataset.baixaEstoque) {
+      const estoqueId = target.dataset.baixaEstoque;
+      const input = document.querySelector(`input[data-qtd-baixa="${estoqueId}"]`);
+      const qtd = parseFloat(input?.value || "0");
+      if (!qtd || qtd <= 0) { alert("Informe a quantidade usada."); return; }
+      target.disabled = true; target.textContent = "...";
+      try {
+        const res = await api(`/api/manut/tecnico/preventivas/${preventivaId}/estoque`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "baixa", estoque_id: estoqueId, quantidade: qtd }),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
+        await renderEstoque();
+      } catch (err) {
+        alert("Erro: " + err.message);
+        target.disabled = false; target.textContent = "Dar baixa";
+      }
       return;
     }
 

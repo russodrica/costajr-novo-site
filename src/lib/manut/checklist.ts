@@ -10,7 +10,7 @@
 export type DisciplinaId = "hidraulica" | "civil" | "eletrica";
 
 export type ChecklistItem = { id: string; label: string };
-export type EtapaWizard = "inicial" | "hidraulica" | "civil" | "eletrica" | "assinatura" | "concluido";
+export type EtapaWizard = "inicial" | "hidraulica" | "civil" | "eletrica" | "estoque" | "assinatura" | "concluido";
 
 export const FOTOS_MIN_POR_DISCIPLINA = 5;
 
@@ -77,7 +77,7 @@ export const DISCIPLINAS: { id: DisciplinaId; nome: string; icone: string; perio
   },
 ];
 
-export const ORDEM_ETAPAS: EtapaWizard[] = ["inicial", "hidraulica", "civil", "eletrica", "assinatura", "concluido"];
+export const ORDEM_ETAPAS: EtapaWizard[] = ["inicial", "hidraulica", "civil", "eletrica", "estoque", "assinatura", "concluido"];
 
 export type ChecklistDisciplina = {
   itens: Array<ChecklistItem & { ok: boolean | null; obs: string }>;
