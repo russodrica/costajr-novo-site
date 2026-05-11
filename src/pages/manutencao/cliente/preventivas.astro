@@ -8,7 +8,7 @@ export const prerender = false;
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-outline btn-sm filtro-prev active" data-status="">Todas</button>
       <button class="btn btn-outline btn-sm filtro-prev" data-status="agendada">Agendadas</button>
-      <button class="btn btn-outline btn-sm filtro-prev" data-status="realizada">Realizadas</button>
+      <button class="btn btn-outline btn-sm filtro-prev" data-status="concluida">Concluídas</button>
       <button class="btn btn-outline btn-sm filtro-prev" data-status="cancelada">Canceladas</button>
     </div>
   </div>
@@ -53,8 +53,8 @@ export const prerender = false;
   let filtro = "";
 
   function badge(status) {
-    const m = { agendada:"badge-agendada", realizada:"badge-concluido", cancelada:"badge-cancelado" };
-    const l = { agendada:"Agendada", realizada:"Realizada", cancelada:"Cancelada" };
+    const m = { agendada:"badge-agendada", em_execucao:"badge-em_andamento", concluida:"badge-concluido", cancelada:"badge-cancelado" };
+    const l = { agendada:"Agendada", em_execucao:"Em execução", concluida:"Concluída", cancelada:"Cancelada" };
     return `<span class="badge ${m[status]||""}">${l[status]||status}</span>`;
   }
   function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
@@ -75,8 +75,8 @@ export const prerender = false;
         <td style="font-weight:600">${p.manut_lojas?.nome || "—"}<br><span style="font-size:11.5px;color:#9CA3AF;font-weight:400">${p.manut_lojas?.cidade||""}</span></td>
         <td style="font-size:13px;color:#5B5F6B">${p.manut_tecnicos?.nome || "—"}</td>
         <td>${badge(p.status)}</td>
-        <td>${p.relatorio_pdf_url
-          ? `<a href="${p.relatorio_pdf_url}" target="_blank" class="btn btn-outline btn-sm">📄 Ver relatório</a>`
+        <td>${p.relatorio_url
+          ? `<a href="${p.relatorio_url}" target="_blank" class="btn btn-outline btn-sm">📄 Ver relatório</a>`
           : '<span style="color:#D1D5DB;font-size:13px">—</span>'
         }</td>
       </tr>

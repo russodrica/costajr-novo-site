@@ -1,0 +1,297 @@
+---
+import { supabaseAdmin } from "~/lib/supabase";
+import { DISCIPLINAS } from "~/lib/manut/checklist";
+export const prerender = false;
+
+const { id } = Astro.params;
+const db = supabaseAdmin();
+const { data: prev, error } = await db
+  .from("manut_preventivas")
+  .select("*, manut_lojas(nome,endereco,cidade,uf,tamanho_m2,especialidades), manut_clientes(nome,telefone,email,cnpj_cpf), manut_tecnicos(nome,telefone,especialidades)")
+  .eq("id", id!)
+  .single();
+
+if (error || !prev) {
+  return new Response("Preventiva não encontrada", { status: 404 });
+}
+if (prev.status !== "concluida") {
+  return new Response("Relatório disponível somente após a conclusão da preventiva.", { status: 403 });
+}
+
+const ck = prev.checklist || {};
+const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("pt-BR") : "—";
+const fmtDateTime = (d: string | null) => d ? new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
+
+const totalOK    = DISCIPLINAS.reduce((s, d) => s + (ck.disciplinas?.[d.id]?.itens || []).filter((it: any) => it.ok === true).length, 0);
+const totalFalha = DISCIPLINAS.reduce((s, d) => s + (ck.disciplinas?.[d.id]?.itens || []).filter((it: any) => it.ok === false).length, 0);
+const totalNA    = DISCIPLINAS.reduce((s, d) => s + (ck.disciplinas?.[d.id]?.itens || []).filter((it: any) => it.ok === null && it.obs === "__na__").length, 0);
+const totalFotos = DISCIPLINAS.reduce((s, d) => s + (ck.disciplinas?.[d.id]?.fotos?.length || 0), 0);
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Relatório de Manutenção Preventiva — {prev.manut_lojas?.nome}</title>
+  <meta name="theme-color" content="#C41E3A">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;500;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --brand: #C41E3A; --ink: #1E2128; --ink-mid: #5B5F6B; --ink-light: #9CA3AF;
+      --border: #E5E7EB; --border-light: #F3F4F6; --bg: #F4F6F9;
+    }
+    html, body { margin: 0; padding: 0; font-family: 'Open Sans', sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+    .toolbar {
+      position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid var(--border);
+      padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      flex-wrap: wrap;
+    }
+    .toolbar h1 { font-family: 'Montserrat', sans-serif; font-size: 16px; margin: 0; font-weight: 700; }
+    .toolbar .actions { display: flex; gap: 8px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer;
+      font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px;
+      transition: all .15s; text-decoration: none; white-space: nowrap;
+    }
+    .btn-primary { background: var(--brand); color: #fff; }
+    .btn-primary:hover { background: #A01828; }
+    .btn-outline { background: #fff; color: var(--ink); border: 1.5px solid var(--border); }
+    .btn-outline:hover { border-color: var(--brand); color: var(--brand); }
+
+    .page {
+      max-width: 820px; margin: 24px auto; background: #fff;
+      border-radius: 8px; padding: 56px 56px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.04);
+    }
+
+    .header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding-bottom: 24px; margin-bottom: 28px; border-bottom: 3px solid var(--brand);
+    }
+    .header img { height: 48px; }
+    .header .doc-meta { text-align: right; }
+    .header .doc-titulo { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 18px; color: var(--brand); }
+    .header .doc-id { font-size: 11px; color: var(--ink-light); margin-top: 4px; font-family: monospace; }
+
+    h2 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 16px; margin: 32px 0 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    h3 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; margin: 20px 0 10px; }
+
+    .info-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px 28px;
+      font-size: 13px;
+    }
+    .info-cell label { display: block; font-size: 10.5px; font-weight: 700; color: var(--ink-light); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+    .info-cell span { color: var(--ink); font-weight: 500; }
+
+    .stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+      margin: 16px 0;
+    }
+    .stat {
+      padding: 12px; border-radius: 8px; text-align: center;
+      background: var(--border-light);
+    }
+    .stat .num { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 22px; }
+    .stat .lbl { font-size: 10.5px; color: var(--ink-mid); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+    .stat.ok    .num { color: #15803D; }
+    .stat.falha .num { color: #B91C1C; }
+    .stat.na    .num { color: #6B7280; }
+    .stat.fotos .num { color: var(--brand); }
+
+    .disc-block { margin-top: 28px; page-break-inside: avoid; }
+    .disc-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .disc-titulo { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; margin: 0; }
+    .disc-resumo { font-size: 11.5px; color: var(--ink-mid); }
+
+    .item-list { margin-top: 10px; }
+    .item-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 12px; border-bottom: 1px solid var(--border-light);
+      font-size: 12.5px;
+    }
+    .item-row:last-child { border-bottom: 0; }
+    .item-num {
+      flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px;
+    }
+    .item-num.ok    { background: #15803D; }
+    .item-num.falha { background: #B91C1C; }
+    .item-num.na    { background: #6B7280; }
+    .item-num.no_r  { background: #9CA3AF; }
+    .item-label { flex: 1; }
+    .item-obs { font-size: 11.5px; color: #B91C1C; margin-top: 3px; font-style: italic; }
+    .item-status {
+      flex-shrink: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; padding: 2px 8px; border-radius: 100px;
+    }
+    .item-status.ok    { background: #D1FAE5; color: #15803D; }
+    .item-status.falha { background: #FEE2E2; color: #B91C1C; }
+    .item-status.na    { background: #F3F4F6; color: #6B7280; }
+    .item-status.no_r  { background: #FFFBEB; color: #92400E; }
+
+    .fotos {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px;
+    }
+    .fotos img {
+      width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .obs-block {
+      background: var(--bg); border-radius: 6px; padding: 10px 14px; margin-top: 10px;
+      font-size: 12.5px; color: var(--ink-mid); white-space: pre-wrap;
+    }
+
+    .foto-inicial {
+      max-width: 360px; margin: 14px auto; display: block;
+      border-radius: 8px; border: 1px solid var(--border);
+    }
+
+    .assinatura-block {
+      page-break-inside: avoid;
+      margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--border);
+    }
+    .assinatura-img {
+      max-width: 320px; height: 96px; object-fit: contain;
+      background: #fff; border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px; margin-top: 8px; display: block;
+    }
+    .assinatura-info { margin-top: 6px; font-size: 13px; font-weight: 600; }
+    .assinatura-cargo { font-size: 11.5px; color: var(--ink-mid); }
+
+    .footer {
+      margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border);
+      text-align: center; font-size: 10.5px; color: var(--ink-light);
+    }
+
+    /* Print */
+    @media print {
+      .toolbar { display: none; }
+      body { background: #fff; }
+      .page { box-shadow: none; max-width: 100%; margin: 0; padding: 24px; border-radius: 0; }
+      .disc-block, .assinatura-block { page-break-inside: avoid; }
+      h2 { page-break-after: avoid; }
+    }
+    @page { margin: 14mm 12mm; size: A4; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <h1>📄 Relatório de Manutenção Preventiva</h1>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="window.print()">🖨 Imprimir / Salvar PDF</button>
+    </div>
+  </div>
+
+  <article class="page">
+    <header class="header">
+      <div>
+        <img src="/logo-cjr.png" alt="Costa Júnior">
+        <div style="font-size:11px;color:var(--ink-mid);margin-top:6px">Costa Júnior — Engenharia e Construções</div>
+      </div>
+      <div class="doc-meta">
+        <div class="doc-titulo">RELATÓRIO DE MANUTENÇÃO PREVENTIVA</div>
+        <div class="doc-id">Nº {prev.id.slice(0, 8).toUpperCase()}</div>
+      </div>
+    </header>
+
+    <h2>Identificação</h2>
+    <div class="info-grid">
+      <div class="info-cell"><label>Cliente</label><span>{prev.manut_clientes?.nome || "—"}</span></div>
+      <div class="info-cell"><label>CNPJ / CPF</label><span>{prev.manut_clientes?.cnpj_cpf || "—"}</span></div>
+      <div class="info-cell"><label>Loja</label><span>{prev.manut_lojas?.nome || "—"}</span></div>
+      <div class="info-cell"><label>Tamanho</label><span>{prev.manut_lojas?.tamanho_m2 ? `${prev.manut_lojas.tamanho_m2} m²` : "—"}</span></div>
+      <div class="info-cell" style="grid-column:span 2"><label>Endereço</label><span>{[prev.manut_lojas?.endereco, prev.manut_lojas?.cidade, prev.manut_lojas?.uf].filter(Boolean).join(", ") || "—"}</span></div>
+      <div class="info-cell"><label>Visita Nº</label><span>{prev.numero_visita || "—"}</span></div>
+      <div class="info-cell"><label>Data agendada</label><span>{fmtDate(prev.data_agendada)}</span></div>
+      <div class="info-cell"><label>Data executada</label><span>{fmtDateTime(prev.data_executada)}</span></div>
+      <div class="info-cell"><label>Técnico responsável</label><span>{prev.manut_tecnicos?.nome || "—"}</span></div>
+    </div>
+
+    <h2>Resumo da visita</h2>
+    <div class="stats">
+      <div class="stat ok"><div class="num">{totalOK}</div><div class="lbl">Itens OK</div></div>
+      <div class="stat falha"><div class="num">{totalFalha}</div><div class="lbl">Falhas</div></div>
+      <div class="stat na"><div class="num">{totalNA}</div><div class="lbl">N/A</div></div>
+      <div class="stat fotos"><div class="num">{totalFotos}</div><div class="lbl">Fotos</div></div>
+    </div>
+
+    {ck.foto_inicial_url && (
+      <>
+        <h3>Registro de chegada</h3>
+        <img src={ck.foto_inicial_url} alt="Técnico uniformizado na loja" class="foto-inicial">
+        <div style="text-align:center;font-size:11.5px;color:var(--ink-light)">Foto do técnico uniformizado em frente à loja</div>
+      </>
+    )}
+
+    {DISCIPLINAS.map((d) => {
+      const data = ck.disciplinas?.[d.id];
+      if (!data) return null;
+      const okN    = data.itens.filter((it: any) => it.ok === true).length;
+      const falhaN = data.itens.filter((it: any) => it.ok === false).length;
+      const naN    = data.itens.filter((it: any) => it.ok === null && it.obs === "__na__").length;
+      const norN   = data.itens.filter((it: any) => it.ok === null && it.obs !== "__na__").length;
+      return (
+        <section class="disc-block">
+          <div class="disc-header">
+            <h2 class="disc-titulo" style="border:0;padding:0;margin:0">{d.icone} {d.nome}</h2>
+            <span class="disc-resumo">{okN} OK · {falhaN} falhas · {naN} N/A{norN ? ` · ${norN} não respondidos` : ""}</span>
+          </div>
+          <div class="item-list">
+            {data.itens.map((it: any, i: number) => {
+              const cat = it.ok === true ? "ok" : it.ok === false ? "falha" : it.obs === "__na__" ? "na" : "no_r";
+              const lbl = cat === "ok" ? "OK" : cat === "falha" ? "Falha" : cat === "na" ? "N/A" : "Não resp.";
+              return (
+                <div class="item-row">
+                  <div class={`item-num ${cat}`}>{i + 1}</div>
+                  <div class="item-label">
+                    {it.label}
+                    {cat === "falha" && it.obs && <div class="item-obs">⚠ {it.obs}</div>}
+                  </div>
+                  <div class={`item-status ${cat}`}>{lbl}</div>
+                </div>
+              );
+            })}
+          </div>
+          {data.fotos?.length > 0 && (
+            <>
+              <h3 style="font-size:11.5px;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.05em">Evidências fotográficas ({data.fotos.length})</h3>
+              <div class="fotos">
+                {data.fotos.map((url: string, i: number) => <img src={url} alt={`${d.nome} ${i + 1}`}>)}
+              </div>
+            </>
+          )}
+          {data.observacoes && (
+            <div class="obs-block"><strong>Observações:</strong> {data.observacoes}</div>
+          )}
+        </section>
+      );
+    })}
+
+    {ck.observacoes_gerais && (
+      <>
+        <h2>Observações gerais</h2>
+        <div class="obs-block">{ck.observacoes_gerais}</div>
+      </>
+    )}
+
+    {ck.gerente_assinatura_url && (
+      <section class="assinatura-block">
+        <h2 style="margin-top:0">Assinatura do responsável da loja</h2>
+        <img src={ck.gerente_assinatura_url} alt="Assinatura" class="assinatura-img">
+        <div class="assinatura-info">{ck.gerente_nome || "—"}</div>
+        {ck.gerente_cargo && <div class="assinatura-cargo">{ck.gerente_cargo}</div>}
+        <div style="font-size:11.5px;color:var(--ink-light);margin-top:4px">Recebido em {fmtDateTime(ck.concluido_em || prev.data_executada)}</div>
+      </section>
+    )}
+
+    <footer class="footer">
+      Documento gerado eletronicamente pelo Portal Costa Júnior · costajr.com.br
+    </footer>
+  </article>
+</body>
+</html>

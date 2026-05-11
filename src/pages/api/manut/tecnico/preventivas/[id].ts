@@ -85,6 +85,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       }
       updates.status = "concluida";
       updates.data_executada = new Date().toISOString();
+      updates.relatorio_url = `/manutencao/preventiva/${id}/relatorio`;
       if (prev.checklist) {
         const checklist = { ...prev.checklist, concluido_em: new Date().toISOString() };
         if (body.checklist) Object.assign(checklist, body.checklist);
