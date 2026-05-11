@@ -151,5 +151,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       if (res.ok) window.location.reload();
       else { const d = await res.json(); document.getElementById("msgPlanos").innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
     });
+
+    Object.assign(window, { abrirModalPlano, editarPlano, salvarPreco, desativarPlano });
   </script>
 </Admin>

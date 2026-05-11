@@ -79,5 +79,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       patch(id, { status: "recusado" });
     }
     function marcarPago(id) { patch(id, { status: "pago", pago_em: new Date().toISOString() }); }
+
+    Object.assign(window, { filtrar, aprovar, recusar, marcarPago });
   </script>
 </Admin>

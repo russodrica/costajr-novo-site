@@ -149,5 +149,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       if (res.ok) { window.location.reload(); }
       else { const d = await res.json(); msg.innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
     });
+
+    Object.assign(window, { filtrar, filtrarTabela, abrirModalNovo, fecharModal, ativar, inadimplir, cancelar });
   </script>
 </Admin>

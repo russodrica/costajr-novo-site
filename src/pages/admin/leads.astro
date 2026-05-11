@@ -146,5 +146,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
       await fetch("/api/admin/leads/" + id, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status_crm: status_crm }) });
       window.location.reload();
     }
+
+    Object.assign(window, { filtrar, buscar, patchCrm });
   </script>
 </Admin>
