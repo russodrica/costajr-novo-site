@@ -42,18 +42,8 @@ export const prerender = false;
 </Portal>
 
 <style>
-  .mat-card {
-    background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg);
-    padding:20px 24px; margin-bottom:12px;
-    box-shadow:var(--shadow-sm); transition:var(--transition);
-  }
-  .mat-card:hover { box-shadow:var(--shadow); }
-  .mat-card.pendente { border-left:4px solid #F59E0B; }
-  .mat-header { display:flex;align-items:flex-start;justify-content:space-between;gap:16px; }
-  .mat-title  { font-weight:700;font-size:15px;margin-bottom:5px; }
-  .mat-meta   { font-size:12.5px;color:#5B5F6B;display:flex;flex-wrap:wrap;gap:6px;align-items:center; }
-  .mat-sep    { color:#D1D5DB; }
-  .mat-valor  { font-family:'Montserrat',sans-serif;font-weight:800;font-size:22px;color:#C41E3A;text-align:right; }
+  .row-pendente td { background: #FFFBEB !important; border-left: 3px solid #F59E0B; }
+  .row-pendente td:first-child { border-left: 3px solid #F59E0B; }
 </style>
 
 <script>
@@ -82,28 +72,34 @@ export const prerender = false;
       </div></div>`;
       return;
     }
-    wrap.innerHTML = allMat.map(m => `
-      <div class="mat-card ${m.status === 'pendente_aprovacao' ? 'pendente' : ''}">
-        <div class="mat-header">
-          <div style="flex:1;min-width:0">
-            <div class="mat-title">${m.descricao}</div>
-            <div class="mat-meta">
-              <span>🏪 ${m.manut_lojas?.nome || "—"}</span>
-              <span class="mat-sep">·</span>
-              <span>👤 ${m.manut_clientes?.nome || "—"}</span>
-              <span class="mat-sep">·</span>
-              <span>${fmtDate(m.created_at)}</span>
-              <span class="mat-sep">·</span>
-              ${badge(m.status)}
-            </div>
-          </div>
-          <div>
-            <div class="mat-valor">${fmt(m.valor)}</div>
-          </div>
-        </div>
-        ${m.comprovante_url ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-light)"><a href="${m.comprovante_url}" target="_blank" class="btn btn-outline btn-sm">📎 Ver comprovante de pagamento</a></div>` : ""}
-      </div>
-    `).join("");
+    wrap.innerHTML = `<div class="card" style="padding:0;overflow:hidden"><div class="table-wrap"><table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Material</th>
+          <th>Loja</th>
+          <th>Cliente</th>
+          <th style="text-align:right">Valor</th>
+          <th>Status</th>
+          <th>Comprovante</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${allMat.map(m => `
+          <tr class="${m.status === 'pendente_aprovacao' ? 'row-pendente' : ''}">
+            <td style="white-space:nowrap">${fmtDate(m.created_at)}</td>
+            <td><strong>${m.descricao || "—"}</strong></td>
+            <td>${m.manut_lojas?.nome || "—"}</td>
+            <td>${m.manut_clientes?.nome || "—"}</td>
+            <td style="text-align:right;font-family:'Montserrat',sans-serif;font-weight:700;color:#C41E3A">${fmt(m.valor)}</td>
+            <td>${badge(m.status)}</td>
+            <td>${m.comprovante_pagamento_url
+              ? `<a href="${m.comprovante_pagamento_url}" target="_blank" class="btn btn-outline btn-sm">📎 Ver</a>`
+              : '<span style="color:#D1D5DB;font-size:13px">—</span>'}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table></div></div>`;
   }
 
   async function loadChamados() {
