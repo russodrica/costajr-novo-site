@@ -104,6 +104,71 @@ export async function buscarPayment(id: string): Promise<any | null> {
   return res.json();
 }
 
+// Pix direto via API de pagamentos (sem passar pela tela do MP).
+// Retorna QR Code copia-e-cola + imagem base64 + URL do ticket de pagamento.
+export async function criarPagamentoPix(args: {
+  cliente: { email: string; nome: string; cnpjCpf?: string | null };
+  material: { id: string; descricao: string; valor: number };
+}): Promise<{
+  ok: boolean;
+  paymentId?: string | null;
+  qrCode?: string | null;
+  qrCodeBase64?: string | null;
+  ticketUrl?: string | null;
+  motivo?: string;
+}> {
+  // Limpa CPF/CNPJ — só dígitos
+  const docDigits = String(args.cliente.cnpjCpf || "").replace(/\D/g, "");
+  const docType = docDigits.length === 14 ? "CNPJ" : "CPF";
+  // CPF e CNPJ válidos seriam ideais, mas o MP aceita números mesmo
+  // que falhem na validação oficial (modo sandbox / produção tolerante).
+  const docNumber = docDigits.length >= 11 ? docDigits : "12345678909";
+
+  // first_name / last_name
+  const nomePartes = String(args.cliente.nome || "Cliente").trim().split(/\s+/);
+  const firstName = nomePartes[0] || "Cliente";
+  const lastName = nomePartes.slice(1).join(" ") || "Costa";
+
+  const idempotencyKey = `mat-${args.material.id}-${Date.now()}`;
+  const body = {
+    transaction_amount: Number(Number(args.material.valor).toFixed(2)),
+    description: `Material — ${args.material.descricao}`.slice(0, 200),
+    payment_method_id: "pix",
+    external_reference: `CJR-MAT-${args.material.id}`,
+    notification_url: `${SITE}/api/manut/mp_webhook`,
+    payer: {
+      email: args.cliente.email,
+      first_name: firstName,
+      last_name: lastName,
+      identification: { type: docType, number: docNumber },
+    },
+  };
+
+  const res = await fetch(`${MP_API}/v1/payments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token()}`,
+      "X-Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({} as any));
+  console.log("[MP][pix] status:", res.status, "body:", JSON.stringify(data).slice(0, 400));
+  if (!res.ok) {
+    return { ok: false, motivo: (data as any).message || JSON.stringify(data) };
+  }
+
+  const poi = (data as any).point_of_interaction?.transaction_data || {};
+  return {
+    ok: true,
+    paymentId: String((data as any).id || ""),
+    qrCode: poi.qr_code || null,
+    qrCodeBase64: poi.qr_code_base64 || null,
+    ticketUrl: poi.ticket_url || null,
+  };
+}
+
 // Preference para pagamento de material aprovado pelo lojista.
 // Pix aparece em destaque no Checkout Pro. Cartão e boleto continuam disponíveis.
 export async function criarPreferenceMaterial(args: {
