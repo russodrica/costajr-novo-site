@@ -38,9 +38,25 @@ export const prerender = false;
       </div>
 
       <div class="form-group" style="margin-top:16px">
-        <label>Comprovante de pagamento <span style="font-weight:400;color:#9CA3AF">(URL — opcional)</span></label>
-        <input type="url" id="comprovanteUrl" placeholder="https://...">
-        <p class="form-hint">Se você pagou fora do Mercado Pago, cole o link do comprovante aqui.</p>
+        <label>Comprovante de pagamento <span style="font-weight:400;color:#9CA3AF">(opcional)</span></label>
+        <div id="compAreaSemFoto">
+          <label for="comprovanteFile" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:18px;border:2px dashed var(--border);border-radius:10px;background:#FAFBFC;cursor:pointer;transition:var(--transition);font-size:13px;color:var(--ink-mid)">
+            <span style="font-size:22px">📎</span>
+            <span><strong>Anexar comprovante</strong> — JPG, PNG, WEBP ou PDF (máx 10MB)</span>
+          </label>
+          <input type="file" id="comprovanteFile" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none">
+        </div>
+        <div id="compAreaComFoto" style="display:none;padding:12px;border:1.5px solid #BBF7D0;background:#F0FDF4;border-radius:10px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="font-size:22px">✅</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700;color:#15803D">Comprovante enviado</div>
+              <a id="compLink" href="#" target="_blank" rel="noopener" style="font-size:11.5px;color:#5B5F6B;text-decoration:underline;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ver arquivo</a>
+            </div>
+            <button type="button" id="btnRemoverComp" style="background:transparent;border:0;color:#B91C1C;cursor:pointer;font-size:13px;font-weight:600">✕ Remover</button>
+          </div>
+        </div>
+        <div id="compStatus" style="font-size:12px;color:var(--ink-light);margin-top:6px"></div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
         <button class="btn btn-outline" id="btnCancelarApr">Cancelar</button>
@@ -121,11 +137,20 @@ export const prerender = false;
     `).join("");
   }
 
+  let comprovanteUrlAtual = null;
+  function resetComprovanteUI() {
+    document.getElementById("compAreaSemFoto").style.display = "";
+    document.getElementById("compAreaComFoto").style.display = "none";
+    document.getElementById("compStatus").textContent = "";
+    document.getElementById("comprovanteFile").value = "";
+    comprovanteUrlAtual = null;
+  }
+
   window.abrirAprovar = async function(id) {
     matAtivo = allMat.find(m => m.id === id);
     if (!matAtivo) return;
     document.getElementById("alertApr").style.display = "none";
-    document.getElementById("comprovanteUrl").value = "";
+    resetComprovanteUI();
     document.getElementById("modalAprBody").innerHTML = `
       <div style="background:#FFF9F0;border:1px solid #FDE68A;border-radius:8px;padding:16px;margin-bottom:4px">
         <div style="font-size:12px;color:#92400E;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Confirmar aprovação</div>
@@ -201,11 +226,55 @@ export const prerender = false;
   document.getElementById("btnCancelarApr").onclick = () => { document.getElementById("modalAprovar").classList.remove("open"); matAtivo = null; };
   document.getElementById("btnFecharApr").onclick   = () => { document.getElementById("modalAprovar").classList.remove("open"); matAtivo = null; };
 
+  // Upload do comprovante (auto ao selecionar)
+  async function blobToBase64(file) {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let s = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(s);
+  }
+  document.getElementById("comprovanteFile").addEventListener("change", async (e) => {
+    const file = e.target.files?.[0]; if (!file || !matAtivo) return;
+    const tiposOk = ["image/jpeg","image/png","image/webp","application/pdf"];
+    if (!tiposOk.includes(file.type)) {
+      document.getElementById("compStatus").innerHTML = '<span style="color:#B91C1C">⚠ Tipo inválido. Use JPG, PNG, WEBP ou PDF.</span>';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      document.getElementById("compStatus").innerHTML = '<span style="color:#B91C1C">⚠ Arquivo grande demais (máx 10MB).</span>';
+      return;
+    }
+    document.getElementById("compStatus").textContent = "Enviando...";
+    try {
+      const data_base64 = await blobToBase64(file);
+      const res = await fetch(`/api/manut/cliente/materiais/${matAtivo.id}/comprovante`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-cliente-auth": token },
+        body: JSON.stringify({ mime: file.type, data_base64 }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Falha");
+      comprovanteUrlAtual = d.url;
+      document.getElementById("compAreaSemFoto").style.display = "none";
+      document.getElementById("compAreaComFoto").style.display = "";
+      document.getElementById("compLink").href = d.url;
+      document.getElementById("compLink").textContent = file.name;
+      document.getElementById("compStatus").textContent = "";
+    } catch (err) {
+      document.getElementById("compStatus").innerHTML = '<span style="color:#B91C1C">⚠ ' + err.message + '</span>';
+    }
+  });
+  document.getElementById("btnRemoverComp").addEventListener("click", () => { resetComprovanteUI(); });
+
   document.getElementById("btnConfAprovar").onclick = async () => {
     if (!matAtivo) return;
     const alertEl = document.getElementById("alertApr");
     alertEl.style.display = "none";
-    const comprovante_url = document.getElementById("comprovanteUrl").value.trim() || null;
+    const comprovante_url = comprovanteUrlAtual;
     const btn = document.getElementById("btnConfAprovar");
     btn.disabled = true; btn.textContent = "Aprovando...";
     try {
