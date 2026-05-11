@@ -1,0 +1,252 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: precos } = await db.from("manut_precificacao").select("*").order("ordem");
+const { data: planos } = await db.from("manut_planos").select("*").order("valor_mensal");
+const { data: contrato } = await db.from("manut_contrato").select("texto,updated_at").eq("id", 1).maybeSingle();
+function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+---
+<Admin title="Parametrização" current="parametrizacao">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <!-- Tabela de preços por tamanho -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <strong>Preços por tipo de loja</strong>
+        <span style="font-size:0.8rem;color:#888">Preço final = base + extras × custo/especialidade</span>
+      </div>
+      <div id="msgPrecos"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tipo</th><th>Label</th><th>Preço base (R$)</th><th>Custo/esp. (R$)</th><th>Ativo</th><th>Salvar</th></tr></thead>
+          <tbody>
+            {precos?.map((p: any) => (
+              <tr>
+                <td><code>{p.tipo_loja}</code></td>
+                <td>{p.label}</td>
+                <td><input type="number" step="0.01" value={p.preco_base} style="width:90px;padding:4px 8px;border:1px solid #D1D5DB;border-radius:5px" id={`base_${p.tipo_loja}`} /></td>
+                <td><input type="number" step="0.01" value={p.custo_especialidade} style="width:80px;padding:4px 8px;border:1px solid #D1D5DB;border-radius:5px" id={`custo_${p.tipo_loja}`} /></td>
+                <td>
+                  <input type="checkbox" checked={p.ativo} id={`ativo_${p.tipo_loja}`} style="width:16px;height:16px" />
+                </td>
+                <td>
+                  <button class="btn btn-primary btn-sm" onclick={`salvarPreco('${p.tipo_loja}')`}>Salvar</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Planos -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <strong>Planos de manutenção</strong>
+        <button class="btn btn-primary btn-sm" onclick="abrirModalPlano()">+ Plano</button>
+      </div>
+      <div id="msgPlanos"></div>
+      {planos?.length ? planos.map((p: any) => (
+        <div style="border:1px solid #F0F0F0;border-radius:8px;padding:14px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <strong>{p.nome}</strong>
+              <div style="font-size:0.85rem;color:#888;margin-top:2px">{p.descricao || ""}</div>
+            </div>
+            <div style="text-align:right">
+              <strong style="color:#C41E3A">{fmtMoney(p.valor_mensal)}/mês</strong>
+              <div style="font-size:0.8rem;color:#666">{p.numero_preventivas} preventivas</div>
+              {p.chamados_inclusos && <div style="font-size:0.8rem;color:#666">{p.chamados_inclusos} chamados inclusos</div>}
+            </div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick={`editarPlano(${JSON.stringify(p)})`}>Editar</button>
+            <button class="btn btn-danger btn-sm" onclick={`desativarPlano('${p.id}')`}>{p.ativo ? "Desativar" : "Ativar"}</button>
+          </div>
+        </div>
+      )) : <p style="color:#999;font-size:0.85rem">Nenhum plano cadastrado</p>}
+    </div>
+  </div>
+
+  <!-- Minuta do contrato (linha cheia) -->
+  <div class="card" style="margin-top:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+      <div>
+        <strong>Minuta do contrato de manutenção</strong>
+        <div style="font-size:0.8rem;color:#888;margin-top:2px">
+          Texto exibido para o cliente no wizard de contratação. Use as variáveis abaixo para personalizar.
+        </div>
+      </div>
+      <div style="font-size:0.75rem;color:#666">
+        {contrato?.updated_at ? <>Atualizado em {new Date(contrato.updated_at).toLocaleString("pt-BR")}</> : "Nunca alterado"}
+      </div>
+    </div>
+
+    <details style="background:#F8F9FB;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:0.85rem">
+      <summary style="cursor:pointer;font-weight:600">Variáveis disponíveis (clique para expandir)</summary>
+      <div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
+        <div><code>{`{{cliente_nome}}`}</code> — razão social / nome</div>
+        <div><code>{`{{cliente_documento}}`}</code> — CNPJ ou CPF</div>
+        <div><code>{`{{cliente_endereco}}`}</code> — endereço completo</div>
+        <div><code>{`{{cliente_email}}`}</code> — email</div>
+        <div><code>{`{{cliente_telefone}}`}</code> — telefone</div>
+        <div><code>{`{{plano_nome}}`}</code> — plano contratado</div>
+        <div><code>{`{{plano_valor}}`}</code> — valor mensal formatado</div>
+        <div><code>{`{{plano_preventivas}}`}</code> — nº de preventivas</div>
+        <div><code>{`{{data_hoje}}`}</code> — data atual</div>
+        <div><code>{`{{lojas_lista}}`}</code> — lista de lojas (tipo, endereço)</div>
+      </div>
+    </details>
+
+    <div id="msgContrato"></div>
+    <textarea id="txtContrato" style="width:100%;min-height:380px;padding:14px;border:1px solid #D1D5DB;border-radius:8px;font-family:'Open Sans',sans-serif;font-size:0.9rem;line-height:1.6;resize:vertical">{contrato?.texto || ""}</textarea>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="btn btn-secondary btn-sm" onclick="previewContrato()">Pré-visualizar</button>
+      <button class="btn btn-primary btn-sm" onclick="salvarContrato()">Salvar minuta</button>
+    </div>
+  </div>
+
+  <!-- Modal plano -->
+  <div class="modal-overlay" id="modalPlano">
+    <div class="modal">
+      <div class="modal-title" id="modalPlanoTitle">Novo Plano</div>
+      <form id="formPlano">
+        <input type="hidden" id="planoId" />
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group" style="grid-column:span 2"><label>Nome *</label><input id="planoNome" required /></div>
+          <div class="form-group"><label>Valor mensal (R$) *</label><input id="planoValor" type="number" step="0.01" required /></div>
+          <div class="form-group"><label>Nº preventivas *</label><input id="planoPreventivas" type="number" required /></div>
+          <div class="form-group"><label>Chamados inclusos</label><input id="planoChamados" type="number" /></div>
+          <div class="form-group" style="grid-column:span 2"><label>Descrição</label><textarea id="planoDesc"></textarea></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnSalvarPlano">Criar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal preview contrato -->
+  <div class="modal-overlay" id="modalPreview">
+    <div class="modal" style="max-width:780px">
+      <div class="modal-title">Pré-visualização do contrato</div>
+      <div id="previewBox" style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:8px;padding:18px;white-space:pre-wrap;max-height:60vh;overflow:auto;font-size:0.88rem;line-height:1.55"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharPreview()">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function fecharModal() { document.getElementById("modalPlano").classList.remove("open"); }
+    function abrirModalPlano() {
+      document.getElementById("modalPlanoTitle").textContent = "Novo Plano";
+      document.getElementById("planoId").value = "";
+      document.getElementById("formPlano").reset();
+      document.getElementById("btnSalvarPlano").textContent = "Criar";
+      document.getElementById("modalPlano").classList.add("open");
+    }
+    function editarPlano(p) {
+      document.getElementById("modalPlanoTitle").textContent = "Editar Plano";
+      document.getElementById("planoId").value = p.id;
+      document.getElementById("planoNome").value = p.nome;
+      document.getElementById("planoValor").value = p.valor_mensal;
+      document.getElementById("planoPreventivas").value = p.numero_preventivas;
+      document.getElementById("planoChamados").value = p.chamados_inclusos || "";
+      document.getElementById("planoDesc").value = p.descricao || "";
+      document.getElementById("btnSalvarPlano").textContent = "Salvar";
+      document.getElementById("modalPlano").classList.add("open");
+    }
+
+    async function salvarPreco(tipo) {
+      const base = parseFloat(document.getElementById(`base_${tipo}`).value);
+      const custo = parseFloat(document.getElementById(`custo_${tipo}`).value);
+      const ativo = document.getElementById(`ativo_${tipo}`).checked;
+      const msg = document.getElementById("msgPrecos");
+      const res = await fetch("/api/admin/precificacao", {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tipo_loja: tipo, preco_base: base, custo_especialidade: custo, ativo }),
+      });
+      if (res.ok) { msg.innerHTML = '<div class="alert alert-success">Salvo!</div>'; setTimeout(() => msg.innerHTML = "", 2000); }
+      else { const d = await res.json(); msg.innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
+    }
+
+    async function desativarPlano(id) {
+      const res = await fetch(`/api/admin/planos/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ativo: false }) });
+      if (res.ok) window.location.reload(); else alert("Erro ao atualizar plano");
+    }
+
+    document.getElementById("formPlano")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("planoId").value;
+      const body = {
+        nome: document.getElementById("planoNome").value,
+        valor_mensal: parseFloat(document.getElementById("planoValor").value),
+        numero_preventivas: parseInt(document.getElementById("planoPreventivas").value),
+        chamados_inclusos: document.getElementById("planoChamados").value ? parseInt(document.getElementById("planoChamados").value) : null,
+        descricao: document.getElementById("planoDesc").value || null,
+        ativo: true,
+      };
+      const url = id ? `/api/admin/planos/${id}` : "/api/admin/planos";
+      const method = id ? "PATCH" : "POST";
+      const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else { const d = await res.json(); document.getElementById("msgPlanos").innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
+    });
+
+    async function salvarContrato() {
+      const texto = (document.getElementById("txtContrato") as HTMLTextAreaElement).value;
+      const msg = document.getElementById("msgContrato");
+      msg.innerHTML = "";
+      const res = await fetch("/api/manut/admin/contrato", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ texto }),
+      });
+      if (res.ok) {
+        msg.innerHTML = '<div class="alert alert-success">Minuta salva!</div>';
+        setTimeout(() => msg.innerHTML = "", 2500);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
+      }
+    }
+
+    function previewContrato() {
+      const texto = (document.getElementById("txtContrato") as HTMLTextAreaElement).value;
+      const exemplo: Record<string,string> = {
+        "{{cliente_nome}}": "Costa Júnior Engenharia LTDA",
+        "{{cliente_documento}}": "12.345.678/0001-90",
+        "{{cliente_endereco}}": "Rua Exemplo, 123 — Centro, Goiânia/GO — CEP 74000-000",
+        "{{cliente_email}}": "contato@empresa.com.br",
+        "{{cliente_telefone}}": "(62) 99999-9999",
+        "{{plano_nome}}": "Plano Trimestral",
+        "{{plano_valor}}": "R$ 750,00",
+        "{{plano_preventivas}}": "4",
+        "{{data_hoje}}": new Date().toLocaleDateString("pt-BR"),
+        "{{lojas_lista}}": "Loja 1 — Quiosque — Av. Brasil, 100\nLoja 2 — Até 40 m² — Rua A, 200",
+      };
+      let out = texto;
+      for (const k in exemplo) out = out.split(k).join(exemplo[k]);
+      document.getElementById("previewBox").textContent = out;
+      document.getElementById("modalPreview").classList.add("open");
+    }
+    function fecharPreview() { document.getElementById("modalPreview").classList.remove("open"); }
+
+    (window as any).abrirModalPlano = abrirModalPlano;
+    (window as any).editarPlano = editarPlano;
+    (window as any).salvarPreco = salvarPreco;
+    (window as any).desativarPlano = desativarPlano;
+    (window as any).salvarContrato = salvarContrato;
+    (window as any).previewContrato = previewContrato;
+    (window as any).fecharPreview = fecharPreview;
+    (window as any).fecharModal = fecharModal;
+  </script>
+</Admin>
