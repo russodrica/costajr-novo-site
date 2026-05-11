@@ -56,13 +56,35 @@ export async function processarMpWebhook(payload: {
 
   if (!recursoId && !externalReference) return { ok: true, ignored: true };
 
-  // ─── Checkout Pro: evento "payment" ──────────────────────────────────────
+  // ─── Checkout Pro / Pix: evento "payment" ────────────────────────────────
   if (tipo === "payment" && recursoId) {
     const pmt = await buscarPayment(recursoId);
     console.log("[webhook][payment]", JSON.stringify(pmt));
     if (!pmt) return { ok: true, encontrado: false };
 
     const ref: string = pmt.external_reference || externalReference || "";
+
+    // Material aprovado pelo cliente — Pix gerado por /v1/payments
+    if (ref.startsWith("CJR-MAT-")) {
+      const materialId = ref.replace(/^CJR-MAT-/, "");
+      console.log("[webhook][material]", materialId, "status:", pmt.status);
+      const updates: any = {};
+      if (pmt.status === "approved") {
+        updates.status = "pago";
+        updates.pago_em = new Date().toISOString();
+      } else if (pmt.status === "cancelled" || pmt.status === "rejected") {
+        // mantém status atual; só registra o que aconteceu se quisermos
+      }
+      if (Object.keys(updates).length) {
+        await db()
+          .from("manut_materiais")
+          .update(updates)
+          .eq("id", materialId)
+          .neq("status", "pago");
+      }
+      return { ok: true, status: pmt.status, materialId };
+    }
+
     if (!ref.startsWith("CJR-MANUT")) return { ok: true, ignored: true, ref };
 
     if (pmt.status === "approved") {
