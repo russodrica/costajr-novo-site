@@ -17,6 +17,12 @@ if (error || !prev) {
 if (prev.status !== "concluida") {
   return new Response("Relatório disponível somente após a conclusão da preventiva.", { status: 403 });
 }
+// Auto-heal: preventivas concluídas antes de o relatorio_url existir
+if (!prev.relatorio_url) {
+  await db.from("manut_preventivas")
+    .update({ relatorio_url: `/manutencao/preventiva/${id}/relatorio` })
+    .eq("id", id!);
+}
 
 const ck = prev.checklist || {};
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("pt-BR") : "—";
