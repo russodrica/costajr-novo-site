@@ -28,7 +28,28 @@ const { data: rows, error } = await db
   .order("visited_at", { ascending: false })
   .limit(50000);
 
-const views = rows ?? [];
+// Mantém só visitas em páginas públicas relevantes para a Costa Júnior.
+// Áreas autenticadas (admin/*, portal/*, manutencao/cliente|tecnico|admin/*)
+// e páginas de retorno do Mercado Pago são excluídas porque não medem
+// interesse comercial.
+const PAGINAS_PUBLICAS = new Set([
+  "/",
+  "/manutencao",
+  "/manutencao/contratar",
+  "/contato",
+  "/sobre",
+  "/intranet",
+  "/servicos",
+  "/artigos",
+]);
+function isPaginaPublica(path: string): boolean {
+  if (!path) return false;
+  const p = path.split("?")[0].replace(/\/$/, "") || "/";
+  if (PAGINAS_PUBLICAS.has(p)) return true;
+  // Páginas individuais de artigos (ex: /artigos/meu-post) entram também
+  return p.startsWith("/artigos/");
+}
+const views = (rows ?? []).filter((r: any) => isPaginaPublica(r.path));
 const totalViews = views.length;
 const sessoesUnicas = new Set(views.map((r: any) => r.session_id)).size;
 const paginasPorSessao = sessoesUnicas ? (totalViews / sessoesUnicas).toFixed(2) : "0";
