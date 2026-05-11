@@ -139,6 +139,9 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
       await patchChamado(id, body);
     });
 
-    Object.assign(window, { filtrar, buscar, fecharModal, abrirChamado });
+    (window as any).filtrar = filtrar;
+    (window as any).buscar = buscar;
+    (window as any).fecharModal = fecharModal;
+    (window as any).abrirChamado = abrirChamado;
   </script>
 </Admin>

@@ -156,6 +156,12 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
       else { const d = await res.json(); msg.innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
     });
 
-    Object.assign(window, { filtrar, fecharModal, abrirModalNovo, editarRole, aprovar, rejeitar, resetarSenha });
+    (window as any).filtrar = filtrar;
+    (window as any).fecharModal = fecharModal;
+    (window as any).abrirModalNovo = abrirModalNovo;
+    (window as any).editarRole = editarRole;
+    (window as any).aprovar = aprovar;
+    (window as any).rejeitar = rejeitar;
+    (window as any).resetarSenha = resetarSenha;
   </script>
 </Admin>

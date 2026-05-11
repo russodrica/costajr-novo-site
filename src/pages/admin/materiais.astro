@@ -80,6 +80,9 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
     }
     function marcarPago(id) { patch(id, { status: "pago", pago_em: new Date().toISOString() }); }
 
-    Object.assign(window, { filtrar, aprovar, recusar, marcarPago });
+    (window as any).filtrar = filtrar;
+    (window as any).aprovar = aprovar;
+    (window as any).recusar = recusar;
+    (window as any).marcarPago = marcarPago;
   </script>
 </Admin>

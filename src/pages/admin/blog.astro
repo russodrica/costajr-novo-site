@@ -143,6 +143,10 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
       }
     });
 
-    Object.assign(window, { fecharModal, abrirModalNovo, editarPost, publicar, deletar });
+    (window as any).fecharModal = fecharModal;
+    (window as any).abrirModalNovo = abrirModalNovo;
+    (window as any).editarPost = editarPost;
+    (window as any).publicar = publicar;
+    (window as any).deletar = deletar;
   </script>
 </Admin>

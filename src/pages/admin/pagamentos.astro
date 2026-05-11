@@ -90,6 +90,9 @@ const totalAtr  = pagamentos?.filter(p => p.status === "atrasado").reduce((s, p)
       if (res.ok) window.location.reload(); else alert("Erro ao cancelar");
     }
 
-    Object.assign(window, { filtrar, buscar, marcarPago, cancelar });
+    (window as any).filtrar = filtrar;
+    (window as any).buscar = buscar;
+    (window as any).marcarPago = marcarPago;
+    (window as any).cancelar = cancelar;
   </script>
 </Admin>

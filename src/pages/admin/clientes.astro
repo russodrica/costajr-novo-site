@@ -150,6 +150,12 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       else { const d = await res.json(); msg.innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
     });
 
-    Object.assign(window, { filtrar, filtrarTabela, abrirModalNovo, fecharModal, ativar, inadimplir, cancelar });
+    (window as any).filtrar = filtrar;
+    (window as any).filtrarTabela = filtrarTabela;
+    (window as any).abrirModalNovo = abrirModalNovo;
+    (window as any).fecharModal = fecharModal;
+    (window as any).ativar = ativar;
+    (window as any).inadimplir = inadimplir;
+    (window as any).cancelar = cancelar;
   </script>
 </Admin>

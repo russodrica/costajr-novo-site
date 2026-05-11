@@ -152,6 +152,9 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       else { const d = await res.json(); document.getElementById("msgPlanos").innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
     });
 
-    Object.assign(window, { abrirModalPlano, editarPlano, salvarPreco, desativarPlano });
+    (window as any).abrirModalPlano = abrirModalPlano;
+    (window as any).editarPlano = editarPlano;
+    (window as any).salvarPreco = salvarPreco;
+    (window as any).desativarPlano = desativarPlano;
   </script>
 </Admin>
