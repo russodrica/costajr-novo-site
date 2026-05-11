@@ -68,6 +68,9 @@ export const prerender = false;
   .row-baixo td { background: #FEF2F2 !important; }
   .baixa-input { width: 90px; padding: 6px 9px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; }
   .baixa-input:focus { border-color: var(--brand); }
+  .cel-preco { cursor: pointer; transition: background .12s; }
+  .cel-preco:hover { background: var(--brand-light); }
+  .preco-input { width: 110px; padding: 5px 8px; border: 1.5px solid var(--brand); border-radius: 6px; font-size: 13px; outline: none; text-align: right; }
   .mov-tag {
     display: inline-block; padding: 2px 8px; border-radius: 100px;
     font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
@@ -136,13 +139,13 @@ export const prerender = false;
             const preco = Number(i.preco_unitario || 0);
             const precoTxt = preco > 0
               ? `R$ ${preco.toFixed(2).replace(".", ",")}`
-              : `<span style="color:#9CA3AF;font-size:11.5px">—</span>`;
+              : `<span style="color:#9CA3AF;font-size:11.5px">— definir</span>`;
             return `<tr class="${baixo ? 'row-baixo' : ''}">
               <td><strong>${i.nome}</strong></td>
               <td>${i.manut_lojas?.nome || "—"}</td>
               <td style="text-align:right;font-family:'Montserrat',sans-serif;font-weight:700;color:${baixo ? '#B91C1C' : 'var(--ink)'}">${Number(i.quantidade_atual)} ${i.unidade}</td>
               <td style="text-align:right;color:var(--ink-mid)">${Number(i.quantidade_minima)} ${i.unidade}</td>
-              <td style="text-align:right;color:var(--ink-mid)">${precoTxt}</td>
+              <td style="text-align:right;color:var(--ink-mid)" class="cel-preco" data-editar-preco="${i.id}" data-preco-atual="${preco || ''}" title="Clique para editar">${precoTxt} <span style="color:var(--brand);font-size:11px;margin-left:4px">✏</span></td>
               <td>
                 <div style="display:flex;gap:6px;align-items:center">
                   <input type="number" min="0.01" step="0.01" placeholder="Qtd" data-qtd-baixa="${i.id}" class="baixa-input">
@@ -217,6 +220,41 @@ export const prerender = false;
   }
 
   document.getElementById("filtroLoja").addEventListener("change", (e) => { filtroLoja = e.target.value; render(); });
+
+  // Editar preço inline
+  document.addEventListener("click", (e) => {
+    const cel = e.target.closest("[data-editar-preco]");
+    if (!cel || cel.querySelector("input")) return;
+    const itemId = cel.dataset.editarPreco;
+    const atual = cel.dataset.precoAtual || "";
+    cel.innerHTML = `<input type="number" min="0" step="0.01" value="${atual}" class="preco-input" data-input-preco="${itemId}" placeholder="R$">`;
+    const inp = cel.querySelector("input");
+    inp.focus(); inp.select();
+    const salvar = async () => {
+      if (inp._saving) return;
+      inp._saving = true;
+      const valor = inp.value.trim();
+      const preco = valor === "" ? null : parseFloat(valor);
+      try {
+        const res = await api(`/api/manut/tecnico/estoque/itens/${itemId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ preco_unitario: preco }),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
+        await load();
+      } catch (err) {
+        alert("Erro: " + err.message);
+        inp._saving = false;
+        render();
+      }
+    };
+    inp.addEventListener("blur", salvar);
+    inp.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") { ev.preventDefault(); salvar(); }
+      if (ev.key === "Escape") { render(); }
+    });
+  });
 
   // Confirmar reposição física
   document.addEventListener("click", async (e) => {
