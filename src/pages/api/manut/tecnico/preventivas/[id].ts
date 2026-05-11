@@ -6,6 +6,18 @@ import { checklistInicial } from "~/lib/manut/checklist";
 
 export const prerender = false;
 
+// Detecta checklist no schema antigo (sem `disciplinas`) e migra para o novo
+// preservando foto_inicial_url e observacoes_gerais se existirem.
+function migrarChecklistSeAntigo(checklist: any): { migrado: boolean; novo: any } {
+  if (!checklist) return { migrado: false, novo: checklist };
+  if (checklist.disciplinas && typeof checklist.disciplinas === "object") return { migrado: false, novo: checklist };
+  const novo = checklistInicial();
+  if (checklist.foto_inicial_url) novo.foto_inicial_url = checklist.foto_inicial_url;
+  if (checklist.observacoes_gerais) novo.observacoes_gerais = checklist.observacoes_gerais;
+  if (checklist.iniciado_em) novo.iniciado_em = checklist.iniciado_em;
+  return { migrado: true, novo };
+}
+
 // GET — detalhe da preventiva
 export const GET: APIRoute = async ({ request, params }) => {
   try {
@@ -23,6 +35,13 @@ export const GET: APIRoute = async ({ request, params }) => {
     const lojasDele = await listarLojaIdsDoTecnico(claims.sub);
     const autorizado = prev.tecnico_atribuido_id === claims.sub || lojasDele.includes(prev.loja_id);
     if (!autorizado) return jsonErr(403, "Sem permissão para esta preventiva");
+
+    // Migra checklist do schema antigo (flat) para o novo (disciplinas) se necessário
+    const mig = migrarChecklistSeAntigo(prev.checklist);
+    if (mig.migrado) {
+      await db.from("manut_preventivas").update({ checklist: mig.novo }).eq("id", id);
+      prev.checklist = mig.novo;
+    }
 
     return jsonOk(prev);
   } catch (e: any) {
