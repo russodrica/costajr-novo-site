@@ -245,11 +245,13 @@ export async function listarReposicoesPendentes(lojaIds: string[]) {
   return data || [];
 }
 
-// Técnico confirma reposição física: soma na qtd_atual e marca como atendida
+// Confirma reposição física: soma na qtd_atual e marca como atendida.
+// tecnicoId opcional — quando null, foi confirmação automática (webhook Pix).
 export async function confirmarReposicaoFisica(args: {
   movimentoId: string;
-  tecnicoId: string;
+  tecnicoId?: string | null;
   quantidade?: number;
+  observacao?: string;
 }) {
   const { data: mov } = await db()
     .from("manut_estoque_movimentos")
@@ -294,10 +296,10 @@ export async function confirmarReposicaoFisica(args: {
   await db().from("manut_estoque_movimentos").insert({
     estoque_id: mov.estoque_id,
     loja_id: mov.loja_id,
-    tecnico_id: args.tecnicoId,
+    tecnico_id: args.tecnicoId || null,
     tipo: "reposicao",
     quantidade: qtdRepor,
-    observacao: "Reposição confirmada pelo técnico",
+    observacao: args.observacao || (args.tecnicoId ? "Reposição confirmada pelo técnico" : "Reposição automática (Pix pago)"),
     reposicao_status: "atendida",
   });
 

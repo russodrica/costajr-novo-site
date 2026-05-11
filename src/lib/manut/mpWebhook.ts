@@ -85,16 +85,22 @@ export async function processarMpWebhook(payload: {
       return { ok: true, status: pmt.status, materialId };
     }
 
-    // Reposição de estoque paga via Pix
+    // Reposição de estoque paga via Pix — confirma automaticamente
     if (ref.startsWith("CJR-REP-")) {
       const movimentoId = ref.replace(/^CJR-REP-/, "");
       console.log("[webhook][reposicao]", movimentoId, "status:", pmt.status);
       if (pmt.status === "approved") {
-        await db()
-          .from("manut_estoque_movimentos")
-          .update({ reposicao_status: "pago" })
-          .eq("id", movimentoId)
-          .neq("reposicao_status", "atendida");
+        const { confirmarReposicaoFisica } = await import("./estoque");
+        try {
+          await confirmarReposicaoFisica({
+            movimentoId,
+            tecnicoId: null,
+            observacao: "Pix pago — reposição confirmada automaticamente",
+          });
+        } catch (e: any) {
+          // Se já estava atendida, ignora. Outros erros logam mas não falham webhook.
+          console.warn("[webhook][reposicao] confirmar:", e.message);
+        }
       }
       return { ok: true, status: pmt.status, movimentoId };
     }
