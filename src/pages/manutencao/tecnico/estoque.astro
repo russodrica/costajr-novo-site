@@ -126,17 +126,23 @@ export const prerender = false;
             <th>Loja</th>
             <th style="text-align:right">Disponível</th>
             <th style="text-align:right">Mínimo</th>
+            <th style="text-align:right">Valor unit.</th>
             <th style="width:220px">Dar baixa</th>
           </tr>
         </thead>
         <tbody>
           ${itens.map(i => {
             const baixo = Number(i.quantidade_atual) < Number(i.quantidade_minima);
+            const preco = Number(i.preco_unitario || 0);
+            const precoTxt = preco > 0
+              ? `R$ ${preco.toFixed(2).replace(".", ",")}`
+              : `<span style="color:#9CA3AF;font-size:11.5px">—</span>`;
             return `<tr class="${baixo ? 'row-baixo' : ''}">
               <td><strong>${i.nome}</strong></td>
               <td>${i.manut_lojas?.nome || "—"}</td>
               <td style="text-align:right;font-family:'Montserrat',sans-serif;font-weight:700;color:${baixo ? '#B91C1C' : 'var(--ink)'}">${Number(i.quantidade_atual)} ${i.unidade}</td>
               <td style="text-align:right;color:var(--ink-mid)">${Number(i.quantidade_minima)} ${i.unidade}</td>
+              <td style="text-align:right;color:var(--ink-mid)">${precoTxt}</td>
               <td>
                 <div style="display:flex;gap:6px;align-items:center">
                   <input type="number" min="0.01" step="0.01" placeholder="Qtd" data-qtd-baixa="${i.id}" class="baixa-input">

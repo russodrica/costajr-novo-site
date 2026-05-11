@@ -151,18 +151,24 @@ export const prerender = false;
             <th style="text-align:right">Qtd atual</th>
             <th style="text-align:right">Mínimo</th>
             <th>Unidade</th>
+            <th style="text-align:right">Valor unit.</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
           ${itens.map(i => {
             const baixo = Number(i.quantidade_atual) < Number(i.quantidade_minima);
+            const preco = Number(i.preco_unitario || 0);
+            const precoTxt = preco > 0
+              ? `R$ ${preco.toFixed(2).replace(".", ",")}`
+              : `<span style="color:#9CA3AF;font-size:11.5px">—</span>`;
             return `<tr class="${baixo ? 'row-baixo' : ''}">
               <td><strong>${i.nome}</strong></td>
               <td>${i.manut_lojas?.nome || "—"}</td>
               <td style="text-align:right;font-family:'Montserrat',sans-serif;font-weight:700;color:${baixo ? '#B91C1C' : 'var(--ink)'}">${Number(i.quantidade_atual)}</td>
               <td style="text-align:right;color:var(--ink-mid)">${Number(i.quantidade_minima)}</td>
               <td style="color:var(--ink-mid)">${i.unidade}</td>
+              <td style="text-align:right;color:var(--ink-mid)">${precoTxt}</td>
               <td>${baixo ? '<span class="badge badge-inadimplente">Em baixa</span>' : '<span class="badge badge-ativo">OK</span>'}</td>
             </tr>`;
           }).join("")}
