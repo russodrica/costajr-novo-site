@@ -63,7 +63,7 @@ export const prerender = false;
     return `<span class="badge ${m[s] || ""}">${l[s] || s}</span>`;
   }
   function nomePlano(p) {
-    const m = { basico:"Básico", essencial:"Essencial", profissional:"Profissional", premium:"Premium" };
+    const m = { trimestral:"Trimestral", semestral:"Semestral", anual:"Anual" };
     return m[p] || (p ? p.charAt(0).toUpperCase() + p.slice(1) : "—");
   }
 

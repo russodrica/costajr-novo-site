@@ -184,7 +184,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
           <div class="form-group"><label>Plano</label>
             <select name="plano_selecionado">
               <option value="">Nenhum</option>
-              {["Essencial","Completo","Premium"].map(p => <option value={p} selected={cliente.plano_selecionado === p}>{p}</option>)}
+              {["Trimestral","Semestral","Anual"].map(p => <option value={p} selected={cliente.plano_selecionado === p}>{p}</option>)}
             </select>
           </div>
           <div class="form-group"><label>Valor/mês</label><input name="valor_mensal_contratado" type="number" step="0.01" value={cliente.valor_mensal_contratado || ""} /></div>
