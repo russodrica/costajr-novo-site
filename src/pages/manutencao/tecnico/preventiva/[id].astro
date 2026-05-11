@@ -147,6 +147,8 @@ const { id } = Astro.params;
   .check-item.ans-ok    { background: #F0FDF4; border-color: #BBF7D0; }
   .check-item.ans-nok   { background: #FEF2F2; border-color: #FECACA; }
   .check-item.ans-na    { background: #F9FAFB; border-color: var(--border); }
+  .check-item.ans-pendente { background: #FFFBEB; border-color: #FDE68A; border-left-width: 4px; border-left-color: #F59E0B; }
+  .check-item.ans-pendente .check-num { background: #F59E0B; color: #fff; }
   .check-row {
     display: flex; align-items: center; gap: 14px; justify-content: space-between;
   }
@@ -212,12 +214,17 @@ const { id } = Astro.params;
     font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center;
   }
   .foto-card .btn-remove:hover { background: #B91C1C; }
-  .contador-fotos {
+  .contador-fotos, .contador-itens {
     display: inline-block; padding: 4px 10px; border-radius: 100px;
-    font-size: 11.5px; font-weight: 700; margin-left: 8px;
+    font-size: 11.5px; font-weight: 700;
   }
-  .contador-fotos.ok       { background: #D1FAE5; color: #15803D; }
-  .contador-fotos.faltando { background: #FEF2F2; color: #B91C1C; }
+  .contador-fotos.ok, .contador-itens.ok             { background: #D1FAE5; color: #15803D; }
+  .contador-fotos.faltando, .contador-itens.faltando { background: #FFFBEB; color: #92400E; }
+  .motivo-bloqueio {
+    background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px;
+    padding: 10px 14px; font-size: 13px; color: #92400E;
+    display: flex; align-items: flex-start; gap: 8px;
+  }
 
   /* Assinatura */
   .sig-wrap {
@@ -418,7 +425,8 @@ const { id } = Astro.params;
   function discCompleta(discId) {
     const d = preventiva.checklist?.disciplinas?.[discId];
     if (!d) return false;
-    const todosRespondidos = d.itens.every(it => it.ok !== null);
+    // Respondido = OK (true) ou Falha (false) ou N/A (ok=null com obs="__na__")
+    const todosRespondidos = d.itens.every(it => it.ok !== null || it.obs === "__na__");
     const fotosOk = (d.fotos?.length || 0) >= FOTOS_MIN;
     return todosRespondidos && fotosOk;
   }
@@ -434,7 +442,10 @@ const { id } = Astro.params;
           <h3 class="etapa-titulo">${d.icone} ${d.nome}</h3>
           <p class="etapa-desc">Periodicidade sugerida: ${d.periodicidade}. Marque cada item e tire ao menos ${FOTOS_MIN} fotos da disciplina.</p>
 
-          <h4 style="font-size:13px;font-weight:700;margin:0 0 10px;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.05em">Itens a verificar</h4>
+          <h4 style="font-size:13px;font-weight:700;margin:0 0 10px;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.05em;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            Itens a verificar
+            <span class="contador-itens" id="cont-itens-${d.id}"></span>
+          </h4>
           <div class="check-list" id="checklist-${d.id}"></div>
 
           <h4 style="font-size:13px;font-weight:700;margin:24px 0 10px;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.05em">
@@ -448,9 +459,12 @@ const { id } = Astro.params;
             <textarea id="obs-${d.id}" rows="2" placeholder="Anote alguma observação geral da disciplina..."></textarea>
           </div>
 
-          <div class="etapa-actions">
-            <button type="button" class="btn btn-outline" data-voltar="${d.id}">← Voltar</button>
-            <button type="button" class="btn btn-primary" data-avancar="${d.id}" disabled>${proxLabel} →</button>
+          <div class="etapa-actions" style="flex-direction:column;align-items:stretch">
+            <div id="motivo-${d.id}" class="motivo-bloqueio" style="display:none"></div>
+            <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <button type="button" class="btn btn-outline" data-voltar="${d.id}">← Voltar</button>
+              <button type="button" class="btn btn-primary" data-avancar="${d.id}" disabled>${proxLabel} →</button>
+            </div>
           </div>
         </div>
       `;
@@ -462,7 +476,11 @@ const { id } = Astro.params;
     const data = preventiva.checklist.disciplinas[discId];
     const wrap = document.getElementById("checklist-" + discId);
     wrap.innerHTML = data.itens.map((it, i) => {
-      const cls = it.ok === true ? "ans-ok" : it.ok === false ? "ans-nok" : it.ok === null && it.obs === "__na__" ? "ans-na" : "";
+      const isPendente = it.ok === null && it.obs !== "__na__";
+      const cls = it.ok === true ? "ans-ok"
+                : it.ok === false ? "ans-nok"
+                : it.ok === null && it.obs === "__na__" ? "ans-na"
+                : "ans-pendente";
       const showNa = it.obs === "__na__";
       return `
         <div class="check-item ${cls}" data-item="${it.id}">
@@ -563,6 +581,37 @@ const { id } = Astro.params;
   }
 
   function atualizarBotaoAvancar(discId) {
+    const data = preventiva.checklist.disciplinas[discId];
+    const total = data.itens.length;
+    const respondidos = data.itens.filter(it => it.ok !== null || it.obs === "__na__").length;
+    const pendentes = data.itens
+      .map((it, i) => ({ it, i }))
+      .filter(({ it }) => it.ok === null && it.obs !== "__na__")
+      .map(({ i }) => i + 1);
+    const fotos = (data.fotos || []).length;
+
+    // Contador de itens
+    const cont = document.getElementById("cont-itens-" + discId);
+    if (cont) {
+      cont.textContent = `${respondidos} / ${total}`;
+      cont.className = "contador-itens " + (respondidos === total ? "ok" : "faltando");
+    }
+
+    // Mensagem de motivo
+    const motivo = document.getElementById("motivo-" + discId);
+    if (motivo) {
+      const falta = [];
+      if (pendentes.length) falta.push(`itens ${pendentes.join(", ")}`);
+      if (fotos < FOTOS_MIN) falta.push(`${FOTOS_MIN - fotos} foto(s)`);
+      if (falta.length) {
+        motivo.innerHTML = `⚠ Para avançar, falta marcar: <strong>${falta.join(" + ")}</strong>`;
+        motivo.style.display = "";
+      } else {
+        motivo.style.display = "none";
+      }
+    }
+
+    // Botão
     const btn = document.querySelector(`[data-avancar="${discId}"]`);
     if (btn) btn.disabled = !discCompleta(discId);
   }
