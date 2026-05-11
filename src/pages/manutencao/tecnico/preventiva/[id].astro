@@ -324,11 +324,25 @@ const { id } = Astro.params;
   // ───────────────────────────────────────────────────────────────────
   // Upload de foto
   // ───────────────────────────────────────────────────────────────────
+  async function blobToBase64(blob) {
+    const buf = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let s = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(s);
+  }
+
   async function uploadFoto(file, kind) {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("kind", kind);
-    const res = await api(`/api/manut/tecnico/preventivas/${preventivaId}/foto`, { method: "POST", body: fd });
+    const mime = ["image/png","image/webp"].includes(file.type) ? file.type : "image/jpeg";
+    const data_base64 = await blobToBase64(file);
+    const res = await api(`/api/manut/tecnico/preventivas/${preventivaId}/foto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, mime, data_base64 }),
+    });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.error || "Falha no upload");
@@ -337,10 +351,12 @@ const { id } = Astro.params;
   }
 
   async function uploadAssinaturaBlob(blob) {
-    const fd = new FormData();
-    fd.append("file", new File([blob], "assinatura.png", { type: "image/png" }));
-    fd.append("kind", "assinatura");
-    const res = await api(`/api/manut/tecnico/preventivas/${preventivaId}/foto`, { method: "POST", body: fd });
+    const data_base64 = await blobToBase64(blob);
+    const res = await api(`/api/manut/tecnico/preventivas/${preventivaId}/foto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "assinatura", mime: "image/png", data_base64 }),
+    });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.error || "Falha no upload da assinatura");

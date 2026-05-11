@@ -6,10 +6,11 @@ import { listarLojaIdsDoTecnico } from "~/lib/manut/tecnicos";
 export const prerender = false;
 
 // POST /api/manut/tecnico/preventivas/[id]/foto
-// Body: multipart/form-data com:
-//   - file: arquivo (image/jpeg|png|webp, max 10MB)
-//   - kind: "inicial" | "hidraulica" | "civil" | "eletrica" | "assinatura"
-// Retorna: { url, kind }
+// Body JSON (Astro 5 bloqueia multipart como CSRF):
+//   { kind: "inicial"|"hidraulica"|"civil"|"eletrica"|"assinatura",
+//     mime: "image/jpeg"|"image/png"|"image/webp",
+//     data_base64: "iVBORw0..." (sem prefixo data:)  }
+// Retorna: { url, kind, path }
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const claims = await requireTecnico(request);
@@ -28,25 +29,32 @@ export const POST: APIRoute = async ({ request, params }) => {
       return jsonErr(403, "Sem permissão");
     }
 
-    const form = await request.formData();
-    const file = form.get("file") as File | null;
-    const kind = String(form.get("kind") || "");
-    if (!file) return jsonErr(400, "Arquivo ausente");
+    const body = await request.json();
+    const { kind, mime, data_base64 } = body;
     if (!["inicial", "hidraulica", "civil", "eletrica", "assinatura"].includes(kind)) {
       return jsonErr(400, "kind inválido");
     }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
+      return jsonErr(400, "mime não suportado");
+    }
+    if (!data_base64 || typeof data_base64 !== "string") {
+      return jsonErr(400, "data_base64 ausente");
+    }
+    // Limite: 10MB base64 ≈ 13.4MB texto. Usamos 14MB de margem.
+    if (data_base64.length > 14 * 1024 * 1024) return jsonErr(413, "Arquivo grande demais (máx 10MB)");
 
-    const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+    // Decodifica base64
+    const bin = atob(data_base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
     const ts = Date.now();
     const path = `${id}/${kind}/${ts}.${ext}`;
-    const bytes = new Uint8Array(await file.arrayBuffer());
 
     const { error: upErr } = await db.storage
       .from("preventivas")
-      .upload(path, bytes, {
-        contentType: file.type || "image/jpeg",
-        upsert: false,
-      });
+      .upload(path, bytes, { contentType: mime, upsert: false });
     if (upErr) return jsonErr(400, "Falha no upload: " + upErr.message);
 
     const { data: pub } = db.storage.from("preventivas").getPublicUrl(path);
