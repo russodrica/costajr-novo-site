@@ -284,7 +284,7 @@ const { id } = Astro.params;
   function api(path, opts = {}) {
     return fetch(path, { ...opts, headers: { ...(opts.headers||{}), "x-tecnico-auth": token } });
   }
-  async function patchPreventiva(body) {
+  async function patchPreventiva(body, opts = {}) {
     const res = await api(`/api/manut/tecnico/preventivas/${preventivaId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -294,7 +294,16 @@ const { id } = Astro.params;
       const d = await res.json().catch(() => ({}));
       throw new Error(d.error || "Erro ao salvar");
     }
-    preventiva = await res.json();
+    const fresh = await res.json();
+    if (opts.preserveLocalChecklist) {
+      // Saves silenciosos não sobrescrevem checklist local — pode ter
+      // mudanças recentes do usuário ainda não enviadas (race condition).
+      const localChecklist = preventiva.checklist;
+      preventiva = fresh;
+      preventiva.checklist = localChecklist;
+    } else {
+      preventiva = fresh;
+    }
     return preventiva;
   }
 
@@ -620,10 +629,16 @@ const { id } = Astro.params;
   // Salvar silencioso (debounce)
   // ───────────────────────────────────────────────────────────────────
   let saveTimer = null;
+  let saving = false;
   function salvarSilencioso() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
-      try { await patchPreventiva({ checklist: preventiva.checklist }); } catch {}
+      if (saving) { salvarSilencioso(); return; }  // re-agenda se outro save em curso
+      saving = true;
+      try {
+        await patchPreventiva({ checklist: preventiva.checklist }, { preserveLocalChecklist: true });
+      } catch {}
+      saving = false;
     }, 800);
   }
 
