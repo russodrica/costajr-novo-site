@@ -41,6 +41,27 @@ export const prerender = false;
     </div>
   </div>
 
+  <!-- Modal Pix da reposição -->
+  <div class="modal-bg" id="modalPixRep">
+    <div class="modal" style="max-width:440px">
+      <button class="modal-close" id="btnFecharPixRep">×</button>
+      <h2>⚡ Pagar reposição via Pix</h2>
+      <div style="margin-bottom:10px;font-size:13px;color:var(--ink-mid)">Valor: <strong id="pixRepValor" style="color:#15803D"></strong></div>
+      <div id="pixRepStatus" style="font-size:12.5px;color:var(--ink-mid);margin-bottom:10px"></div>
+      <div id="pixRepContent" style="display:none">
+        <img id="pixRepQr" src="" alt="QR Code Pix" style="display:block;margin:0 auto 12px;width:220px;height:220px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px">
+        <label style="font-size:11.5px;font-weight:700;color:var(--ink-mid);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:4px">Pix copia e cola</label>
+        <textarea id="pixRepCode" readonly rows="3" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-family:monospace;font-size:11.5px;background:#fff;resize:none;outline:none"></textarea>
+        <button type="button" id="btnCopiarPixRep" style="margin-top:8px;width:100%;padding:9px;background:#15803D;color:#fff;border:0;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:'Montserrat',sans-serif">📋 Copiar código Pix</button>
+        <div id="pixRepCopiado" style="display:none;text-align:center;font-size:11.5px;color:#15803D;margin-top:6px;font-weight:600">✓ Código copiado!</div>
+        <p style="font-size:11.5px;color:var(--ink-light);margin-top:10px;text-align:center">Assim que o pagamento for confirmado, o status muda automaticamente para "Pago". O técnico verá na próxima visita.</p>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-outline" id="btnOkPixRep">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal novo item -->
   <div class="modal-bg" id="modalNovo">
     <div class="modal">
@@ -60,6 +81,10 @@ export const prerender = false;
         <div class="form-group"><label>Unidade</label><input id="novoUnidade" placeholder="un" value="un"></div>
         <div class="form-group"><label>Qtd atual</label><input id="novoQtdAtual" type="number" min="0" step="0.01" value="0"></div>
         <div class="form-group"><label>Qtd mínima</label><input id="novoQtdMin" type="number" min="0" step="0.01" value="1"></div>
+      </div>
+      <div class="form-group">
+        <label>Valor unitário (R$) <span style="font-weight:400;color:#9CA3AF">— usado para reposição via Pix</span></label>
+        <input id="novoPreco" type="number" min="0" step="0.01" placeholder="0,00">
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline" id="btnCancelar">Cancelar</button>
@@ -157,14 +182,26 @@ export const prerender = false;
       listaRep.innerHTML = pendentes.map(m => {
         const tagCls = m.tipo === "baixa" ? "baixa" : "adicao";
         const tagTxt = m.tipo === "baixa" ? "Baixa" : "Item novo";
-        return `<div class="mov-row">
-          <span class="mov-tag ${tagCls}">${tagTxt}</span>
-          <div style="flex:1;min-width:0">
-            <strong>${m.manut_estoque?.nome || "—"}</strong> — ${Number(m.quantidade)} ${m.manut_estoque?.unidade || "un"}
-            <div style="font-size:11.5px;color:var(--ink-light);margin-top:2px">${m.manut_lojas?.nome || "—"} · ${fmtDate(m.created_at)}${m.manut_tecnicos?.nome ? ` · 👤 ${m.manut_tecnicos.nome}` : ""}</div>
-            ${m.observacao ? `<div style="font-size:11.5px;color:var(--ink-mid);margin-top:2px;font-style:italic">💬 ${m.observacao}</div>` : ""}
+        const preco = Number(m.manut_estoque?.preco_unitario || 0);
+        const qtd = Number(m.quantidade);
+        const valor = preco * qtd;
+        const valorTxt = preco > 0
+          ? `<strong style="color:#15803D">R$ ${valor.toFixed(2).replace(".", ",")}</strong>`
+          : `<span style="color:#92400E;font-size:11.5px">⚠ sem valor cadastrado</span>`;
+        return `<div class="rep-row">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <span class="mov-tag ${tagCls}">${tagTxt}</span>
+            <div style="flex:1;min-width:220px">
+              <strong>${m.manut_estoque?.nome || "—"}</strong> — ${qtd} ${m.manut_estoque?.unidade || "un"}
+              <div style="font-size:11.5px;color:var(--ink-light);margin-top:2px">${m.manut_lojas?.nome || "—"} · ${fmtDate(m.created_at)}${m.manut_tecnicos?.nome ? ` · 👤 ${m.manut_tecnicos.nome}` : ""}</div>
+              ${m.observacao ? `<div style="font-size:11.5px;color:var(--ink-mid);margin-top:2px;font-style:italic">💬 ${m.observacao}</div>` : ""}
+              <div style="font-size:13px;margin-top:6px">Valor da reposição: ${valorTxt}</div>
+            </div>
           </div>
-          <button class="btn btn-primary btn-sm" data-solicitar="${m.id}">📦 Solicitar reposição</button>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" data-pagar-pix="${m.id}" ${preco > 0 ? "" : "disabled title='Cadastre o valor unitário do item antes de pagar via Pix'"}>⚡ Pagar via Pix</button>
+            <button class="btn btn-outline btn-sm" data-proxima-visita="${m.id}">🛒 Comprar até a próxima visita</button>
+          </div>
         </div>`;
       }).join("");
     }
@@ -240,6 +277,7 @@ export const prerender = false;
     document.getElementById("novoUnidade").value = "un";
     document.getElementById("novoQtdAtual").value = "0";
     document.getElementById("novoQtdMin").value = "1";
+    document.getElementById("novoPreco").value = "";
     document.getElementById("modalNovo").classList.add("open");
   });
 
@@ -255,6 +293,8 @@ export const prerender = false;
     const unidade = document.getElementById("novoUnidade").value.trim() || "un";
     const quantidade_atual = parseFloat(document.getElementById("novoQtdAtual").value || "0");
     const quantidade_minima = parseFloat(document.getElementById("novoQtdMin").value || "1");
+    const precoTxt = document.getElementById("novoPreco").value;
+    const preco_unitario = precoTxt ? parseFloat(precoTxt) : null;
     if (!loja_id) { alertEl.textContent = "Selecione a loja."; alertEl.style.display = ""; return; }
     if (!nome) { alertEl.textContent = "Informe o nome."; alertEl.style.display = ""; return; }
     const btn = document.getElementById("btnSalvar");
@@ -263,7 +303,7 @@ export const prerender = false;
       const res = await api("/api/manut/cliente/estoque", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ loja_id, nome, unidade, quantidade_atual, quantidade_minima }),
+        body: JSON.stringify({ loja_id, nome, unidade, quantidade_atual, quantidade_minima, preco_unitario }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
       fecharModal();
@@ -276,24 +316,69 @@ export const prerender = false;
     }
   });
 
-  // Solicitar reposição (event delegation)
+  // Próxima visita
   document.addEventListener("click", async (e) => {
-    const btn = e.target.closest("[data-solicitar]");
+    const btn = e.target.closest("[data-proxima-visita]");
     if (!btn) return;
-    const movId = btn.dataset.solicitar;
+    const movId = btn.dataset.proximaVisita;
+    if (!confirm("Confirmar: você vai comprar este item até a próxima preventiva. O técnico verá no painel.")) return;
     btn.disabled = true; btn.textContent = "...";
     try {
       const res = await api(`/api/manut/cliente/estoque/movimentos/${movId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "solicitar" }),
+        body: JSON.stringify({ action: "proxima_visita" }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
       await load();
-      window.toast?.("Reposição solicitada à Costa Júnior", "success");
+      window.toast?.("Marcado. O técnico verá pendente para reposição na próxima visita.", "success");
     } catch (err) {
       alert("Erro: " + err.message);
-      btn.disabled = false; btn.textContent = "📦 Solicitar reposição";
+      btn.disabled = false; btn.textContent = "🛒 Comprar até a próxima visita";
+    }
+  });
+
+  // Pagar via Pix
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-pagar-pix]");
+    if (!btn) return;
+    const movId = btn.dataset.pagarPix;
+    const modal = document.getElementById("modalPixRep");
+    document.getElementById("pixRepStatus").textContent = "Gerando código Pix...";
+    document.getElementById("pixRepContent").style.display = "none";
+    document.getElementById("pixRepCopiado").style.display = "none";
+    modal.classList.add("open");
+    try {
+      const res = await api(`/api/manut/cliente/estoque/movimentos/${movId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pagar_pix" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Falha");
+      if (d.qr_code_base64) document.getElementById("pixRepQr").src = "data:image/png;base64," + d.qr_code_base64;
+      document.getElementById("pixRepCode").value = d.qr_code || "";
+      document.getElementById("pixRepValor").textContent = d.valor ? "R$ " + Number(d.valor).toFixed(2).replace(".", ",") : "";
+      document.getElementById("pixRepContent").style.display = "";
+      document.getElementById("pixRepStatus").textContent = "Escaneie o QR Code ou copie o código no app do banco.";
+    } catch (err) {
+      document.getElementById("pixRepStatus").innerHTML = '<span style="color:#B91C1C">⚠ ' + err.message + '</span>';
+    }
+  });
+
+  // Modal Pix - copiar + fechar
+  document.addEventListener("click", async (e) => {
+    if (e.target?.id === "btnCopiarPixRep") {
+      const code = document.getElementById("pixRepCode").value;
+      if (!code) return;
+      try { await navigator.clipboard.writeText(code); } catch { document.getElementById("pixRepCode").select(); document.execCommand("copy"); }
+      const aviso = document.getElementById("pixRepCopiado");
+      aviso.style.display = "";
+      setTimeout(() => { aviso.style.display = "none"; }, 2500);
+    }
+    if (e.target?.id === "btnFecharPixRep" || e.target?.id === "btnOkPixRep") {
+      document.getElementById("modalPixRep").classList.remove("open");
+      load();
     }
   });
 

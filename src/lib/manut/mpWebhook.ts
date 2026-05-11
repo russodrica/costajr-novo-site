@@ -85,6 +85,20 @@ export async function processarMpWebhook(payload: {
       return { ok: true, status: pmt.status, materialId };
     }
 
+    // Reposição de estoque paga via Pix
+    if (ref.startsWith("CJR-REP-")) {
+      const movimentoId = ref.replace(/^CJR-REP-/, "");
+      console.log("[webhook][reposicao]", movimentoId, "status:", pmt.status);
+      if (pmt.status === "approved") {
+        await db()
+          .from("manut_estoque_movimentos")
+          .update({ reposicao_status: "pago" })
+          .eq("id", movimentoId)
+          .neq("reposicao_status", "atendida");
+      }
+      return { ok: true, status: pmt.status, movimentoId };
+    }
+
     if (!ref.startsWith("CJR-MANUT")) return { ok: true, ignored: true, ref };
 
     if (pmt.status === "approved") {

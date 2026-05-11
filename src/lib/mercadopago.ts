@@ -142,6 +142,85 @@ function isCnpjValido(cnpj: string): boolean {
   return d2 === +cnpj[13];
 }
 
+// Helper base — chama /v1/payments com payment_method_id=pix
+async function _criarPix(args: {
+  cliente: { email: string; nome: string; cnpjCpf?: string | null };
+  descricao: string;
+  valor: number;
+  externalReference: string;
+}): Promise<{
+  ok: boolean;
+  paymentId?: string | null;
+  qrCode?: string | null;
+  qrCodeBase64?: string | null;
+  ticketUrl?: string | null;
+  motivo?: string;
+}> {
+  const docDigits = String(args.cliente.cnpjCpf || "").replace(/\D/g, "");
+  let docType: "CPF" | "CNPJ" = "CPF";
+  let docNumber = "";
+  if (docDigits.length === 14 && isCnpjValido(docDigits)) {
+    docType = "CNPJ"; docNumber = docDigits;
+  } else if (docDigits.length === 11 && isCpfValido(docDigits)) {
+    docType = "CPF"; docNumber = docDigits;
+  } else {
+    console.warn("[MP][pix] CPF/CNPJ invalido, usando fallback:", docDigits);
+    docType = "CPF"; docNumber = "11144477735";
+  }
+  const nomePartes = String(args.cliente.nome || "Cliente").trim().split(/\s+/);
+  const firstName = nomePartes[0] || "Cliente";
+  const lastName = nomePartes.slice(1).join(" ") || "Costa";
+  const idempotencyKey = `pix-${args.externalReference}-${Date.now()}`;
+  const body = {
+    transaction_amount: Number(Number(args.valor).toFixed(2)),
+    description: args.descricao.slice(0, 200),
+    payment_method_id: "pix",
+    external_reference: args.externalReference,
+    notification_url: webhookUrl(),
+    payer: {
+      email: args.cliente.email,
+      first_name: firstName,
+      last_name: lastName,
+      identification: { type: docType, number: docNumber },
+    },
+  };
+  const res = await fetch(`${MP_API}/v1/payments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token()}`,
+      "X-Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({} as any));
+  console.log("[MP][pix]", args.externalReference, "status:", res.status, JSON.stringify(data).slice(0, 300));
+  if (!res.ok) {
+    return { ok: false, motivo: (data as any).message || JSON.stringify(data) };
+  }
+  const poi = (data as any).point_of_interaction?.transaction_data || {};
+  return {
+    ok: true,
+    paymentId: String((data as any).id || ""),
+    qrCode: poi.qr_code || null,
+    qrCodeBase64: poi.qr_code_base64 || null,
+    ticketUrl: poi.ticket_url || null,
+  };
+}
+
+// Pix para reposição de item de estoque (cliente paga e técnico repõe na próxima visita)
+export async function criarPagamentoPixReposicao(args: {
+  cliente: { email: string; nome: string; cnpjCpf?: string | null };
+  movimento: { id: string; nomeItem: string; quantidade: number; valor: number };
+}) {
+  return _criarPix({
+    cliente: args.cliente,
+    descricao: `Reposição — ${args.movimento.nomeItem} (${args.movimento.quantidade})`,
+    valor: args.movimento.valor,
+    externalReference: `CJR-REP-${args.movimento.id}`,
+  });
+}
+
 // Pix direto via API de pagamentos (sem passar pela tela do MP).
 // Retorna QR Code copia-e-cola + imagem base64 + URL do ticket de pagamento.
 export async function criarPagamentoPix(args: {

@@ -30,7 +30,7 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const claims = await requireCliente(request);
     const body = await request.json();
-    const { loja_id, nome, unidade, quantidade_atual, quantidade_minima } = body;
+    const { loja_id, nome, unidade, quantidade_atual, quantidade_minima, preco_unitario } = body;
 
     // Confere que a loja pertence ao cliente
     const { data: loja } = await supabaseAdmin()
@@ -46,6 +46,7 @@ export const POST: APIRoute = async ({ request }) => {
       unidade,
       quantidadeAtual: Number(quantidade_atual) || 0,
       quantidadeMinima: Number(quantidade_minima) || 1,
+      precoUnitario: preco_unitario != null && preco_unitario !== "" ? Number(preco_unitario) : null,
     });
     return jsonOk(item, 201);
   } catch (e: any) {
