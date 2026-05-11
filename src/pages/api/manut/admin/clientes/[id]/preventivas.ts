@@ -58,7 +58,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       .insert({
         cliente_id: id,
         loja_id: loja_id || null,
-        tecnico_id: tecnico_id || null,
+        tecnico_atribuido_id: tecnico_id || null,
         data_agendada,
         status: "agendada",
       })
@@ -82,7 +82,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
 
     const update: Record<string, any> = {};
     if (data_agendada !== undefined) update.data_agendada = data_agendada;
-    if (tecnico_id !== undefined) update.tecnico_id = tecnico_id;
+    if (tecnico_id !== undefined) update.tecnico_atribuido_id = tecnico_id;
     if (status !== undefined) update.status = status;
 
     const { error } = await supabaseAdmin()

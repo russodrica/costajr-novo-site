@@ -10,7 +10,7 @@ export const GET: APIRoute = async ({ request }) => {
     const { data, error } = await supabaseAdmin()
       .from("manut_materiais")
       .select("*, manut_lojas(nome), manut_clientes(nome)")
-      .eq("tecnico_id", claims.sub)
+      .eq("tecnico_solicitante_id", claims.sub)
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) throw new Error(error.message);
@@ -32,7 +32,7 @@ export const POST: APIRoute = async ({ request }) => {
     const { data, error } = await supabaseAdmin()
       .from("manut_materiais")
       .insert({
-        tecnico_id: claims.sub,
+        tecnico_solicitante_id: claims.sub,
         chamado_id: chamado_id || null,
         loja_id,
         cliente_id,
