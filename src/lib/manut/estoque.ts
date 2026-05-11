@@ -25,7 +25,7 @@ export async function listarMovimentosDeLojas(lojaIds: string[]) {
   if (!lojaIds.length) return [];
   const { data } = await db()
     .from("manut_estoque_movimentos")
-    .select("*, manut_estoque(nome,unidade), manut_lojas(nome)")
+    .select("*, manut_estoque(nome,unidade,preco_unitario), manut_lojas(nome)")
     .in("loja_id", lojaIds)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -57,7 +57,7 @@ export async function listarMovimentosCliente(clienteId: string) {
   const lojaIds = lojas.map((l: any) => l.id);
   const { data } = await db()
     .from("manut_estoque_movimentos")
-    .select("*, manut_estoque(nome,unidade), manut_lojas(nome), manut_tecnicos(nome)")
+    .select("*, manut_estoque(nome,unidade,preco_unitario), manut_lojas(nome), manut_tecnicos(nome)")
     .in("loja_id", lojaIds)
     .order("created_at", { ascending: false })
     .limit(200);
