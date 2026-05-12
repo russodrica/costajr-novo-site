@@ -106,11 +106,28 @@ export async function contratarSubmit(payload: {
   loja: { email: string; nomeResp: string; nomeLoja: string; telefone?: string; tamanho?: number; especialidades?: string[] };
   plano: { id: string; nome: string; valorMensal: number; valorTotal?: number; duracaoMeses?: number; visitas: number };
   cadastro: { cnpjCpf: string; endereco?: string; cidade?: string; uf?: string; cep?: string };
+  cupom?: { codigo?: string };
 }) {
-  const { loja, plano, cadastro } = payload;
+  const { loja, plano, cadastro, cupom } = payload;
   if (!loja?.email || !loja?.nomeResp) throw new Error("Dados da loja obrigatórios");
   if (!plano?.id) throw new Error("Plano obrigatório");
   if (!cadastro?.cnpjCpf) throw new Error("Cadastro obrigatório");
+
+  // Resolve cupom (se enviado) — apenas para registrar uso e creditar cashback ao dono
+  let cupomData: any = null;
+  if (cupom?.codigo) {
+    const { data } = await db()
+      .from("manut_cupons")
+      .select("*")
+      .eq("codigo", cupom.codigo.toUpperCase().trim())
+      .eq("ativo", true)
+      .maybeSingle();
+    if (data) {
+      const expirado = data.validade && new Date(data.validade) < new Date();
+      const esgotado = data.usos_maximos && data.usos_atuais >= data.usos_maximos;
+      if (!expirado && !esgotado) cupomData = data;
+    }
+  }
 
   const email = loja.email.toLowerCase();
   const { data: dup } = await db().from("manut_clientes").select("*").eq("email", email).maybeSingle();
@@ -207,14 +224,113 @@ export async function contratarSubmit(payload: {
       .eq("id", pag.id);
   }
 
+  // Registra uso do cupom + credita cashback no dono (se for cupom de indicação)
+  if (cupomData) {
+    try {
+      const descontoPct = Number(cupomData.desconto_percentual || 0);
+      const descontoAplicado = (valorCobranca * descontoPct) / 100;
+      const cashbackPct = Number(cupomData.cashback_pct || 0);
+      const cashbackGerado = cupomData.cliente_dono_id && cupomData.cliente_dono_id !== cliente.id
+        ? (valorCobranca * cashbackPct) / 100
+        : 0;
+
+      await db()
+        .from("manut_cupons")
+        .update({ usos_atuais: (cupomData.usos_atuais || 0) + 1 })
+        .eq("id", cupomData.id);
+
+      await db().from("manut_cupons_usos").insert({
+        cupom_id: cupomData.id,
+        cliente_que_usou_id: cliente.id,
+        cliente_dono_id: cupomData.cliente_dono_id || null,
+        valor_compra: valorCobranca,
+        cashback_gerado: cashbackGerado,
+        desconto_aplicado: descontoAplicado,
+      });
+
+      if (cashbackGerado > 0 && cupomData.cliente_dono_id) {
+        const { data: dono } = await db()
+          .from("manut_clientes")
+          .select("saldo_cashback,nome")
+          .eq("id", cupomData.cliente_dono_id)
+          .maybeSingle();
+        const saldoAnterior = Number(dono?.saldo_cashback || 0);
+        const saldoNovo = saldoAnterior + cashbackGerado;
+        await db()
+          .from("manut_clientes")
+          .update({ saldo_cashback: saldoNovo })
+          .eq("id", cupomData.cliente_dono_id);
+        await db().from("manut_cashback_movimentos").insert({
+          cliente_id: cupomData.cliente_dono_id,
+          tipo: "credito",
+          valor: cashbackGerado,
+          saldo_apos: saldoNovo,
+          origem: `Indicação: ${cliente.nome || "novo cliente"}`,
+          referencia_id: cliente.id,
+        });
+      }
+    } catch (e: any) {
+      console.warn("[contratar][cupom]", e?.message);
+    }
+  }
+
   return {
     ok: true,
     clienteId: cliente.id,
     senhaInicial,
     linkPagamento: mp.initPoint,
     mpStatus: mp.ok ? "ok" : "fallback",
-    mpMotivo: mp.ok ? null : mp.motivo
+    mpMotivo: mp.ok ? null : mp.motivo,
+    cupomAplicado: cupomData ? { codigo: cupomData.codigo, desconto: Number(cupomData.desconto_percentual) } : null,
   };
+}
+
+// Converte saldo de cashback do cliente em um cupom de renovação único
+// (uso típico: quando o plano vai vencer e o cliente quer aplicar o saldo)
+export async function gerarCupomRenovacao(clienteId: string) {
+  const { data: cli } = await db()
+    .from("manut_clientes")
+    .select("id,nome,saldo_cashback,valor_mensal_contratado")
+    .eq("id", clienteId)
+    .maybeSingle();
+  if (!cli) throw new Error("Cliente não encontrado");
+  const saldo = Number(cli.saldo_cashback || 0);
+  if (saldo <= 0) throw new Error("Sem saldo de cashback disponível");
+
+  // Estimativa do valor mensal pra calcular percentual (mantém em 100% se desconhecido)
+  const valorRef = Number(cli.valor_mensal_contratado || 0) || saldo;
+  let pct = (saldo / valorRef) * 100;
+  pct = Math.min(100, Math.max(1, Math.round(pct * 100) / 100));
+
+  const codigo = `CASH-${(cli.nome || "CJR").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const validade = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: cupom, error } = await db().from("manut_cupons").insert({
+    codigo,
+    descricao: `Cashback acumulado de ${cli.nome || "cliente"} (R$ ${saldo.toFixed(2).replace(".", ",")})`,
+    desconto_percentual: pct,
+    duracao_meses: 1,
+    usos_maximos: 1,
+    cliente_dono_id: clienteId,
+    tipo: "indicacao", // gerado a partir de cashback acumulado por indicações
+    cashback_pct: 0,
+    ativo: true,
+    validade,
+  }).select("*").single();
+  if (error) throw new Error(error.message);
+
+  // Zera saldo + registra débito
+  await db().from("manut_clientes").update({ saldo_cashback: 0 }).eq("id", clienteId);
+  await db().from("manut_cashback_movimentos").insert({
+    cliente_id: clienteId,
+    tipo: "debito",
+    valor: saldo,
+    saldo_apos: 0,
+    origem: `Convertido em cupom ${codigo}`,
+    referencia_id: cupom.id,
+  });
+
+  return { cupom, valorConvertido: saldo, descontoPct: pct };
 }
 
 function serializeCliente(c: any) {

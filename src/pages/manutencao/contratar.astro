@@ -568,6 +568,18 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
     atualizarDuracao();
   });
 
+  // Pré-preenche cupom se vier por query string (?cupom=XXX) — ex.: cliente vindo da
+  // tela "adicionar nova loja", ou indicação enviada por amigo
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const cupomQS = params.get("cupom");
+    if (cupomQS) {
+      $("cupomInput").value = cupomQS.toUpperCase();
+      // Aplica automaticamente quando o usuário chegar na etapa 2 (input já existe agora)
+      setTimeout(() => $("btnAplicarCupom").click(), 200);
+    }
+  } catch {}
+
   $("btn-e2").addEventListener("click", async () => {
     const m = dados.duracaoMeses;
     const durDesc = dados.desconto;
@@ -698,6 +710,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
         uf: dados.uf || undefined,
         cep: dados.cep || undefined,
       },
+      cupom: cupomAtivo?.codigo ? { codigo: cupomAtivo.codigo } : undefined,
     };
 
     try {

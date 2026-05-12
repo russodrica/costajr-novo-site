@@ -1,0 +1,161 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+
+const [{ data: cupons }, { data: usos }, { data: cashbackTop }] = await Promise.all([
+  db.from("manut_cupons").select("*, manut_clientes:cliente_dono_id(nome,email)").order("created_at", { ascending: false }).limit(200),
+  db.from("manut_cupons_usos").select("*, cupom:manut_cupons(codigo,tipo), quem_usou:manut_clientes!manut_cupons_usos_cliente_que_usou_id_fkey(nome,email), dono:manut_clientes!manut_cupons_usos_cliente_dono_id_fkey(nome)").order("created_at", { ascending: false }).limit(100),
+  db.from("manut_clientes").select("id,nome,email,saldo_cashback").gt("saldo_cashback", 0).order("saldo_cashback", { ascending: false }).limit(20),
+]);
+
+function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+
+const tipoLabel: Record<string, string> = {
+  desconto: "Desconto",
+  indicacao: "Indicação",
+  nova_loja: "Nova loja",
+};
+const tipoCor: Record<string, string> = {
+  desconto: "#5B5F6B",
+  indicacao: "#16A34A",
+  nova_loja: "#1D4ED8",
+};
+---
+<Admin title="Cupons & Cashback" current="cupons">
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px">
+    <div class="card" style="text-align:center;padding:18px">
+      <div style="font-size:11px;color:#5B5F6B;text-transform:uppercase;letter-spacing:1.5px;font-weight:700">CUPONS ATIVOS</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:30px;font-weight:700;color:#C41E3A;margin-top:6px">{cupons?.filter(c => c.ativo).length || 0}</div>
+    </div>
+    <div class="card" style="text-align:center;padding:18px">
+      <div style="font-size:11px;color:#5B5F6B;text-transform:uppercase;letter-spacing:1.5px;font-weight:700">USOS TOTAIS</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:30px;font-weight:700;color:#C41E3A;margin-top:6px">{usos?.length || 0}</div>
+    </div>
+    <div class="card" style="text-align:center;padding:18px;background:linear-gradient(135deg,#F0FDF4 0%,#FFF 100%)">
+      <div style="font-size:11px;color:#5B5F6B;text-transform:uppercase;letter-spacing:1.5px;font-weight:700">CASHBACK ACUMULADO</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:30px;font-weight:700;color:#166534;margin-top:6px">{fmtMoney((cashbackTop || []).reduce((a: number, c: any) => a + Number(c.saldo_cashback || 0), 0))}</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong style="font-size:14px">Cupons cadastrados</strong>
+      <button class="btn btn-primary btn-sm" onclick="abrirModal()">+ Novo cupom</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Código</th><th>Tipo</th><th>Desc.</th><th>Cashback</th><th>Dono</th><th>Usos</th><th>Validade</th><th>Status</th></tr></thead>
+        <tbody>
+          {(cupons || []).map((c: any) => (
+            <tr>
+              <td><code style="font-weight:700;color:#C41E3A">{c.codigo}</code></td>
+              <td><span style={`background:${tipoCor[c.tipo]||'#9CA3AF'}22;color:${tipoCor[c.tipo]||'#9CA3AF'};padding:3px 8px;border-radius:99px;font-size:11px;font-weight:700;text-transform:uppercase`}>{tipoLabel[c.tipo] || c.tipo}</span></td>
+              <td>{Number(c.desconto_percentual)}%</td>
+              <td>{Number(c.cashback_pct || 0)}%</td>
+              <td style="font-size:12.5px">{c.manut_clientes ? c.manut_clientes.nome : "—"}</td>
+              <td>{c.usos_atuais}{c.usos_maximos ? ` / ${c.usos_maximos}` : ""}</td>
+              <td style="font-size:12.5px;color:#5B5F6B">{c.validade ? fmtDate(c.validade) : "Sem validade"}</td>
+              <td>{c.ativo
+                ? <span class="badge" style="background:#DCFCE7;color:#166534">Ativo</span>
+                : <span class="badge" style="background:#F3F4F6;color:#6B7280">Inativo</span>}</td>
+            </tr>
+          ))}
+          {!(cupons || []).length && <tr><td colspan="8" style="text-align:center;color:#9CA3AF;padding:24px">Nenhum cupom cadastrado</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1.4fr 0.6fr;gap:18px">
+    <div class="card">
+      <strong style="font-size:14px">Histórico de usos (últimos 100)</strong>
+      <div class="table-wrap" style="margin-top:12px">
+        <table>
+          <thead><tr><th>Data</th><th>Cupom</th><th>Quem usou</th><th>Indicador</th><th>Compra</th><th>Cashback gerado</th></tr></thead>
+          <tbody>
+            {(usos || []).map((u: any) => (
+              <tr>
+                <td style="font-size:12.5px">{fmtDate(u.created_at)}</td>
+                <td><code>{u.cupom?.codigo || "—"}</code></td>
+                <td style="font-size:12.5px">{u.quem_usou?.nome || "—"}</td>
+                <td style="font-size:12.5px;color:#5B5F6B">{u.dono?.nome || "—"}</td>
+                <td>{fmtMoney(u.valor_compra)}</td>
+                <td style="color:#166534;font-weight:700">{Number(u.cashback_gerado) > 0 ? "+ " + fmtMoney(u.cashback_gerado) : "—"}</td>
+              </tr>
+            ))}
+            {!(usos || []).length && <tr><td colspan="6" style="text-align:center;color:#9CA3AF;padding:24px">Nenhum uso registrado</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong style="font-size:14px">Top clientes — saldo cashback</strong>
+      <div style="margin-top:12px">
+        {(cashbackTop || []).map((c: any) => (
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F3F4F6;font-size:13px">
+            <div>
+              <strong>{c.nome}</strong>
+              <div style="font-size:11px;color:#9CA3AF">{c.email}</div>
+            </div>
+            <strong style="color:#166534">{fmtMoney(c.saldo_cashback)}</strong>
+          </div>
+        ))}
+        {!(cashbackTop || []).length && <p style="color:#9CA3AF;font-size:12.5px;text-align:center;padding:14px 0;margin:0">Nenhum cliente com cashback acumulado</p>}
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal novo cupom -->
+  <div class="modal-overlay" id="modalCupom">
+    <div class="modal">
+      <div class="modal-title">Novo cupom de desconto</div>
+      <form id="formCupom">
+        <div class="form-group"><label>Código *</label><input id="cupomCodigo" required style="text-transform:uppercase" /></div>
+        <div class="form-group"><label>Descrição</label><input id="cupomDesc" /></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label>Desconto % *</label><input id="cupomDesconto" type="number" step="0.01" min="1" max="100" required /></div>
+          <div class="form-group"><label>Usos máximos (opcional)</label><input id="cupomUsos" type="number" min="1" /></div>
+        </div>
+        <div class="form-group"><label>Validade (opcional)</label><input id="cupomValidade" type="date" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fechar()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Criar cupom</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function abrirModal() {
+      document.getElementById("formCupom").reset();
+      document.getElementById("modalCupom").classList.add("open");
+    }
+    function fechar() { document.getElementById("modalCupom").classList.remove("open"); }
+    (window as any).abrirModal = abrirModal;
+    (window as any).fechar = fechar;
+
+    document.getElementById("formCupom").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        codigo: (document.getElementById("cupomCodigo") as HTMLInputElement).value.trim().toUpperCase(),
+        descricao: (document.getElementById("cupomDesc") as HTMLInputElement).value || null,
+        desconto_percentual: parseFloat((document.getElementById("cupomDesconto") as HTMLInputElement).value),
+        usos_maximos: (document.getElementById("cupomUsos") as HTMLInputElement).value ? parseInt((document.getElementById("cupomUsos") as HTMLInputElement).value) : null,
+        validade: (document.getElementById("cupomValidade") as HTMLInputElement).value || null,
+      };
+      const res = await fetch("/api/admin/cupons", { method: "POST", headers: { "content-type":"application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else { const d = await res.json(); alert(d.error || "Erro"); }
+    });
+  </script>
+</Admin>
