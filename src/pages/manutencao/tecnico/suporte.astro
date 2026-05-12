@@ -1,0 +1,116 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Suporte" tipo="tecnico" activePage="suporte">
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Tem alguma dúvida sobre como usar o sistema? Mande uma mensagem para nossa equipe.</p>
+    <button class="btn btn-primary" id="btnAbrir">+ Novo ticket</button>
+  </div>
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando...</div>
+  <div id="ticketsWrap" style="display:none"></div>
+
+  <div class="modal-bg" id="modalBg">
+    <div class="modal" style="max-width:520px">
+      <button class="modal-close" id="btnFechar">×</button>
+      <h2>Novo ticket de suporte</h2>
+      <div id="alertEl" class="alert alert-error" style="display:none"></div>
+      <div class="form-group"><label>Assunto</label><input type="text" id="assuntoInput" maxlength="120" placeholder="Ex: Erro ao salvar checklist" /></div>
+      <div class="form-group"><label>Descrição</label><textarea id="descInput" rows="6" placeholder="Descreva sua dúvida..."></textarea></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline" id="btnCancel">Cancelar</button>
+        <button class="btn btn-primary" id="btnSubmit">Enviar ticket</button>
+      </div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .ticket-card { background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg); padding:18px 20px; margin-bottom:12px; }
+  .ticket-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+  .ticket-assunto { font-family:'Montserrat',sans-serif; font-weight:700; font-size:15px; color:#2C2F36; }
+  .ticket-data { font-size:11.5px; color:#9CA3AF; }
+  .ticket-desc { font-size:13.5px; color:#5B5F6B; line-height:1.5; }
+  .ticket-resp { background:#F0FDF4; border-left:3px solid #16A34A; padding:10px 12px; border-radius:6px; margin-top:8px; font-size:13px; color:#14532D; }
+  .stk-aberto { background:#FEF3C7; color:#92400E; }
+  .stk-em_atendimento { background:#DBEAFE; color:#1E40AF; }
+  .stk-resolvido { background:#DCFCE7; color:#166534; }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_tecnico_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/tecnico/login");
+
+  function fmt(d) { return d ? new Date(d).toLocaleString("pt-BR") : "—"; }
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/tecnico/suporte", { headers: { "x-tecnico-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/tecnico/login"); return; }
+      const tickets = await res.json();
+      const wrap = document.getElementById("ticketsWrap");
+      document.getElementById("loadingState").style.display = "none";
+      wrap.style.display = "";
+      if (!tickets.length) {
+        wrap.innerHTML = `<div class="card"><div class="empty-state"><strong>Nenhum ticket</strong><p>Use "+ Novo ticket" para abrir.</p></div></div>`;
+        return;
+      }
+      wrap.innerHTML = tickets.map(t => `
+        <div class="ticket-card">
+          <div class="ticket-head">
+            <div class="ticket-assunto">${t.assunto}</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="badge stk-${t.status}">${({ aberto:'Aguardando', em_atendimento:'Em atendimento', resolvido:'Resolvido'})[t.status]||t.status}</span>
+              <span class="ticket-data">${fmt(t.created_at)}</span>
+            </div>
+          </div>
+          <div class="ticket-desc">${t.descricao}</div>
+          ${t.resposta_admin ? `<div class="ticket-resp"><strong>Resposta da equipe:</strong><br>${t.resposta_admin}</div>` : ''}
+        </div>
+      `).join("");
+    } catch {
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong></div>';
+    }
+  }
+
+  function fecharModal() { document.getElementById("modalBg").classList.remove("open"); }
+  document.getElementById("btnAbrir").onclick = () => {
+    document.getElementById("alertEl").style.display = "none";
+    document.getElementById("assuntoInput").value = "";
+    document.getElementById("descInput").value = "";
+    document.getElementById("modalBg").classList.add("open");
+  };
+  document.getElementById("btnCancel").onclick = fecharModal;
+  document.getElementById("btnFechar").onclick = fecharModal;
+
+  document.getElementById("btnSubmit").addEventListener("click", async () => {
+    const alertEl = document.getElementById("alertEl");
+    alertEl.style.display = "none";
+    const assunto = document.getElementById("assuntoInput").value.trim();
+    const descricao = document.getElementById("descInput").value.trim();
+    if (!assunto) { alertEl.textContent = "Informe o assunto."; alertEl.style.display = ""; return; }
+    if (!descricao) { alertEl.textContent = "Descreva sua dúvida."; alertEl.style.display = ""; return; }
+    const btn = document.getElementById("btnSubmit");
+    btn.disabled = true; btn.textContent = "Enviando...";
+    try {
+      const res = await fetch("/api/manut/tecnico/suporte", {
+        method: "POST",
+        headers: { "content-type":"application/json","x-tecnico-auth":token },
+        body: JSON.stringify({ assunto, descricao })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao enviar");
+      fecharModal();
+      window.toast?.("Ticket enviado!", "success");
+      load();
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Enviar ticket";
+    }
+  });
+
+  load();
+  window.addEventListener("portal:refresh", load);
+</script>

@@ -7,8 +7,15 @@ export const prerender = false;
 export const PUT: APIRoute = async ({ request, params }) => {
   try {
     const claims = await requireTecnico(request);
-    const { status, observacao } = await request.json();
-    return jsonOk(await atualizarStatusChamado({ chamadoId: params.id!, tecnicoId: claims.sub, status, observacao }));
+    const { status, observacao, motivoPendencia, fotosEvidencia } = await request.json();
+    return jsonOk(await atualizarStatusChamado({
+      chamadoId: params.id!,
+      tecnicoId: claims.sub,
+      status,
+      observacao,
+      motivoPendencia,
+      fotosEvidencia,
+    }));
   } catch (e: any) {
     return jsonErr(400, e.message);
   }

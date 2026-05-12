@@ -3,42 +3,136 @@ import Portal from "~/layouts/Portal.astro";
 export const prerender = false;
 ---
 <Portal title="Chamados" tipo="tecnico" activePage="chamados">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-    <p style="margin:0;font-size:14px;color:#5B5F6B">Chamados das lojas que você atende e atribuídos diretamente a você.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <select id="filtroLoja" class="form-group" style="padding:7px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12.5px;font-family:'Open Sans',sans-serif">
-        <option value="">Todas as lojas</option>
-      </select>
-      <button class="btn btn-outline btn-sm filtro-tec active" data-status="">Todos</button>
-      <button class="btn btn-outline btn-sm filtro-tec" data-status="aberto">Abertos</button>
-      <button class="btn btn-outline btn-sm filtro-tec" data-status="em_andamento">Em andamento</button>
-      <button class="btn btn-outline btn-sm filtro-tec" data-status="aguardando_material">Aguard. material</button>
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Chamados das lojas que você atende e atribuídos diretamente a você.</p>
+  </div>
+
+  <div class="cham-filters">
+    <div class="cham-pills">
+      <button class="cham-pill active" data-status="">Todos</button>
+      <button class="cham-pill" data-status="aberto">Abertos <span id="cnt-aberto" class="cnt">0</span></button>
+      <button class="cham-pill" data-status="em_andamento">Em andamento <span id="cnt-em_andamento" class="cnt">0</span></button>
+      <button class="cham-pill" data-status="aguardando_material">Aguard. material <span id="cnt-aguardando_material" class="cnt">0</span></button>
+      <button class="cham-pill" data-status="concluido">Concluídos <span id="cnt-concluido" class="cnt">0</span></button>
+    </div>
+    <div class="cham-tools">
+      <select id="filtroLoja"><option value="">Todas as lojas</option></select>
+      <div class="cham-search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="busca" placeholder="Buscar..." />
+      </div>
     </div>
   </div>
 
   <div id="loadingState" class="loading"><div class="spinner"></div>Carregando chamados...</div>
   <div id="chamadosWrap" style="display:none"></div>
-  <div id="emptyMsg" style="display:none" class="card" style="text-align:center;padding:40px;color:#9CA3AF">
-    Nenhum chamado encontrado com este filtro.
+
+  <!-- Modal detalhes / baixa -->
+  <div class="modal-bg" id="modalCham">
+    <div class="modal" style="max-width:620px">
+      <button class="modal-close" id="btnFecharCham">×</button>
+      <h2 id="chamTitle">Chamado</h2>
+      <div id="chamBody"></div>
+
+      <!-- Ações de status -->
+      <div id="acoesStatus" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"></div>
+
+      <!-- Conclusão -->
+      <div id="boxConcluir" style="display:none;margin-top:18px;border-top:1px solid #E5E7EB;padding-top:16px">
+        <h3 style="margin:0 0 10px;font-size:14px;color:#15803D">✓ Concluir chamado</h3>
+        <div class="form-group">
+          <label>Observação da conclusão</label>
+          <textarea id="obsConcluir" placeholder="O que foi feito? (peças trocadas, ajustes, etc)" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Fotos de evidência</label>
+          <div id="fotosPreview" class="fotos-grid"></div>
+          <label for="fotoInput" class="upload-box">
+            <span style="font-size:22px">📷</span>
+            <span><strong>Adicionar foto</strong> — JPG, PNG ou WEBP (máx 8MB)</span>
+          </label>
+          <input type="file" id="fotoInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+          <div id="fotoStatus" style="font-size:11.5px;color:var(--ink-light);margin-top:6px"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="fecharBoxConcluir()">Cancelar</button>
+          <button class="btn btn-primary" id="btnConfConcluir">Confirmar conclusão</button>
+        </div>
+      </div>
+
+      <!-- Pendência -->
+      <div id="boxPendencia" style="display:none;margin-top:18px;border-top:1px solid #E5E7EB;padding-top:16px">
+        <h3 style="margin:0 0 10px;font-size:14px;color:#92400E">⏸ Marcar como pendente / aguardando material</h3>
+        <div class="form-group">
+          <label>Motivo da pendência</label>
+          <textarea id="motivoPend" placeholder="Por que o atendimento está pendente?" rows="3"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="fecharBoxPendencia()">Cancelar</button>
+          <button class="btn btn-primary" id="btnConfPend">Registrar pendência</button>
+        </div>
+      </div>
+    </div>
   </div>
 </Portal>
 
 <style>
-  .filtro-tec.active { background: #C41E3A; color: #fff; border-color: #C41E3A; }
-  .chamado-card {
-    background: #fff; border: 1px solid #E5E7EB; border-radius: 10px;
-    padding: 20px 24px; margin-bottom: 14px;
+  .cham-filters {
+    display:flex; gap:12px; justify-content:space-between; align-items:center;
+    flex-wrap:wrap; margin-bottom:16px;
   }
-  .chamado-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-  .chamado-title { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; }
-  .chamado-meta { font-size: 13px; color: #5B5F6B; margin-bottom: 8px; }
-  .chamado-desc { font-size: 14px; margin-bottom: 14px; color: #2D2F36; }
-  .chamado-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .tipo-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-  .tipo-eletrica { background: #EFF6FF; color: #1D4ED8; }
-  .tipo-hidraulica { background: #F0FDF4; color: #15803D; }
-  .tipo-civil { background: #FFF7ED; color: #C2410C; }
-  .badge-atribuido-mim { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; padding: 2px 8px; border-radius: 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
+  .cham-pills { display:flex; gap:6px; flex-wrap:wrap; }
+  .cham-pill {
+    background:#FFF; border:1px solid var(--border); border-radius:99px;
+    padding:7px 14px; font-size:12.5px; font-weight:600; color:#5B5F6B;
+    cursor:pointer; transition:.15s; display:inline-flex; align-items:center; gap:6px;
+  }
+  .cham-pill:hover { border-color:#C41E3A; color:#C41E3A; }
+  .cham-pill.active { background:#C41E3A; color:#FFF; border-color:#C41E3A; }
+  .cnt { background:rgba(0,0,0,.1); font-size:10.5px; padding:1px 7px; border-radius:99px; font-weight:700; }
+  .cham-pill.active .cnt { background:rgba(255,255,255,.25); }
+  .cham-tools { display:flex; gap:8px; align-items:center; }
+  .cham-tools select { padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; background:#FFF; }
+  .cham-search { position:relative; min-width:200px; }
+  .cham-search svg { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#9CA3AF; }
+  .cham-search input { width:100%; padding:8px 12px 8px 32px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; outline:none; }
+
+  .cham-table-wrap { background:#FFF; border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; }
+  .cham-table { width:100%; border-collapse:collapse; }
+  .cham-table thead th {
+    background:#F9FAFB; padding:11px 14px; text-align:left;
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+    color:#6B7280; border-bottom:1px solid var(--border);
+  }
+  .cham-table tbody td {
+    padding:14px; font-size:13px; border-bottom:1px solid #F3F4F6; vertical-align:middle;
+  }
+  .cham-table tbody tr:last-child td { border-bottom:none; }
+  .cham-table tbody tr { cursor:pointer; transition:.1s; }
+  .cham-table tbody tr:hover { background:#FAFBFC; }
+  .cham-empty { padding:40px 20px; text-align:center; color:#9CA3AF; font-size:13.5px; }
+  .tipo-badge { display:inline-block; padding:3px 9px; border-radius:5px; font-size:10.5px; font-weight:700; text-transform:uppercase; }
+  .tipo-eletrica { background:#EFF6FF; color:#1D4ED8; }
+  .tipo-hidraulica { background:#F0FDF4; color:#15803D; }
+  .tipo-civil { background:#FFF7ED; color:#C2410C; }
+  .badge-atribuido-mim { background:#FEF2F2; color:#B91C1C; padding:2px 7px; border-radius:99px; font-size:10px; font-weight:700; }
+  .pill-tipo-cham { font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:99px; text-transform:uppercase; }
+  .pill-extra { background:#F3F4F6; color:#5B5F6B; }
+  .pill-emerg { background:#FEE2E2; color:#C41E3A; }
+  .fotos-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:6px; margin-bottom:8px; }
+  .foto-thumb { position:relative; width:100%; aspect-ratio:1; border-radius:6px; overflow:hidden; border:1px solid var(--border); }
+  .foto-thumb img { width:100%; height:100%; object-fit:cover; }
+  .upload-box {
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:14px; border:2px dashed var(--border); border-radius:8px;
+    background:#FAFBFC; cursor:pointer; transition:.15s;
+    font-size:13px; color:var(--ink-mid);
+  }
+  .upload-box:hover { border-color:#C41E3A; color:#C41E3A; }
+  @media (max-width:760px) {
+    .cham-hide-mobile { display:none; }
+    .cham-table thead th, .cham-table tbody td { padding:10px 8px; font-size:12px; }
+  }
 </style>
 
 <script>
@@ -46,7 +140,6 @@ export const prerender = false;
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) window.location.replace("/manutencao/tecnico/login");
 
-  // Obriga troca de senha
   try {
     const u = JSON.parse(localStorage.getItem(TOKEN_KEY + "_user") || "{}");
     if (u.senha_troca_obrigatoria) window.location.replace("/manutencao/tecnico/trocar-senha");
@@ -56,89 +149,255 @@ export const prerender = false;
   let meuId = "";
   let filtroStatus = "";
   let filtroLoja = "";
+  let buscaTexto = "";
+  let chamadoAtivo = null;
 
   function badge(status) {
-    const labels = { aberto: "Aberto", em_andamento: "Em andamento", aguardando_material: "Aguard. material", concluido: "Concluído" };
+    const labels = { aberto:"Aberto", em_andamento:"Em andamento", aguardando_material:"Aguard. material", concluido:"Concluído", cancelado:"Cancelado" };
     return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
   }
   function tipoBadge(tipo) { return `<span class="tipo-badge tipo-${tipo}">${tipo}</span>`; }
   function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
 
-  function renderChamados() {
-    const wrap = document.getElementById("chamadosWrap");
-    const empty = document.getElementById("emptyMsg");
-    let filtered = allChamados;
-    if (filtroStatus) filtered = filtered.filter(c => c.status === filtroStatus);
-    if (filtroLoja) filtered = filtered.filter(c => c.loja_id === filtroLoja);
-    if (!filtered.length) {
-      wrap.innerHTML = ""; wrap.style.display = "none"; empty.style.display = "";
-    } else {
-      empty.style.display = "none"; wrap.style.display = "";
-      wrap.innerHTML = filtered.map(c => `
-        <div class="chamado-card" id="card-${c.id}">
-          <div class="chamado-header">
-            <div>
-              <div class="chamado-title">${c.manut_lojas?.nome || "—"} ${c.local_loja ? "· " + c.local_loja : ""}</div>
-              <div class="chamado-meta">
-                ${tipoBadge(c.tipo)} &nbsp; ${badge(c.status)} &nbsp;
-                ${c.tecnico_atribuido_id === meuId ? '<span class="badge-atribuido-mim">Atribuído a mim</span> &nbsp;' : ""}
-                Aberto em ${fmtDate(c.data_abertura)}
-              </div>
-              <div style="font-size:12px;color:#9CA3AF">👤 ${c.manut_clientes?.nome || "—"} · 📍 ${c.manut_lojas?.endereco || ""} ${c.manut_lojas?.cidade || ""}</div>
-            </div>
-          </div>
-          <div class="chamado-desc">${c.descricao}</div>
-          <div class="chamado-actions" id="actions-${c.id}">
-            ${c.tecnico_atribuido_id === meuId ? `
-              ${c.status === "aberto" ? `<button class="btn btn-primary btn-sm" onclick="atualizarStatus('${c.id}','em_andamento')">Iniciar atendimento</button>` : ""}
-              ${c.status === "em_andamento" ? `
-                <button class="btn btn-outline btn-sm" onclick="atualizarStatus('${c.id}','aguardando_material')">Aguardando material</button>
-                <button class="btn btn-primary btn-sm" onclick="atualizarStatus('${c.id}','concluido')">Marcar concluído</button>
-              ` : ""}
-              ${c.status === "aguardando_material" ? `
-                <button class="btn btn-primary btn-sm" onclick="atualizarStatus('${c.id}','em_andamento')">Retomar atendimento</button>
-                <button class="btn btn-outline btn-sm" onclick="atualizarStatus('${c.id}','concluido')">Marcar concluído</button>
-              ` : ""}
-            ` : '<span style="font-size:12px;color:#9CA3AF;font-style:italic">Chamado da sua loja — aguardando atribuição</span>'}
-          </div>
-        </div>
-      `).join("");
+  function aplicarFiltros() {
+    let l = allChamados;
+    if (filtroStatus) l = l.filter(c => c.status === filtroStatus);
+    if (filtroLoja) l = l.filter(c => c.loja_id === filtroLoja);
+    if (buscaTexto) {
+      const q = buscaTexto.toLowerCase();
+      l = l.filter(c =>
+        (c.descricao || "").toLowerCase().includes(q) ||
+        (c.manut_lojas?.nome || "").toLowerCase().includes(q) ||
+        (c.local_loja || "").toLowerCase().includes(q)
+      );
+    }
+    return l;
+  }
+
+  function atualizarContadores() {
+    const counts = { aberto:0, em_andamento:0, aguardando_material:0, concluido:0 };
+    allChamados.forEach(c => { if (counts[c.status] !== undefined) counts[c.status]++; });
+    for (const k in counts) {
+      const el = document.getElementById("cnt-" + k);
+      if (el) el.textContent = counts[k];
     }
   }
 
-  async function atualizarStatus(id, status) {
-    const actEl = document.getElementById("actions-" + id);
-    if (actEl) actEl.innerHTML = '<span style="font-size:13px;color:#6B7280">Atualizando...</span>';
+  function renderChamados() {
+    atualizarContadores();
+    const wrap = document.getElementById("chamadosWrap");
+    const lista = aplicarFiltros();
+    if (!lista.length) {
+      wrap.innerHTML = `<div class="cham-table-wrap"><div class="cham-empty">Nenhum chamado encontrado.</div></div>`;
+      return;
+    }
+    const rows = lista.map(c => {
+      const isMeu = c.tecnico_atribuido_id === meuId;
+      const tc = c.tipo_chamado || "normal";
+      let pillTipo = "";
+      if (tc === "extra") pillTipo = `<span class="pill-tipo-cham pill-extra">EXTRA 48h</span>`;
+      else if (tc === "emergencial") pillTipo = `<span class="pill-tipo-cham pill-emerg">⚡ 24h</span>`;
+      return `
+      <tr data-id="${c.id}">
+        <td>${tipoBadge(c.tipo)} ${pillTipo}</td>
+        <td>
+          <strong>${c.manut_lojas?.nome || "—"}</strong>${c.local_loja ? ` <span style="color:#9CA3AF">· ${c.local_loja}</span>` : ""}
+          <div style="font-size:11.5px;color:#9CA3AF;margin-top:2px" class="cham-hide-mobile">${c.manut_clientes?.nome || ""}</div>
+        </td>
+        <td class="cham-hide-mobile" style="max-width:240px;color:#5B5F6B;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.descricao}</td>
+        <td>${badge(c.status)}${isMeu ? ' <span class="badge-atribuido-mim">SEU</span>' : ""}</td>
+        <td class="cham-hide-mobile" style="color:#9CA3AF;font-size:12px;white-space:nowrap">${fmtDate(c.data_abertura)}</td>
+        <td style="text-align:right"><button class="btn btn-outline btn-sm">Abrir</button></td>
+      </tr>`;
+    }).join("");
+    wrap.innerHTML = `
+      <div class="cham-table-wrap">
+        <table class="cham-table">
+          <thead>
+            <tr>
+              <th>Tipo</th><th>Loja</th>
+              <th class="cham-hide-mobile">Descrição</th>
+              <th>Status</th>
+              <th class="cham-hide-mobile">Aberto</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+    wrap.querySelectorAll("tbody tr").forEach(tr => {
+      tr.addEventListener("click", () => abrirChamado(tr.dataset.id));
+    });
+  }
+
+  function abrirChamado(id) {
+    chamadoAtivo = allChamados.find(c => c.id === id);
+    if (!chamadoAtivo) return;
+    const c = chamadoAtivo;
+    const isMeu = c.tecnico_atribuido_id === meuId;
+
+    document.getElementById("chamTitle").textContent = `${c.manut_lojas?.nome || "Chamado"}${c.local_loja ? " · " + c.local_loja : ""}`;
+    document.getElementById("chamBody").innerHTML = `
+      <div style="margin-bottom:10px">${tipoBadge(c.tipo)} ${badge(c.status)}</div>
+      <div style="background:#F9FAFB;border-radius:8px;padding:14px;margin-bottom:12px">
+        <div style="font-size:13px;color:#2D2F36;margin-bottom:8px"><strong>Descrição:</strong> ${c.descricao}</div>
+        <div style="font-size:12.5px;color:#5B5F6B">👤 ${c.manut_clientes?.nome || "—"} · 📍 ${[c.manut_lojas?.endereco, c.manut_lojas?.cidade].filter(Boolean).join(", ")}</div>
+        <div style="font-size:12px;color:#9CA3AF;margin-top:4px">Aberto em ${fmtDate(c.data_abertura)}</div>
+        ${c.motivo_pendencia ? `<div style="margin-top:8px;padding:8px;background:#FEF3C7;border-radius:6px;font-size:12.5px;color:#92400E"><strong>⏸ Pendência:</strong> ${c.motivo_pendencia}</div>` : ""}
+        ${c.observacao_conclusao ? `<div style="margin-top:8px;padding:8px;background:#F0FDF4;border-radius:6px;font-size:12.5px;color:#15803D"><strong>✓ Conclusão:</strong> ${c.observacao_conclusao}</div>` : ""}
+        ${c.fotos_evidencia?.length ? `<div style="margin-top:8px"><strong style="font-size:11.5px;color:#5B5F6B">Evidências:</strong><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${c.fotos_evidencia.map(u => `<a href="${u}" target="_blank"><img src="${u}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #E5E7EB"/></a>`).join("")}</div></div>` : ""}
+      </div>
+    `;
+
+    const acoes = document.getElementById("acoesStatus");
+    if (!isMeu) {
+      acoes.innerHTML = '<span style="font-size:12.5px;color:#9CA3AF;font-style:italic">Chamado da sua loja — aguardando atribuição pela administração.</span>';
+    } else {
+      let html = "";
+      if (c.status === "aberto") html += `<button class="btn btn-primary btn-sm" onclick="acao('em_andamento')">Iniciar atendimento</button>`;
+      if (c.status === "em_andamento" || c.status === "aguardando_material") {
+        if (c.status === "aguardando_material") html += `<button class="btn btn-outline btn-sm" onclick="acao('em_andamento')">Retomar atendimento</button>`;
+        else html += `<button class="btn btn-outline btn-sm" onclick="abrirBoxPendencia()">Marcar pendente</button>`;
+        html += `<button class="btn btn-primary btn-sm" onclick="abrirBoxConcluir()" style="background:#15803D;border-color:#15803D">✓ Concluir chamado</button>`;
+      }
+      acoes.innerHTML = html;
+    }
+
+    document.getElementById("boxConcluir").style.display = "none";
+    document.getElementById("boxPendencia").style.display = "none";
+    document.getElementById("obsConcluir").value = "";
+    document.getElementById("motivoPend").value = "";
+    document.getElementById("fotosPreview").innerHTML = "";
+    fotosAnexadas = [];
+
+    document.getElementById("modalCham").classList.add("open");
+  }
+
+  function fecharModal() {
+    document.getElementById("modalCham").classList.remove("open");
+    chamadoAtivo = null;
+  }
+  document.getElementById("btnFecharCham").onclick = fecharModal;
+
+  async function acao(novoStatus) {
+    if (!chamadoAtivo) return;
     try {
-      const res = await fetch(`/api/manut/tecnico/chamados/${id}`, {
+      const res = await fetch(`/api/manut/tecnico/chamados/${chamadoAtivo.id}`, {
         method: "PUT",
-        headers: { "content-type": "application/json", "x-tecnico-auth": token },
-        body: JSON.stringify({ status })
+        headers: { "content-type":"application/json","x-tecnico-auth":token },
+        body: JSON.stringify({ status: novoStatus })
       });
       if (!res.ok) throw new Error((await res.json()).error);
-      const updated = await res.json();
-      const idx = allChamados.findIndex(c => c.id === id);
-      if (idx >= 0) allChamados[idx] = { ...allChamados[idx], ...updated };
+      const u = await res.json();
+      const idx = allChamados.findIndex(c => c.id === chamadoAtivo.id);
+      if (idx >= 0) allChamados[idx] = { ...allChamados[idx], ...u };
+      chamadoAtivo = allChamados[idx];
       renderChamados();
-    } catch (err) {
-      if (actEl) actEl.innerHTML = `<span style="color:#B91C1C;font-size:13px">Erro: ${err.message}</span>`;
-    }
+      abrirChamado(chamadoAtivo.id);
+    } catch (e) { window.toast?.("Erro: " + e.message, "error"); }
   }
-  (window as any).atualizarStatus = atualizarStatus;
 
-  document.querySelectorAll(".filtro-tec").forEach(btn => {
+  function abrirBoxConcluir() { document.getElementById("boxConcluir").style.display = ""; document.getElementById("boxPendencia").style.display = "none"; }
+  function abrirBoxPendencia() { document.getElementById("boxPendencia").style.display = ""; document.getElementById("boxConcluir").style.display = "none"; }
+  function fecharBoxConcluir() { document.getElementById("boxConcluir").style.display = "none"; }
+  function fecharBoxPendencia() { document.getElementById("boxPendencia").style.display = "none"; }
+
+  // Upload de fotos de evidência
+  let fotosAnexadas = [];
+
+  async function blobToBase64(file) {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let s = ""; const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    return btoa(s);
+  }
+
+  document.getElementById("fotoInput").addEventListener("change", async (e) => {
+    const file = e.target.files?.[0]; if (!file || !chamadoAtivo) return;
+    if (file.size > 8 * 1024 * 1024) { document.getElementById("fotoStatus").innerHTML = '<span style="color:#B91C1C">⚠ Arquivo grande demais (máx 8MB)</span>'; return; }
+    document.getElementById("fotoStatus").textContent = "Enviando...";
+    try {
+      const data_base64 = await blobToBase64(file);
+      const res = await fetch(`/api/manut/tecnico/chamados/${chamadoAtivo.id}/evidencia`, {
+        method: "POST",
+        headers: { "content-type":"application/json","x-tecnico-auth":token },
+        body: JSON.stringify({ mime: file.type, data_base64 })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Falha");
+      fotosAnexadas = d.fotos;
+      const preview = document.getElementById("fotosPreview");
+      preview.innerHTML = (d.fotos || []).map(u => `<div class="foto-thumb"><img src="${u}"></div>`).join("");
+      document.getElementById("fotoStatus").textContent = "";
+      e.target.value = "";
+    } catch (err) {
+      document.getElementById("fotoStatus").innerHTML = `<span style="color:#B91C1C">⚠ ${err.message}</span>`;
+    }
+  });
+
+  document.getElementById("btnConfConcluir").onclick = async () => {
+    if (!chamadoAtivo) return;
+    const obs = document.getElementById("obsConcluir").value.trim();
+    const btn = document.getElementById("btnConfConcluir");
+    btn.disabled = true; btn.textContent = "Concluindo...";
+    try {
+      const res = await fetch(`/api/manut/tecnico/chamados/${chamadoAtivo.id}`, {
+        method: "PUT",
+        headers: { "content-type":"application/json","x-tecnico-auth":token },
+        body: JSON.stringify({ status:"concluido", observacao: obs, fotosEvidencia: fotosAnexadas })
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const u = await res.json();
+      const idx = allChamados.findIndex(c => c.id === chamadoAtivo.id);
+      if (idx >= 0) allChamados[idx] = { ...allChamados[idx], ...u };
+      fecharModal();
+      renderChamados();
+      window.toast?.("Chamado concluído!", "success");
+    } catch (e) { window.toast?.("Erro: " + e.message, "error"); }
+    finally { btn.disabled = false; btn.textContent = "Confirmar conclusão"; }
+  };
+
+  document.getElementById("btnConfPend").onclick = async () => {
+    if (!chamadoAtivo) return;
+    const motivo = document.getElementById("motivoPend").value.trim();
+    if (!motivo) { window.toast?.("Informe o motivo.", "error"); return; }
+    const btn = document.getElementById("btnConfPend");
+    btn.disabled = true; btn.textContent = "Registrando...";
+    try {
+      const res = await fetch(`/api/manut/tecnico/chamados/${chamadoAtivo.id}`, {
+        method: "PUT",
+        headers: { "content-type":"application/json","x-tecnico-auth":token },
+        body: JSON.stringify({ status:"aguardando_material", motivoPendencia: motivo })
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const u = await res.json();
+      const idx = allChamados.findIndex(c => c.id === chamadoAtivo.id);
+      if (idx >= 0) allChamados[idx] = { ...allChamados[idx], ...u };
+      fecharModal();
+      renderChamados();
+      window.toast?.("Pendência registrada.", "info");
+    } catch (e) { window.toast?.("Erro: " + e.message, "error"); }
+    finally { btn.disabled = false; btn.textContent = "Registrar pendência"; }
+  };
+
+  document.querySelectorAll(".cham-pill").forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".filtro-tec").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".cham-pill").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       filtroStatus = btn.dataset.status;
       renderChamados();
     });
   });
+  document.getElementById("filtroLoja").addEventListener("change", (e) => { filtroLoja = e.target.value; renderChamados(); });
+  document.getElementById("busca").addEventListener("input", (e) => { buscaTexto = e.target.value.trim(); renderChamados(); });
 
-  document.getElementById("filtroLoja").addEventListener("change", (e) => {
-    filtroLoja = e.target.value;
-    renderChamados();
-  });
+  (window).abrirBoxConcluir = abrirBoxConcluir;
+  (window).abrirBoxPendencia = abrirBoxPendencia;
+  (window).fecharBoxConcluir = fecharBoxConcluir;
+  (window).fecharBoxPendencia = fecharBoxPendencia;
+  (window).acao = acao;
 
   async function load() {
     try {
@@ -152,20 +411,17 @@ export const prerender = false;
       const { tecnico } = await resMe.json();
       meuId = tecnico.id;
       allChamados = await resChamados.json();
-
-      // Popula filtro de lojas com as que o tecnico atende
       const sel = document.getElementById("filtroLoja");
       (tecnico.lojas || []).forEach(l => {
         const opt = document.createElement("option");
-        opt.value = l.id;
-        opt.textContent = `${l.nome} (${l.manut_clientes?.nome || "—"})`;
+        opt.value = l.id; opt.textContent = `${l.nome} (${l.manut_clientes?.nome || "—"})`;
         sel.appendChild(opt);
       });
-
       document.getElementById("loadingState").style.display = "none";
+      document.getElementById("chamadosWrap").style.display = "";
       renderChamados();
     } catch {
-      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong></div>';
     }
   }
   load();

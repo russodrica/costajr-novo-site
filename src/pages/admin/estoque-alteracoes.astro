@@ -1,0 +1,120 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+---
+<Admin title="Alterações de preço (estoque)" current="estoque-alteracoes">
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Pedidos de alteração de preço enviados pelos técnicos. Aprovar aplica o novo valor no estoque da loja.</p>
+    <div style="display:flex;gap:6px">
+      <button class="ea-pill active" data-status="pendente">Pendentes</button>
+      <button class="ea-pill" data-status="aprovada">Aprovadas</button>
+      <button class="ea-pill" data-status="rejeitada">Rejeitadas</button>
+    </div>
+  </div>
+
+  <div id="loading" class="loading"><div class="spinner"></div>Carregando...</div>
+  <div id="content" style="display:none"></div>
+</Admin>
+
+<style>
+  .ea-pill {
+    background:#FFF; border:1px solid #E5E7EB; border-radius:99px;
+    padding:7px 14px; font-size:12.5px; font-weight:600; color:#5B5F6B; cursor:pointer; transition:.15s;
+  }
+  .ea-pill:hover { border-color:#C41E3A; color:#C41E3A; }
+  .ea-pill.active { background:#C41E3A; color:#FFF; border-color:#C41E3A; }
+  .ea-table { width:100%; border-collapse:collapse; }
+  .ea-table th { background:#F9FAFB; padding:11px 14px; text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; color:#6B7280; border-bottom:1px solid #E5E7EB; }
+  .ea-table td { padding:14px; font-size:13px; border-bottom:1px solid #F3F4F6; }
+  .delta-up { color:#C41E3A; }
+  .delta-down { color:#16A34A; }
+</style>
+
+<script>
+  let filtro = "pendente";
+
+  function fmtMoney(v) { return v == null ? "—" : "R$ " + Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2}); }
+  function fmtDate(d) { return d ? new Date(d).toLocaleString("pt-BR") : "—"; }
+
+  async function load() {
+    document.getElementById("loading").style.display = "";
+    document.getElementById("content").style.display = "none";
+    const res = await fetch(`/api/manut/admin/estoque-alteracoes?status=${filtro}`);
+    const data = await res.json();
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("content").style.display = "";
+
+    if (!data?.length) {
+      document.getElementById("content").innerHTML = `<div class="card"><div class="empty-state"><strong>Nada por aqui</strong><p>Nenhuma alteração no filtro "${filtro}".</p></div></div>`;
+      return;
+    }
+    const rows = data.map(a => {
+      const ant = Number(a.preco_anterior || 0);
+      const nov = Number(a.preco_novo || 0);
+      const delta = ant > 0 ? ((nov - ant) / ant) * 100 : 0;
+      const item = a.manut_estoque;
+      const loja = item?.manut_lojas;
+      const cli = loja?.manut_clientes;
+      return `
+        <tr>
+          <td>
+            <strong>${item?.nome || "—"}</strong>
+            <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${cli?.nome || ""} · ${loja?.nome || ""}</div>
+          </td>
+          <td>${a.manut_tecnicos?.nome || "—"}<div style="font-size:11px;color:#9CA3AF">${a.manut_tecnicos?.email || ""}</div></td>
+          <td>${fmtMoney(a.preco_anterior)}</td>
+          <td><strong>${fmtMoney(a.preco_novo)}</strong></td>
+          <td class="${delta > 0 ? 'delta-up' : 'delta-down'}">${ant > 0 ? (delta > 0 ? "+" : "") + delta.toFixed(1) + "%" : "—"}</td>
+          <td style="font-size:12px;color:#5B5F6B">${a.motivo || "—"}</td>
+          <td style="font-size:11.5px;color:#9CA3AF">${fmtDate(a.created_at)}</td>
+          <td style="text-align:right;white-space:nowrap">
+            ${a.status === "pendente" ? `
+              <button class="btn btn-primary btn-sm" onclick="decidir('${a.id}','aprovar')">Aprovar</button>
+              <button class="btn btn-outline btn-sm" style="color:#B91C1C;border-color:#B91C1C" onclick="decidir('${a.id}','rejeitar')">Rejeitar</button>
+            ` : `<span class="badge" style="background:${a.status === 'aprovada' ? '#DCFCE7' : '#FEE2E2'};color:${a.status === 'aprovada' ? '#166534' : '#B91C1C'};padding:3px 8px;border-radius:99px;font-size:11px;font-weight:700">${a.status.toUpperCase()}</span>`}
+          </td>
+        </tr>
+      `;
+    }).join("");
+    document.getElementById("content").innerHTML = `
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="overflow-x:auto">
+          <table class="ea-table">
+            <thead>
+              <tr><th>Item / Loja</th><th>Técnico</th><th>Preço antigo</th><th>Preço novo</th><th>Δ</th><th>Motivo</th><th>Solicitado</th><th></th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  async function decidir(id, acao) {
+    let resposta = null;
+    if (acao === "rejeitar") {
+      resposta = prompt("Resposta ao técnico (opcional):") || null;
+    }
+    const res = await fetch("/api/manut/admin/estoque-alteracoes", {
+      method: "POST",
+      headers: { "content-type":"application/json" },
+      body: JSON.stringify({ id, acao, resposta }),
+    });
+    if (!res.ok) { const d = await res.json(); alert(d.error); return; }
+    load();
+  }
+
+  (window).decidir = decidir;
+  document.querySelectorAll(".ea-pill").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll(".ea-pill").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    filtro = b.dataset.status;
+    load();
+  }));
+  load();
+</script>

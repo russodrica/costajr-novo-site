@@ -151,9 +151,18 @@ export async function atualizarStatusChamado(args: {
   chamadoId: string; tecnicoId: string;
   status: "em_andamento"|"aguardando_material"|"concluido";
   observacao?: string;
+  motivoPendencia?: string;
+  fotosEvidencia?: string[];
 }) {
   const updates: any = { status: args.status };
-  if (args.status === "concluido") updates.data_conclusao = new Date().toISOString();
+  if (args.status === "concluido") {
+    updates.data_conclusao = new Date().toISOString();
+    if (args.observacao) updates.observacao_conclusao = args.observacao;
+    if (args.fotosEvidencia?.length) updates.fotos_evidencia = args.fotosEvidencia;
+  }
+  if (args.status === "aguardando_material" && args.motivoPendencia) {
+    updates.motivo_pendencia = args.motivoPendencia;
+  }
   const { data, error } = await db()
     .from("manut_chamados")
     .update(updates)
@@ -163,6 +172,42 @@ export async function atualizarStatusChamado(args: {
     .single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Upload de foto de evidência para o bucket "chamados"
+export async function uploadFotoEvidencia(args: {
+  chamadoId: string;
+  tecnicoId: string;
+  mime: string;
+  dataBase64: string;
+}) {
+  // Valida chamado pertence ao técnico
+  const { data: c } = await db()
+    .from("manut_chamados")
+    .select("id,tecnico_atribuido_id,fotos_evidencia")
+    .eq("id", args.chamadoId)
+    .maybeSingle();
+  if (!c || c.tecnico_atribuido_id !== args.tecnicoId) throw new Error("Chamado não encontrado ou não atribuído a você");
+
+  const ext = (args.mime.split("/")[1] || "jpg").replace("jpeg", "jpg");
+  const path = `${args.chamadoId}/${Date.now()}.${ext}`;
+  const buf = Buffer.from(args.dataBase64, "base64");
+
+  const { error: upErr } = await db()
+    .storage.from("chamados")
+    .upload(path, buf, { contentType: args.mime, upsert: false });
+  if (upErr) throw new Error("Falha no upload: " + upErr.message);
+
+  const { data: pub } = db().storage.from("chamados").getPublicUrl(path);
+  const url = pub.publicUrl;
+  const fotos = [...(c.fotos_evidencia || []), url];
+
+  await db()
+    .from("manut_chamados")
+    .update({ fotos_evidencia: fotos })
+    .eq("id", args.chamadoId);
+
+  return { url, fotos };
 }
 
 // ─── Admin ─────────────────────────────────────────────────────────────────

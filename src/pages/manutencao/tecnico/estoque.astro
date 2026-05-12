@@ -235,13 +235,15 @@ export const prerender = false;
       inp._saving = true;
       const valor = inp.value.trim();
       const preco = valor === "" ? null : parseFloat(valor);
+      const motivo = prompt("Motivo da alteração de preço (opcional, ajuda a equipe a aprovar mais rápido):") || "";
       try {
         const res = await api(`/api/manut/tecnico/estoque/itens/${itemId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ preco_unitario: preco }),
+          body: JSON.stringify({ preco_unitario: preco, motivo }),
         });
         if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Falha"); }
+        window.toast?.("Alteração enviada para aprovação do admin.", "info");
         await load();
       } catch (err) {
         alert("Erro: " + err.message);

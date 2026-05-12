@@ -7,6 +7,27 @@ export const prerender = false;
   <div id="content" style="display:none">
     <div class="stats-grid" id="statsGrid"></div>
 
+    <!-- Calendário do mês com eventos -->
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0">Seu mês</h3>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-outline btn-sm" id="calPrev">‹</button>
+          <strong id="calTitulo" style="min-width:160px;text-align:center;font-family:'Montserrat',sans-serif"></strong>
+          <button class="btn btn-outline btn-sm" id="calNext">›</button>
+        </div>
+      </div>
+      <div class="cal-legenda">
+        <span><span class="cal-dot cal-dot-prev"></span> Preventiva</span>
+        <span><span class="cal-dot cal-dot-cham"></span> Chamado em aberto</span>
+        <span><span class="cal-dot cal-dot-emerg"></span> Emergencial</span>
+      </div>
+      <div class="cal-grid-head">
+        <div>D</div><div>S</div><div>T</div><div>Q</div><div>Q</div><div>S</div><div>S</div>
+      </div>
+      <div id="calGrid" class="cal-grid"></div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px" class="dash-grid">
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -44,6 +65,48 @@ export const prerender = false;
   .prev-row:last-child, .cham-row:last-child { border-bottom: 0; }
   .empty-line { color: var(--ink-light); padding: 12px 0; font-size: 13px; }
   @media (max-width: 760px) { .dash-grid { grid-template-columns: 1fr !important; } }
+
+  /* Calendário */
+  .cal-legenda {
+    display:flex; gap:14px; flex-wrap:wrap; margin-bottom:12px;
+    font-size:11.5px; color:var(--ink-mid);
+  }
+  .cal-legenda span { display:inline-flex; align-items:center; gap:5px; }
+  .cal-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .cal-dot-prev { background:#1D4ED8; }
+  .cal-dot-cham { background:#F59E0B; }
+  .cal-dot-emerg { background:#C41E3A; }
+  .cal-grid-head, .cal-grid {
+    display:grid; grid-template-columns:repeat(7,1fr); gap:4px;
+  }
+  .cal-grid-head { margin-bottom:4px; }
+  .cal-grid-head > div {
+    font-size:10.5px; font-weight:700; color:#9CA3AF;
+    text-transform:uppercase; letter-spacing:.08em; text-align:center;
+    padding:6px 0;
+  }
+  .cal-cell {
+    min-height:64px; padding:6px 7px;
+    border:1px solid var(--border); border-radius:6px;
+    background:#FFF; position:relative;
+    display:flex; flex-direction:column; gap:3px;
+    cursor:default; transition:.15s;
+  }
+  .cal-cell.empty { background:transparent; border-color:transparent; }
+  .cal-cell.hoje { border-color:#C41E3A; background:#FEF2F2; }
+  .cal-cell.has-event { cursor:pointer; }
+  .cal-cell.has-event:hover { border-color:#C41E3A; box-shadow:0 0 0 2px rgba(196,30,58,.08); }
+  .cal-dia { font-size:12.5px; font-weight:700; color:#374151; }
+  .cal-cell.hoje .cal-dia { color:#C41E3A; }
+  .cal-ev {
+    font-size:10.5px; padding:2px 5px; border-radius:4px;
+    font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    line-height:1.2;
+  }
+  .cal-ev-prev  { background:#DBEAFE; color:#1D4ED8; }
+  .cal-ev-cham  { background:#FEF3C7; color:#92400E; }
+  .cal-ev-emerg { background:#FEE2E2; color:#C41E3A; }
+  .cal-mais { font-size:10px; color:#6B7280; padding-left:5px; }
 </style>
 
 <script>
@@ -153,12 +216,86 @@ export const prerender = false;
         `).join("");
       }
 
+      // Calendário
+      renderCalendario(preventivas, chamados);
+
       document.getElementById("loadingState").style.display = "none";
       document.getElementById("content").style.display = "";
     } catch (e) {
       document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
   }
+
+  // ── Calendário ──────────────────────────────────────────────────
+  let calYear = new Date().getFullYear();
+  let calMonth = new Date().getMonth(); // 0-11
+  let cacheEventos = { preventivas: [], chamados: [] };
+  const mesesFull = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  function renderCalendario(preventivas, chamados) {
+    cacheEventos = { preventivas: preventivas || cacheEventos.preventivas, chamados: chamados || cacheEventos.chamados };
+    document.getElementById("calTitulo").textContent = mesesFull[calMonth] + " " + calYear;
+
+    // Organiza eventos por dia (chave: 'YYYY-MM-DD')
+    const eventos = {};
+    function addEv(dateStr, payload) {
+      if (!dateStr) return;
+      const d = new Date(dateStr);
+      if (d.getFullYear() !== calYear || d.getMonth() !== calMonth) return;
+      const key = d.getDate();
+      if (!eventos[key]) eventos[key] = [];
+      eventos[key].push(payload);
+    }
+    (cacheEventos.preventivas || []).forEach(p => addEv(p.data_agendada, {
+      tipo: "prev", label: (p.manut_lojas?.nome || "Preventiva"), href: `/manutencao/tecnico/preventiva/${p.id}`
+    }));
+    (cacheEventos.chamados || []).forEach(c => {
+      const isEmerg = c.tipo_chamado === "emergencial";
+      addEv(c.data_abertura, {
+        tipo: isEmerg ? "emerg" : "cham",
+        label: `${c.tipo}: ${c.manut_lojas?.nome || c.descricao || "chamado"}`,
+        href: `/manutencao/tecnico/chamados?id=${c.id}`,
+      });
+    });
+
+    const primeiroDiaSemana = new Date(calYear, calMonth, 1).getDay();
+    const ultimoDia = new Date(calYear, calMonth + 1, 0).getDate();
+    const hoje = new Date();
+    const ehMesAtual = hoje.getFullYear() === calYear && hoje.getMonth() === calMonth;
+
+    const grid = document.getElementById("calGrid");
+    let html = "";
+    for (let i = 0; i < primeiroDiaSemana; i++) html += `<div class="cal-cell empty"></div>`;
+    for (let d = 1; d <= ultimoDia; d++) {
+      const evs = eventos[d] || [];
+      const isHoje = ehMesAtual && hoje.getDate() === d;
+      const hasEv = evs.length > 0;
+      const firstHref = evs[0]?.href || "";
+      const evHtml = evs.slice(0, 2).map(e => `<div class="cal-ev cal-ev-${e.tipo}" title="${e.label.replace(/"/g, '&quot;')}">${e.label}</div>`).join("");
+      const mais = evs.length > 2 ? `<div class="cal-mais">+${evs.length - 2} mais</div>` : "";
+      html += `
+        <div class="cal-cell ${isHoje ? "hoje" : ""} ${hasEv ? "has-event" : ""}"
+             ${hasEv ? `data-href="${firstHref}"` : ""}>
+          <div class="cal-dia">${d}</div>
+          ${evHtml}${mais}
+        </div>
+      `;
+    }
+    grid.innerHTML = html;
+    grid.querySelectorAll(".cal-cell.has-event").forEach(c => {
+      c.addEventListener("click", () => { window.location.href = c.dataset.href; });
+    });
+  }
+
+  document.getElementById("calPrev").onclick = () => {
+    calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; }
+    renderCalendario();
+  };
+  document.getElementById("calNext").onclick = () => {
+    calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; }
+    renderCalendario();
+  };
+
   load();
   window.addEventListener("portal:refresh", load);
 </script>
