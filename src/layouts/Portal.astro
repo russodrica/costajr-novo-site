@@ -73,10 +73,16 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>{title} — Costa Júnior</title>
-  <meta name="theme-color" content="#C41E3A">
+  <meta name="theme-color" content="#16181F">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CJR Manutenção">
+  <meta name="mobile-web-app-capable" content="yes">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;500;600&display=swap">
@@ -550,6 +556,33 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
       })
       .catch(() => {});
   }
+</script>
+
+<!-- PWA: registro do service worker + botão "Instalar app" -->
+<button id="pwa-install-btn" type="button" aria-label="Instalar aplicativo" style="display:none;position:fixed;right:18px;bottom:18px;z-index:9999;background:#C41E3A;color:#FFF;border:0;border-radius:99px;padding:12px 18px;font-family:'Open Sans',sans-serif;font-weight:700;font-size:13.5px;letter-spacing:.02em;box-shadow:0 6px 18px rgba(196,30,58,.35);cursor:pointer">📲 Instalar app</button>
+<script is:inline>
+  (function () {
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function (e) { console.warn("SW falhou:", e); });
+      });
+    }
+    let deferredPrompt = null;
+    const btn = document.getElementById("pwa-install-btn");
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (btn) btn.style.display = "";
+    });
+    if (btn) btn.addEventListener("click", async function () {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      btn.style.display = "none";
+    });
+    window.addEventListener("appinstalled", function () { if (btn) btn.style.display = "none"; });
+  })();
 </script>
 </body>
 </html>
