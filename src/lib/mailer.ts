@@ -169,6 +169,36 @@ export async function enviarEmailVisitaAdicionalAdmin(args: {
   });
 }
 
+export async function enviarEmailCupomRenovacao(args: {
+  clienteEmail: string;
+  clienteNome: string;
+  codigoCupom: string;
+  valorCashback: number;
+  descontoPct: number;
+  diasParaVencer: number;
+}) {
+  const valorFmt = `R$ ${args.valorCashback.toFixed(2).replace(".", ",")}`;
+  return sendOrThrow({
+    to: args.clienteEmail,
+    subject: `🎁 Seu cupom de renovação chegou — ${valorFmt} de desconto`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff">
+        <img src="${SITE}/logo-cjr.png" alt="Costa Júnior" style="height:42px;margin-bottom:24px">
+        <h2 style="color:#2D2F36;margin:0 0 8px">Olá, ${args.clienteNome}!</h2>
+        <p style="color:#5B5F6B;margin:0 0 20px">Seu plano vence em <strong>${args.diasParaVencer} dias</strong>. Como você acumulou cashback de indicações, geramos automaticamente um cupom de desconto para a renovação:</p>
+        <div style="background:#FEF2F2;border:2px dashed #C41E3A;border-radius:10px;padding:22px;text-align:center;margin-bottom:20px">
+          <div style="font-size:10.5px;color:#5B5F6B;letter-spacing:2px;text-transform:uppercase;font-weight:700">Seu cupom de renovação</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;font-size:30px;font-weight:700;color:#C41E3A;letter-spacing:3px;margin-top:10px;user-select:all">${args.codigoCupom}</div>
+          <div style="font-size:13px;color:#5B5F6B;margin-top:8px">${args.descontoPct.toFixed(2).replace(".", ",")}% de desconto · equivalente a ${valorFmt}</div>
+        </div>
+        <p style="color:#5B5F6B;margin:0 0 18px;font-size:14px">Quando for renovar seu plano, <strong>digite esse código no campo "Cupom de desconto"</strong>. O abatimento é aplicado automaticamente.</p>
+        <a href="${SITE}/manutencao/cliente/dashboard" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:700;font-size:14px">Acessar o painel</a>
+        <p style="color:#9CA3AF;font-size:11.5px;margin-top:28px">Cupom válido por 90 dias e de uso único. Costa Júnior — Engenharia e Construções Ltda</p>
+      </div>
+    `,
+  });
+}
+
 export async function enviarEmailSuporteAdmin(args: {
   clienteNome: string;
   email: string;

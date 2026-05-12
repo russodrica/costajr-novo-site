@@ -1,0 +1,85 @@
+import type { APIRoute } from "astro";
+import { supabaseAdmin } from "~/lib/supabase";
+import { gerarCupomRenovacao } from "~/lib/manut/clientes";
+import { enviarEmailCupomRenovacao } from "~/lib/mailer";
+
+export const prerender = false;
+
+// Cron diário (Vercel: configurado em vercel.json — 09:00 UTC).
+// Gera cupom de renovação para clientes ativos cujo plano vence em 10 dias
+// (janela 9-11 dias para tolerar atrasos), com saldo de cashback > 0.
+// Cada cliente recebe no máximo 1 cupom de renovação no ciclo (controle via
+// existência de cupom CASH-* gerado nos últimos 12 dias).
+export const GET: APIRoute = async ({ request, url }) => {
+  // Autorização: aceita header padrão da Vercel para cron, ou querystring secret
+  const auth = request.headers.get("authorization") || "";
+  const cronSecret = import.meta.env.CRON_SECRET || "";
+  const qsSecret = url.searchParams.get("secret") || "";
+  const vercelCron = auth === `Bearer ${cronSecret}`;
+  const manual = cronSecret && qsSecret === cronSecret;
+  if (cronSecret && !vercelCron && !manual) {
+    return new Response("Forbidden", { status: 403 });
+  }
+
+  const db = supabaseAdmin();
+  const hoje = new Date();
+  const fim = new Date(Date.now() + 11 * 24 * 60 * 60 * 1000); // até 11 dias
+  const inicio = new Date(Date.now() + 9 * 24 * 60 * 60 * 1000); // a partir de 9 dias
+
+  const { data: clientes } = await db
+    .from("manut_clientes")
+    .select("id,nome,email,saldo_cashback,data_proximo_vencimento")
+    .eq("status", "ativo")
+    .gt("saldo_cashback", 0)
+    .gte("data_proximo_vencimento", inicio.toISOString())
+    .lte("data_proximo_vencimento", fim.toISOString());
+
+  const resultados: any[] = [];
+  for (const c of clientes || []) {
+    try {
+      // Evita gerar cupom duplicado: checa se já existe CASH- recente do cliente
+      const corte = new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: jaTem } = await db
+        .from("manut_cupons")
+        .select("codigo,created_at")
+        .eq("cliente_dono_id", c.id)
+        .like("codigo", "CASH-%")
+        .gte("created_at", corte)
+        .limit(1)
+        .maybeSingle();
+      if (jaTem) {
+        resultados.push({ id: c.id, status: "ja_gerado", codigo: jaTem.codigo });
+        continue;
+      }
+
+      const r = await gerarCupomRenovacao(c.id);
+      const diasParaVencer = Math.max(
+        1,
+        Math.round((new Date(c.data_proximo_vencimento).getTime() - hoje.getTime()) / (24 * 60 * 60 * 1000))
+      );
+
+      if (c.email) {
+        try {
+          await enviarEmailCupomRenovacao({
+            clienteEmail: c.email,
+            clienteNome: c.nome || "Cliente",
+            codigoCupom: r.cupom.codigo,
+            valorCashback: r.valorConvertido,
+            descontoPct: r.descontoPct,
+            diasParaVencer,
+          });
+        } catch (e: any) {
+          console.warn("[cron][cashback] email falhou:", e?.message);
+        }
+      }
+
+      resultados.push({ id: c.id, status: "gerado", codigo: r.cupom.codigo, valor: r.valorConvertido });
+    } catch (e: any) {
+      resultados.push({ id: c.id, status: "erro", erro: e?.message });
+    }
+  }
+
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados }), {
+    headers: { "content-type": "application/json" },
+  });
+};
