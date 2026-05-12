@@ -34,19 +34,37 @@ export const prerender = false;
 </Portal>
 
 <style>
+  .lojas-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
   .loja-card {
+    position:relative;
     background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg);
-    padding:22px 24px; margin-bottom:12px;
-    box-shadow:var(--shadow-sm); transition:var(--transition);
+    padding:22px 22px 18px; box-shadow:var(--shadow-sm); transition:var(--transition);
+    display:flex; flex-direction:column; gap:14px;
   }
-  .loja-card:hover { box-shadow:var(--shadow); transform:translateY(-1px); }
-  .loja-header { display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px; }
-  .loja-nome { font-family:'Montserrat',sans-serif;font-weight:700;font-size:16px; }
-  .loja-cidade { font-size:13px;color:#6B7280;margin-top:3px; }
-  .loja-info { display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:4px; }
-  .info-item strong { display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#9CA3AF;margin-bottom:2px; }
-  .info-item span { font-size:13.5px;color:#374151; }
-  .esp-tag { display:inline-block;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600;background:#F3F4F6;color:#374151;margin:2px; }
+  .loja-card:hover { box-shadow:var(--shadow); transform:translateY(-2px); border-color:#FECACA; }
+  .loja-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:#C41E3A; border-radius:var(--radius-lg) 0 0 var(--radius-lg); }
+  .loja-card-top { display:flex; gap:12px; align-items:flex-start; }
+  .loja-icone {
+    flex-shrink:0; width:46px; height:46px; border-radius:10px;
+    background:linear-gradient(135deg,#FEE2E2 0%,#FECACA 100%);
+    display:flex; align-items:center; justify-content:center; color:#C41E3A;
+  }
+  .loja-card-titulo { flex:1; min-width:0; }
+  .loja-nome { font-family:'Montserrat',sans-serif; font-weight:700; font-size:16.5px; color:#1F2937; margin:0 0 4px; line-height:1.2; }
+  .loja-cidade { font-size:12.5px; color:#6B7280; display:flex; align-items:center; gap:4px; }
+  .loja-info { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding-top:12px; border-top:1px solid #F3F4F6; }
+  .info-item { font-size:13px; }
+  .info-item .lbl { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:#9CA3AF; margin-bottom:3px; }
+  .info-item .val { color:#1F2937; font-weight:600; }
+  .esp-row { display:flex; flex-wrap:wrap; gap:4px; padding-top:10px; border-top:1px solid #F3F4F6; }
+  .esp-tag {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:4px 10px; border-radius:99px;
+    font-size:11px; font-weight:600;
+  }
+  .esp-eletrica   { background:#EFF6FF; color:#1D4ED8; }
+  .esp-hidraulica { background:#F0FDF4; color:#15803D; }
+  .esp-civil      { background:#FFF7ED; color:#C2410C; }
 </style>
 
 <script>
@@ -77,26 +95,37 @@ export const prerender = false;
         return;
       }
 
-      wrap.innerHTML = lojas.map(l => `
+      const espIcon = { eletrica:"⚡", hidraulica:"💧", civil:"🏗️" };
+      wrap.innerHTML = `<div class="lojas-grid">` + lojas.map(l => `
         <div class="loja-card">
-          <div class="loja-header">
-            <div>
+          <div class="loja-card-top">
+            <div class="loja-icone">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+            </div>
+            <div class="loja-card-titulo">
               <div class="loja-nome">${l.nome}</div>
-              <div class="loja-cidade">📍 ${[l.endereco, l.cidade, l.uf].filter(Boolean).join(", ")}</div>
+              <div class="loja-cidade">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                ${[l.cidade, l.uf].filter(Boolean).join(", ") || "—"}
+              </div>
             </div>
             ${badge(l.status)}
           </div>
           <div class="loja-info">
-            <div class="info-item"><strong>CEP</strong><span>${l.cep || "—"}</span></div>
-            <div class="info-item"><strong>Tamanho</strong><span>${l.tamanho_m2 ? l.tamanho_m2 + " m²" : "—"}</span></div>
+            <div class="info-item"><span class="lbl">Endereço</span><span class="val">${l.endereco || "—"}</span></div>
+            <div class="info-item"><span class="lbl">CEP</span><span class="val">${l.cep || "—"}</span></div>
+            <div class="info-item"><span class="lbl">Tamanho</span><span class="val">${l.tamanho_m2 ? l.tamanho_m2 + " m²" : "—"}</span></div>
+            <div class="info-item"><span class="lbl">Status</span><span class="val">${({ativo:"Ativo",pendente:"Pendente",inativo:"Inativo"}[l.status] || l.status)}</span></div>
           </div>
           ${l.especialidades?.length ? `
-          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-light)">
-            <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#9CA3AF;margin-bottom:6px">Especialidades</div>
-            ${(l.especialidades||[]).map(e => `<span class="esp-tag">${e}</span>`).join("")}
+          <div class="esp-row">
+            ${(l.especialidades||[]).map(e => `<span class="esp-tag esp-${e}">${espIcon[e] || ""} ${e}</span>`).join("")}
           </div>` : ""}
         </div>
-      `).join("");
+      `).join("") + `</div>`;
     } catch {
       document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
