@@ -13,6 +13,17 @@ export const prerender = false;
     </div>
   </div>
 
+  <!-- Card visita adicional (plano semestral / anual) -->
+  <div id="cardVisitaAdic" class="card" style="display:none;background:linear-gradient(120deg,#FFF 0%,#FEF2F2 100%);border-left:4px solid #C41E3A;margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap">
+      <div>
+        <strong style="display:block;color:#2C2F36;font-size:15px">🗓️ Você tem visitas adicionais disponíveis</strong>
+        <p style="margin:4px 0 0;font-size:13px;color:#5B5F6B">Restam <strong id="visitasRestantes">0</strong> visitas adicionais no seu plano. Solicite uma agora — sem custo extra.</p>
+      </div>
+      <button class="btn btn-primary" id="btnSolicitarAdicional">Agendar visita adicional</button>
+    </div>
+  </div>
+
   <div id="loadingState" class="loading"><div class="spinner"></div>Carregando preventivas...</div>
 
   <div class="card" id="tableWrap" style="display:none">
@@ -35,6 +46,32 @@ export const prerender = false;
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
         <strong>Nenhuma preventiva encontrada</strong>
         <p>As preventivas agendadas pela equipe aparecerão aqui.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal solicitar visita adicional -->
+  <div class="modal-bg" id="modalVA">
+    <div class="modal" style="max-width:480px">
+      <button class="modal-close" id="btnFecharVA">×</button>
+      <h2>Agendar visita adicional</h2>
+      <div id="alertVA" class="alert alert-error" style="display:none"></div>
+      <div class="form-group">
+        <label>Loja</label>
+        <select id="selLojaVA"><option value="">Selecione a loja...</option></select>
+      </div>
+      <div class="form-group">
+        <label>Data desejada</label>
+        <input type="date" id="dataVA" />
+        <p class="form-hint" style="font-size:11.5px;color:#9CA3AF;margin-top:4px">A equipe confirma a data em até 48h úteis e envia o técnico.</p>
+      </div>
+      <div class="form-group">
+        <label>Motivo / observações</label>
+        <textarea id="motivoVA" placeholder="Por que você precisa dessa visita adicional? (opcional)"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+        <button class="btn btn-outline" id="btnCancelVA">Cancelar</button>
+        <button class="btn btn-primary" id="btnSubmitVA">Solicitar</button>
       </div>
     </div>
   </div>
@@ -92,11 +129,24 @@ export const prerender = false;
     });
   });
 
+  let lojasCliente = [];
+
   async function load() {
     try {
-      const res = await fetch("/api/manut/cliente/preventivas", { headers: { "x-cliente-auth": token } });
-      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
-      allPrev = await res.json();
+      const [resPrev, resMe] = await Promise.all([
+        fetch("/api/manut/cliente/preventivas", { headers: { "x-cliente-auth": token } }),
+        fetch("/api/manut/cliente/me", { headers: { "x-cliente-auth": token } }),
+      ]);
+      if (resPrev.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      allPrev = await resPrev.json();
+      const meData = resMe.ok ? await resMe.json() : null;
+      const cli = meData?.dashboard?.cliente || meData?.cliente;
+      lojasCliente = meData?.dashboard?.lojas || [];
+      const visitasDisp = Number(cli?.visitas_adicionais_disponiveis || 0);
+      if (visitasDisp > 0) {
+        document.getElementById("cardVisitaAdic").style.display = "";
+        document.getElementById("visitasRestantes").textContent = visitasDisp;
+      }
       document.getElementById("loadingState").style.display = "none";
       document.getElementById("tableWrap").style.display = "";
       render();
@@ -104,6 +154,48 @@ export const prerender = false;
       document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
   }
+
+  function fecharVA() { document.getElementById("modalVA").classList.remove("open"); }
+  document.getElementById("btnSolicitarAdicional").onclick = () => {
+    document.getElementById("alertVA").style.display = "none";
+    const sel = document.getElementById("selLojaVA");
+    sel.innerHTML = '<option value="">Selecione a loja...</option>' + lojasCliente.map(l => `<option value="${l.id}">${l.nome}</option>`).join("");
+    document.getElementById("dataVA").value = "";
+    document.getElementById("dataVA").min = new Date(Date.now() + 2*86400000).toISOString().slice(0,10);
+    document.getElementById("motivoVA").value = "";
+    document.getElementById("modalVA").classList.add("open");
+  };
+  document.getElementById("btnCancelVA").onclick = fecharVA;
+  document.getElementById("btnFecharVA").onclick = fecharVA;
+
+  document.getElementById("btnSubmitVA").addEventListener("click", async () => {
+    const alertEl = document.getElementById("alertVA");
+    alertEl.style.display = "none";
+    const lojaId = document.getElementById("selLojaVA").value;
+    const data = document.getElementById("dataVA").value;
+    const motivo = document.getElementById("motivoVA").value.trim();
+    if (!lojaId) { alertEl.textContent = "Selecione a loja."; alertEl.style.display = ""; return; }
+    if (!data)   { alertEl.textContent = "Informe a data desejada."; alertEl.style.display = ""; return; }
+    const btn = document.getElementById("btnSubmitVA");
+    btn.disabled = true; btn.textContent = "Solicitando...";
+    try {
+      const res = await fetch("/api/manut/cliente/visita-adicional", {
+        method: "POST",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: JSON.stringify({ lojaId, dataDesejada: data, motivo })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erro ao solicitar");
+      fecharVA();
+      window.toast?.("Visita adicional solicitada! A equipe confirma em até 48h úteis.", "success");
+      load();
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Solicitar";
+    }
+  });
+
   load();
   window.addEventListener("portal:refresh", load);
 </script>

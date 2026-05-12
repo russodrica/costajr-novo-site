@@ -221,6 +221,20 @@ export async function criarPagamentoPixReposicao(args: {
   });
 }
 
+// Pix para chamado extra (48h, R$ 250) ou emergencial (24h, R$ 350)
+export async function criarPagamentoPixChamado(args: {
+  cliente: { email: string; nome: string; cnpjCpf?: string | null };
+  chamado: { id: string; tipo: "extra" | "emergencial"; loja: string; valor: number };
+}) {
+  const label = args.chamado.tipo === "emergencial" ? "Emergencial 24h" : "Extra 48h";
+  return _criarPix({
+    cliente: args.cliente,
+    descricao: `Chamado ${label} — ${args.chamado.loja}`,
+    valor: args.chamado.valor,
+    externalReference: `CJR-CHM-${args.chamado.id}`,
+  });
+}
+
 // Pix direto via API de pagamentos (sem passar pela tela do MP).
 // Retorna QR Code copia-e-cola + imagem base64 + URL do ticket de pagamento.
 export async function criarPagamentoPix(args: {

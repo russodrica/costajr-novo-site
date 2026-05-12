@@ -16,9 +16,9 @@ export const GET: APIRoute = async ({ request }) => {
 export const POST: APIRoute = async ({ request }) => {
   try {
     const claims = await requireCliente(request);
-    const { lojaId, tipo, localLoja, descricao } = await request.json();
+    const { lojaId, tipo, localLoja, descricao, tipoChamado } = await request.json();
     if (!lojaId || !tipo || !descricao) return jsonErr(400, "lojaId, tipo e descricao são obrigatórios");
-    return jsonOk(await criarChamadoCliente({ clienteId: claims.sub, lojaId, tipo, localLoja, descricao }));
+    return jsonOk(await criarChamadoCliente({ clienteId: claims.sub, lojaId, tipo, localLoja, descricao, tipoChamado }));
   } catch (e: any) {
     return jsonErr(400, e.message);
   }

@@ -85,6 +85,18 @@ export async function processarMpWebhook(payload: {
       return { ok: true, status: pmt.status, materialId };
     }
 
+    // Chamado extra/emergencial pago via Pix — marca como pago
+    if (ref.startsWith("CJR-CHM-")) {
+      const chamadoId = ref.replace(/^CJR-CHM-/, "");
+      console.log("[webhook][chamado]", chamadoId, "status:", pmt.status);
+      if (pmt.status === "approved") {
+        const { marcarChamadoPago } = await import("./chamados");
+        try { await marcarChamadoPago(chamadoId, recursoId); }
+        catch (e: any) { console.warn("[webhook][chamado] marcar:", e.message); }
+      }
+      return { ok: true, status: pmt.status, chamadoId };
+    }
+
     // Reposição de estoque paga via Pix — confirma automaticamente
     if (ref.startsWith("CJR-REP-")) {
       const movimentoId = ref.replace(/^CJR-REP-/, "");

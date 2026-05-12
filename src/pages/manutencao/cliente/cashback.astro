@@ -1,0 +1,147 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Cashback" tipo="cliente" activePage="cashback">
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Indique a Costa Júnior e ganhe 5% de cashback para usar em materiais ou chamados extras.</p>
+  </div>
+
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando...</div>
+
+  <div id="cbWrap" style="display:none">
+    <div class="grid-cb" style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:18px;margin-bottom:18px">
+      <!-- CARD CUPOM -->
+      <div class="card" style="text-align:center;padding:28px 22px;background:linear-gradient(135deg,#FFF 0%,#FEF2F2 100%);border:2px dashed #C41E3A">
+        <div style="font-size:11px;color:#5B5F6B;letter-spacing:2px;text-transform:uppercase;font-weight:700">SEU CÓDIGO DE INDICAÇÃO</div>
+        <div id="codigoBox" style="font-family:'Montserrat',sans-serif;font-size:34px;font-weight:700;color:#C41E3A;letter-spacing:4px;margin:12px 0;cursor:pointer;user-select:all">—</div>
+        <div style="font-size:12.5px;color:#5B5F6B;margin-bottom:14px">Cliente que usar ganha <strong>5%</strong> de desconto. Você ganha <strong>5%</strong> de cashback.</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" id="btnCopiar">Copiar código</button>
+          <button class="btn btn-outline btn-sm" id="btnEditar">Personalizar código</button>
+        </div>
+      </div>
+      <!-- CARD SALDO -->
+      <div class="card" style="background:linear-gradient(135deg,#F0FDF4 0%,#FFF 100%);border-left:4px solid #16A34A">
+        <div style="font-size:11px;color:#5B5F6B;letter-spacing:2px;text-transform:uppercase;font-weight:700">CASHBACK DISPONÍVEL</div>
+        <div id="saldoBox" style="font-family:'Montserrat',sans-serif;font-size:42px;font-weight:700;color:#166534;margin-top:6px">R$ 0,00</div>
+        <p style="margin:14px 0 0;font-size:12.5px;color:#5B5F6B;line-height:1.5">Use seu cashback ao aprovar materiais, abrir chamados extras ou emergenciais. O abatimento é aplicado automaticamente.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <strong style="font-size:14px;color:#2C2F36">Histórico de cashback</strong>
+      <div id="histBox" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <!-- Modal editar código -->
+  <div class="modal-bg" id="modalEdit">
+    <div class="modal" style="max-width:420px">
+      <button class="modal-close" id="btnFecharE">×</button>
+      <h2>Personalizar código</h2>
+      <div id="alertEdit" class="alert alert-error" style="display:none"></div>
+      <div class="form-group">
+        <label>Novo código (mín. 5 caracteres, só letras/números)</label>
+        <input type="text" id="codigoInput" maxlength="20" placeholder="Ex: JOAO2026" style="text-transform:uppercase" />
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-outline" id="btnCancelE">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvarE">Salvar</button>
+      </div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .hist-row { display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F3F4F6;font-size:13px }
+  .hist-row:last-child { border-bottom:none }
+  .hist-credito { color:#16A34A;font-weight:700 }
+  .hist-debito  { color:#DC2626;font-weight:700 }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_cliente_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/cliente/login");
+
+  function fmtMoney(v) { return Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); }
+  function fmtDate(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
+
+  let cupomAtual = null;
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/cliente/cashback", { headers: { "x-cliente-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      const data = await res.json();
+      cupomAtual = data.cupom?.codigo || null;
+      document.getElementById("codigoBox").textContent = cupomAtual || "—";
+      document.getElementById("saldoBox").textContent = fmtMoney(data.saldo);
+
+      const hist = data.movimentos || [];
+      const histBox = document.getElementById("histBox");
+      if (!hist.length) {
+        histBox.innerHTML = `<p style="color:#9CA3AF;font-size:12.5px;text-align:center;padding:14px 0;margin:0">Nenhuma movimentação ainda. Compartilhe seu código e comece a acumular!</p>`;
+      } else {
+        histBox.innerHTML = hist.map(m => `
+          <div class="hist-row">
+            <div>
+              <strong style="color:#2C2F36">${m.origem}</strong>
+              <div style="font-size:11px;color:#9CA3AF;margin-top:2px">${fmtDate(m.created_at)}</div>
+            </div>
+            <div class="${m.tipo === 'credito' ? 'hist-credito' : 'hist-debito'}">${m.tipo === 'credito' ? '+' : '-'} ${fmtMoney(m.valor)}</div>
+          </div>
+        `).join("");
+      }
+
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("cbWrap").style.display = "";
+    } catch (err) {
+      document.getElementById("loadingState").innerHTML = `<div class="empty-state"><strong>Erro ao carregar</strong><p>${err.message}</p></div>`;
+    }
+  }
+
+  document.getElementById("btnCopiar").onclick = () => {
+    if (!cupomAtual) return;
+    navigator.clipboard.writeText(cupomAtual).then(() => window.toast?.("Código copiado!", "success"));
+  };
+
+  function fecharE() { document.getElementById("modalEdit").classList.remove("open"); }
+  document.getElementById("btnEditar").onclick = () => {
+    document.getElementById("alertEdit").style.display = "none";
+    document.getElementById("codigoInput").value = cupomAtual || "";
+    document.getElementById("modalEdit").classList.add("open");
+  };
+  document.getElementById("btnCancelE").onclick = fecharE;
+  document.getElementById("btnFecharE").onclick = fecharE;
+
+  document.getElementById("btnSalvarE").addEventListener("click", async () => {
+    const alertEl = document.getElementById("alertEdit");
+    alertEl.style.display = "none";
+    const codigo = document.getElementById("codigoInput").value.trim().toUpperCase();
+    if (codigo.length < 5) { alertEl.textContent = "Código precisa ter ao menos 5 caracteres."; alertEl.style.display = ""; return; }
+    if (!/^[A-Z0-9]+$/.test(codigo)) { alertEl.textContent = "Use apenas letras e números."; alertEl.style.display = ""; return; }
+    const btn = document.getElementById("btnSalvarE");
+    btn.disabled = true; btn.textContent = "Salvando...";
+    try {
+      const res = await fetch("/api/manut/cliente/cashback/personalizar", {
+        method: "POST",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: JSON.stringify({ codigo })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erro ao salvar");
+      fecharE();
+      window.toast?.("Código atualizado!", "success");
+      load();
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Salvar";
+    }
+  });
+
+  load();
+  window.addEventListener("portal:refresh", load);
+</script>

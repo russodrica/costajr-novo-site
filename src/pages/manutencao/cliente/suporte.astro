@@ -1,0 +1,129 @@
+---
+import Portal from "~/layouts/Portal.astro";
+export const prerender = false;
+---
+<Portal title="Suporte" tipo="cliente" activePage="suporte">
+  <div class="section-header">
+    <p style="margin:0;font-size:13.5px;color:#5B5F6B">Tem alguma dúvida sobre como usar o sistema? Mande uma mensagem para nossa equipe.</p>
+    <button class="btn btn-primary" id="btnAbrir">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Novo ticket
+    </button>
+  </div>
+
+  <div id="loadingState" class="loading"><div class="spinner"></div>Carregando seus tickets...</div>
+  <div id="ticketsWrap" style="display:none"></div>
+
+  <!-- Modal -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal" style="max-width:520px">
+      <button class="modal-close" id="btnFechar">×</button>
+      <h2>Novo ticket de suporte</h2>
+      <div id="alertEl" class="alert alert-error" style="display:none"></div>
+      <div class="form-group">
+        <label>Assunto</label>
+        <input type="text" id="assuntoInput" placeholder="Ex: Não consigo aprovar material" maxlength="120" />
+      </div>
+      <div class="form-group">
+        <label>Descrição</label>
+        <textarea id="descInput" placeholder="Descreva sua dúvida com detalhes..." rows="6"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-outline" id="btnCancel">Cancelar</button>
+        <button class="btn btn-primary" id="btnSubmit">Enviar ticket</button>
+      </div>
+    </div>
+  </div>
+</Portal>
+
+<style>
+  .ticket-card { background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:12px; }
+  .ticket-head { display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px }
+  .ticket-assunto { font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px;color:#2C2F36 }
+  .ticket-data { font-size:11.5px;color:#9CA3AF }
+  .ticket-desc { font-size:13.5px;color:#5B5F6B;margin-bottom:10px;line-height:1.5 }
+  .ticket-resp { background:#F0FDF4;border-left:3px solid #16A34A;padding:10px 12px;border-radius:6px;margin-top:8px;font-size:13px;color:#14532D }
+  .stk-aberto { background:#FEF3C7;color:#92400E }
+  .stk-em_atendimento { background:#DBEAFE;color:#1E40AF }
+  .stk-resolvido { background:#DCFCE7;color:#166534 }
+</style>
+
+<script>
+  const TOKEN_KEY = "manut_cliente_token";
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) window.location.replace("/manutencao/cliente/login");
+
+  function fmt(d) { return d ? new Date(d).toLocaleString("pt-BR") : "—"; }
+
+  async function load() {
+    try {
+      const res = await fetch("/api/manut/cliente/suporte", { headers: { "x-cliente-auth": token } });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/cliente/login"); return; }
+      const tickets = await res.json();
+      const wrap = document.getElementById("ticketsWrap");
+      document.getElementById("loadingState").style.display = "none";
+      wrap.style.display = "";
+      if (!tickets.length) {
+        wrap.innerHTML = `<div class="card"><div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          <strong>Nenhum ticket de suporte</strong><p>Use o botão acima para abrir um novo.</p></div></div>`;
+        return;
+      }
+      wrap.innerHTML = tickets.map(t => `
+        <div class="ticket-card">
+          <div class="ticket-head">
+            <div class="ticket-assunto">${t.assunto}</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="badge stk-${t.status}">${({ aberto:'Aguardando', em_atendimento:'Em atendimento', resolvido:'Resolvido'})[t.status]||t.status}</span>
+              <span class="ticket-data">${fmt(t.created_at)}</span>
+            </div>
+          </div>
+          <div class="ticket-desc">${t.descricao}</div>
+          ${t.resposta_admin ? `<div class="ticket-resp"><strong>Resposta da equipe:</strong><br>${t.resposta_admin}</div>` : ''}
+        </div>
+      `).join("");
+    } catch {
+      document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
+    }
+  }
+
+  function fecharModal() { document.getElementById("modalBg").classList.remove("open"); }
+  document.getElementById("btnAbrir").onclick = () => {
+    document.getElementById("alertEl").style.display = "none";
+    document.getElementById("assuntoInput").value = "";
+    document.getElementById("descInput").value = "";
+    document.getElementById("modalBg").classList.add("open");
+  };
+  document.getElementById("btnCancel").onclick = fecharModal;
+  document.getElementById("btnFechar").onclick = fecharModal;
+
+  document.getElementById("btnSubmit").addEventListener("click", async () => {
+    const alertEl = document.getElementById("alertEl");
+    alertEl.style.display = "none";
+    const assunto = document.getElementById("assuntoInput").value.trim();
+    const descricao = document.getElementById("descInput").value.trim();
+    if (!assunto)   { alertEl.textContent = "Informe o assunto."; alertEl.style.display = ""; return; }
+    if (!descricao) { alertEl.textContent = "Descreva sua dúvida."; alertEl.style.display = ""; return; }
+    const btn = document.getElementById("btnSubmit");
+    btn.disabled = true; btn.textContent = "Enviando...";
+    try {
+      const res = await fetch("/api/manut/cliente/suporte", {
+        method: "POST",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: JSON.stringify({ assunto, descricao })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao enviar");
+      fecharModal();
+      window.toast?.("Ticket enviado! Vamos responder o quanto antes.", "success");
+      load();
+    } catch (err) {
+      alertEl.textContent = err.message; alertEl.style.display = "";
+    } finally {
+      btn.disabled = false; btn.textContent = "Enviar ticket";
+    }
+  });
+
+  load();
+  window.addEventListener("portal:refresh", load);
+</script>

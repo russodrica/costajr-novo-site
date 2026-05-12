@@ -62,3 +62,131 @@ export async function enviarSenhaReset(email: string, nome: string, senha: strin
     html: htmlSenha(nome, senha, "reset"),
   });
 }
+
+function ADMIN_EMAIL(): string {
+  return import.meta.env.ADMIN_NOTIFICATION_EMAIL || "adriana@costajr.com.br";
+}
+
+function htmlGenerico(args: {
+  titulo: string;
+  subtitulo: string;
+  destaque?: string;
+  linhas: Array<{ rotulo: string; valor: string }>;
+  rodape?: string;
+  cta?: { url: string; texto: string };
+}) {
+  const { titulo, subtitulo, destaque, linhas, cta, rodape } = args;
+  return `
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#fff">
+      <img src="${SITE}/logo-cjr.png" alt="Costa Júnior" style="height:42px;margin-bottom:24px">
+      <h2 style="color:#2D2F36;margin:0 0 8px">${titulo}</h2>
+      <p style="color:#5B5F6B;margin:0 0 20px">${subtitulo}</p>
+      ${destaque ? `<div style="background:#FEF2F2;border-left:4px solid #C41E3A;padding:14px 16px;border-radius:6px;margin-bottom:20px;color:#7F1D1D;font-weight:600">${destaque}</div>` : ""}
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:14px">
+        ${linhas.map(l => `<tr><td style="padding:8px 0;color:#9CA3AF;width:160px;vertical-align:top">${l.rotulo}</td><td style="padding:8px 0;color:#2D2F36;font-weight:600">${l.valor}</td></tr>`).join("")}
+      </table>
+      ${cta ? `<a href="${cta.url}" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:700;font-size:14px">${cta.texto}</a>` : ""}
+      <p style="color:#9CA3AF;font-size:11.5px;margin-top:28px">${rodape || "Costa Júnior — Engenharia e Construções Ltda"}</p>
+    </div>
+  `;
+}
+
+export async function enviarEmailChamadoAdmin(args: {
+  tipoChamado: "extra" | "emergencial";
+  clienteNome: string;
+  lojaNome: string;
+  disciplina: string;
+  descricao: string;
+  valor: number;
+  chamadoId: string;
+}) {
+  const label = args.tipoChamado === "emergencial" ? "EMERGENCIAL (24h)" : "EXTRA (48h)";
+  return sendOrThrow({
+    to: ADMIN_EMAIL(),
+    subject: `[CJR] Chamado ${label} aberto — ${args.lojaNome}`,
+    html: htmlGenerico({
+      titulo: `Novo chamado ${label.toLowerCase()}`,
+      subtitulo: `O cliente ${args.clienteNome} acabou de abrir um chamado pago com prioridade. O pagamento via Pix está aguardando confirmação.`,
+      destaque: args.tipoChamado === "emergencial"
+        ? "⚡ Atendimento esperado em 24h úteis."
+        : "🛠️ Atendimento esperado em 48h úteis.",
+      linhas: [
+        { rotulo: "Cliente", valor: args.clienteNome },
+        { rotulo: "Loja", valor: args.lojaNome },
+        { rotulo: "Disciplina", valor: args.disciplina },
+        { rotulo: "Descrição", valor: args.descricao },
+        { rotulo: "Valor cobrado", valor: `R$ ${args.valor.toFixed(2).replace(".", ",")}` },
+      ],
+      cta: { url: `${SITE}/admin/chamados`, texto: "Abrir no painel admin" },
+    }),
+  });
+}
+
+export async function enviarEmailChamadoTecnico(args: {
+  tecnicoEmail: string;
+  tecnicoNome: string;
+  tipoChamado: "extra" | "emergencial";
+  lojaNome: string;
+  disciplina: string;
+  descricao: string;
+}) {
+  const label = args.tipoChamado === "emergencial" ? "EMERGENCIAL (24h)" : "EXTRA (48h)";
+  return sendOrThrow({
+    to: args.tecnicoEmail,
+    subject: `[CJR] Atribuído chamado ${label} — ${args.lojaNome}`,
+    html: htmlGenerico({
+      titulo: `Olá ${args.tecnicoNome}, novo chamado para você`,
+      subtitulo: `Você foi atribuído a um chamado ${label.toLowerCase()} pago. Confirme atendimento o quanto antes.`,
+      linhas: [
+        { rotulo: "Loja", valor: args.lojaNome },
+        { rotulo: "Disciplina", valor: args.disciplina },
+        { rotulo: "Descrição", valor: args.descricao },
+      ],
+      cta: { url: `${SITE}/manutencao/tecnico/chamados`, texto: "Ver no painel técnico" },
+    }),
+  });
+}
+
+export async function enviarEmailVisitaAdicionalAdmin(args: {
+  clienteNome: string;
+  lojaNome: string;
+  dataDesejada: string;
+  preventivaId: string;
+}) {
+  return sendOrThrow({
+    to: ADMIN_EMAIL(),
+    subject: `[CJR] Visita adicional solicitada — ${args.lojaNome}`,
+    html: htmlGenerico({
+      titulo: "Visita adicional agendada",
+      subtitulo: `${args.clienteNome} agendou uma visita adicional pelo painel.`,
+      linhas: [
+        { rotulo: "Cliente", valor: args.clienteNome },
+        { rotulo: "Loja", valor: args.lojaNome },
+        { rotulo: "Data desejada", valor: args.dataDesejada },
+      ],
+      cta: { url: `${SITE}/admin/preventivas`, texto: "Confirmar técnico" },
+    }),
+  });
+}
+
+export async function enviarEmailSuporteAdmin(args: {
+  clienteNome: string;
+  email: string;
+  assunto: string;
+  descricao: string;
+  ticketId: string;
+}) {
+  return sendOrThrow({
+    to: ADMIN_EMAIL(),
+    subject: `[CJR] Novo ticket de suporte — ${args.assunto}`,
+    html: htmlGenerico({
+      titulo: "Novo ticket de suporte",
+      subtitulo: `${args.clienteNome} (${args.email}) enviou um pedido de suporte.`,
+      linhas: [
+        { rotulo: "Assunto", valor: args.assunto },
+        { rotulo: "Descrição", valor: args.descricao },
+      ],
+      cta: { url: `${SITE}/admin/suporte`, texto: "Responder no painel" },
+    }),
+  });
+}

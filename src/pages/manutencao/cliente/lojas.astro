@@ -3,11 +3,34 @@ import Portal from "~/layouts/Portal.astro";
 export const prerender = false;
 ---
 <Portal title="Minhas Lojas" tipo="cliente" activePage="lojas">
-  <div style="margin-bottom:24px">
+  <div class="section-header">
     <p style="margin:0;font-size:13.5px;color:#5B5F6B">Lojas cadastradas no seu contrato de manutenção.</p>
+    <button class="btn btn-primary" id="btnNovaLoja">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Adicionar nova loja
+    </button>
   </div>
   <div id="loadingState" class="loading"><div class="spinner"></div>Carregando lojas...</div>
   <div id="lojasWrap" style="display:none"></div>
+
+  <!-- Modal nova loja -->
+  <div class="modal-bg" id="modalNL">
+    <div class="modal" style="max-width:520px">
+      <button class="modal-close" id="btnFecharNL">×</button>
+      <h2>🎁 Adicione uma nova loja com 5% de desconto</h2>
+      <p style="margin:0 0 18px;color:#5B5F6B;font-size:13.5px">Vamos gerar um cupom único para você usar na contratação. Você é redirecionado para o wizard com o cupom já aplicado.</p>
+      <div id="alertNL" class="alert alert-error" style="display:none"></div>
+      <div style="text-align:center;padding:20px;background:#FEF2F2;border:2px dashed #C41E3A;border-radius:10px">
+        <div style="font-size:10.5px;color:#5B5F6B;letter-spacing:2px;text-transform:uppercase;font-weight:700">Cupom gerado</div>
+        <div id="cupomGerado" style="font-family:'Montserrat',sans-serif;font-size:24px;font-weight:700;color:#C41E3A;letter-spacing:3px;margin-top:8px">—</div>
+        <div style="font-size:11px;color:#5B5F6B;margin-top:6px">5% de desconto na nova loja</div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+        <button class="btn btn-outline" id="btnCancelNL">Cancelar</button>
+        <button class="btn btn-primary" id="btnIrContratarNL">Adicionar loja com desconto</button>
+      </div>
+    </div>
+  </div>
 </Portal>
 
 <style>
@@ -78,6 +101,36 @@ export const prerender = false;
       document.getElementById("loadingState").innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong><p>Recarregue a página.</p></div>';
     }
   }
+  let cupomAtual = null;
+
+  function fecharNL() { document.getElementById("modalNL").classList.remove("open"); }
+  document.getElementById("btnNovaLoja").onclick = async () => {
+    document.getElementById("alertNL").style.display = "none";
+    document.getElementById("cupomGerado").textContent = "Gerando...";
+    document.getElementById("modalNL").classList.add("open");
+    try {
+      const res = await fetch("/api/manut/cliente/cupons/nova-loja", {
+        method: "POST",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: "{}"
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao gerar cupom");
+      cupomAtual = data.codigo;
+      document.getElementById("cupomGerado").textContent = data.codigo;
+    } catch (err) {
+      document.getElementById("alertNL").textContent = err.message;
+      document.getElementById("alertNL").style.display = "";
+      document.getElementById("cupomGerado").textContent = "—";
+    }
+  };
+  document.getElementById("btnCancelNL").onclick = fecharNL;
+  document.getElementById("btnFecharNL").onclick = fecharNL;
+  document.getElementById("btnIrContratarNL").onclick = () => {
+    if (!cupomAtual) return;
+    window.location.href = `/manutencao/contratar?cupom=${encodeURIComponent(cupomAtual)}&loja_extra=1`;
+  };
+
   load();
   window.addEventListener("portal:refresh", load);
 </script>

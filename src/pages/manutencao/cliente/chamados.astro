@@ -50,7 +50,7 @@ export const prerender = false;
 
   <!-- Modal -->
   <div class="modal-bg" id="modalBg">
-    <div class="modal">
+    <div class="modal" style="max-width:560px">
       <button class="modal-close" id="btnFecharModal">×</button>
       <h2>Abrir Chamado</h2>
       <div id="modalAlert" class="alert alert-error" style="display:none"></div>
@@ -60,7 +60,7 @@ export const prerender = false;
       </div>
       <div class="grid-2">
         <div class="form-group">
-          <label>Tipo de manutenção</label>
+          <label>Disciplina</label>
           <select id="tipoSelect">
             <option value="">Selecione...</option>
             <option value="eletrica">⚡ Elétrica</option>
@@ -77,9 +77,42 @@ export const prerender = false;
         <label>Descrição do problema</label>
         <textarea id="descricaoInput" placeholder="Descreva o problema com o máximo de detalhes possível..."></textarea>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+
+      <label class="form-label-block" style="margin-top:8px">Quando você precisa do atendimento?</label>
+      <div class="urg-grid" id="urgGrid">
+        <div class="urg-opt selected" data-urg="normal">
+          <div class="urg-title">📋 Normal</div>
+          <div class="urg-sub">Atendido na próxima visita mensal</div>
+          <div class="urg-price ok">Sem custo</div>
+        </div>
+        <div class="urg-opt" data-urg="extra">
+          <div class="urg-title">🛠️ Extra · 48h</div>
+          <div class="urg-sub">Visita extra em até 48h úteis</div>
+          <div class="urg-price">R$ 250,00</div>
+        </div>
+        <div class="urg-opt urg-emerg" data-urg="emergencial">
+          <div class="urg-title">⚡ Emergencial · 24h</div>
+          <div class="urg-sub">Atendimento no mesmo dia útil</div>
+          <div class="urg-price red">R$ 350,00</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
         <button class="btn btn-outline" id="btnCancelarModal">Cancelar</button>
         <button class="btn btn-primary" id="btnSubmitChamado">Abrir chamado</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Pix -->
+  <div class="modal-bg" id="modalPixBg">
+    <div class="modal" style="max-width:520px">
+      <button class="modal-close" id="btnFecharPix">×</button>
+      <h2>Pagamento via Pix</h2>
+      <p style="margin:0 0 14px;color:#5B5F6B;font-size:13.5px">Escaneie o QR Code ou copie o código abaixo para pagar e ativar o chamado.</p>
+      <div id="pixContent" style="text-align:center"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-primary" id="btnFecharPix2">Já paguei / Fechar</button>
       </div>
     </div>
   </div>
@@ -91,6 +124,22 @@ export const prerender = false;
   .tipo-eletrica  { background: #EFF6FF; color: #1D4ED8; }
   .tipo-hidraulica{ background: #F0FDF4; color: #15803D; }
   .tipo-civil     { background: #FFF7ED; color: #C2410C; }
+  .urg-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .urg-opt { border: 2px solid #E5E7EB; border-radius: 8px; padding: 10px 11px; cursor: pointer; transition: .15s; background:#FFF; }
+  .urg-opt:hover { border-color: #C41E3A; }
+  .urg-opt.selected { border-color: #C41E3A; background:#FEF2F2; }
+  .urg-opt.urg-emerg { border-color:#FECACA; }
+  .urg-opt.urg-emerg.selected { border-color:#C41E3A; background:#FEF2F2; }
+  .urg-title { font-weight:700; font-size: 12.5px; color:#2C2F36; }
+  .urg-sub { font-size: 10.5px; color:#5B5F6B; margin-top: 2px; min-height:24px; }
+  .urg-price { font-weight: 700; font-size: 13.5px; margin-top: 6px; }
+  .urg-price.ok { color:#166534; }
+  .urg-price.red { color:#C41E3A; }
+  .urg-emerg .urg-title { color:#C41E3A; }
+  .tipo-chamado-pill { font-size:10px; font-weight:700; padding:3px 7px; border-radius:99px; text-transform: uppercase; letter-spacing:.5px; }
+  .pill-extra { background:#F3F4F6; color:#5B5F6B; }
+  .pill-emerg { background:#FEE2E2; color:#C41E3A; }
+  .pill-pago  { background:#DCFCE7; color:#166534; }
 </style>
 
 <script>
@@ -101,6 +150,7 @@ export const prerender = false;
   let allChamados = [];
   let lojas = [];
   let filtroAtual = "";
+  let urgenciaSelecionada = "normal";
 
   function badge(status) {
     const labels = { aberto:"Aberto", em_andamento:"Em andamento", aguardando_material:"Aguard. material", concluido:"Concluído", cancelado:"Cancelado" };
@@ -121,16 +171,26 @@ export const prerender = false;
       emptyMsg.style.display = "";
     } else {
       emptyMsg.style.display = "none";
-      tbody.innerHTML = filtered.map(c => `
+      tbody.innerHTML = filtered.map(c => {
+        const tc = c.tipo_chamado || 'normal';
+        let extraPill = '';
+        if (tc === 'extra') extraPill = `<span class="tipo-chamado-pill pill-extra">EXTRA 48h</span>`;
+        else if (tc === 'emergencial') extraPill = `<span class="tipo-chamado-pill pill-emerg">⚡ EMERG. 24h</span>`;
+        let pagamento = '';
+        if (tc !== 'normal') {
+          if (c.pago_em) pagamento = `<span class="tipo-chamado-pill pill-pago">PAGO</span>`;
+          else pagamento = `<button class="btn btn-primary btn-sm" onclick="abrirPix('${c.id}')">Pagar Pix</button>`;
+        }
+        return `
         <tr>
-          <td>${tipoBadge(c.tipo)}</td>
+          <td>${tipoBadge(c.tipo)}<div style="margin-top:4px">${extraPill}</div></td>
           <td style="font-weight:600">${c.manut_lojas?.nome || "—"}</td>
-          <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#5B5F6B">${c.descricao}</td>
-          <td>${badge(c.status)}</td>
+          <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#5B5F6B">${c.descricao}</td>
+          <td>${badge(c.status)}${pagamento ? `<div style="margin-top:4px">${pagamento}</div>` : ''}</td>
           <td style="font-size:12.5px;color:#5B5F6B">${c.manut_tecnicos?.nome || "Não atribuído"}</td>
           <td style="font-size:12.5px;color:#9CA3AF">${fmtDate(c.data_abertura)}</td>
         </tr>
-      `).join("");
+      `}).join("");
     }
   }
 
@@ -171,11 +231,20 @@ export const prerender = false;
     document.getElementById("tipoSelect").value = "";
     document.getElementById("descricaoInput").value = "";
     document.getElementById("localInput").value = "";
+    urgenciaSelecionada = "normal";
+    document.querySelectorAll(".urg-opt").forEach(el => el.classList.toggle("selected", el.dataset.urg === "normal"));
     document.getElementById("modalBg").classList.add("open");
   };
   document.getElementById("btnCancelarModal").onclick = fecharModal;
   document.getElementById("btnFecharModal").onclick = fecharModal;
   document.getElementById("modalBg").onclick = e => { if (e.target === e.currentTarget) fecharModal(); };
+
+  document.querySelectorAll(".urg-opt").forEach(el => {
+    el.addEventListener("click", () => {
+      urgenciaSelecionada = el.dataset.urg;
+      document.querySelectorAll(".urg-opt").forEach(o => o.classList.toggle("selected", o === el));
+    });
+  });
 
   document.getElementById("btnSubmitChamado").addEventListener("click", async () => {
     const alertEl = document.getElementById("modalAlert");
@@ -185,7 +254,7 @@ export const prerender = false;
     const descricao = document.getElementById("descricaoInput").value.trim();
     const localLoja = document.getElementById("localInput").value.trim();
     if (!lojaId)    { alertEl.textContent = "Selecione a loja."; alertEl.style.display = ""; return; }
-    if (!tipo)      { alertEl.textContent = "Selecione o tipo de manutenção."; alertEl.style.display = ""; return; }
+    if (!tipo)      { alertEl.textContent = "Selecione a disciplina."; alertEl.style.display = ""; return; }
     if (!descricao) { alertEl.textContent = "Descreva o problema."; alertEl.style.display = ""; return; }
     const btn = document.getElementById("btnSubmitChamado");
     btn.disabled = true; btn.textContent = "Abrindo...";
@@ -193,20 +262,54 @@ export const prerender = false;
       const res = await fetch("/api/manut/cliente/chamados", {
         method: "POST",
         headers: { "content-type":"application/json","x-cliente-auth":token },
-        body: JSON.stringify({ lojaId, tipo, descricao, localLoja })
+        body: JSON.stringify({ lojaId, tipo, descricao, localLoja, tipoChamado: urgenciaSelecionada })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao abrir chamado");
       allChamados.unshift(data);
       renderChamados();
       fecharModal();
-      window.toast?.("Chamado aberto com sucesso!", "success");
+      if (urgenciaSelecionada === "normal") {
+        window.toast?.("Chamado aberto! Será atendido na próxima visita.", "success");
+      } else {
+        // Gera Pix automaticamente para chamados pagos
+        await abrirPix(data.id);
+      }
     } catch (err) {
       alertEl.textContent = err.message; alertEl.style.display = "";
     } finally {
       btn.disabled = false; btn.textContent = "Abrir chamado";
     }
   });
+
+  async function abrirPix(chamadoId) {
+    const content = document.getElementById("pixContent");
+    content.innerHTML = '<div class="spinner" style="margin:30px auto"></div>';
+    document.getElementById("modalPixBg").classList.add("open");
+    try {
+      const res = await fetch(`/api/manut/cliente/chamados/${chamadoId}/pagamento`, {
+        method: "POST",
+        headers: { "content-type":"application/json","x-cliente-auth":token },
+        body: "{}"
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao gerar Pix");
+      content.innerHTML = `
+        ${data.qrCodeBase64 ? `<img src="data:image/png;base64,${data.qrCodeBase64}" alt="QR Code" style="width:200px;height:200px;border:1px solid #E5E7EB;border-radius:8px;padding:8px;background:#FFF" />` : ''}
+        <div style="margin-top:12px;padding:10px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px">
+          <div style="font-size:10.5px;color:#5B5F6B;text-transform:uppercase;letter-spacing:1px;font-weight:700">Pix copia-e-cola</div>
+          <textarea readonly style="width:100%;height:60px;margin-top:6px;font-family:monospace;font-size:10px;border:none;background:transparent;resize:none">${data.qrCode || ''}</textarea>
+          <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${(data.qrCode || '').replace(/'/g,"\\'")}').then(()=>window.toast?.('Copiado!','success'))">Copiar código</button>
+        </div>
+        ${data.ticketUrl ? `<p style="margin-top:10px;font-size:12px"><a href="${data.ticketUrl}" target="_blank" style="color:#C41E3A">Abrir comprovante no Mercado Pago →</a></p>` : ''}
+      `;
+    } catch (err) {
+      content.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+  (window).abrirPix = abrirPix;
+  document.getElementById("btnFecharPix").onclick = () => { document.getElementById("modalPixBg").classList.remove("open"); load(); };
+  document.getElementById("btnFecharPix2").onclick = () => { document.getElementById("modalPixBg").classList.remove("open"); load(); };
 
   load();
   window.addEventListener("portal:refresh", load);
