@@ -11,7 +11,7 @@ export const GET: APIRoute = async ({ request }) => {
 
     const [clienteRes, pagamentosRes, visitasRes] = await Promise.all([
       db.from("manut_clientes")
-        .select("id,nome,email,plano_selecionado,valor_mensal_contratado,visitas_contratadas,status,data_contratacao")
+        .select("id,nome,email,plano_selecionado,valor_mensal_contratado,visitas_contratadas,extras_contratados,emergenciais_contratados,extras_disponiveis,emergenciais_disponiveis,status,data_contratacao")
         .eq("id", claims.sub)
         .single(),
       db.from("manut_pagamentos")

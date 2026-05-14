@@ -35,9 +35,25 @@ const diferenciais = [
 ];
 
 const planos = [
-  { nome: "Trimestral", periodo: "3 meses", extra: null,              ideal: "Ideal para conhecer o serviço" },
-  { nome: "Semestral",  periodo: "6 meses", extra: "+2 visitas extras", ideal: "Ideal para manutenção contínua" },
-  { nome: "Anual",      periodo: "12 meses", extra: "+5 visitas extras", ideal: "Melhor custo-benefício", destaque: true },
+  {
+    nome: "Trimestral",
+    periodo: "3 meses",
+    beneficios: ["1 visita extra inclusa", "1 chamado emergencial incluso"],
+    ideal: "Ideal para conhecer o serviço",
+  },
+  {
+    nome: "Semestral",
+    periodo: "6 meses",
+    beneficios: ["6 visitas extras inclusas (1/mês)", "1 chamado emergencial incluso"],
+    ideal: "Ideal para manutenção contínua",
+  },
+  {
+    nome: "Anual",
+    periodo: "12 meses",
+    beneficios: ["12 visitas extras inclusas (1/mês)", "4 chamados emergenciais inclusos"],
+    ideal: "Melhor custo-benefício",
+    destaque: true,
+  },
 ];
 ---
 <Base
@@ -228,7 +244,11 @@ const planos = [
             <span class="plano-periodo">{p.periodo}</span>
             <h3>{p.nome}</h3>
             <p class="plano-desc">1 visita preventiva por mês</p>
-            {p.extra && <p class="plano-extra">{p.extra} durante o contrato</p>}
+            {p.beneficios && p.beneficios.length > 0 && (
+              <ul class="plano-beneficios">
+                {p.beneficios.map(b => <li>{b}</li>)}
+              </ul>
+            )}
             <p class="plano-ideal">{p.ideal}</p>
             <a href="/manutencao/contratar" class={`btn ${p.destaque ? 'btn-primary' : 'btn-outline'}`} style="width:100%;justify-content:center;margin-top:auto">
               Contratar agora
@@ -480,13 +500,18 @@ const planos = [
   .plano-card h3 { font-size: 26px; margin: 0; }
   .plano-visitas { font-family: 'Montserrat', sans-serif; font-size: 28px; font-weight: 800; color: var(--brand); margin: 0; }
   .plano-desc { color: var(--ink-mid); font-size: 14px; margin: 0; }
-  .plano-extra {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px;
-    color: #15803d; background: #dcfce7; border-radius: 6px;
-    padding: 4px 10px; margin: 0;
+  .plano-beneficios {
+    list-style: none; padding: 0; margin: 4px 0 0;
+    display: flex; flex-direction: column; gap: 6px;
   }
-  .plano-extra::before { content: "✓"; }
+  .plano-beneficios li {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 13px;
+    color: #15803d;
+  }
+  .plano-beneficios li::before {
+    content: "✓"; color: #15803d; font-weight: 800; flex-shrink: 0;
+  }
   .plano-ideal { font-size: 13px; color: var(--ink-light); margin: 0; padding-top: 4px; border-top: 1px solid var(--border); }
 
   /* ─── CTA FINAL ─── */

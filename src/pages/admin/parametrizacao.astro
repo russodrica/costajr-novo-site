@@ -63,6 +63,8 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
             <div style="text-align:right">
               <strong style="color:#C41E3A">{fmtMoney(p.valor_mensal)}/mês</strong>
               <div style="font-size:0.8rem;color:#666">{p.numero_preventivas} preventivas</div>
+              {p.visitas_extras_inclusas > 0 && <div style="font-size:0.8rem;color:#15803D">+{p.visitas_extras_inclusas} visita(s) extra(s) inclusa(s)</div>}
+              {p.emergenciais_inclusos > 0 && <div style="font-size:0.8rem;color:#15803D">+{p.emergenciais_inclusos} emergencial(is) incluso(s)</div>}
               {p.chamados_inclusos && <div style="font-size:0.8rem;color:#666">{p.chamados_inclusos} chamados inclusos</div>}
             </div>
           </div>
@@ -100,6 +102,8 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
         <div><code>{`{{plano_nome}}`}</code> — plano contratado</div>
         <div><code>{`{{plano_valor}}`}</code> — valor mensal formatado</div>
         <div><code>{`{{plano_preventivas}}`}</code> — nº de preventivas</div>
+        <div><code>{`{{plano_extras_inclusas}}`}</code> — visitas extras inclusas</div>
+        <div><code>{`{{plano_emergenciais_inclusos}}`}</code> — chamados emergenciais inclusos</div>
         <div><code>{`{{data_hoje}}`}</code> — data atual</div>
         <div><code>{`{{lojas_lista}}`}</code> — lista de lojas (tipo, endereço)</div>
       </div>
@@ -123,6 +127,8 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
           <div class="form-group" style="grid-column:span 2"><label>Nome *</label><input id="planoNome" required /></div>
           <div class="form-group"><label>Valor mensal (R$) *</label><input id="planoValor" type="number" step="0.01" required /></div>
           <div class="form-group"><label>Nº preventivas *</label><input id="planoPreventivas" type="number" required /></div>
+          <div class="form-group"><label>Visitas extras inclusas</label><input id="planoExtras" type="number" min="0" placeholder="0" /></div>
+          <div class="form-group"><label>Emergenciais inclusos</label><input id="planoEmergs" type="number" min="0" placeholder="0" /></div>
           <div class="form-group"><label>Chamados inclusos</label><input id="planoChamados" type="number" /></div>
           <div class="form-group" style="grid-column:span 2"><label>Descrição</label><textarea id="planoDesc"></textarea></div>
         </div>
@@ -160,6 +166,8 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
       document.getElementById("planoNome").value = p.nome;
       document.getElementById("planoValor").value = p.valor_mensal;
       document.getElementById("planoPreventivas").value = p.numero_preventivas;
+      document.getElementById("planoExtras").value = p.visitas_extras_inclusas ?? 0;
+      document.getElementById("planoEmergs").value = p.emergenciais_inclusos ?? 0;
       document.getElementById("planoChamados").value = p.chamados_inclusos || "";
       document.getElementById("planoDesc").value = p.descricao || "";
       document.getElementById("btnSalvarPlano").textContent = "Salvar";
@@ -191,6 +199,8 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
         nome: document.getElementById("planoNome").value,
         valor_mensal: parseFloat(document.getElementById("planoValor").value),
         numero_preventivas: parseInt(document.getElementById("planoPreventivas").value),
+        visitas_extras_inclusas: parseInt(document.getElementById("planoExtras").value || "0") || 0,
+        emergenciais_inclusos: parseInt(document.getElementById("planoEmergs").value || "0") || 0,
         chamados_inclusos: document.getElementById("planoChamados").value ? parseInt(document.getElementById("planoChamados").value) : null,
         descricao: document.getElementById("planoDesc").value || null,
         ativo: true,
@@ -230,6 +240,8 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLo
         "{{plano_nome}}": "Plano Trimestral",
         "{{plano_valor}}": "R$ 750,00",
         "{{plano_preventivas}}": "4",
+        "{{plano_extras_inclusas}}": "1",
+        "{{plano_emergenciais_inclusos}}": "1",
         "{{data_hoje}}": new Date().toLocaleDateString("pt-BR"),
         "{{lojas_lista}}": "Loja 1 — Quiosque — Av. Brasil, 100\nLoja 2 — Até 40 m² — Rua A, 200",
       };

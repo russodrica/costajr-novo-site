@@ -2,6 +2,7 @@ import { supabaseAdmin } from "../supabase";
 import { hashSenha, verificarSenha, signToken, gerarSenhaInicial } from "../auth";
 import { criarPreapproval } from "../mercadopago";
 import { enviarSenhaTemporaria, enviarSenhaReset } from "../mailer";
+import { inclusoesParaDuracao } from "./planos-inclusos";
 
 const db = () => supabaseAdmin();
 
@@ -132,6 +133,9 @@ export async function contratarSubmit(payload: {
   const email = loja.email.toLowerCase();
   const { data: dup } = await db().from("manut_clientes").select("*").eq("email", email).maybeSingle();
 
+  // Resolve inclusoes (visitas extras + emergenciais) com base na duracao do plano
+  const inclusoes = inclusoesParaDuracao(plano.duracaoMeses ?? 1);
+
   let cliente: any;
   let senhaInicial: string | null = null;
 
@@ -145,6 +149,10 @@ export async function contratarSubmit(payload: {
         plano_selecionado: plano.id,
         valor_mensal_contratado: plano.valorMensal,
         visitas_contratadas: plano.visitas,
+        extras_contratados: inclusoes.extras,
+        emergenciais_contratados: inclusoes.emergenciais,
+        extras_disponiveis: inclusoes.extras,
+        emergenciais_disponiveis: inclusoes.emergenciais,
         ...(dup.status === "cancelado" ? { status: "pendente" } : {})
       })
       .eq("id", dup.id)
@@ -168,6 +176,10 @@ export async function contratarSubmit(payload: {
         plano_selecionado: plano.id,
         valor_mensal_contratado: plano.valorMensal,
         visitas_contratadas: plano.visitas,
+        extras_contratados: inclusoes.extras,
+        emergenciais_contratados: inclusoes.emergenciais,
+        extras_disponiveis: inclusoes.extras,
+        emergenciais_disponiveis: inclusoes.emergenciais,
         data_contratacao: new Date().toISOString()
       })
       .select("*")

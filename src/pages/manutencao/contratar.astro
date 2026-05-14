@@ -1,6 +1,7 @@
 ---
 import Base from "~/layouts/Base.astro";
 import { supabaseAdmin } from "~/lib/supabase";
+import { INCLUSOES_POR_DURACAO } from "~/lib/manut/planos-inclusos";
 
 const { data: precificacao } = await supabaseAdmin()
   .from("manut_precificacao")
@@ -156,6 +157,10 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
         <div class="dur-desc-tag">5% de desconto</div>
         <div class="dur-preco" id="dur-preco-3">—</div>
         <div class="dur-total" id="dur-total-3"></div>
+        <ul class="dur-bonus">
+          <li>1 visita extra inclusa</li>
+          <li>1 emergencial incluso</li>
+        </ul>
       </label>
       <label class="dur-card" data-meses="6" data-desc="10">
         <input type="radio" name="duracao" value="6">
@@ -163,6 +168,10 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
         <div class="dur-desc-tag">10% de desconto</div>
         <div class="dur-preco" id="dur-preco-6">—</div>
         <div class="dur-total" id="dur-total-6"></div>
+        <ul class="dur-bonus">
+          <li>6 visitas extras (1/mês)</li>
+          <li>1 emergencial incluso</li>
+        </ul>
       </label>
       <label class="dur-card recomendado" data-meses="12" data-desc="15">
         <input type="radio" name="duracao" value="12">
@@ -171,11 +180,16 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
         <div class="dur-desc-tag">15% de desconto</div>
         <div class="dur-preco" id="dur-preco-12">—</div>
         <div class="dur-total" id="dur-total-12"></div>
+        <ul class="dur-bonus">
+          <li>12 visitas extras (1/mês)</li>
+          <li>4 emergenciais inclusos</li>
+        </ul>
       </label>
     </div>
 
     <div class="sim-bullets">
       <div class="sim-bullet">✔ 1 visita preventiva mensal</div>
+      <div class="sim-bullet">✔ Visitas extras e emergenciais inclusas conforme o plano</div>
       <div class="sim-bullet">✔ Chamados ilimitados via plataforma</div>
       <div class="sim-bullet">✔ Técnico responsável vinculado</div>
       <div class="sim-bullet">✔ Relatório mensal em PDF</div>
@@ -307,7 +321,7 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
 
 </Base>
 
-<script define:vars={{ tiposLoja, especialidades, custoEsp }}>
+<script define:vars={{ tiposLoja, especialidades, custoEsp, INCLUSOES_POR_DURACAO }}>
   // ─── Estado global ───────────────────────────────────────────────
   let leadId = null;
   let etapaAtual = 1;
@@ -667,12 +681,17 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
     a.style.display = "none";
 
     // Monta resumo final
+    const inc = INCLUSOES_POR_DURACAO[dados.duracaoMeses] || { extras: 0, emergenciais: 0 };
+    const inclusoesStr = inc.extras > 0 || inc.emergenciais > 0
+      ? `${inc.extras} visita${inc.extras !== 1 ? "s" : ""} extra${inc.extras !== 1 ? "s" : ""} + ${inc.emergenciais} emergencial${inc.emergenciais !== 1 ? "ais" : ""}`
+      : "—";
     $("resumo-final").innerHTML = `
       <div class="resumo-linha"><span>Responsável</span><strong>${dados.nome}</strong></div>
       <div class="resumo-linha"><span>E-mail / Login</span><strong>${dados.email}</strong></div>
       <div class="resumo-linha"><span>Loja</span><strong>${dados.nomeLoja}</strong></div>
       <div class="resumo-linha"><span>Telefone</span><strong>${dados.telefone}</strong></div>
       <div class="resumo-linha"><span>Plano</span><strong>${dados.planoLabel}</strong></div>
+      <div class="resumo-linha"><span>Inclusos no plano</span><strong style="color:#15803D">${inclusoesStr}</strong></div>
       <div class="resumo-linha resumo-total"><span>Valor mensal</span><strong>${fmtMoney(dados.valorMensal)}</strong></div>
       <div class="resumo-linha" style="background:#F0FDF4"><span>Total ${duracaoLabels[dados.duracaoMeses]} (${dados.duracaoMeses}x)</span><strong style="color:#15803D;font-family:'Montserrat',sans-serif;font-size:18px">${fmtMoney(dados.valorTotal)}</strong></div>
     `;
@@ -877,6 +896,16 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
   .dur-desc-tag { font-size: 11px; font-weight: 600; color: #22C55E; }
   .dur-preco { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px; color: #C41E3A; margin-top: 4px; }
   .dur-total { font-size: 11px; color: #6B7280; }
+  .dur-bonus {
+    list-style: none; padding: 8px 0 0; margin: 8px 0 0;
+    border-top: 1px dashed #E5E7EB; width: 100%;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .dur-bonus li {
+    font-size: 11px; color: #15803D; font-weight: 600;
+    display: flex; align-items: flex-start; gap: 4px; line-height: 1.3;
+  }
+  .dur-bonus li::before { content: "✓"; font-weight: 800; flex-shrink: 0; }
 
   /* ── Cupom ── */
   .cupom-wrap { margin-bottom: 24px; padding: 16px; background: #F8FAFC; border: 1px solid #E5E7EB; border-radius: 8px; }

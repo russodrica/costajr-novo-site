@@ -23,7 +23,7 @@ export async function criarChamadoCliente(args: {
 }) {
   const tipoChamado = args.tipoChamado || "normal";
 
-  // Limite só aplica a chamados "normais" (extra/emergencial são únicos e pagos)
+  // Limite só aplica a chamados "normais"
   if (tipoChamado === "normal") {
     const { count } = await db()
       .from("manut_chamados")
@@ -35,16 +35,41 @@ export async function criarChamadoCliente(args: {
     if ((count || 0) >= 4) throw new Error(`Limite de 4 chamados normais abertos por tipo (${args.tipo})`);
   }
 
+  // Saldo incluso no plano (decrementa antes de cobrar)
+  let inclusoNoPlano = false;
+  if (tipoChamado === "extra" || tipoChamado === "emergencial") {
+    const { data: cli } = await db()
+      .from("manut_clientes")
+      .select("extras_disponiveis,emergenciais_disponiveis")
+      .eq("id", args.clienteId)
+      .maybeSingle();
+    const saldoExtras = Number(cli?.extras_disponiveis || 0);
+    const saldoEmerg = Number(cli?.emergenciais_disponiveis || 0);
+    if (tipoChamado === "extra" && saldoExtras > 0) {
+      inclusoNoPlano = true;
+      await db()
+        .from("manut_clientes")
+        .update({ extras_disponiveis: saldoExtras - 1 })
+        .eq("id", args.clienteId);
+    } else if (tipoChamado === "emergencial" && saldoEmerg > 0) {
+      inclusoNoPlano = true;
+      await db()
+        .from("manut_clientes")
+        .update({ emergenciais_disponiveis: saldoEmerg - 1 })
+        .eq("id", args.clienteId);
+    }
+  }
+
   // Valor e prazo
   let valorChamado: number | null = null;
   let prazoAtendimento: string | null = null;
   let prioridade: "normal" | "alta" | "urgente" = "normal";
   if (tipoChamado === "extra") {
-    valorChamado = VALOR_CHAMADO_EXTRA;
+    valorChamado = inclusoNoPlano ? null : VALOR_CHAMADO_EXTRA;
     prazoAtendimento = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
     prioridade = "alta";
   } else if (tipoChamado === "emergencial") {
-    valorChamado = VALOR_CHAMADO_EMERGENCIAL;
+    valorChamado = inclusoNoPlano ? null : VALOR_CHAMADO_EMERGENCIAL;
     prazoAtendimento = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     prioridade = "urgente";
   }
@@ -63,6 +88,9 @@ export async function criarChamadoCliente(args: {
       tipo_chamado: tipoChamado,
       valor_chamado: valorChamado,
       prazo_atendimento: prazoAtendimento,
+      incluso_no_plano: inclusoNoPlano,
+      // Chamados inclusos no plano ja saem marcados como "pagos" para nao gerar fluxo Pix
+      ...(inclusoNoPlano ? { pago_em: new Date().toISOString() } : {}),
     })
     .select("*")
     .single();
@@ -80,6 +108,7 @@ export async function gerarPixChamado(chamadoId: string, clienteId: string) {
     .maybeSingle();
   if (!chamado) throw new Error("Chamado não encontrado");
   if (chamado.tipo_chamado === "normal") throw new Error("Chamado normal não requer pagamento");
+  if ((chamado as any).incluso_no_plano) throw new Error("Chamado já incluso no plano — sem cobrança");
   if (chamado.pago_em) throw new Error("Chamado já pago");
 
   const cli: any = (chamado as any).manut_clientes;
