@@ -29,6 +29,77 @@ const especialidades = [
   { id: "civil",      label: "Civil",      icone: "🏗", descricao: "Pintura, revestimentos, acabamentos" },
 ];
 const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50);
+
+// Escopo Geral de Manutenção — Detalhamento de Serviços Inclusos e Itens Mediante Orçamento
+const escoposManutencao = [
+  {
+    id: "emergencial",
+    icone: "⚠️",
+    titulo: "Demanda Emergencial",
+    inclusos: [
+      "Reparos paliativos urgentes essenciais",
+      "Foco em evitar riscos à segurança física",
+      "Mitigação de impactos diretos na operação",
+      "Estabilização imediata da infraestrutura",
+    ],
+    orcamento: "Serviços de alta complexidade (troca de quadro, telhado, forro, etc).",
+  },
+  {
+    id: "hidraulica",
+    icone: "💧",
+    titulo: "Hidráulica",
+    inclusos: [
+      "Limpeza, desentupimento e vazamentos",
+      "Ajuste de bóias e troca de válvulas",
+      "Fixação de louças e vedação em geral",
+      "Troca de sifões, torneiras e flexíveis",
+      "Verificação de pressão do sistema",
+    ],
+    orcamento: "Desentupimento industrial/caminhão; troca integral de louças e metais.",
+  },
+  {
+    id: "eletrica",
+    icone: "⚡",
+    titulo: "Elétrica",
+    inclusos: [
+      "Troca de lâmpadas, reatores e disjuntores",
+      "Manutenção de luminárias e tomadas",
+      "Reorganização de cabeamentos expostos",
+      "Aperto de conexões em quadros e rede",
+      "Limpeza trimestral de fachadas",
+    ],
+    orcamento: "Troca total de luminárias, novos pontos e substituição de letreiros.",
+  },
+  {
+    id: "civil",
+    icone: "🧱",
+    titulo: "Civil & Acabamentos",
+    inclusos: [
+      "Substituição de fitas antiderrapantes",
+      "Fixação simples e lavagem de toldos",
+      "Pequenos reparos em pisos e forros",
+      "Recolocação de placas e sinalizações",
+      "Retoques de pintura interna (baixa criticidade)",
+    ],
+    orcamento: "Pinturas completas, troca de pisos/forros, mármores e granitos.",
+  },
+  {
+    id: "ar",
+    icone: "❄️",
+    titulo: "Ar Condicionado",
+    soOrcamento: true,
+    inclusos: ["Categoria atendida exclusivamente sob demanda orçada."],
+    orcamento: "Testes elétricos, pressão de gás, limpeza química, troca de filtros, bactericida, PMOC e ART.",
+  },
+  {
+    id: "serralheria",
+    icone: "🛠️",
+    titulo: "Serralheria & Cobertura",
+    soOrcamento: true,
+    inclusos: ["Categoria atendida exclusivamente sob demanda orçada."],
+    orcamento: "Telhados (vedação, limpeza), Portas de Aço (molas, motor, alinhamento) e Serralheria geral.",
+  },
+];
 ---
 <Base
   title="Contratar manutenção predial — Costa Júnior"
@@ -108,6 +179,40 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
         </label>
       ))}
     </div>
+
+    <!-- Escopo Geral de Manutenção -->
+    <details class="escopo-block">
+      <summary>
+        <span class="escopo-summary-titulo">Escopo completo dos serviços</span>
+        <span class="escopo-summary-sub">Detalhamento do que está incluso e o que é mediante orçamento</span>
+        <span class="escopo-chevron">▾</span>
+      </summary>
+      <div class="escopo-grid">
+        {escoposManutencao.map(area => (
+          <article class={`escopo-card ${area.soOrcamento ? "escopo-orc" : ""}`}>
+            <h4>
+              <span class="escopo-icone">{area.icone}</span>
+              {area.titulo}
+            </h4>
+            <ul class="escopo-inclusos">
+              {area.inclusos.map(item => (
+                area.soOrcamento
+                  ? <li class="escopo-aviso">{item}</li>
+                  : <li>{item}</li>
+              ))}
+            </ul>
+            <div class="escopo-orcamento">
+              <span class="escopo-orcamento-label">MEDIANTE ORÇAMENTO:</span>
+              <span class="escopo-orcamento-texto">{area.orcamento}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div class="escopo-rodape">
+        <strong>Nota Comercial:</strong> a execução preventiva mensal é focada em reparos pontuais para manutenção da operação.
+        <span class="escopo-medida">📐 1 m² / 2 peças</span>
+      </div>
+    </details>
 
     <div id="e1-alert" class="ctr-alert" style="display:none"></div>
     <div class="ctr-actions">
@@ -851,6 +956,104 @@ const custoEsp = Number((precificacao as any[])?.[0]?.custo_especialidade ?? 50)
   .esp-card.checked { border-color: #C41E3A; background: rgba(196,30,58,.05); }
   .esp-card.checked .esp-check { display: block; }
   .esp-card:hover { border-color: #C41E3A; }
+
+  /* ── Escopo de manutenção ── */
+  .escopo-block {
+    margin: 16px 0 8px;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    background: #FAFBFC;
+    overflow: hidden;
+  }
+  .escopo-block > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #fff;
+    border-bottom: 1px solid transparent;
+    transition: background .15s;
+  }
+  .escopo-block > summary::-webkit-details-marker { display: none; }
+  .escopo-block[open] > summary { border-bottom-color: #E5E7EB; }
+  .escopo-block > summary:hover { background: #F8FAFC; }
+  .escopo-summary-titulo {
+    font-family: 'Montserrat', sans-serif; font-weight: 700;
+    font-size: 13.5px; color: #2D2F36;
+  }
+  .escopo-summary-sub {
+    flex: 1; font-size: 12px; color: #6B7280;
+  }
+  .escopo-chevron {
+    color: #9CA3AF; font-size: 14px; transition: transform .2s;
+  }
+  .escopo-block[open] .escopo-chevron { transform: rotate(180deg); }
+
+  .escopo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    padding: 16px;
+  }
+  .escopo-card {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 14px 16px;
+    border-left: 3px solid #15803D;
+  }
+  .escopo-card.escopo-orc { border-left-color: #C41E3A; }
+  .escopo-card h4 {
+    margin: 0 0 10px;
+    font-family: 'Montserrat', sans-serif; font-weight: 700;
+    font-size: 13.5px; color: #2D2F36;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .escopo-icone { font-size: 16px; }
+  .escopo-inclusos {
+    list-style: none; padding: 0; margin: 0 0 10px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .escopo-inclusos li {
+    font-size: 12px; color: #2D2F36; line-height: 1.4;
+    display: flex; align-items: flex-start; gap: 6px;
+  }
+  .escopo-inclusos li::before {
+    content: "✓"; color: #15803D; font-weight: 700; flex-shrink: 0;
+  }
+  .escopo-inclusos li.escopo-aviso {
+    color: #6B7280; font-style: italic;
+  }
+  .escopo-inclusos li.escopo-aviso::before {
+    content: "ⓘ"; color: #C41E3A;
+  }
+  .escopo-orcamento {
+    border-top: 1px dashed #E5E7EB;
+    padding-top: 8px; margin-top: 4px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .escopo-orcamento-label {
+    font-family: 'Montserrat', sans-serif; font-weight: 700;
+    font-size: 10px; color: #C41E3A;
+    letter-spacing: 0.06em;
+  }
+  .escopo-orcamento-texto {
+    font-size: 11.5px; color: #6B7280; line-height: 1.4;
+  }
+  .escopo-rodape {
+    background: #1E2128; color: #fff;
+    padding: 12px 18px;
+    font-size: 12.5px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .escopo-rodape strong { color: #fff; }
+  .escopo-medida {
+    margin-left: auto;
+    font-family: 'Montserrat', sans-serif; font-weight: 700;
+    color: #15803D;
+  }
 
   /* ── Simulação ── */
   .sim-box {
