@@ -788,7 +788,7 @@ const escoposManutencao = [
     // Monta resumo final
     const inc = INCLUSOES_POR_DURACAO[dados.duracaoMeses] || { extras: 0, emergenciais: 0 };
     const inclusoesStr = inc.extras > 0 || inc.emergenciais > 0
-      ? `${inc.extras} visita${inc.extras !== 1 ? "s" : ""} extra${inc.extras !== 1 ? "s" : ""} + ${inc.emergenciais} emergencial${inc.emergenciais !== 1 ? "ais" : ""}`
+      ? `${inc.extras} visita${inc.extras !== 1 ? "s" : ""} extra${inc.extras !== 1 ? "s" : ""} + ${inc.emergenciais} ${inc.emergenciais === 1 ? "emergencial" : "emergenciais"}`
       : "—";
     $("resumo-final").innerHTML = `
       <div class="resumo-linha"><span>Responsável</span><strong>${dados.nome}</strong></div>
