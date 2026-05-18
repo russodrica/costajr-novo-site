@@ -12,7 +12,7 @@ export interface InclusoesPlano {
 export const INCLUSOES_POR_DURACAO: Record<DuracaoMeses, InclusoesPlano> = {
   1: { extras: 0, emergenciais: 0 },
   3: { extras: 1, emergenciais: 1 },
-  6: { extras: 6, emergenciais: 1 },
+  6: { extras: 6, emergenciais: 2 },
   12: { extras: 12, emergenciais: 4 },
 };
 
