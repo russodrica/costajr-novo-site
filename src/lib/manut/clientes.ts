@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "../supabase";
 import { hashSenha, verificarSenha, signToken, gerarSenhaInicial } from "../auth";
-import { criarPreapproval } from "../mercadopago";
+import { criarPreference } from "../mercadopago";
 import { enviarSenhaTemporaria, enviarSenhaReset } from "../mailer";
 import { inclusoesParaDuracao } from "./planos-inclusos";
 
@@ -220,19 +220,23 @@ export async function contratarSubmit(payload: {
     .select("id")
     .single();
 
-  // Mercado Pago — assinatura cobrada a cada duracaoMeses meses pelo valorTotal
+  // Mercado Pago — pagamento unico do valor total do plano (Checkout Pro).
+  // Cliente paga 100% upfront via Pix/cartao/boleto na tela do MP.
   const externalRef = `CJR-MANUT-${cliente.id}-${pag?.id}`;
-  const mp = await criarPreapproval({
-    cliente,
-    plano: { ...plano, valorCobranca, duracaoMeses },
+  const mp = await criarPreference({
+    cliente: { id: cliente.id, email: cliente.email, nome: cliente.nome },
+    plano: { nome: plano.nome, valor: valorCobranca },
     externalReference: externalRef
   }).catch(
-    (e) => ({ ok: false, motivo: e.message, initPoint: null, preapprovalId: null })
+    (e) => ({ ok: false, motivo: e.message, initPoint: null })
   );
   if (mp.ok && pag?.id) {
+    // mercado_pago_id agora guarda o preference_id (init_point e tracking)
+    const initPoint = (mp as any).initPoint || "";
+    const prefId = initPoint.split("pref_id=")[1] || initPoint;
     await db()
       .from("manut_pagamentos")
-      .update({ mercado_pago_id: mp.preapprovalId })
+      .update({ mercado_pago_id: prefId })
       .eq("id", pag.id);
   }
 
