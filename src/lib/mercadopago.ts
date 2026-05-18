@@ -66,6 +66,9 @@ export async function criarPreference(args: {
   plano: { nome: string; valor: number };
   externalReference: string;
 }): Promise<{ ok: boolean; initPoint: string | null; motivo?: string }> {
+  // NOTA: payer.email NAO eh enviado de proposito. Quando o MP recebe um e-mail
+  // que ele reconhece, ele forca o cliente a logar antes de pagar. Sem o e-mail,
+  // o Checkout Pro abre direto como convidado (Pix/cartao/boleto sem login).
   const body = {
     items: [{
       title: `CJR Manutenção — ${args.plano.nome}`,
@@ -73,7 +76,6 @@ export async function criarPreference(args: {
       unit_price: Number(Number(args.plano.valor).toFixed(2)),
       currency_id: "BRL"
     }],
-    payer: { email: args.cliente.email, name: args.cliente.nome },
     external_reference: args.externalReference,
     back_urls: {
       success: `${SITE}/manutencao/cliente/dashboard`,
@@ -81,7 +83,10 @@ export async function criarPreference(args: {
       pending:  `${SITE}/manutencao/cliente/dashboard`
     },
     auto_return: "approved",
-    statement_descriptor: "CJR MANUTENCAO"
+    statement_descriptor: "CJR MANUTENCAO",
+    payment_methods: {
+      default_payment_method_id: "pix"
+    }
   };
   const res = await fetch(`${MP_API}/checkout/preferences`, {
     method: "POST",
