@@ -1,7 +1,7 @@
 -- Migration 015: Visitas extras e emergenciais inclusas por plano
 -- Trimestral: 1 visita extra + 1 emergencial inclusos
 -- Semestral: 6 visitas extras (1/mes) + 2 emergenciais inclusos
--- Anual: 12 visitas extras (1/mes) + 4 emergenciais inclusos
+-- Anual: 14 visitas extras + 5 emergenciais inclusos
 -- Data: 2026-05-14
 
 -- 1) Configuracao do plano (referencia para o admin / parametrizacao)
