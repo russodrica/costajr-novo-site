@@ -1,8 +1,31 @@
 ---
 import Base from "~/layouts/Base.astro";
 
-// Em breve — quando houver CMS/Supabase, substituir por listagem dinâmica
-const artigos: { slug: string; titulo: string; resumo: string; data: string; categoria: string }[] = [];
+// Artigos publicados — manutenção em arquivo Astro estático.
+// Quando houver CMS/Supabase, substituir por listagem dinâmica.
+const artigos: { slug: string; titulo: string; resumo: string; data: string; categoria: string }[] = [
+  {
+    slug: "quanto-custa-manutencao-predial",
+    titulo: "Quanto custa manutenção predial em 2026? Guia de preços por m²",
+    resumo: "Faixas reais de preço em SP, o que define o valor, e como evitar pegadinhas comuns ao contratar. Inclui tabela de referência por tamanho de loja.",
+    data: "20/05/2026",
+    categoria: "Manutenção Predial",
+  },
+  {
+    slug: "manutencao-preventiva-vs-corretiva",
+    titulo: "Manutenção preventiva vs corretiva: o comparativo que vai mudar sua decisão",
+    resumo: "Comparativo direto com números — quanto cada estratégia custa por ano, riscos operacionais e quando faz sentido cada uma.",
+    data: "20/05/2026",
+    categoria: "Estratégia",
+  },
+  {
+    slug: "como-escolher-empresa-manutencao-predial",
+    titulo: "Como escolher empresa de manutenção predial: 7 critérios que evitam dor de cabeça",
+    resumo: "Guia prático com 7 critérios objetivos para escolher prestador em SP. Inclui checklist para a primeira conversa e 5 sinais de alerta.",
+    data: "20/05/2026",
+    categoria: "Guia",
+  },
+];
 ---
 <Base
   title="Artigos — Costa Júnior"

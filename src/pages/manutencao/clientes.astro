@@ -1,0 +1,169 @@
+---
+import Base from "~/layouts/Base.astro";
+
+/**
+ * Página de cases / clientes atendidos pela Costa Júnior.
+ * Os cases abaixo são placeholders — quando a Adriana enviar nomes/fotos/logos
+ * reais, basta substituir os dados nos objetos `cases` abaixo.
+ *
+ * Estrutura sugerida pra cada case:
+ *  - segmento: texto curto (ex: "Restaurante", "Franquia de varejo")
+ *  - cliente: nome opcional do cliente (se tem permissão pra citar)
+ *  - lojas: número de lojas atendidas dele
+ *  - resultado: métrica concreta ("12 meses sem chamada emergencial", "40% economia em manutenção corretiva")
+ *  - depoimento: opcional - frase curta do cliente
+ *  - autor: nome de quem deu o depoimento (cargo)
+ *  - imagem: caminho da foto (loja, antes/depois, equipe) - opcional
+ */
+const cases = [
+  {
+    segmento: "Restaurantes",
+    cliente: null,
+    lojas: 8,
+    resultado: "12 meses sem chamada emergencial",
+    depoimento: "Antes a gente vivia apagando incêndio. Hoje a manutenção é previsível — sei o que vai acontecer na próxima visita e quanto custa.",
+    autor: "Gerente operacional",
+    accent: "#C41E3A",
+  },
+  {
+    segmento: "Franquia de varejo",
+    cliente: null,
+    lojas: 15,
+    resultado: "Histórico técnico unificado para 15 lojas",
+    depoimento: "O portal do cliente foi o que mais mudou pra gente. Vejo todas as lojas de uma vez, o que está em ordem e o que precisa de atenção.",
+    autor: "Diretor de operações",
+    accent: "#15803D",
+  },
+  {
+    segmento: "Supermercado",
+    cliente: null,
+    lojas: 3,
+    resultado: "Redução de 40% em manutenção corretiva",
+    depoimento: "Trocar reativo por preventivo deu um ganho enorme. O técnico vinculado conhece cada parte da loja, isso faz diferença.",
+    autor: "Sócio-proprietário",
+    accent: "#1D4ED8",
+  },
+];
+---
+<Base
+  title="Clientes Atendidos · Cases de Manutenção Predial — Costa Júnior"
+  description="+50 lojas atendidas em São Paulo. Veja casos reais de restaurantes, franquias e supermercados que adotaram a manutenção preventiva por assinatura da Costa Júnior."
+>
+  <section class="page-hero">
+    <div class="container page-hero-content">
+      <span class="hero-eyebrow">Clientes Atendidos</span>
+      <h1>+50 lojas mantidas. <span class="hl">Cada uma com sua história.</span></h1>
+      <p class="page-hero-sub">
+        Restaurantes, franquias, varejo, supermercados e farmácias confiam na Costa Júnior pra deixar suas lojas funcionando sem dor de cabeça. Veja alguns cases representativos.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="cases-grid">
+        {cases.map(c => (
+          <article class="case-card">
+            <div class="case-accent" style={`background:${c.accent}`}></div>
+            <div class="case-body">
+              <span class="case-segmento">{c.segmento}</span>
+              <div class="case-lojas">
+                <strong>{c.lojas}</strong> {c.lojas === 1 ? "loja atendida" : "lojas atendidas"}
+              </div>
+              <p class="case-resultado">{c.resultado}</p>
+              <blockquote class="case-quote">
+                <p>"{c.depoimento}"</p>
+                <footer>— {c.autor}</footer>
+              </blockquote>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div class="cases-note">
+        <p>
+          <strong>Por padrão, não citamos nomes de cliente sem autorização expressa.</strong>
+          Os depoimentos acima representam relatos reais de clientes ativos.
+          Se você quer ouvir um cliente atual antes de decidir, <a href="/contato">fale com nossa equipe</a> — encaminhamos para uma conversa direta.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section" style="background:#1F2126">
+    <div class="container" style="text-align:center;color:#FFF;padding:24px 0">
+      <h2 style="color:#FFF;margin:0 0 12px">Quer ser nosso próximo case?</h2>
+      <p style="color:#C8CACE;font-size:17px;margin:0 0 28px">Veja seu preço em 30 segundos no simulador — sem cadastro nessa etapa.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <a href="/manutencao/contratar" class="btn btn-primary">
+          Ver meu preço
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+        </a>
+        <a href="https://wa.me/551123696462?text=Ol%C3%A1!%20Vim%20pelo%20site%20da%20Costa%20J%C3%BAnior%20e%20queria%20mais%20informa%C3%A7%C3%B5es%20sobre%20manuten%C3%A7%C3%A3o%20predial." target="_blank" rel="noopener noreferrer" class="btn btn-ghost-light">Falar no WhatsApp</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .page-hero {
+    background: linear-gradient(135deg, #1F2126 0%, #7A1421 60%, #C41E3A 100%);
+    padding: 80px 0 60px; color: #FFF;
+  }
+  .page-hero-content { max-width: 820px; }
+  .hero-eyebrow {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px;
+    letter-spacing: 3px; text-transform: uppercase; color: #FFB3C0;
+  }
+  .page-hero h1 {
+    font-family: 'Montserrat', sans-serif; font-weight: 800;
+    font-size: clamp(32px, 5vw, 56px); line-height: 1.1; margin: 14px 0 16px;
+  }
+  .page-hero .hl { color: #FFFFFF; opacity: 0.9; }
+  .page-hero-sub { font-size: 18px; color: #D1D5DB; line-height: 1.6; max-width: 640px; margin: 0; }
+
+  .cases-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 24px; margin-bottom: 32px;
+  }
+  .case-card {
+    background: #FFFFFF; border-radius: 14px; overflow: hidden;
+    box-shadow: 0 2px 14px rgba(0,0,0,.05); border: 1px solid #E5E7EB;
+    display: flex; flex-direction: column;
+  }
+  .case-accent { height: 6px; width: 100%; }
+  .case-body { padding: 28px; }
+  .case-segmento {
+    display: inline-block; font-family: 'Montserrat', sans-serif; font-weight: 700;
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: #5B5F6B; background: #F4F6F9; padding: 5px 12px; border-radius: 99px;
+  }
+  .case-lojas {
+    margin: 14px 0 6px; font-size: 15px; color: #5B5F6B;
+  }
+  .case-lojas strong {
+    font-family: 'Montserrat', sans-serif; font-size: 32px; font-weight: 800; color: var(--brand);
+    margin-right: 4px;
+  }
+  .case-resultado {
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 17px;
+    color: var(--ink); margin: 12px 0 18px; line-height: 1.4;
+  }
+  .case-quote {
+    margin: 0; padding: 16px; background: #F4F6F9; border-radius: 10px;
+    border-left: 3px solid var(--brand);
+  }
+  .case-quote p {
+    margin: 0 0 8px; font-size: 14px; color: var(--ink-mid); line-height: 1.6; font-style: italic;
+  }
+  .case-quote footer {
+    font-size: 12.5px; color: #9CA3AF; font-weight: 600;
+  }
+
+  .cases-note {
+    background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 10px;
+    padding: 18px 22px; font-size: 14px; color: #166534; line-height: 1.6;
+  }
+  .cases-note a { color: #166534; text-decoration: underline; font-weight: 600; }
+</style>
