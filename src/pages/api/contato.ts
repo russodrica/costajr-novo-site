@@ -74,9 +74,13 @@ export const POST: APIRoute = async ({ request }) => {
       </div>
     `;
 
+    // Destinatário: enquanto o domínio costajr.com.br não estiver verificado no Resend,
+    // o envio para qualquer outro endereço (comercial@, etc.) é silenciosamente rejeitado
+    // pelo modo de teste do Resend. Mandamos para adriana@ (dona da conta Resend)
+    // e ela encaminha. Quando verificar o domínio, voltar para comercial@costajr.com.br.
     await resend.emails.send({
       from: `Site Costa Júnior <${FROM}>`,
-      to: "comercial@costajr.com.br",
+      to: "adriana@costajr.com.br",
       replyTo: email,
       subject: `[Site] ${tipoLabel[tipo] || tipo} — ${nome}`,
       html,
