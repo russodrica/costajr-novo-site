@@ -110,9 +110,9 @@ const escoposManutencao = [
 <div class="ctr-progress-wrap">
   <div class="ctr-progress">
     {[
-      { n: 1, label: "Sua Loja" },
-      { n: 2, label: "Simulação" },
-      { n: 3, label: "Cadastro" },
+      { n: 1, label: "Tamanho" },
+      { n: 2, label: "Preço & Plano" },
+      { n: 3, label: "Seus dados" },
       { n: 4, label: "Contrato" },
       { n: 5, label: "Pagamento" },
     ].map(s => (
@@ -128,36 +128,16 @@ const escoposManutencao = [
 <!-- WRAPPER -->
 <div class="ctr-wrap">
 
-  <!-- ── ETAPA 1: Dados da Loja ── -->
+  <!-- ── ETAPA 1: Tamanho + Especialidades (sem dado pessoal) ── -->
   <div class="ctr-card" id="etapa-1">
     <div class="ctr-card-header">
       <span class="ctr-n">1</span>
       <div>
-        <h2>Dados da Sua Loja</h2>
-        <p>Rápido e sem compromisso — veja o preço antes de decidir</p>
+        <h2>Veja seu preço em 30 segundos</h2>
+        <p>Sem cadastro nessa etapa — escolha o tamanho da loja e as especialidades.</p>
       </div>
     </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label>Nome completo do responsável *</label>
-        <input type="text" id="e1-nome" placeholder="Nome e sobrenome" required>
-      </div>
-      <div class="form-group">
-        <label>Telefone / WhatsApp *</label>
-        <input type="tel" id="e1-tel" placeholder="(11) 99999-9999" required>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>E-mail *</label>
-        <input type="email" id="e1-email" placeholder="email@empresa.com.br" required>
-      </div>
-      <div class="form-group">
-        <label>Nome da Loja *</label>
-        <input type="text" id="e1-loja" placeholder="Ex: LOJA ABC" required>
-      </div>
-    </div>
     <div class="form-row">
       <div class="form-group">
         <label>Tamanho da Loja *</label>
@@ -216,7 +196,7 @@ const escoposManutencao = [
 
     <div id="e1-alert" class="ctr-alert" style="display:none"></div>
     <div class="ctr-actions">
-      <button class="btn btn-primary" id="btn-e1">Ver Simulação de Preço →</button>
+      <button class="btn btn-primary" id="btn-e1">Ver meu preço →</button>
     </div>
   </div>
 
@@ -307,6 +287,18 @@ const escoposManutencao = [
       <button class="btn btn-outline" onclick="irParaEtapa(1)">← Voltar</button>
       <button class="btn btn-primary" id="btn-e2">Quero contratar →</button>
     </div>
+
+    <!-- Alternativa: receber cotação no WhatsApp (lead morno) -->
+    <div style="margin-top:18px;padding:14px 16px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px;font-size:13.5px;color:#374151;line-height:1.5">
+        <strong style="color:#15803D;display:block;margin-bottom:2px">Prefere falar com alguém antes?</strong>
+        Enviamos essa cotação no seu WhatsApp e tiramos suas dúvidas — sem cadastro.
+      </div>
+      <button type="button" id="btn-cotacao-wa" class="btn" style="background:#25D366;color:#FFF;display:inline-flex;align-items:center;gap:8px;border:0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Receber no WhatsApp
+      </button>
+    </div>
   </div>
 
   <!-- ── ETAPA 3: Cadastro ── -->
@@ -314,11 +306,34 @@ const escoposManutencao = [
     <div class="ctr-card-header">
       <span class="ctr-n">3</span>
       <div>
-        <h2>Dados de Cadastro</h2>
-        <p>Precisamos dessas informações para formalizar o contrato</p>
+        <h2>Seus dados</h2>
+        <p>Falta pouco! Precisamos desses dados pra formalizar o contrato.</p>
       </div>
     </div>
 
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#6B7280;margin:0 0 12px">Contato</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nome completo do responsável *</label>
+        <input type="text" id="e1-nome" placeholder="Nome e sobrenome" required>
+      </div>
+      <div class="form-group">
+        <label>Telefone / WhatsApp *</label>
+        <input type="tel" id="e1-tel" placeholder="(11) 99999-9999" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>E-mail *</label>
+        <input type="email" id="e1-email" placeholder="email@empresa.com.br" required>
+      </div>
+      <div class="form-group">
+        <label>Nome da Loja *</label>
+        <input type="text" id="e1-loja" placeholder="Ex: LOJA ABC" required>
+      </div>
+    </div>
+
+    <h3 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#6B7280;margin:18px 0 12px">Dados fiscais e endereço</h3>
     <div class="form-row">
       <div class="form-group">
         <label>CNPJ ou CPF *</label>
@@ -546,27 +561,7 @@ const escoposManutencao = [
   });
 
   $("btn-e1").addEventListener("click", async () => {
-    const nome = $("e1-nome").value.trim();
-    const tel  = $("e1-tel").value.trim();
-    const email= $("e1-email").value.trim();
-    const loja = $("e1-loja").value.trim();
     const alert = $("e1-alert");
-
-    if (!nome || !tel || !email || !loja) {
-      alert.textContent = "Preencha todos os campos obrigatórios.";
-      alert.style.display = "";
-      return;
-    }
-    if (nome.trim().split(/\s+/).filter(Boolean).length < 2) {
-      alert.textContent = "Por favor, informe o nome completo (nome e sobrenome).";
-      alert.style.display = "";
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      alert.textContent = "E-mail inválido.";
-      alert.style.display = "";
-      return;
-    }
     const { esps } = calcular();
     if (esps.length === 0) {
       alert.textContent = "Selecione ao menos uma especialidade.";
@@ -574,10 +569,8 @@ const escoposManutencao = [
       return;
     }
     alert.style.display = "none";
-    dados.nome = nome; dados.telefone = tel; dados.email = email; dados.nomeLoja = loja;
-
-    // Salva lead assim que preenche etapa 1
-    await salvarLead("contato_feito");
+    // Não salvamos lead ainda — usuário não preencheu nada pessoal.
+    // Lead será salvo na etapa 3 (cadastro) ou via botão "Receber no WhatsApp" da etapa 2.
 
     // Monta simulação
     const { tipo, esps: espsNomes, preco, extras, total } = calcular();
@@ -593,6 +586,22 @@ const escoposManutencao = [
     // Preenche cards de duração
     atualizarDuracao();
     irParaEtapa(2);
+  });
+
+  // ─── Botão "Receber cotação no WhatsApp" na Etapa 2 (lead morno) ──
+  $("btn-cotacao-wa").addEventListener("click", () => {
+    const m = dados.duracaoMeses || 3;
+    const dur = duracaoLabels[m] || "trimestral";
+    const valorMensalFmt = fmtMoney(dados.valorMensal);
+    const valorTotalFmt = dados.valorTotal ? fmtMoney(dados.valorTotal) : null;
+    const msg = `Olá! Vi pelo site uma cotação de manutenção predial e gostaria de receber mais informações:%0A%0A` +
+      `🏪 *Tipo de loja:* ${dados.planoLabel || "—"}%0A` +
+      `📋 *Plano:* ${dur.charAt(0).toUpperCase() + dur.slice(1)} (${m} meses)%0A` +
+      `💰 *Valor mensal:* ${valorMensalFmt}%0A` +
+      (valorTotalFmt ? `💵 *Total do período:* ${valorTotalFmt}%0A` : "") +
+      `%0AQuando puder, me retorna?`;
+    const url = `https://wa.me/551123696462?text=${msg}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   });
 
   // ─── Duração ─────────────────────────────────────────────────────
@@ -741,26 +750,49 @@ const escoposManutencao = [
       const sufixoDur = (cupDur && cupDur < m) ? ` (${cupDur}/${m} mes${cupDur === 1 ? "" : "es"})` : "";
       dados.planoLabel += ` · Cupom ${cupomAtivo.codigo}${sufixoDur}`;
     }
-    await salvarLead("proposta_enviada");
+    // Lead salvo só na etapa 3 (quando captura nome/email/telefone).
     irParaEtapa(3);
   });
 
   // ─── ETAPA 3 ─────────────────────────────────────────────────────
   $("btn-e3").addEventListener("click", async () => {
+    const a = $("e3-alert");
+    const nome = $("e1-nome").value.trim();
+    const tel  = $("e1-tel").value.trim();
+    const email= $("e1-email").value.trim();
+    const loja = $("e1-loja").value.trim();
     const cnpj = $("e3-cnpj").value.trim();
+
+    if (!nome || !tel || !email || !loja) {
+      a.textContent = "Preencha nome, telefone, email e nome da loja.";
+      a.style.display = "";
+      return;
+    }
+    if (nome.split(/\s+/).filter(Boolean).length < 2) {
+      a.textContent = "Por favor, informe o nome completo (nome e sobrenome).";
+      a.style.display = "";
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      a.textContent = "E-mail inválido.";
+      a.style.display = "";
+      return;
+    }
     if (!cnpj) {
-      const a = $("e3-alert");
       a.textContent = "CNPJ ou CPF é obrigatório.";
       a.style.display = "";
       return;
     }
-    $("e3-alert").style.display = "none";
+    a.style.display = "none";
+
+    dados.nome = nome; dados.telefone = tel; dados.email = email; dados.nomeLoja = loja;
     dados.cnpj    = cnpj;
     dados.cep     = $("e3-cep").value.trim();
     dados.endereco= $("e3-end").value.trim();
     dados.cidade  = $("e3-cidade").value.trim();
     dados.uf      = $("e3-uf").value;
 
+    // Salva lead agora — primeira vez que captura dados pessoais
     await salvarLead("negociando");
 
     // Preenche bloco contratante
