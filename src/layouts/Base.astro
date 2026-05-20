@@ -7,7 +7,7 @@ interface Props {
 const {
   title = "Costa Júnior — Engenharia e Construções",
   description = "Construindo sonhos desde 2004. Engenharia, manutenção predial e construção corporativa. A confiança de quem atende Coca-Cola, Bradesco, Santander, Carrefour e RaiaDrogasil.",
-  ogImage = "/og-default.jpg",
+  ogImage = "/og-default.png",
 } = Astro.props;
 const url = Astro.url.href;
 const pathname = Astro.url.pathname;
@@ -19,12 +19,69 @@ const pathname = Astro.url.pathname;
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{title}</title>
   <meta name="description" content={description}>
+  <link rel="canonical" href={url}>
+  <!-- Open Graph (Facebook, WhatsApp, LinkedIn preview) -->
   <meta property="og:title" content={title}>
   <meta property="og:description" content={description}>
   <meta property="og:image" content={ogImage}>
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:url" content={url}>
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Costa Júnior Engenharia">
+  <meta property="og:locale" content="pt_BR">
+  <!-- Twitter / X card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content={title}>
+  <meta name="twitter:description" content={description}>
+  <meta name="twitter:image" content={ogImage}>
   <meta name="theme-color" content="#C41E3A">
+  <!-- Schema.org LocalBusiness — ajuda Google a entender que somos empresa local de manutenção em SP -->
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    "@id": "https://www.costajr.com.br/#business",
+    "name": "Costa Júnior Engenharia e Construções",
+    "alternateName": "Costa Júnior",
+    "description": "Manutenção predial preventiva por assinatura em São Paulo. Construção corporativa e engenharia.",
+    "url": "https://www.costajr.com.br",
+    "telephone": "+551123696462",
+    "email": "comercial@costajr.com.br",
+    "image": "https://www.costajr.com.br/logo-cjr.png",
+    "logo": "https://www.costajr.com.br/logo-cjr.png",
+    "priceRange": "R$ 300 - R$ 1500 / mês",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "São Paulo",
+      "addressRegion": "SP",
+      "addressCountry": "BR"
+    },
+    "areaServed": [
+      { "@type": "City", "name": "São Paulo" },
+      { "@type": "AdministrativeArea", "name": "Grande São Paulo" }
+    ],
+    "openingHoursSpecification": {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+      "opens": "00:00",
+      "closes": "23:59"
+    },
+    "sameAs": [
+      "https://instagram.com/costajreng",
+      "https://facebook.com/costajreng",
+      "https://linkedin.com/company/costajreng"
+    ],
+    "foundingDate": "2004",
+    "knowsAbout": [
+      "Manutenção predial preventiva",
+      "Manutenção predial corretiva",
+      "Construção corporativa",
+      "Engenharia civil",
+      "Reforma de lojas",
+      "Manutenção elétrica",
+      "Manutenção hidráulica"
+    ]
+  })}></script>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="alternate icon" href="/favicon.png">
   <!-- PWA -->

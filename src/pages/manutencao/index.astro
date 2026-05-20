@@ -69,8 +69,8 @@ const planos = [
 ];
 ---
 <Base
-  title="Manutenção Predial Preventiva — Costa Júnior"
-  description="Plataforma de manutenção predial preventiva com dashboard, checklist digital, gestão de materiais e ciclo automático de visitas. Pare de apagar incêndio — previna."
+  title="Manutenção Predial Preventiva em São Paulo · a partir de R$ 300/mês — Costa Júnior"
+  description="Manutenção predial preventiva por assinatura em SP e região. +50 lojas atendidas, técnico vinculado, dashboard em tempo real e atendimento 24/7. Veja seu preço em 30s sem cadastro."
 >
   <!-- HERO -->
   <section class="hero-manut">
@@ -276,6 +276,88 @@ const planos = [
       </p>
     </div>
   </section>
+
+  <!-- FAQ -->
+  <section class="section" style="background:#F4F6F9">
+    <div class="container">
+      <div style="max-width:840px;margin:0 auto">
+        <span class="kicker">PERGUNTAS FREQUENTES</span>
+        <h2 style="margin:0 0 12px">Tudo que perguntam antes de contratar</h2>
+        <p style="color:var(--ink-mid);margin:0 0 32px;font-size:17px">Se sua dúvida não estiver aqui, fale conosco no WhatsApp — respondemos em poucos minutos.</p>
+
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary>Vocês atendem em quais cidades?</summary>
+            <p>Atendemos toda a Grande São Paulo: capital de SP, ABC (Santo André, São Bernardo, São Caetano, Diadema, Mauá, Ribeirão Pires, Rio Grande da Serra), Guarulhos, Osasco, Barueri, Cotia, Carapicuíba, Taboão da Serra, Embu, Itapecerica, Suzano e demais municípios da região metropolitana. Atendemos manutenção predial e construção corporativa.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Em quanto tempo começa a manutenção depois que eu contrato?</summary>
+            <p>A primeira visita preventiva é agendada em até <strong>10 dias úteis</strong> após a confirmação do pagamento. Para chamados emergenciais inclusos no seu plano, o atendimento é em até 24h. Você acompanha tudo pelo portal do cliente em tempo real.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Quanto custa a manutenção predial? Tem valor por m²?</summary>
+            <p>O preço varia pelo tamanho da loja (quiosque, até 40m², 41-80m², 81-120m², 121-250m²) e pelas especialidades escolhidas (Elétrica, Hidráulica, Civil). <strong>Os planos começam em R$ 300/mês</strong> e você consegue ver o preço exato do seu caso em 30 segundos no nosso <a href="/manutencao/contratar" style="color:var(--brand);text-decoration:underline">simulador online</a> — sem precisar de cadastro.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Tem fidelidade? E se eu quiser cancelar?</summary>
+            <p>Os planos têm duração de 3, 6 ou 12 meses (você escolhe na contratação) e o pagamento é antecipado pelo período, com desconto progressivo (5%, 10% e 15% respectivamente). Como o pagamento é por período fechado, não há multa de cancelamento — ao fim do período contratado você decide se renova ou não.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>O técnico é fixo ou muda a cada visita?</summary>
+            <p>Cada cliente tem um <strong>técnico vinculado</strong> que conhece sua instalação, seu histórico e seus pontos críticos. Quando ele não puder (férias/folga), entra outro do nosso time com acesso ao mesmo histórico do app — você não conta tudo de novo.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Quais formas de pagamento vocês aceitam?</summary>
+            <p>Pix, cartão de crédito (até 12× sem juros), boleto bancário e cartão de débito. O pagamento é processado com segurança pelo Mercado Pago — seus dados de cartão não passam pelo nosso servidor.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Vocês emitem nota fiscal? Funciona pra Pessoa Física e Pessoa Jurídica?</summary>
+            <p>Sim, emitimos NF-e (nota fiscal eletrônica) para todo serviço prestado. Atendemos tanto Pessoa Jurídica (CNPJ — lojas, franquias, redes, empresas) quanto Pessoa Física (CPF — proprietários de imóveis comerciais, salas, escritórios).</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>O que está incluso no plano e o que é cobrado à parte?</summary>
+            <p>O plano inclui visitas preventivas mensais, chamados ilimitados via plataforma, técnico vinculado, dashboard em tempo real, checklist digital com fotos e relatório mensal em PDF. Materiais consumíveis básicos (lâmpadas, conectores, parafusos, vedações) costumam estar inclusos; reposições maiores ou troca de equipamentos são orçadas separadamente e aprovadas por você no portal.</p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Vocês têm atendimento de fim de semana / fora do horário comercial?</summary>
+            <p>Sim. Atendimento <strong>24 horas, 7 dias por semana</strong> para emergências de clientes contratados — vazamento, falta de luz, porta travada, etc. Chamados emergenciais inclusos variam conforme o plano (Trimestral: 1 emergencial; Semestral: 2; Anual: 5).</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ Schema.org pro Google mostrar respostas direto na busca -->
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "Vocês atendem em quais cidades?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Atendemos toda a Grande São Paulo: capital, ABC, Guarulhos, Osasco, Barueri e demais municípios da região metropolitana." } },
+      { "@type": "Question", "name": "Em quanto tempo começa a manutenção depois que eu contrato?",
+        "acceptedAnswer": { "@type": "Answer", "text": "A primeira visita preventiva é agendada em até 10 dias úteis após o pagamento. Chamados emergenciais em até 24h." } },
+      { "@type": "Question", "name": "Quanto custa a manutenção predial em São Paulo?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Os planos começam em R$ 300/mês. O valor varia pelo tamanho da loja e especialidades. Você consegue ver o preço exato no simulador online sem cadastro." } },
+      { "@type": "Question", "name": "Tem fidelidade?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Os planos têm duração de 3, 6 ou 12 meses com pagamento antecipado. Não há multa de cancelamento — ao fim do período você decide se renova." } },
+      { "@type": "Question", "name": "O técnico é fixo?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Sim, cada cliente tem técnico vinculado que conhece sua instalação. Substituições do time têm acesso ao histórico no app." } },
+      { "@type": "Question", "name": "Quais formas de pagamento aceitam?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Pix, cartão de crédito (até 12×), boleto e débito. Pagamento seguro via Mercado Pago." } },
+      { "@type": "Question", "name": "Emitem nota fiscal?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Sim, emitimos NF-e. Atendemos PJ e PF." } },
+      { "@type": "Question", "name": "Atendem fim de semana?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Sim, atendimento emergencial 24/7. Chamados emergenciais inclusos variam por plano." } }
+    ]
+  })}></script>
 
   <!-- CTA FINAL -->
   <section class="section">
@@ -528,6 +610,29 @@ const planos = [
     content: "✓"; color: #15803d; font-weight: 800; flex-shrink: 0;
   }
   .plano-ideal { font-size: 13px; color: var(--ink-light); margin: 0; padding-top: 4px; border-top: 1px solid var(--border); }
+
+  /* FAQ */
+  .faq-list { display: flex; flex-direction: column; gap: 10px; }
+  .faq-item {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px;
+    padding: 4px 0; transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .faq-item[open] { border-color: var(--brand); box-shadow: 0 2px 14px rgba(0,0,0,.04); }
+  .faq-item summary {
+    list-style: none; cursor: pointer; padding: 16px 22px;
+    font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15.5px;
+    color: var(--ink); display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary::after {
+    content: "+"; font-size: 24px; color: var(--brand); font-weight: 300;
+    transition: transform .15s ease; flex-shrink: 0;
+  }
+  .faq-item[open] summary::after { transform: rotate(45deg); }
+  .faq-item p {
+    margin: 0; padding: 0 22px 18px; color: var(--ink-mid); font-size: 14.5px; line-height: 1.65;
+  }
+  .faq-item p a { font-weight: 600; }
 
   /* ─── CTA FINAL ─── */
   .cta-block {
