@@ -240,50 +240,78 @@ export async function contratarSubmit(payload: {
       .eq("id", pag.id);
   }
 
-  // Registra uso do cupom + credita cashback no dono (se for cupom de indicação)
+  // Registra uso do cupom + credita cashback no dono (cliente indicador OU representante)
   if (cupomData) {
     try {
       const descontoPct = Number(cupomData.desconto_percentual || 0);
-      const descontoAplicado = (valorCobranca * descontoPct) / 100;
+      const duracaoCupomMeses = Math.max(1, Number(cupomData.duracao_meses || 1));
+      const valorMensalPlano = Number(plano.valorMensal || 0);
+
+      // Desconto sobre N parcelas mensais do plano (não sobre o total).
+      // Se o plano é de 12 meses e o cupom é "10% por 3 meses", desconto = valorMensal × 10% × 3.
+      // O frontend já aplica esse cálculo no valorTotal enviado — aqui registramos o valor histórico.
+      const mesesDescontados = Math.min(duracaoCupomMeses, duracaoMeses);
+      const descontoAplicado = valorMensalPlano > 0
+        ? (valorMensalPlano * descontoPct * mesesDescontados) / 100
+        : (valorCobranca * descontoPct) / 100; // fallback proporcional ao que o cliente pagou
+
       const cashbackPct = Number(cupomData.cashback_pct || 0);
-      const cashbackGerado = cupomData.cliente_dono_id && cupomData.cliente_dono_id !== cliente.id
+      const tipoCupom = String(cupomData.tipo || "desconto");
+      const representanteId: string | null = cupomData.representante_id || null;
+      const clienteDonoId: string | null = cupomData.cliente_dono_id || null;
+
+      // Cashback do dono é calculado sobre o valor efetivamente pago pelo cliente (já com desconto aplicado).
+      // Não credita cashback quando o dono == quem usa (cliente não pode ganhar comissão dele mesmo).
+      const donoDiferenteDeQuemUsa = !clienteDonoId || clienteDonoId !== cliente.id;
+      const cashbackGerado = cashbackPct > 0 && donoDiferenteDeQuemUsa && (representanteId || clienteDonoId)
         ? (valorCobranca * cashbackPct) / 100
         : 0;
 
+      // Incrementa contador de usos
       await db()
         .from("manut_cupons")
         .update({ usos_atuais: (cupomData.usos_atuais || 0) + 1 })
         .eq("id", cupomData.id);
 
+      // Histórico de uso (manut_cupons_usos só referencia cliente_dono — quando dono é representante,
+      // cliente_dono_id fica null e o vínculo com o representante é via cupom_id → cupom.representante_id).
       await db().from("manut_cupons_usos").insert({
         cupom_id: cupomData.id,
         cliente_que_usou_id: cliente.id,
-        cliente_dono_id: cupomData.cliente_dono_id || null,
+        cliente_dono_id: clienteDonoId,
         valor_compra: valorCobranca,
         cashback_gerado: cashbackGerado,
         desconto_aplicado: descontoAplicado,
       });
 
-      if (cashbackGerado > 0 && cupomData.cliente_dono_id) {
-        const { data: dono } = await db()
-          .from("manut_clientes")
-          .select("saldo_cashback,nome")
-          .eq("id", cupomData.cliente_dono_id)
-          .maybeSingle();
-        const saldoAnterior = Number(dono?.saldo_cashback || 0);
-        const saldoNovo = saldoAnterior + cashbackGerado;
-        await db()
-          .from("manut_clientes")
-          .update({ saldo_cashback: saldoNovo })
-          .eq("id", cupomData.cliente_dono_id);
-        await db().from("manut_cashback_movimentos").insert({
-          cliente_id: cupomData.cliente_dono_id,
-          tipo: "credito",
-          valor: cashbackGerado,
-          saldo_apos: saldoNovo,
-          origem: `Indicação: ${cliente.nome || "novo cliente"}`,
-          referencia_id: cliente.id,
-        });
+      // Credita cashback conforme tipo de dono
+      if (cashbackGerado > 0) {
+        if (tipoCupom === "representante" && representanteId) {
+          // Crédito no representante (parceiro externo)
+          const { creditarSaldoRepresentante } = await import("./representantes");
+          await creditarSaldoRepresentante(representanteId, cashbackGerado);
+        } else if (clienteDonoId) {
+          // Crédito no cliente indicador (cashback de indicação cliente→cliente)
+          const { data: dono } = await db()
+            .from("manut_clientes")
+            .select("saldo_cashback,nome")
+            .eq("id", clienteDonoId)
+            .maybeSingle();
+          const saldoAnterior = Number(dono?.saldo_cashback || 0);
+          const saldoNovo = Number((saldoAnterior + cashbackGerado).toFixed(2));
+          await db()
+            .from("manut_clientes")
+            .update({ saldo_cashback: saldoNovo })
+            .eq("id", clienteDonoId);
+          await db().from("manut_cashback_movimentos").insert({
+            cliente_id: clienteDonoId,
+            tipo: "credito",
+            valor: cashbackGerado,
+            saldo_apos: saldoNovo,
+            origem: `Indicação: ${cliente.nome || "novo cliente"}`,
+            referencia_id: cliente.id,
+          });
+        }
       }
     } catch (e: any) {
       console.warn("[contratar][cupom]", e?.message);

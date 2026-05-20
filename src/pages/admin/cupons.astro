@@ -10,10 +10,17 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 
 const db = supabaseAdmin();
 
-const [{ data: cupons }, { data: usos }, { data: cashbackTop }] = await Promise.all([
-  db.from("manut_cupons").select("*, manut_clientes:cliente_dono_id(nome,email)").order("created_at", { ascending: false }).limit(200),
-  db.from("manut_cupons_usos").select("*, cupom:manut_cupons(codigo,tipo), quem_usou:manut_clientes!manut_cupons_usos_cliente_que_usou_id_fkey(nome,email), dono:manut_clientes!manut_cupons_usos_cliente_dono_id_fkey(nome)").order("created_at", { ascending: false }).limit(100),
+const [{ data: cupons }, { data: usos }, { data: cashbackTop }, { data: representantes }] = await Promise.all([
+  db.from("manut_cupons")
+    .select("*, cliente_dono:cliente_dono_id(nome,email,saldo_cashback), representante:representante_id(nome,email,saldo_acumulado)")
+    .order("created_at", { ascending: false })
+    .limit(200),
+  db.from("manut_cupons_usos")
+    .select("*, cupom:manut_cupons(codigo,tipo), quem_usou:manut_clientes!manut_cupons_usos_cliente_que_usou_id_fkey(nome,email), dono:manut_clientes!manut_cupons_usos_cliente_dono_id_fkey(nome)")
+    .order("created_at", { ascending: false })
+    .limit(100),
   db.from("manut_clientes").select("id,nome,email,saldo_cashback").gt("saldo_cashback", 0).order("saldo_cashback", { ascending: false }).limit(20),
+  db.from("manut_representantes").select("id,nome,email,saldo_acumulado,ativo").eq("ativo", true).order("nome"),
 ]);
 
 function fmtMoney(v: number | null) { if (v == null) return "—"; return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
@@ -23,18 +30,20 @@ const tipoLabel: Record<string, string> = {
   desconto: "Desconto",
   indicacao: "Indicação",
   nova_loja: "Nova loja",
+  representante: "Representante",
 };
 const tipoCor: Record<string, string> = {
   desconto: "#5B5F6B",
   indicacao: "#16A34A",
   nova_loja: "#1D4ED8",
+  representante: "#9333EA",
 };
 ---
 <Admin title="Cupons & Cashback" current="cupons">
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px">
     <div class="card" style="text-align:center;padding:18px">
       <div style="font-size:11px;color:#5B5F6B;text-transform:uppercase;letter-spacing:1.5px;font-weight:700">CUPONS ATIVOS</div>
-      <div style="font-family:'Montserrat',sans-serif;font-size:30px;font-weight:700;color:#C41E3A;margin-top:6px">{cupons?.filter(c => c.ativo).length || 0}</div>
+      <div style="font-family:'Montserrat',sans-serif;font-size:30px;font-weight:700;color:#C41E3A;margin-top:6px">{cupons?.filter((c: any) => c.ativo).length || 0}</div>
     </div>
     <div class="card" style="text-align:center;padding:18px">
       <div style="font-size:11px;color:#5B5F6B;text-transform:uppercase;letter-spacing:1.5px;font-weight:700">USOS TOTAIS</div>
@@ -53,23 +62,33 @@ const tipoCor: Record<string, string> = {
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Código</th><th>Tipo</th><th>Desc.</th><th>Cashback</th><th>Dono</th><th>Usos</th><th>Validade</th><th>Status</th></tr></thead>
+        <thead><tr><th>Código</th><th>Tipo</th><th>Desc.</th><th>Cashback</th><th>Duração</th><th>Dono</th><th>Acumulado</th><th>Usos</th><th>Validade</th><th>Status</th></tr></thead>
         <tbody>
-          {(cupons || []).map((c: any) => (
-            <tr>
-              <td><code style="font-weight:700;color:#C41E3A">{c.codigo}</code></td>
-              <td><span style={`background:${tipoCor[c.tipo]||'#9CA3AF'}22;color:${tipoCor[c.tipo]||'#9CA3AF'};padding:3px 8px;border-radius:99px;font-size:11px;font-weight:700;text-transform:uppercase`}>{tipoLabel[c.tipo] || c.tipo}</span></td>
-              <td>{Number(c.desconto_percentual)}%</td>
-              <td>{Number(c.cashback_pct || 0)}%</td>
-              <td style="font-size:12.5px">{c.manut_clientes ? c.manut_clientes.nome : "—"}</td>
-              <td>{c.usos_atuais}{c.usos_maximos ? ` / ${c.usos_maximos}` : ""}</td>
-              <td style="font-size:12.5px;color:#5B5F6B">{c.validade ? fmtDate(c.validade) : "Sem validade"}</td>
-              <td>{c.ativo
-                ? <span class="badge" style="background:#DCFCE7;color:#166534">Ativo</span>
-                : <span class="badge" style="background:#F3F4F6;color:#6B7280">Inativo</span>}</td>
-            </tr>
-          ))}
-          {!(cupons || []).length && <tr><td colspan="8" style="text-align:center;color:#9CA3AF;padding:24px">Nenhum cupom cadastrado</td></tr>}
+          {(cupons || []).map((c: any) => {
+            const isRep = c.tipo === "representante" && c.representante;
+            const isCliente = c.cliente_dono;
+            const donoNome = isRep ? c.representante.nome : (isCliente ? c.cliente_dono.nome : "—");
+            const donoSaldo = isRep
+              ? Number(c.representante.saldo_acumulado || 0)
+              : (isCliente ? Number(c.cliente_dono.saldo_cashback || 0) : 0);
+            return (
+              <tr>
+                <td><code style="font-weight:700;color:#C41E3A">{c.codigo}</code></td>
+                <td><span style={`background:${tipoCor[c.tipo]||'#9CA3AF'}22;color:${tipoCor[c.tipo]||'#9CA3AF'};padding:3px 8px;border-radius:99px;font-size:11px;font-weight:700;text-transform:uppercase`}>{tipoLabel[c.tipo] || c.tipo}</span></td>
+                <td>{Number(c.desconto_percentual)}%</td>
+                <td>{Number(c.cashback_pct || 0)}%</td>
+                <td style="font-size:12.5px">{Number(c.duracao_meses || 1)}{Number(c.duracao_meses || 1) === 1 ? " mês" : " meses"}</td>
+                <td style="font-size:12.5px">{donoNome}{isRep && <span style="font-size:10px;color:#9333EA;margin-left:4px">REP</span>}</td>
+                <td style={`font-weight:700;color:${donoSaldo > 0 ? "#92400E" : "#9CA3AF"};font-size:12.5px`}>{donoSaldo > 0 ? fmtMoney(donoSaldo) : "—"}</td>
+                <td>{c.usos_atuais}{c.usos_maximos ? ` / ${c.usos_maximos}` : ""}</td>
+                <td style="font-size:12.5px;color:#5B5F6B">{c.validade ? fmtDate(c.validade) : "Sem validade"}</td>
+                <td>{c.ativo
+                  ? <span class="badge" style="background:#DCFCE7;color:#166534">Ativo</span>
+                  : <span class="badge" style="background:#F3F4F6;color:#6B7280">Inativo</span>}</td>
+              </tr>
+            );
+          })}
+          {!(cupons || []).length && <tr><td colspan="10" style="text-align:center;color:#9CA3AF;padding:24px">Nenhum cupom cadastrado</td></tr>}
         </tbody>
       </table>
     </div>
@@ -118,15 +137,55 @@ const tipoCor: Record<string, string> = {
   <!-- Modal novo cupom -->
   <div class="modal-overlay" id="modalCupom">
     <div class="modal">
-      <div class="modal-title">Novo cupom de desconto</div>
+      <div class="modal-title">Novo cupom</div>
       <form id="formCupom">
-        <div class="form-group"><label>Código *</label><input id="cupomCodigo" required style="text-transform:uppercase" /></div>
-        <div class="form-group"><label>Descrição</label><input id="cupomDesc" /></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div class="form-group"><label>Desconto % *</label><input id="cupomDesconto" type="number" step="0.01" min="1" max="100" required /></div>
-          <div class="form-group"><label>Usos máximos (opcional)</label><input id="cupomUsos" type="number" min="1" /></div>
+        <div class="form-group">
+          <label>Tipo *</label>
+          <select id="cupomTipo" required>
+            <option value="desconto">Desconto (sem dono)</option>
+            <option value="indicacao">Indicação (cliente indica cliente — cashback no indicador)</option>
+            <option value="representante">Representante (parceiro externo divulga — comissão no representante)</option>
+            <option value="nova_loja">Nova loja</option>
+          </select>
         </div>
-        <div class="form-group"><label>Validade (opcional)</label><input id="cupomValidade" type="date" /></div>
+
+        <div class="form-group"><label>Código *</label><input id="cupomCodigo" required style="text-transform:uppercase" placeholder="EX: TESTE10" /></div>
+        <div class="form-group"><label>Descrição</label><input id="cupomDesc" placeholder="Opcional — aparece para o cliente" /></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+          <div class="form-group"><label>Desconto % *</label><input id="cupomDesconto" type="number" step="0.01" min="1" max="100" required /></div>
+          <div class="form-group"><label>Cashback %</label><input id="cupomCashback" type="number" step="0.01" min="0" max="100" value="0" /></div>
+          <div class="form-group"><label>Duração (meses) *</label><input id="cupomDuracao" type="number" min="1" max="36" value="1" required /></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label>Usos máximos (opcional)</label><input id="cupomUsos" type="number" min="1" placeholder="Em branco = ilimitado" /></div>
+          <div class="form-group"><label>Validade (opcional)</label><input id="cupomValidade" type="date" /></div>
+        </div>
+
+        <!-- Bloco condicional: Dono cliente -->
+        <div class="form-group" id="grupoDonoCliente" style="display:none">
+          <label>Email do cliente indicador *</label>
+          <input id="cupomDonoClienteEmail" type="email" placeholder="email@cliente.com — o cashback será creditado neste cliente" />
+          <div style="font-size:11px;color:#5B5F6B;margin-top:4px">O cliente precisa estar cadastrado em Clientes. Validamos antes de salvar.</div>
+        </div>
+
+        <!-- Bloco condicional: Dono representante -->
+        <div class="form-group" id="grupoDonoRep" style="display:none">
+          <label>Representante *</label>
+          <select id="cupomDonoRep">
+            <option value="">Selecione um representante…</option>
+            {(representantes || []).map((r: any) => (
+              <option value={r.id}>{r.nome} ({r.email})</option>
+            ))}
+          </select>
+          {!(representantes || []).length && <div style="font-size:11px;color:#92400E;margin-top:4px">⚠ Nenhum representante ativo. <a href="/admin/representantes" style="color:#C41E3A;text-decoration:underline">Cadastre primeiro</a>.</div>}
+        </div>
+
+        <div style="background:#F4F6F9;padding:10px 14px;border-radius:8px;margin-top:6px;font-size:12px;color:#5B5F6B" id="cupomDicaDuracao">
+          💡 <strong>Duração:</strong> se mais de 1 mês, o cliente recebe o desconto no 1º mês <em>e</em> crédito automático de cashback nos próximos meses (até completar o total).
+        </div>
+
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fechar()">Cancelar</button>
           <button type="submit" class="btn btn-primary">Criar cupom</button>
@@ -137,25 +196,57 @@ const tipoCor: Record<string, string> = {
 
   <script>
     function abrirModal() {
-      document.getElementById("formCupom").reset();
-      document.getElementById("modalCupom").classList.add("open");
+      (document.getElementById("formCupom") as HTMLFormElement).reset();
+      (document.getElementById("cupomTipo") as HTMLSelectElement).value = "desconto";
+      (document.getElementById("cupomCashback") as HTMLInputElement).value = "0";
+      (document.getElementById("cupomDuracao") as HTMLInputElement).value = "1";
+      toggleDono();
+      document.getElementById("modalCupom")!.classList.add("open");
     }
-    function fechar() { document.getElementById("modalCupom").classList.remove("open"); }
+    function fechar() { document.getElementById("modalCupom")!.classList.remove("open"); }
+    function toggleDono() {
+      const tipo = (document.getElementById("cupomTipo") as HTMLSelectElement).value;
+      const grpCli = document.getElementById("grupoDonoCliente")!;
+      const grpRep = document.getElementById("grupoDonoRep")!;
+      grpCli.style.display = tipo === "indicacao" ? "" : "none";
+      grpRep.style.display = tipo === "representante" ? "" : "none";
+    }
     (window as any).abrirModal = abrirModal;
     (window as any).fechar = fechar;
+    (window as any).toggleDono = toggleDono;
+    document.getElementById("cupomTipo")!.addEventListener("change", toggleDono);
 
-    document.getElementById("formCupom").addEventListener("submit", async (e) => {
+    document.getElementById("formCupom")!.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const body = {
+      const tipo = (document.getElementById("cupomTipo") as HTMLSelectElement).value;
+      const body: any = {
         codigo: (document.getElementById("cupomCodigo") as HTMLInputElement).value.trim().toUpperCase(),
         descricao: (document.getElementById("cupomDesc") as HTMLInputElement).value || null,
         desconto_percentual: parseFloat((document.getElementById("cupomDesconto") as HTMLInputElement).value),
+        cashback_pct: parseFloat((document.getElementById("cupomCashback") as HTMLInputElement).value || "0"),
+        duracao_meses: parseInt((document.getElementById("cupomDuracao") as HTMLInputElement).value || "1"),
         usos_maximos: (document.getElementById("cupomUsos") as HTMLInputElement).value ? parseInt((document.getElementById("cupomUsos") as HTMLInputElement).value) : null,
         validade: (document.getElementById("cupomValidade") as HTMLInputElement).value || null,
+        tipo,
       };
-      const res = await fetch("/api/admin/cupons", { method: "POST", headers: { "content-type":"application/json" }, body: JSON.stringify(body) });
-      if (res.ok) window.location.reload();
-      else { const d = await res.json(); alert(d.error || "Erro"); }
+
+      if (tipo === "indicacao") {
+        const email = (document.getElementById("cupomDonoClienteEmail") as HTMLInputElement).value.trim().toLowerCase();
+        if (!email) { alert("Email do cliente indicador é obrigatório"); return; }
+        body.cliente_dono_email = email;
+      } else if (tipo === "representante") {
+        const repId = (document.getElementById("cupomDonoRep") as HTMLSelectElement).value;
+        if (!repId) { alert("Selecione um representante"); return; }
+        body.representante_id = repId;
+      }
+
+      const res = await fetch("/api/admin/cupons", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) { window.location.reload(); }
+      else { const d = await res.json().catch(() => ({})); alert(d.error || "Erro ao criar cupom"); }
     });
   </script>
 </Admin>

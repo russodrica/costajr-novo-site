@@ -588,6 +588,17 @@ const escoposManutencao = [
     return base * (1 - durDesc / 100) * (1 - cupDesc / 100);
   }
 
+  // Calcula o valor total do plano considerando que o desconto do cupom
+  // só vale por `mesesCupom` meses (não por todos os `mesesPlano`).
+  // Desconto de duração (durDesc) continua valendo em todos os meses (é da assinatura).
+  function calcularValorTotalReal(base, durDesc, cupDesc, mesesPlano, mesesCupom) {
+    const mensalSemCupom = base * (1 - durDesc / 100);
+    const mensalComCupom = mensalSemCupom * (1 - cupDesc / 100);
+    const mc = Math.max(0, Math.min(mesesCupom || 0, mesesPlano));
+    const ms = mesesPlano - mc;
+    return Math.round((mensalComCupom * mc + mensalSemCupom * ms) * 100) / 100;
+  }
+
   function atualizarDuracao() {
     const base = dados.valorMensal;
     const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
@@ -624,8 +635,10 @@ const escoposManutencao = [
       // Linha de cupom no sim-box
       const cupomRow = $("sim-cupom-row");
       if (cupomAtivo && cupDesc > 0) {
+        const cupDur = Number(cupomAtivo.duracao_meses || 1);
+        const durStr = (cupDur > 1 && cupDur < m) ? ` × ${cupDur} ${cupDur === 1 ? "mês" : "meses"}` : "";
         $("sim-cupom-label").textContent = `Cupom ${cupomAtivo.codigo}`;
-        $("sim-cupom-val").textContent = `-${cupDesc}%`;
+        $("sim-cupom-val").textContent = `-${cupDesc}%${durStr}`;
         cupomRow.style.display = "";
       } else {
         cupomRow.style.display = "none";
@@ -705,10 +718,17 @@ const escoposManutencao = [
     const m = dados.duracaoMeses;
     const durDesc = dados.desconto;
     const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
-    dados.valorMensal = precoFinal(dados.valorMensal, durDesc, cupDesc);
-    dados.valorTotal = Math.round(dados.valorMensal * m * 100) / 100;
+    const cupDur = cupomAtivo ? Number(cupomAtivo.duracao_meses || 1) : 0;
+    const baseOriginal = dados.valorMensal;
+    // valorMensal mostrado: preço cheio com cupom (representa o valor durante o período do cupom)
+    dados.valorMensal = precoFinal(baseOriginal, durDesc, cupDesc);
+    // valorTotal real: respeita a duração do cupom (só desconta nos N meses, não em todos)
+    dados.valorTotal = calcularValorTotalReal(baseOriginal, durDesc, cupDesc, m, cupDur);
     dados.planoLabel = `${dados.planoLabel} · ${duracaoLabels[m]}`;
-    if (cupomAtivo) dados.planoLabel += ` · Cupom ${cupomAtivo.codigo}`;
+    if (cupomAtivo) {
+      const sufixoDur = (cupDur && cupDur < m) ? ` (${cupDur}/${m} mes${cupDur === 1 ? "" : "es"})` : "";
+      dados.planoLabel += ` · Cupom ${cupomAtivo.codigo}${sufixoDur}`;
+    }
     await salvarLead("proposta_enviada");
     irParaEtapa(3);
   });
