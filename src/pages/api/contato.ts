@@ -9,10 +9,33 @@ const FROM = import.meta.env.EMAIL_FROM || "onboarding@resend.dev";
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json();
-    const { nome, empresa, cargo, email, telefone, tipo, localizacao, mensagem } = body;
+    const { nome, empresa, cargo, email, telefone, tipo, localizacao, mensagem, recaptchaToken } = body;
 
     if (!nome || !email || !telefone || !tipo || !mensagem) {
       return new Response(JSON.stringify({ ok: false, error: "Campos obrigatórios ausentes" }), { status: 400 });
+    }
+
+    // Verifica reCAPTCHA (só se a env estiver configurada — permite teste local sem keys)
+    const recaptchaSecret = import.meta.env.RECAPTCHA_SECRET_KEY;
+    if (recaptchaSecret) {
+      if (!recaptchaToken) {
+        return new Response(JSON.stringify({ ok: false, error: "Verificação reCAPTCHA obrigatória" }), { status: 400 });
+      }
+      try {
+        const verify = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: `secret=${encodeURIComponent(recaptchaSecret)}&response=${encodeURIComponent(recaptchaToken)}`,
+        });
+        const result: any = await verify.json();
+        if (!result?.success) {
+          console.warn("[contato] reCAPTCHA falhou:", result?.["error-codes"]);
+          return new Response(JSON.stringify({ ok: false, error: "Falha na verificação anti-spam. Tente novamente." }), { status: 403 });
+        }
+      } catch (e: any) {
+        console.error("[contato] reCAPTCHA verify error:", e?.message);
+        return new Response(JSON.stringify({ ok: false, error: "Erro ao verificar reCAPTCHA" }), { status: 500 });
+      }
     }
 
     const tipoLabel: Record<string, string> = {

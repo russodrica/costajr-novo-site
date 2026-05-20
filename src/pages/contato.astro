@@ -1,5 +1,7 @@
 ---
 import Base from "~/layouts/Base.astro";
+
+const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "";
 ---
 <Base
   title="Contato — Costa Júnior Engenharia e Construções"
@@ -105,6 +107,12 @@ import Base from "~/layouts/Base.astro";
           <span>Concordo com o tratamento dos meus dados conforme a <a href="/privacidade">Política de Privacidade</a>.</span>
         </label>
 
+        {recaptchaSiteKey && (
+          <div style="margin:4px 0">
+            <div class="g-recaptcha" data-sitekey={recaptchaSiteKey}></div>
+          </div>
+        )}
+
         <button type="submit" class="btn btn-primary" style="margin-top:8px">
           Enviar mensagem
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
@@ -112,6 +120,10 @@ import Base from "~/layouts/Base.astro";
 
         <p id="form-status" class="form-status" hidden></p>
       </form>
+
+      {recaptchaSiteKey && (
+        <script is:inline async defer src="https://www.google.com/recaptcha/api.js"></script>
+      )}
     </div>
   </section>
 </Base>
@@ -123,6 +135,20 @@ import Base from "~/layouts/Base.astro";
   if (form && status && btn) {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+
+      // Verifica reCAPTCHA se o widget estiver presente na página
+      // @ts-ignore — grecaptcha vem do script externo
+      const grecaptcha = (window as any).grecaptcha;
+      const captchaWidget = document.querySelector(".g-recaptcha");
+      const recaptchaToken = captchaWidget && grecaptcha ? grecaptcha.getResponse() : "";
+      if (captchaWidget && !recaptchaToken) {
+        status.hidden = false;
+        status.style.background = "rgba(239,68,68,.12)";
+        status.style.color = "#b91c1c";
+        status.textContent = "⚠️ Por favor, confirme que você não é um robô.";
+        return;
+      }
+
       btn.disabled = true;
       btn.textContent = "Enviando…";
       const data = new FormData(form);
@@ -139,15 +165,18 @@ import Base from "~/layouts/Base.astro";
             tipo: data.get("tipo"),
             localizacao: data.get("localizacao") || "",
             mensagem: data.get("mensagem"),
+            recaptchaToken,
           }),
         });
         if (res.ok) {
           form.reset();
+          if (grecaptcha) grecaptcha.reset();
           status.hidden = false;
           status.style.background = "rgba(34,197,94,.12)";
           status.style.color = "#15803d";
           status.textContent = "✅ Mensagem enviada! Retornaremos em até 1 dia útil.";
         } else {
+          if (grecaptcha) grecaptcha.reset();
           throw new Error("erro");
         }
       } catch {
