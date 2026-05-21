@@ -1,0 +1,409 @@
+---
+import Base from "~/layouts/Base.astro";
+---
+<Base
+  title="E-book Manutenção Predial 2026 — Guia Gratuito · Costa Júnior"
+  description="Guia gratuito completo sobre manutenção predial preventiva em 2026: preços, comparativo preventiva vs corretiva, 7 critérios pra escolher empresa e checklist com 8 perguntas. Baixe ou imprima como PDF."
+>
+  <section class="ebook-page">
+
+    <!-- BARRA SUPERIOR (não imprime) -->
+    <div class="ebook-toolbar no-print">
+      <div class="container">
+        <span class="ebook-toolbar-label">📖 E-book grátis</span>
+        <div class="ebook-toolbar-actions">
+          <button onclick="window.print()" class="btn btn-outline" style="font-size:13px;padding:8px 16px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Salvar como PDF
+          </button>
+          <a href="/manutencao/contratar" class="btn btn-primary" style="font-size:13px;padding:8px 16px">Ver meu preço →</a>
+        </div>
+      </div>
+    </div>
+
+    <article class="ebook">
+
+      <!-- CAPA -->
+      <header class="ebook-capa">
+        <div class="capa-brand">
+          <span class="capa-marca">COSTA JÚNIOR</span>
+          <span class="capa-sub">ENGENHARIA · CONSTRUÇÕES · MANUTENÇÃO</span>
+        </div>
+        <div class="capa-titulo">
+          <span class="capa-eyebrow">GUIA GRATUITO · EDIÇÃO 2026</span>
+          <h1>Manutenção Predial 2026</h1>
+          <p>Guia completo de preços, escolha e estratégia em São Paulo</p>
+        </div>
+        <p class="capa-desc">
+          Tudo o que você precisa saber antes de contratar manutenção predial preventiva pra sua loja, restaurante, franquia ou comércio. Baseado em +50 lojas atendidas em SP.
+        </p>
+        <div class="capa-rodape">
+          <span>www.costajr.com.br</span>
+          <span>+50 lojas mantidas · São Paulo</span>
+        </div>
+      </header>
+
+      <!-- SUMÁRIO -->
+      <section class="ebook-secao sumario">
+        <h2 class="ebook-h2">Sumário</h2>
+        <ol class="sumario-list">
+          <li><span>01</span><a href="#cap-01">O que é manutenção predial preventiva</a></li>
+          <li><span>02</span><a href="#cap-02">Quanto custa em 2026? Tabela por m²</a></li>
+          <li><span>03</span><a href="#cap-03">Preventiva × Corretiva: o comparativo</a></li>
+          <li><span>04</span><a href="#cap-04">7 critérios pra escolher empresa</a></li>
+          <li><span>05</span><a href="#cap-05">Checklist: 8 perguntas pra fazer</a></li>
+          <li><span>06</span><a href="#cap-06">Próximos passos</a></li>
+        </ol>
+      </section>
+
+      <!-- CAP 01 -->
+      <section class="ebook-secao" id="cap-01">
+        <span class="ebook-cap-num">01</span>
+        <h2 class="ebook-h2">O que é manutenção predial preventiva</h2>
+        <p class="ebook-lead">
+          Manutenção predial preventiva é um plano de visitas regulares (geralmente mensais) onde um técnico inspeciona pontos críticos da sua operação — elétrica, hidráulica, civil — <strong>antes que algo falhe</strong>.
+        </p>
+        <p>Pequenas correções são feitas no momento, e itens com risco de quebra são identificados e tratados antes que virem emergência. O modelo de custo é <strong>mensalidade fixa</strong>: você sabe exatamente quanto vai gastar no mês e no ano.</p>
+
+        <div class="comp-grid">
+          <div class="comp-bad">
+            <h3>❌ Esperar quebrar (Corretiva)</h3>
+            <ul>
+              <li>Custo variável e imprevisível</li>
+              <li>Loja parada por horas ou dias</li>
+              <li>Sem histórico técnico</li>
+              <li>Custo emergencial 3× maior</li>
+              <li>Estresse e perda de cliente</li>
+            </ul>
+          </div>
+          <div class="comp-good">
+            <h3>✅ Prevenir (Preventiva)</h3>
+            <ul>
+              <li>Custo mensal fixo previsível</li>
+              <li>Loja sem panes inesperadas</li>
+              <li>Histórico digital completo</li>
+              <li>Economia de 40-60% no total</li>
+              <li>Técnico vinculado conhece tudo</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="ebook-insight">
+          A conta favorece preventiva na maioria dos casos. Uma loja média de 60m² que paga R$ 500/mês de preventiva (R$ 6.000/ano) economiza em média <strong>R$ 8.000 a R$ 15.000/ano</strong> em correções emergenciais evitadas.
+        </p>
+      </section>
+
+      <!-- CAP 02 -->
+      <section class="ebook-secao" id="cap-02">
+        <span class="ebook-cap-num">02</span>
+        <h2 class="ebook-h2">Quanto custa em 2026?</h2>
+        <p class="ebook-lead">
+          O preço varia por tamanho da loja e especialidades. Esses são os valores praticados pela Costa Júnior em São Paulo em 2026:
+        </p>
+
+        <table class="ebook-tabela">
+          <thead>
+            <tr><th>Tamanho da loja</th><th>Preço base</th><th>Disciplinas</th><th>Faixa total</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Quiosque</td><td>R$ 250</td><td>+R$ 50 / disc.</td><td><strong>R$ 250 – R$ 400</strong></td></tr>
+            <tr><td>Até 40 m²</td><td>R$ 280</td><td>+R$ 50 / disc.</td><td><strong>R$ 280 – R$ 430</strong></td></tr>
+            <tr><td>41 a 80 m²</td><td>R$ 300</td><td>+R$ 50 / disc.</td><td><strong>R$ 300 – R$ 450</strong></td></tr>
+            <tr><td>81 a 120 m²</td><td>R$ 400</td><td>+R$ 50 / disc.</td><td><strong>R$ 400 – R$ 550</strong></td></tr>
+            <tr><td>121 a 250 m²</td><td>R$ 650</td><td>+R$ 50 / disc.</td><td><strong>R$ 650 – R$ 800</strong></td></tr>
+          </tbody>
+        </table>
+        <p class="ebook-obs"><em>O preço base inclui 1 disciplina (Elétrica, Hidráulica ou Civil). Cada disciplina adicional acrescenta R$ 50/mês.</em></p>
+
+        <h3 class="ebook-h3">Desconto por duração do contrato</h3>
+        <ul class="ebook-bullets">
+          <li><strong>Trimestral (3 meses):</strong> preço cheio (sem desconto)</li>
+          <li><strong>Semestral (6 meses):</strong> 2% de desconto no contrato</li>
+          <li><strong>Anual (12 meses):</strong> 5% de desconto no contrato</li>
+        </ul>
+
+        <h3 class="ebook-h3">Cuidado: 5 pegadinhas comuns</h3>
+        <ol class="ebook-bullets">
+          <li><strong>"A partir de" sem detalhar o seu caso</strong> — empresa séria mostra o preço final em segundos.</li>
+          <li><strong>Materiais "por conta do cliente"</strong> — lâmpadas, vedações pequenas, conectores: devem estar inclusos.</li>
+          <li><strong>Sem técnico vinculado</strong> — se for diferente toda vez, você perde histórico e diagnóstico vira chute.</li>
+          <li><strong>Sem plataforma digital</strong> — em 2026, contrato sem portal é como banco sem app.</li>
+          <li><strong>Fidelidade longa (24-36 meses)</strong> com multa pesada — sinal de empresa insegura do próprio valor.</li>
+        </ol>
+      </section>
+
+      <!-- CAP 03 -->
+      <section class="ebook-secao" id="cap-03">
+        <span class="ebook-cap-num">03</span>
+        <h2 class="ebook-h2">Preventiva × Corretiva</h2>
+        <p class="ebook-lead">Comparativo direto para loja média de 60m² em São Paulo:</p>
+
+        <h3 class="ebook-h3">Custo anual médio</h3>
+        <ul class="ebook-bullets">
+          <li><strong>Só corretiva:</strong> R$ 9.000 a R$ 18.000/ano (variável, com surpresas mensais)</li>
+          <li><strong>Preventiva mensal:</strong> R$ 4.800 a R$ 9.000/ano (fixo, sem surpresas)</li>
+        </ul>
+
+        <h3 class="ebook-h3">Dias de loja parada por ano</h3>
+        <ul class="ebook-bullets">
+          <li><strong>Só corretiva:</strong> 3 a 8 dias (panes inesperadas)</li>
+          <li><strong>Preventiva:</strong> aproximadamente zero (riscos identificados antes)</li>
+        </ul>
+
+        <h3 class="ebook-h3">O custo escondido da loja parada</h3>
+        <p>Quem vê só o preço do reparo esquece de uma parte importante: <strong>quanto sua loja deixa de faturar enquanto está fechada</strong>.</p>
+        <ul class="ebook-bullets">
+          <li>Restaurante com média de R$ 3.500/dia → 1 dia fechado = <strong>R$ 3.500 perdidos</strong></li>
+          <li>Loja de varejo com média de R$ 5.000/dia → 1 dia fechado = <strong>R$ 5.000 perdidos</strong></li>
+          <li>Supermercado com 1 freezer queimado por 24h → <strong>R$ 2.000 a R$ 6.000 em produtos perdidos</strong></li>
+        </ul>
+        <p class="ebook-insight">
+          Em 1 ano de corretiva, é comum somar de R$ 15.000 a R$ 30.000 entre reparo + perda de faturamento. Preventiva por R$ 6.000/ano evita boa parte disso.
+        </p>
+      </section>
+
+      <!-- CAP 04 -->
+      <section class="ebook-secao" id="cap-04">
+        <span class="ebook-cap-num">04</span>
+        <h2 class="ebook-h2">7 critérios para escolher empresa</h2>
+        <p class="ebook-lead">
+          Trocar de empresa de manutenção é caro: perde histórico, treina equipe nova, refaz acordos. Vale gastar 1 hora escolhendo bem do que perder 6 meses arrependido.
+        </p>
+
+        <div class="ebook-criterio">
+          <h3>1. Técnico vinculado vs rotativo</h3>
+          <p>Empresa séria dedica um técnico responsável pela sua operação — ele aprende seu prédio, conhece os pontos críticos. Fuja de "Uber de manutenção".</p>
+        </div>
+
+        <div class="ebook-criterio">
+          <h3>2. Plataforma digital com histórico</h3>
+          <p>Checklist por visita, fotos antes/depois, assinatura eletrônica do responsável, relatório em PDF disponível. Sem isso, você fica refém da memória do técnico.</p>
+        </div>
+
+        <div class="ebook-criterio">
+          <h3>3. Preço transparente</h3>
+          <p>Empresa que esconde preço pra "qualificar lead" está te tratando como gado de leilão. Sérias mostram a faixa pública e dão valor exato em até 30s com calculadora online.</p>
+        </div>
+
+        <div class="ebook-criterio">
+          <h3>4. Tempo de resposta para emergência</h3>
+          <p>Padrão de mercado em 2026: preventiva mensal agendada com 5 dias de antecedência; chamado normal em 48h úteis; emergencial em até 24h (ou 6-12h em planos premium).</p>
+        </div>
+
+        <div class="ebook-criterio">
+          <h3>5. Materiais consumíveis inclusos</h3>
+          <p>Lâmpadas, parafusos, vedações, fitas, pequenos conectores — devem estar no plano. Empresa que cobra cada lâmpada à parte acaba saindo 3× mais caro.</p>
+        </div>
+
+        <div class="ebook-criterio">
+          <h3>6. Fidelidade razoável</h3>
+          <p>3, 6 ou 12 meses com pagamento antecipado e desconto progressivo é o padrão. Nada de fidelidade de 24-36 meses com multa de "5 mensalidades" pra cancelar.</p>
+        </div>
+
+        <div class="ebook-criterio">
+          <h3>7. Reputação verificável</h3>
+          <p>Avaliações no Google Meu Negócio, reputação no Reclame Aqui, cases reais de clientes, CNPJ ativo na Receita, 5+ anos de mercado.</p>
+        </div>
+      </section>
+
+      <!-- CAP 05 -->
+      <section class="ebook-secao" id="cap-05">
+        <span class="ebook-cap-num">05</span>
+        <h2 class="ebook-h2">Checklist: 8 perguntas pra fazer</h2>
+        <p class="ebook-lead">
+          Antes de fechar com qualquer empresa, faça essas 8 perguntas. As respostas mostram com clareza se vale ir adiante.
+        </p>
+
+        <ul class="ebook-checklist">
+          <li><label><input type="checkbox"> Quem será meu técnico responsável? Por quanto tempo ele fica vinculado a nós?</label></li>
+          <li><label><input type="checkbox"> Vocês têm um portal digital com histórico das visitas? Posso ver um exemplo?</label></li>
+          <li><label><input type="checkbox"> Quanto custa exatamente pro meu caso (passe tamanho da loja e especialidades)?</label></li>
+          <li><label><input type="checkbox"> Quanto tempo demora pra atender uma emergência às 22h num sábado?</label></li>
+          <li><label><input type="checkbox"> O que está incluso em materiais? O que é cobrado à parte?</label></li>
+          <li><label><input type="checkbox"> Qual a duração mínima do contrato? Tem multa de cancelamento?</label></li>
+          <li><label><input type="checkbox"> Vocês emitem nota fiscal? Posso ver um modelo do contrato?</label></li>
+          <li><label><input type="checkbox"> Tem cliente atual que eu possa conversar?</label></li>
+        </ul>
+
+        <p class="ebook-insight">
+          Se as respostas forem evasivas, lentas ou diferentes do que descrevemos nos capítulos acima — siga procurando.
+        </p>
+      </section>
+
+      <!-- CAP 06 - CTA FINAL -->
+      <section class="ebook-secao" id="cap-06">
+        <span class="ebook-cap-num">06</span>
+        <h2 class="ebook-h2">Próximos passos</h2>
+        <p class="ebook-lead">
+          Chegou até aqui? Você já sabe mais sobre manutenção predial do que 90% dos lojistas. Agora é hora de aplicar.
+        </p>
+
+        <div class="ebook-cta">
+          <span class="ebook-cta-eyebrow">VER MEU PREÇO EM 30 SEGUNDOS</span>
+          <h3>A calculadora mostra o valor exato pra sua loja</h3>
+          <p>Sem cadastro pra ver o preço. Sem compromisso. Você compara em 30s com qualquer outra empresa.</p>
+          <div class="ebook-cta-btns">
+            <a href="/manutencao/contratar" class="btn btn-primary">Ver meu preço agora</a>
+            <a href="https://wa.me/551123696462?text=Ol%C3%A1!%20Baixei%20o%20e-book%20de%20manuten%C3%A7%C3%A3o%20e%20gostaria%20de%20mais%20informa%C3%A7%C3%B5es." target="_blank" rel="noopener noreferrer" class="btn btn-outline">Falar no WhatsApp</a>
+          </div>
+        </div>
+
+        <h3 class="ebook-h3">Por que confiar na Costa Júnior?</h3>
+        <ul class="ebook-bullets">
+          <li><strong>+50 lojas atendidas</strong> em São Paulo</li>
+          <li>Atendemos lojas operadas por <strong>Coca-Cola, Bradesco, Santander, Carrefour, McDonald's, Vivo, Claro, Smart Fit, Raia Drogasil, Meliá e mais</strong></li>
+          <li>Técnico vinculado, dashboard digital em tempo real, atendimento 24/7</li>
+          <li>Sem fidelidade longa, NF-e em todos os serviços, pagamento em até 12×</li>
+        </ul>
+
+        <div class="ebook-contato">
+          <p><strong>WhatsApp:</strong> (11) 2369-6462</p>
+          <p><strong>E-mail:</strong> contato@costajr.com.br</p>
+          <p><strong>Site:</strong> www.costajr.com.br</p>
+        </div>
+
+        <footer class="ebook-rodape-final">
+          <p>© 2026 Costa Júnior Engenharia e Construções LTDA · CNPJ 07.132.942/0001-72</p>
+          <p>Manutenção Predial Preventiva · São Paulo / SP</p>
+        </footer>
+      </section>
+
+    </article>
+  </section>
+</Base>
+
+<style is:global>
+  /* Estilos GLOBAIS pra que window.print() funcione bem */
+  @media print {
+    .no-print { display: none !important; }
+    body, .ebook-page { background: #FFFFFF !important; }
+    .ebook { max-width: 100% !important; box-shadow: none !important; margin: 0 !important; }
+    .ebook-secao { page-break-inside: avoid; }
+    .ebook-capa { page-break-after: always; }
+  }
+</style>
+
+<style>
+  .ebook-page { background: #F4F6F9; padding: 0 0 80px; }
+
+  /* Toolbar (não imprime) */
+  .ebook-toolbar {
+    background: #1F2126; color: #FFF; padding: 12px 0; position: sticky; top: 0; z-index: 50;
+    border-bottom: 3px solid var(--brand);
+  }
+  .ebook-toolbar .container { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .ebook-toolbar-label { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 1px; }
+  .ebook-toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .ebook-toolbar-actions .btn-outline { color: #FFF; border-color: #FFF; background: transparent; }
+  .ebook-toolbar-actions .btn-outline:hover { background: #FFF; color: #1F2126; }
+
+  /* E-book container */
+  .ebook {
+    max-width: 760px; margin: 40px auto;
+    background: #FFFFFF; padding: 0;
+    box-shadow: 0 4px 30px rgba(0,0,0,.08); border-radius: 12px; overflow: hidden;
+  }
+
+  /* CAPA */
+  .ebook-capa {
+    background: linear-gradient(135deg, #1F2126 0%, #7A1421 60%, #C41E3A 100%);
+    color: #FFF; padding: 60px 56px; min-height: 720px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .capa-brand { display: flex; flex-direction: column; gap: 4px; }
+  .capa-marca { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 16px; letter-spacing: 3px; }
+  .capa-sub { font-size: 10.5px; color: #FFB3C0; letter-spacing: 2px; }
+  .capa-titulo { margin: 60px 0 40px; }
+  .capa-eyebrow { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 3px; color: #FFB3C0; }
+  .capa-titulo h1 { font-family: 'Montserrat', sans-serif; font-weight: 900; font-size: clamp(40px, 6vw, 60px); line-height: 1; margin: 14px 0 16px; color: #FFFFFF; }
+  .capa-titulo p { font-family: 'Montserrat', sans-serif; font-size: 22px; font-weight: 500; color: #FFB3C0; margin: 0; line-height: 1.3; }
+  .capa-desc { color: #E5E7EB; font-size: 15px; line-height: 1.7; max-width: 540px; margin-bottom: 40px; }
+  .capa-rodape { display: flex; justify-content: space-between; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 13px; color: #FFB3C0; flex-wrap: wrap; gap: 8px; }
+
+  /* Seções */
+  .ebook-secao { padding: 56px 56px; border-bottom: 1px solid #F0F0F0; position: relative; }
+  .ebook-secao:last-child { border-bottom: 0; }
+  @media (max-width: 720px) { .ebook-secao { padding: 36px 24px; } .ebook-capa { padding: 40px 24px; min-height: auto; } }
+
+  .ebook-cap-num {
+    position: absolute; top: 56px; right: 56px;
+    font-family: 'Montserrat', sans-serif; font-weight: 900; font-size: 72px;
+    color: rgba(196,30,58,.10); line-height: 1;
+  }
+  @media (max-width: 720px) { .ebook-cap-num { top: 32px; right: 24px; font-size: 48px; } }
+
+  .ebook-h2 { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: clamp(28px, 4vw, 38px); color: var(--ink); line-height: 1.15; margin: 0 0 18px; position: relative; }
+  .ebook-h3 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 20px; color: var(--ink); margin: 28px 0 12px; }
+  .ebook-lead { font-size: 17px; color: var(--ink); line-height: 1.7; margin: 0 0 18px; }
+  .ebook-secao p { color: var(--ink-mid); font-size: 15px; line-height: 1.75; margin: 0 0 14px; }
+  .ebook-secao strong { color: var(--ink); }
+
+  /* Sumário */
+  .sumario-list { list-style: none; padding: 0; margin: 16px 0 0; }
+  .sumario-list li { display: flex; align-items: baseline; gap: 14px; padding: 12px 0; border-bottom: 1px dashed #E5E7EB; }
+  .sumario-list li:last-child { border-bottom: 0; }
+  .sumario-list span { font-family: 'Montserrat', sans-serif; font-weight: 800; color: var(--brand); font-size: 18px; min-width: 30px; }
+  .sumario-list a { font-family: 'Montserrat', sans-serif; font-weight: 600; color: var(--ink); font-size: 16px; text-decoration: none; }
+  .sumario-list a:hover { color: var(--brand); }
+
+  /* Comparativo bom/ruim */
+  .comp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 24px 0; }
+  .comp-bad, .comp-good { padding: 22px 24px; border-radius: 12px; }
+  .comp-bad h3, .comp-good h3 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 16px; margin: 0 0 12px; }
+  .comp-bad ul, .comp-good ul { padding-left: 18px; margin: 0; }
+  .comp-bad li, .comp-good li { font-size: 14px; color: var(--ink-mid); margin-bottom: 6px; }
+  .comp-bad { background: #FEF2F2; border: 1px solid #FECACA; }
+  .comp-bad h3 { color: #B91C1C; }
+  .comp-good { background: #F0FDF4; border: 1px solid #BBF7D0; }
+  .comp-good h3 { color: #166534; }
+
+  /* Insight box */
+  .ebook-insight {
+    background: linear-gradient(135deg, #F4F6F9 0%, #FFFFFF 100%);
+    border-left: 4px solid var(--brand);
+    padding: 16px 22px; margin: 24px 0;
+    font-size: 15px; color: var(--ink); line-height: 1.7;
+  }
+
+  /* Tabela de preços */
+  .ebook-tabela { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px; }
+  .ebook-tabela th { background: #F4F6F9; padding: 10px 12px; text-align: left; font-family: 'Montserrat', sans-serif; text-transform: uppercase; font-size: 11.5px; letter-spacing: 0.5px; color: var(--ink-mid); }
+  .ebook-tabela td { padding: 10px 12px; border-bottom: 1px solid #F0F0F0; color: var(--ink-mid); }
+  .ebook-tabela td:first-child { font-weight: 700; color: var(--ink); }
+  .ebook-tabela td strong { color: var(--brand); }
+  .ebook-obs { font-size: 13px; color: var(--ink-light); margin-top: 8px; font-style: italic; }
+
+  /* Bullets */
+  .ebook-bullets { padding-left: 22px; }
+  .ebook-bullets li { margin-bottom: 8px; font-size: 15px; color: var(--ink-mid); line-height: 1.6; }
+  ol.ebook-bullets li { padding-left: 4px; }
+
+  /* Critérios */
+  .ebook-criterio { padding: 20px 24px; background: #FAFAFA; border-radius: 10px; margin-bottom: 14px; border-left: 4px solid var(--brand); }
+  .ebook-criterio h3 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 16px; color: var(--brand); margin: 0 0 8px; }
+  .ebook-criterio p { font-size: 14.5px; color: var(--ink-mid); line-height: 1.65; margin: 0; }
+
+  /* Checklist */
+  .ebook-checklist { list-style: none; padding: 0; }
+  .ebook-checklist li { padding: 12px 0; border-bottom: 1px dashed #E5E7EB; }
+  .ebook-checklist label { display: flex; gap: 14px; align-items: flex-start; cursor: pointer; font-size: 15px; color: var(--ink); line-height: 1.5; }
+  .ebook-checklist input[type=checkbox] { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: var(--brand); }
+
+  /* CTA final */
+  .ebook-cta {
+    background: linear-gradient(135deg, #C41E3A 0%, #7A1421 100%);
+    color: #FFFFFF; border-radius: 14px; padding: 36px 32px; margin: 28px 0; text-align: center;
+  }
+  .ebook-cta-eyebrow { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 2px; color: #FFB3C0; }
+  .ebook-cta h3 { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 24px; color: #FFFFFF; margin: 10px 0 8px; line-height: 1.3; }
+  .ebook-cta p { color: #FFE6EC; font-size: 15px; margin: 0 0 22px; }
+  .ebook-cta-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .ebook-cta-btns .btn-outline { color: #FFFFFF; border-color: #FFFFFF; }
+  .ebook-cta-btns .btn-outline:hover { background: #FFFFFF; color: var(--brand); }
+
+  /* Contato */
+  .ebook-contato { background: #F4F6F9; border-radius: 10px; padding: 20px 24px; margin: 24px 0; }
+  .ebook-contato p { margin: 4px 0; font-size: 14.5px; }
+  .ebook-rodape-final { text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #E5E7EB; font-size: 12px; color: var(--ink-light); }
+  .ebook-rodape-final p { margin: 2px 0; font-size: 12px; }
+</style>
