@@ -80,6 +80,29 @@ const dataPub = "2026-05-20";
           <li>Use uma <strong>calculadora online</strong> pra ter o valor exato em segundos — não dependa de orçamento que demora 1 semana pra chegar.</li>
         </ul>
       </div>
+
+      <!-- Bloco final: leia também + CTAs -->
+      <aside class="post-final">
+        <div class="post-final-cta">
+          <h3>Ainda em dúvida? Tira tudo no WhatsApp</h3>
+          <p>Respondemos em poucos minutos no horário comercial. Sem compromisso.</p>
+          <div class="post-final-btns">
+            <a href="/manutencao/contratar" class="btn btn-primary">Calcular meu preço</a>
+            <a href="https://wa.me/551123696462?text=Ol%C3%A1!%20Li%20o%20artigo%20de%20pre%C3%A7os%20no%20site%20e%20gostaria%20de%20mais%20informa%C3%A7%C3%B5es." target="_blank" rel="noopener noreferrer" class="btn btn-outline">Falar no WhatsApp</a>
+          </div>
+        </div>
+        <div class="leia-tambem">
+          <h4>Leia também</h4>
+          <a href="/artigos/manutencao-preventiva-vs-corretiva" class="leia-card">
+            <span>📊</span>
+            <div><strong>Manutenção preventiva vs corretiva</strong><span>O comparativo direto que vai mudar sua decisão</span></div>
+          </a>
+          <a href="/artigos/como-escolher-empresa-manutencao-predial" class="leia-card">
+            <span>✅</span>
+            <div><strong>Como escolher empresa de manutenção predial</strong><span>7 critérios objetivos + checklist + alertas</span></div>
+          </a>
+        </div>
+      </aside>
     </div>
   </article>
 </Base>
@@ -116,4 +139,27 @@ const dataPub = "2026-05-20";
   }
   .post-cta h3 { margin: 0 0 8px; font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 22px; color: var(--ink); }
   .post-cta p { margin: 0 0 18px; color: var(--ink-mid); font-size: 15px; }
+  /* Bloco final do artigo */
+  .post-final { margin-top: 48px; padding-top: 32px; border-top: 2px solid #E5E7EB; }
+  .post-final-cta {
+    background: linear-gradient(135deg, #1F2126 0%, #7A1421 100%); color: #FFF;
+    border-radius: 14px; padding: 32px 28px; text-align: center; margin-bottom: 32px;
+  }
+  .post-final-cta h3 { color: #FFF; margin: 0 0 8px; font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 24px; }
+  .post-final-cta p { color: #D1D5DB; margin: 0 0 22px; font-size: 16px; }
+  .post-final-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .post-final-btns .btn-outline { color: #FFF; border-color: #FFF; }
+  .post-final-btns .btn-outline:hover { background: #FFF; color: var(--ink); }
+  .leia-tambem h4 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink-mid); margin: 0 0 14px; }
+  .leia-card {
+    display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px;
+    text-decoration: none; color: inherit; margin-bottom: 10px;
+    transition: border-color .15s, transform .15s;
+  }
+  .leia-card:hover { border-color: var(--brand); transform: translateY(-1px); }
+  .leia-card > span:first-child { font-size: 26px; }
+  .leia-card div { display: flex; flex-direction: column; gap: 2px; }
+  .leia-card strong { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 15px; color: var(--ink); }
+  .leia-card div > span { font-size: 13.5px; color: var(--ink-mid); }
 </style>

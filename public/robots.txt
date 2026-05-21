@@ -1,0 +1,22 @@
+# robots.txt — Costa Júnior Engenharia
+# Permite indexação por todos os buscadores. Bloqueia áreas privadas.
+
+User-agent: *
+Allow: /
+
+# Áreas autenticadas e endpoints internos — não indexar
+Disallow: /admin/
+Disallow: /api/
+Disallow: /portal/
+Disallow: /manutencao/admin/
+Disallow: /manutencao/cliente/
+Disallow: /manutencao/tecnico/
+Disallow: /manutencao/preventiva/
+Disallow: /_render
+Disallow: /og-default.svg
+
+# Páginas de retorno de pagamento e queries do Mercado Pago — não indexar
+Disallow: /*?payment_status=
+Disallow: /*?preference_id=
+
+Sitemap: https://www.costajr.com.br/sitemap.xml
