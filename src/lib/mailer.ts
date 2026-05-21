@@ -63,6 +63,44 @@ export async function enviarSenhaReset(email: string, nome: string, senha: strin
   });
 }
 
+// Template dedicado pro RESET de senha do REPRESENTANTE — link aponta pro portal correto
+export async function enviarSenhaResetRepresentante(email: string, nome: string, senha: string) {
+  return sendOrThrow({
+    to: email,
+    subject: "🔐 Recuperação de senha — Portal do Representante Costa Júnior",
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff">
+        <img src="${SITE}/logo-cjr.png" alt="Costa Júnior" style="height:48px;margin-bottom:20px">
+        <div style="background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;padding:6px 12px;border-radius:99px;display:inline-block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:18px">
+          🤝 Portal do Representante
+        </div>
+        <h2 style="color:#2D2F36;margin:0 0 8px">Olá, ${nome}!</h2>
+        <p style="color:#5B5F6B;margin:0 0 16px;line-height:1.6">
+          Recebemos uma solicitação de <strong>recuperação de senha</strong> para sua conta no Portal do Representante.
+        </p>
+        <p style="color:#5B5F6B;margin:0 0 12px;line-height:1.6">
+          Use a senha temporária abaixo para entrar:
+        </p>
+        <div style="background:#F4F6F9;border-radius:8px;padding:20px;text-align:center;margin-bottom:18px">
+          <div style="font-size:11px;color:#5B5F6B;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;margin-bottom:8px">Nova senha temporária</div>
+          <span style="font-family:'Montserrat',Arial,sans-serif;font-size:28px;font-weight:700;letter-spacing:0.15em;color:#C41E3A;user-select:all">${senha}</span>
+        </div>
+        <p style="color:#5B5F6B;margin:0 0 20px;line-height:1.6;font-size:14px">
+          Ao entrar, você será solicitado a criar uma <strong>nova senha pessoal</strong> de sua preferência.
+        </p>
+        <a href="${SITE}/manutencao/representante/login"
+           style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin-bottom:24px">
+          Acessar o Portal do Representante →
+        </a>
+        <p style="color:#9CA3AF;font-size:12px;margin-top:24px;padding-top:16px;border-top:1px solid #E5E7EB;line-height:1.6">
+          Se você <strong>não solicitou</strong> esta recuperação, entre em contato com a Costa Júnior pelo WhatsApp <a href="https://wa.me/551123696462" style="color:#C41E3A">(11) 2369-6462</a> — sua senha foi alterada e qualquer pessoa com acesso a este email poderia logar.<br><br>
+          Costa Júnior — Engenharia e Construções Ltda
+        </p>
+      </div>
+    `,
+  });
+}
+
 function ADMIN_EMAIL(): string {
   return import.meta.env.ADMIN_NOTIFICATION_EMAIL || "adriana@costajr.com.br";
 }

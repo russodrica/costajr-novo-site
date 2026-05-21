@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "../supabase";
 import { hashSenha, verificarSenha, signToken, gerarSenhaInicial } from "../auth";
-import { enviarBoasVindasRepresentante, enviarSenhaReset } from "../mailer";
+import { enviarBoasVindasRepresentante, enviarSenhaResetRepresentante } from "../mailer";
 import { listarRegrasIndicacao } from "./indicacao-regras";
 
 const db = () => supabaseAdmin();
@@ -331,7 +331,7 @@ export async function representanteResetSenha(email: string) {
     .update({ senha_hash: await hashSenha(novaSenha), senha_troca_obrigatoria: true, updated_at: new Date().toISOString() })
     .eq("id", rep.id);
   try {
-    await enviarSenhaReset(rep.email, rep.nome || "Representante", novaSenha);
+    await enviarSenhaResetRepresentante(rep.email, rep.nome || "Representante", novaSenha);
     return { ok: true, emailEnviado: true };
   } catch (e: any) {
     console.error("[representantes][reset]", e.message);
