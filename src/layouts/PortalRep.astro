@@ -128,43 +128,51 @@ const { title, current } = Astro.props as Props;
     </main>
   </div>
 
-  <script>
-    const TOKEN_KEY = "manut_rep_token";
-    const USER_KEY = "manut_rep_user";
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
-      window.location.replace("/manutencao/representante/login");
-    } else {
+  <script is:inline>
+    (function() {
+      const TOKEN_KEY = "manut_rep_token";
+      const USER_KEY = "manut_rep_user";
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) {
+        window.location.replace("/manutencao/representante/login");
+        return;
+      }
       try {
         const user = JSON.parse(localStorage.getItem(USER_KEY) || "{}");
         const nameEl = document.getElementById("userName");
         const emailEl = document.getElementById("userEmail");
-        if (user?.nome && nameEl) nameEl.textContent = user.nome;
-        if (user?.email && emailEl) emailEl.textContent = user.email;
-      } catch {}
-    }
+        if (user && user.nome && nameEl) nameEl.textContent = user.nome;
+        if (user && user.email && emailEl) emailEl.textContent = user.email;
+      } catch (e) {}
 
-    document.getElementById("btnLogout")?.addEventListener("click", () => {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
-      window.location.replace("/manutencao/representante/login");
-    });
-
-    // Helper global pra páginas filhas usarem
-    (window as any).repFetch = (url: string, opts: RequestInit = {}) => {
-      const headers = Object.assign({}, opts.headers || {}, { "x-rep-auth": token, "content-type": "application/json" });
-      return fetch(url, Object.assign({}, opts, { headers }));
-    };
-
-    // Menu mobile
-    const toggle = document.getElementById("menuToggle");
-    const sidebar = document.getElementById("sidebar");
-    toggle?.addEventListener("click", () => sidebar?.classList.toggle("open"));
-    document.addEventListener("click", (e) => {
-      if (!sidebar?.contains(e.target as Node) && !toggle?.contains(e.target as Node)) {
-        sidebar?.classList.remove("open");
+      const btnLogout = document.getElementById("btnLogout");
+      if (btnLogout) {
+        btnLogout.addEventListener("click", () => {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
+          window.location.replace("/manutencao/representante/login");
+        });
       }
-    });
+
+      // Helper global pra páginas filhas usarem
+      window.repFetch = function(url, opts) {
+        opts = opts || {};
+        const headers = Object.assign({}, opts.headers || {}, { "x-rep-auth": token, "content-type": "application/json" });
+        return fetch(url, Object.assign({}, opts, { headers }));
+      };
+
+      // Menu mobile
+      const toggle = document.getElementById("menuToggle");
+      const sidebar = document.getElementById("sidebar");
+      if (toggle && sidebar) {
+        toggle.addEventListener("click", () => sidebar.classList.toggle("open"));
+        document.addEventListener("click", (e) => {
+          if (!sidebar.contains(e.target) && !toggle.contains(e.target)) {
+            sidebar.classList.remove("open");
+          }
+        });
+      }
+    })();
   </script>
 </body>
 </html>

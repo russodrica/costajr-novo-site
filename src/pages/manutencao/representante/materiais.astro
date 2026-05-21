@@ -27,18 +27,22 @@ export const prerender = false;
     .material-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
   </style>
 
-  <script>
-    const repFetch = (window as any).repFetch;
-
-    function renderMarkdownLeve(txt: string): string {
-      // Conversor minimalista — sem dependência externa, só pra ## headings e **bold**
-      let out = txt
-        .replace(/^## (.*)$/gm, "<h2>$1</h2>")
-        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-      return out;
+  <script is:inline>
+    const TOKEN_KEY = "manut_rep_token";
+    function repFetch(url, opts) {
+      opts = opts || {};
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers = Object.assign({}, opts.headers || {}, { "x-rep-auth": token || "", "content-type": "application/json" });
+      return fetch(url, Object.assign({}, opts, { headers }));
     }
 
-    const tipoLabel: Record<string, string> = {
+    function renderMarkdownLeve(txt) {
+      return (txt || "")
+        .replace(/^## (.*)$/gm, "<h2>$1</h2>")
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    }
+
+    const tipoLabel = {
       pdf: "📄 PDF",
       video: "🎬 Vídeo",
       link: "🔗 Link",
@@ -46,6 +50,10 @@ export const prerender = false;
       imagem: "🖼️ Imagem",
       script_whatsapp: "💬 Script WhatsApp",
     };
+
+    function escapeAttr(s) {
+      return String(s || "").replace(/"/g, "&quot;");
+    }
 
     (async () => {
       try {
@@ -56,53 +64,51 @@ export const prerender = false;
         const lista = document.getElementById("lista");
 
         if (materiais.length === 0) {
-          lista.innerHTML = `<div class="ico">📭</div>Nenhum material disponível no momento.`;
+          lista.innerHTML = '<div class="ico">📭</div>Nenhum material disponível no momento.';
           return;
         }
 
-        // Pega o primeiro cupom ativo pra injetar nos scripts
-        const cupons = (d.cupons || []).filter((c: any) => c.ativo);
-        const cupomCodigo = cupons[0]?.codigo || "SEU_CODIGO";
+        const cupons = (d.cupons || []).filter((c) => c.ativo);
+        const cupomCodigo = (cupons[0] && cupons[0].codigo) || "SEU_CODIGO";
 
         lista.classList.remove("empty");
-        lista.innerHTML = materiais.map((m: any) => {
-          const conteudo = (m.conteudo || "").replaceAll("{SEU_CODIGO}", cupomCodigo);
+        lista.innerHTML = materiais.map((m) => {
+          const conteudo = (m.conteudo || "").split("{SEU_CODIGO}").join(cupomCodigo);
           const isScript = m.tipo === "script_whatsapp";
-          const conteudoHtml = isScript
-            ? conteudo
-            : renderMarkdownLeve(conteudo);
+          const conteudoHtml = isScript ? conteudo : renderMarkdownLeve(conteudo);
 
-          const actions: string[] = [];
-          if (m.url) actions.push(`<a class="btn btn-outline btn-sm" href="${m.url}" target="_blank" rel="noopener">Abrir →</a>`);
+          const actions = [];
+          if (m.url) actions.push('<a class="btn btn-outline btn-sm" href="' + m.url + '" target="_blank" rel="noopener">Abrir →</a>');
           if (isScript && conteudo) {
-            actions.push(`<button class="btn btn-sm copiar-script" data-conteudo="${conteudo.replace(/"/g, "&quot;")}">📋 Copiar para WhatsApp</button>`);
+            actions.push('<button class="btn btn-sm copiar-script" data-conteudo="' + escapeAttr(conteudo) + '">📋 Copiar para WhatsApp</button>');
           }
 
-          return `
-            <div class="material ${m.destaque ? "destaque" : ""}">
-              <div class="meta">
-                <span class="badge-tipo">${tipoLabel[m.tipo] || m.tipo}</span>
-                ${m.destaque ? '<span class="badge-destaque">⭐ Destaque</span>' : ""}
-              </div>
-              <h3>${m.titulo}</h3>
-              ${m.descricao ? `<p class="descricao">${m.descricao}</p>` : ""}
-              ${conteudo ? `<div class="conteudo ${isScript ? "material-script" : ""}">${conteudoHtml}</div>` : ""}
-              ${actions.length ? `<div class="material-actions">${actions.join("")}</div>` : ""}
-            </div>
-          `;
+          return (
+            '<div class="material ' + (m.destaque ? "destaque" : "") + '">' +
+              '<div class="meta">' +
+                '<span class="badge-tipo">' + (tipoLabel[m.tipo] || m.tipo) + '</span>' +
+                (m.destaque ? '<span class="badge-destaque">⭐ Destaque</span>' : "") +
+              '</div>' +
+              '<h3>' + m.titulo + '</h3>' +
+              (m.descricao ? '<p class="descricao">' + m.descricao + '</p>' : "") +
+              (conteudo ? '<div class="conteudo ' + (isScript ? "material-script" : "") + '">' + conteudoHtml + '</div>' : "") +
+              (actions.length ? '<div class="material-actions">' + actions.join("") + '</div>' : "") +
+            '</div>'
+          );
         }).join("");
 
-        // Copiar script
         lista.querySelectorAll(".copiar-script").forEach((b) => b.addEventListener("click", (ev) => {
-          const c = (ev.currentTarget as HTMLElement).dataset.conteudo;
+          const c = ev.currentTarget.dataset.conteudo;
           if (c) {
             navigator.clipboard.writeText(c);
-            (ev.currentTarget as HTMLElement).textContent = "✓ Copiado!";
-            setTimeout(() => { (ev.currentTarget as HTMLElement).textContent = "📋 Copiar para WhatsApp"; }, 1500);
+            ev.currentTarget.textContent = "✓ Copiado!";
+            setTimeout(() => { ev.currentTarget.textContent = "📋 Copiar para WhatsApp"; }, 1500);
           }
         }));
       } catch (e) {
-        document.getElementById("lista").innerHTML = `<div class="ico">⚠️</div>Erro ao carregar materiais.`;
+        console.error("[materiais rep]", e);
+        const lista = document.getElementById("lista");
+        if (lista) lista.innerHTML = '<div class="ico">⚠️</div>Erro ao carregar materiais: ' + (e && e.message ? e.message : "desconhecido");
       }
     })();
   </script>

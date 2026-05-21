@@ -76,56 +76,66 @@ export const prerender = false;
     </form>
   </div>
 
-  <script>
-    const repFetch = (window as any).repFetch;
+  <script is:inline>
+    const TOKEN_KEY = "manut_rep_token";
+    function repFetch(url, opts) {
+      opts = opts || {};
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers = Object.assign({}, opts.headers || {}, { "x-rep-auth": token || "", "content-type": "application/json" });
+      return fetch(url, Object.assign({}, opts, { headers }));
+    }
 
     // Máscara telefone
     document.getElementById("telefone").addEventListener("input", (e) => {
-      const target = e.target as HTMLInputElement;
-      let v = target.value.replace(/\D/g, "").slice(0, 11);
-      if (v.length > 6) v = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
-      else if (v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
-      target.value = v;
+      let v = e.target.value.replace(/\D/g, "").slice(0, 11);
+      if (v.length > 6) v = "(" + v.slice(0,2) + ") " + v.slice(2,7) + "-" + v.slice(7);
+      else if (v.length > 2) v = "(" + v.slice(0,2) + ") " + v.slice(2);
+      e.target.value = v;
     });
 
-    function showAlert(id: string, ok: boolean, msg: string) {
+    function showAlert(id, ok, msg) {
       const el = document.getElementById(id);
+      if (!el) return;
       el.className = "alert " + (ok ? "alert-ok" : "alert-err");
       el.textContent = msg;
       el.style.display = "";
     }
 
     (async () => {
-      const res = await repFetch("/api/manut/representante/me");
-      if (res.status === 401) { localStorage.clear(); window.location.replace("/manutencao/representante/login"); return; }
-      const r = await res.json();
-      (document.getElementById("nome") as HTMLInputElement).value = r.nome || "";
-      (document.getElementById("email") as HTMLInputElement).value = r.email || "";
-      (document.getElementById("telefone") as HTMLInputElement).value = r.telefone || "";
-      (document.getElementById("tipoPix") as HTMLSelectElement).value = r.tipo_chave_pix || "";
-      (document.getElementById("chavePix") as HTMLInputElement).value = r.chave_pix || "";
+      try {
+        const res = await repFetch("/api/manut/representante/me");
+        if (res.status === 401) { localStorage.clear(); window.location.replace("/manutencao/representante/login"); return; }
+        const r = await res.json();
+        document.getElementById("nome").value = r.nome || "";
+        document.getElementById("email").value = r.email || "";
+        document.getElementById("telefone").value = r.telefone || "";
+        document.getElementById("tipoPix").value = r.tipo_chave_pix || "";
+        document.getElementById("chavePix").value = r.chave_pix || "";
+      } catch (e) {
+        console.error("[perfil rep] erro carregando dados", e);
+        showAlert("alertPerfil", false, "Erro ao carregar dados: " + (e && e.message ? e.message : "desconhecido"));
+      }
     })();
 
     document.getElementById("formPerfil").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const btn = document.getElementById("btnSalvarPerfil") as HTMLButtonElement;
+      const btn = document.getElementById("btnSalvarPerfil");
       btn.disabled = true; btn.textContent = "Salvando...";
       try {
         const res = await repFetch("/api/manut/representante/me", {
           method: "PATCH",
           body: JSON.stringify({
-            telefone: (document.getElementById("telefone") as HTMLInputElement).value.trim() || null,
-            chave_pix: (document.getElementById("chavePix") as HTMLInputElement).value.trim() || null,
-            tipo_chave_pix: (document.getElementById("tipoPix") as HTMLSelectElement).value || null,
+            telefone: document.getElementById("telefone").value.trim() || null,
+            chave_pix: document.getElementById("chavePix").value.trim() || null,
+            tipo_chave_pix: document.getElementById("tipoPix").value || null,
           }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "Erro ao salvar");
-        // Atualiza cópia local
         localStorage.setItem("manut_rep_user", JSON.stringify(d));
         showAlert("alertPerfil", true, "✓ Perfil atualizado com sucesso.");
-      } catch (err: any) {
-        showAlert("alertPerfil", false, err.message);
+      } catch (err) {
+        showAlert("alertPerfil", false, err.message || "Erro ao salvar");
       } finally {
         btn.disabled = false; btn.textContent = "Salvar perfil";
       }
@@ -133,25 +143,25 @@ export const prerender = false;
 
     document.getElementById("formSenha").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const btn = document.getElementById("btnSalvarSenha") as HTMLButtonElement;
-      const nova = (document.getElementById("nova") as HTMLInputElement).value;
-      const conf = (document.getElementById("confirma") as HTMLInputElement).value;
+      const btn = document.getElementById("btnSalvarSenha");
+      const nova = document.getElementById("nova").value;
+      const conf = document.getElementById("confirma").value;
       if (nova !== conf) { showAlert("alertSenha", false, "A confirmação não bate com a nova senha."); return; }
       btn.disabled = true; btn.textContent = "Trocando...";
       try {
         const res = await repFetch("/api/manut/representante/trocar-senha", {
           method: "POST",
           body: JSON.stringify({
-            senhaAtual: (document.getElementById("atual") as HTMLInputElement).value,
+            senhaAtual: document.getElementById("atual").value,
             novaSenha: nova,
           }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "Erro ao trocar senha");
         showAlert("alertSenha", true, "✓ Senha alterada com sucesso.");
-        (document.getElementById("formSenha") as HTMLFormElement).reset();
-      } catch (err: any) {
-        showAlert("alertSenha", false, err.message);
+        document.getElementById("formSenha").reset();
+      } catch (err) {
+        showAlert("alertSenha", false, err.message || "Erro ao trocar senha");
       } finally {
         btn.disabled = false; btn.textContent = "Trocar senha";
       }
