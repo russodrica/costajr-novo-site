@@ -73,8 +73,10 @@ export const POST: APIRoute = async ({ request }) => {
       representanteId = novo.id;
       isNovo = true;
 
-      // ─── 3. Gera código único (slug do nome + 4 chars random) ─────
-      const slug = nome
+      // ─── 3. Gera código curto: INICIAIS + ANO(2d) + SEQUENCIA(2d)
+      // Ex: Marcel Zara em 2026 → "MZ2601" (1º cupom com esse prefixo)
+      //     Se outro Marcel Z. se cadastrar → "MZ2602"
+      const normalizar = (s: string) => s
         .toUpperCase()
         .replace(/[ÀÁÂÃÄÅ]/g, "A")
         .replace(/[ÉÈÊË]/g, "E")
@@ -82,10 +84,22 @@ export const POST: APIRoute = async ({ request }) => {
         .replace(/[ÓÒÔÕÖ]/g, "O")
         .replace(/[ÚÙÛÜ]/g, "U")
         .replace(/[Ç]/g, "C")
-        .replace(/[^A-Z0-9]/g, "")
-        .slice(0, 10) || "REP";
-      const random = Math.random().toString(36).slice(2, 6).toUpperCase();
-      codigoCupom = `INDICA-${slug}-${random}`;
+        .replace(/[^A-Z ]/g, "");
+      const palavras = normalizar(nome).split(/\s+/).filter(Boolean);
+      // Pega 1ª letra das 2 primeiras palavras (ex: "Marcel Zara" → "MZ").
+      // Se o nome tem só 1 palavra, repete a letra (ex: "Adriana" → "AA").
+      let iniciais = palavras.slice(0, 2).map(p => p[0]).join("");
+      if (iniciais.length < 2) iniciais = (iniciais + iniciais).slice(0, 2) || "RP";
+      const anoCurto = String(new Date().getFullYear()).slice(-2);
+      const prefixo = `${iniciais}${anoCurto}`; // ex: "MZ26"
+
+      // Conta quantos cupons já têm esse prefixo no banco pra calcular próxima sequência
+      const { data: existentes } = await db
+        .from("manut_cupons")
+        .select("codigo")
+        .like("codigo", `${prefixo}%`);
+      const seq = String((existentes?.length ?? 0) + 1).padStart(2, "0");
+      codigoCupom = `${prefixo}${seq}`; // ex: "MZ2601"
 
       // ─── 4. Cria 1 cupom único com regras padrão (mais atrativo = anual) ─
       // ativo=false → Adriana aprova depois em /admin/cupons
