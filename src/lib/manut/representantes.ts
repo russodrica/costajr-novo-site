@@ -419,3 +419,76 @@ export async function listarMateriaisRepresentante() {
   if (error) throw new Error(error.message);
   return data || [];
 }
+
+// ─── ADMIN: CRUD de materiais (a Adriana usa pra cadastrar/editar do painel admin) ───────
+export interface MaterialRepInput {
+  titulo: string;
+  descricao?: string | null;
+  tipo: "pdf" | "video" | "link" | "texto" | "imagem" | "script_whatsapp";
+  url?: string | null;
+  conteudo?: string | null;
+  ordem?: number;
+  ativo?: boolean;
+  destaque?: boolean;
+}
+
+/** Lista TODOS os materiais (inclusive inativos) — pro admin gerenciar. */
+export async function listarTodosMateriais() {
+  const { data, error } = await db()
+    .from("manut_representantes_materiais")
+    .select("*")
+    .order("ativo", { ascending: false })
+    .order("destaque", { ascending: false })
+    .order("ordem", { ascending: true })
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function criarMaterial(input: MaterialRepInput) {
+  if (!input.titulo || !input.titulo.trim()) throw new Error("Título obrigatório");
+  if (!input.tipo) throw new Error("Tipo obrigatório");
+  const { data, error } = await db()
+    .from("manut_representantes_materiais")
+    .insert({
+      titulo: input.titulo.trim(),
+      descricao: input.descricao?.trim() || null,
+      tipo: input.tipo,
+      url: input.url?.trim() || null,
+      conteudo: input.conteudo || null,
+      ordem: Number(input.ordem ?? 0),
+      ativo: input.ativo ?? true,
+      destaque: input.destaque ?? false,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function atualizarMaterial(id: string, patch: Partial<MaterialRepInput>) {
+  const update: any = { updated_at: new Date().toISOString() };
+  if (patch.titulo !== undefined) update.titulo = String(patch.titulo).trim();
+  if (patch.descricao !== undefined) update.descricao = patch.descricao?.trim() || null;
+  if (patch.tipo !== undefined) update.tipo = patch.tipo;
+  if (patch.url !== undefined) update.url = patch.url?.trim() || null;
+  if (patch.conteudo !== undefined) update.conteudo = patch.conteudo || null;
+  if (patch.ordem !== undefined) update.ordem = Number(patch.ordem);
+  if (patch.ativo !== undefined) update.ativo = !!patch.ativo;
+  if (patch.destaque !== undefined) update.destaque = !!patch.destaque;
+
+  const { data, error } = await db()
+    .from("manut_representantes_materiais")
+    .update(update)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function excluirMaterial(id: string) {
+  const { error } = await db().from("manut_representantes_materiais").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return { ok: true };
+}
