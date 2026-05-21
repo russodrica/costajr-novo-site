@@ -267,7 +267,7 @@ import Base from "~/layouts/Base.astro";
           body: JSON.stringify({ nome, telefone: tel, email, mensagem }),
         });
         if (res.ok) {
-          alert.textContent = "✅ Recebemos seu cadastro! Em até 1 dia útil entramos em contato pra te enviar seu cupom personalizado.";
+          alert.innerHTML = "✅ <strong>Cadastro feito!</strong> Acabamos de enviar seus 3 cupons personalizados pra <strong>" + email + "</strong>. Confere a caixa de entrada (e a pasta de spam, só por garantia).";
           alert.className = "form-status sucesso";
           alert.style.display = "";
           document.getElementById("form-rep").reset();
