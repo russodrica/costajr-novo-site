@@ -1,0 +1,109 @@
+---
+import PortalRep from "../../../layouts/PortalRep.astro";
+export const prerender = false;
+---
+<PortalRep title="Materiais de treinamento" current="materiais">
+  <div class="page-head">
+    <div>
+      <h1>📚 Materiais de treinamento</h1>
+      <p class="sub">Conteúdo pra te ajudar a divulgar com qualidade e tirar dúvidas dos seus indicados.</p>
+    </div>
+  </div>
+
+  <div id="lista" class="empty"><div class="ico">⏳</div>Carregando…</div>
+
+  <style is:global>
+    .material{background:#FFF;border-radius:12px;padding:22px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:14px;border-left:4px solid #C41E3A}
+    .material.destaque{border-left-color:#92400E;background:linear-gradient(180deg,#FFFBEB 0%,#FFF 30%)}
+    .material h3{font-family:'Montserrat',sans-serif;font-size:16px;margin:0 0 6px;color:#2D2F36}
+    .material .meta{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+    .material .meta .badge-tipo{background:#EFF6FF;color:#1D4ED8;padding:2px 9px;border-radius:99px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em}
+    .material .meta .badge-destaque{background:#FEF3C7;color:#92400E;padding:2px 9px;border-radius:99px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em}
+    .material .descricao{color:#5B5F6B;font-size:13.5px;margin:0 0 10px;line-height:1.55}
+    .material .conteudo{background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:16px;font-size:14px;color:#2D2F36;white-space:pre-wrap;line-height:1.6;font-family:'Open Sans',sans-serif}
+    .material .conteudo h2{font-family:'Montserrat',sans-serif;font-size:15px;margin:16px 0 4px;color:#2D2F36}
+    .material .conteudo strong{color:#2D2F36}
+    .material-script{background:#F0FDF4;border-color:#BBF7D0;font-family:'Open Sans',sans-serif;color:#14532D}
+    .material-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+
+  <script>
+    const repFetch = (window as any).repFetch;
+
+    function renderMarkdownLeve(txt: string): string {
+      // Conversor minimalista — sem dependência externa, só pra ## headings e **bold**
+      let out = txt
+        .replace(/^## (.*)$/gm, "<h2>$1</h2>")
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      return out;
+    }
+
+    const tipoLabel: Record<string, string> = {
+      pdf: "📄 PDF",
+      video: "🎬 Vídeo",
+      link: "🔗 Link",
+      texto: "📝 Texto",
+      imagem: "🖼️ Imagem",
+      script_whatsapp: "💬 Script WhatsApp",
+    };
+
+    (async () => {
+      try {
+        const res = await repFetch("/api/manut/representante/dashboard");
+        if (res.status === 401) { localStorage.clear(); window.location.replace("/manutencao/representante/login"); return; }
+        const d = await res.json();
+        const materiais = d.materiais || [];
+        const lista = document.getElementById("lista");
+
+        if (materiais.length === 0) {
+          lista.innerHTML = `<div class="ico">📭</div>Nenhum material disponível no momento.`;
+          return;
+        }
+
+        // Pega o primeiro cupom ativo pra injetar nos scripts
+        const cupons = (d.cupons || []).filter((c: any) => c.ativo);
+        const cupomCodigo = cupons[0]?.codigo || "SEU_CODIGO";
+
+        lista.classList.remove("empty");
+        lista.innerHTML = materiais.map((m: any) => {
+          const conteudo = (m.conteudo || "").replaceAll("{SEU_CODIGO}", cupomCodigo);
+          const isScript = m.tipo === "script_whatsapp";
+          const conteudoHtml = isScript
+            ? conteudo
+            : renderMarkdownLeve(conteudo);
+
+          const actions: string[] = [];
+          if (m.url) actions.push(`<a class="btn btn-outline btn-sm" href="${m.url}" target="_blank" rel="noopener">Abrir →</a>`);
+          if (isScript && conteudo) {
+            actions.push(`<button class="btn btn-sm copiar-script" data-conteudo="${conteudo.replace(/"/g, "&quot;")}">📋 Copiar para WhatsApp</button>`);
+          }
+
+          return `
+            <div class="material ${m.destaque ? "destaque" : ""}">
+              <div class="meta">
+                <span class="badge-tipo">${tipoLabel[m.tipo] || m.tipo}</span>
+                ${m.destaque ? '<span class="badge-destaque">⭐ Destaque</span>' : ""}
+              </div>
+              <h3>${m.titulo}</h3>
+              ${m.descricao ? `<p class="descricao">${m.descricao}</p>` : ""}
+              ${conteudo ? `<div class="conteudo ${isScript ? "material-script" : ""}">${conteudoHtml}</div>` : ""}
+              ${actions.length ? `<div class="material-actions">${actions.join("")}</div>` : ""}
+            </div>
+          `;
+        }).join("");
+
+        // Copiar script
+        lista.querySelectorAll(".copiar-script").forEach((b) => b.addEventListener("click", (ev) => {
+          const c = (ev.currentTarget as HTMLElement).dataset.conteudo;
+          if (c) {
+            navigator.clipboard.writeText(c);
+            (ev.currentTarget as HTMLElement).textContent = "✓ Copiado!";
+            setTimeout(() => { (ev.currentTarget as HTMLElement).textContent = "📋 Copiar para WhatsApp"; }, 1500);
+          }
+        }));
+      } catch (e) {
+        document.getElementById("lista").innerHTML = `<div class="ico">⚠️</div>Erro ao carregar materiais.`;
+      }
+    })();
+  </script>
+</PortalRep>

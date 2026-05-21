@@ -2,6 +2,7 @@
 import Admin from "../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { supabaseAdmin } from "../../lib/supabase";
+import { listarRegrasIndicacao } from "../../lib/manut/indicacao-regras";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -14,11 +15,14 @@ const db = supabaseAdmin();
 const [{ data: reps }, { data: cuponsPorRep }, { data: repasses }] = await Promise.all([
   db.from("manut_representantes").select("*").order("created_at", { ascending: false }),
   db.from("manut_cupons")
-    .select("id, codigo, desconto_percentual, duracao_meses, cashback_pct, ativo, usos_atuais, usos_maximos, validade, representante_id")
+    .select("id, codigo, desconto_percentual, duracao_meses, cashback_pct, tipo, ativo, usos_atuais, usos_maximos, validade, representante_id")
     .not("representante_id", "is", null)
     .order("created_at", { ascending: false }),
   db.from("manut_representantes_repasses").select("*, rep:representante_id(nome)").order("created_at", { ascending: false }).limit(50),
 ]);
+
+// Tabela de regras dinâmicas (mesmo conjunto aplicado em todo cupom tipo=representante)
+const regrasIndicacao = listarRegrasIndicacao();
 
 // Indexa cupons completos por representante (não apenas count)
 const cuponsPorRepId: Record<string, any[]> = {};
@@ -58,32 +62,67 @@ const totalPago = (repasses || []).reduce((a: number, r: any) => a + Number(r.va
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Cupons</th><th>Saldo acumulado</th><th>Status</th><th style="text-align:right">Ações</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Contato</th><th>PIX</th><th>Cupons</th><th>Saldo acumulado</th><th>Status</th><th style="text-align:right">Ações</th></tr></thead>
         <tbody>
           {(reps || []).map((r: any) => {
             const cupons = cuponsPorRepId[r.id] || [];
             const saldo = Number(r.saldo_acumulado || 0);
             return (
-              <tr data-id={r.id} data-nome={r.nome} data-email={r.email} data-telefone={r.telefone || ""} data-ativo={r.ativo ? "1" : "0"} data-saldo={saldo}>
-                <td><strong>{r.nome}</strong></td>
-                <td style="font-size:12.5px">{r.email}</td>
-                <td style="font-size:12.5px;color:#5B5F6B">{r.telefone || "—"}</td>
+              <tr data-id={r.id} data-nome={r.nome} data-email={r.email} data-telefone={r.telefone || ""} data-ativo={r.ativo ? "1" : "0"} data-saldo={saldo} data-pix={r.chave_pix || ""} data-tipo-pix={r.tipo_chave_pix || ""}>
+                <td>
+                  <strong>{r.nome}</strong>
+                  {r.aprovado_em && <div style="font-size:10px;color:#9CA3AF;margin-top:2px">Aprovado {new Date(r.aprovado_em).toLocaleDateString("pt-BR")}</div>}
+                </td>
+                <td style="font-size:12px">
+                  <div style="color:#2D2F36">{r.email}</div>
+                  {r.telefone && <div style="color:#5B5F6B;margin-top:2px">{r.telefone}</div>}
+                </td>
+                <td style="font-size:12px">
+                  {r.chave_pix ? (
+                    <div>
+                      {r.tipo_chave_pix && (
+                        <span style="background:#F0FDF4;color:#166534;padding:1px 6px;border-radius:99px;font-size:9.5px;font-weight:700;text-transform:uppercase">{r.tipo_chave_pix}</span>
+                      )}
+                      <div style="color:#2D2F36;margin-top:3px;font-family:monospace;font-size:11.5px;word-break:break-all">{r.chave_pix}</div>
+                    </div>
+                  ) : (
+                    <span style="color:#DC2626;font-size:11px;font-weight:600">⚠️ não cadastrado</span>
+                  )}
+                </td>
                 <td style="font-size:12px">
                   {cupons.length === 0 ? <span style="color:#9CA3AF">—</span> : (
                     <div style="display:flex;flex-direction:column;gap:6px">
                       {cupons.map((c: any) => (
-                        <div style="display:flex;flex-direction:column;gap:2px;padding:6px 8px;background:#F9FAFB;border-radius:6px;border-left:3px solid #C41E3A">
-                          <div style="display:flex;align-items:center;gap:6px">
+                        <div style="display:flex;flex-direction:column;gap:4px;padding:6px 8px;background:#F9FAFB;border-radius:6px;border-left:3px solid #C41E3A">
+                          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                             <code style="font-family:'Montserrat',sans-serif;font-weight:800;color:#C41E3A;font-size:13px;letter-spacing:0.5px">{c.codigo}</code>
                             {c.ativo
                               ? <span style="background:#DCFCE7;color:#166534;padding:1px 6px;border-radius:99px;font-size:9.5px;font-weight:700">ATIVO</span>
                               : <span style="background:#FEE2E2;color:#B91C1C;padding:1px 6px;border-radius:99px;font-size:9.5px;font-weight:700">INATIVO</span>}
+                            {c.tipo === "representante" && (
+                              <span title="As regras (desconto + comissão) variam conforme o plano que o cliente escolhe" style="background:#EFF6FF;color:#1D4ED8;padding:1px 6px;border-radius:99px;font-size:9.5px;font-weight:700">REGRAS POR PLANO</span>
+                            )}
                           </div>
-                          <div style="color:#5B5F6B;font-size:11px;line-height:1.4">
-                            <strong>{Number(c.desconto_percentual)}%</strong> off × <strong>{Number(c.duracao_meses)} mês{c.duracao_meses != 1 ? "es" : ""}</strong>
-                            {" · "}
-                            comissão <strong>{Number(c.cashback_pct)}%</strong>
-                          </div>
+                          {c.tipo === "representante" ? (
+                            <div style="display:flex;flex-direction:column;gap:2px;background:#FFF;border:1px solid #E5E7EB;border-radius:4px;padding:4px 6px">
+                              {regrasIndicacao.map((r) => (
+                                <div style="display:grid;grid-template-columns:80px 1fr;gap:6px;font-size:10.5px;color:#5B5F6B;line-height:1.5">
+                                  <strong style="color:#2D2F36">{r.label} ({r.meses}m):</strong>
+                                  <span>
+                                    cliente <strong>{r.desconto_pct === 0 ? "sem desconto" : `${r.desconto_pct}% × ${r.duracao_desconto_meses} ${r.duracao_desconto_meses === 1 ? "mês" : "meses"}`}</strong>
+                                    {" · "}
+                                    comissão <strong style="color:#166534">{r.comissao_pct}%</strong>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style="color:#5B5F6B;font-size:11px;line-height:1.4">
+                              <strong>{Number(c.desconto_percentual)}%</strong> off × <strong>{Number(c.duracao_meses)} mês{c.duracao_meses != 1 ? "es" : ""}</strong>
+                              {" · "}
+                              comissão <strong>{Number(c.cashback_pct)}%</strong>
+                            </div>
+                          )}
                           <div style="color:#9CA3AF;font-size:10.5px">
                             Usos: {c.usos_atuais || 0}{c.usos_maximos ? ` / ${c.usos_maximos}` : ""}
                             {c.validade && ` · Validade: ${fmtDate(c.validade)}`}
@@ -139,12 +178,37 @@ const totalPago = (repasses || []).reduce((a: number, r: any) => a + Number(r.va
         <div class="form-group"><label>Nome *</label><input id="repNome" required /></div>
         <div class="form-group"><label>Email *</label><input id="repEmail" type="email" required /></div>
         <div class="form-group"><label>Telefone</label><input id="repTelefone" type="tel" /></div>
+
+        <div style="background:#F4F6F9;border-radius:8px;padding:12px 14px;margin:14px 0">
+          <div style="font-size:12px;font-weight:700;color:#2D2F36;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">Chave PIX (pra repasses)</div>
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:10px">
+            <div class="form-group" style="margin:0">
+              <label style="font-size:12px">Tipo da chave</label>
+              <select id="repTipoPix" style="width:100%;padding:8px;border:1px solid #E5E7EB;border-radius:6px;font-size:13px">
+                <option value="">—</option>
+                <option value="cpf">CPF</option>
+                <option value="cnpj">CNPJ</option>
+                <option value="email">Email</option>
+                <option value="telefone">Telefone</option>
+                <option value="aleatoria">Aleatória</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label style="font-size:12px">Chave PIX</label>
+              <input id="repPix" placeholder="Ex.: 123.456.789-00" />
+            </div>
+          </div>
+          <small style="display:block;margin-top:6px;font-size:11px;color:#5B5F6B">
+            💡 Pode deixar em branco se preferir — o representante pode cadastrar depois pelo portal dele.
+          </small>
+        </div>
+
         <div class="form-group" id="grupoAtivo" style="display:none">
           <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
             <input type="checkbox" id="repAtivo" /> Representante ativo
           </label>
           <small style="display:block;margin-top:6px;font-size:11.5px;color:#5B5F6B">
-            💡 Ao ativar, todos os cupons vinculados (atualmente inativos) também serão ativados automaticamente.
+            💡 Ao APROVAR pela primeira vez: cupons inativos são ativados, uma senha temporária é gerada e um email de boas-vindas é enviado automaticamente.
           </small>
         </div>
         <div class="modal-actions">
@@ -194,6 +258,8 @@ const totalPago = (repasses || []).reduce((a: number, r: any) => a + Number(r.va
       (document.getElementById("repNome") as HTMLInputElement).value = tr.dataset.nome || "";
       (document.getElementById("repEmail") as HTMLInputElement).value = tr.dataset.email || "";
       (document.getElementById("repTelefone") as HTMLInputElement).value = tr.dataset.telefone || "";
+      (document.getElementById("repPix") as HTMLInputElement).value = tr.dataset.pix || "";
+      (document.getElementById("repTipoPix") as HTMLSelectElement).value = tr.dataset.tipoPix || "";
       (document.getElementById("repAtivo") as HTMLInputElement).checked = tr.dataset.ativo === "1";
       document.getElementById("modalRepTitulo")!.textContent = "Editar representante";
       document.getElementById("grupoAtivo")!.style.display = "";
@@ -229,13 +295,27 @@ const totalPago = (repasses || []).reduce((a: number, r: any) => a + Number(r.va
         nome: (document.getElementById("repNome") as HTMLInputElement).value.trim(),
         email: (document.getElementById("repEmail") as HTMLInputElement).value.trim(),
         telefone: (document.getElementById("repTelefone") as HTMLInputElement).value.trim() || null,
+        chave_pix: (document.getElementById("repPix") as HTMLInputElement).value.trim() || null,
+        tipo_chave_pix: (document.getElementById("repTipoPix") as HTMLSelectElement).value || null,
       };
       if (id) body.ativo = (document.getElementById("repAtivo") as HTMLInputElement).checked;
       const url = id ? `/api/admin/representantes/${id}` : "/api/admin/representantes";
       const method = id ? "PATCH" : "POST";
       const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) { window.location.reload(); }
-      else { const d = await res.json().catch(() => ({})); alert(d.error || "Erro ao salvar"); }
+      if (res.ok) {
+        // Detecta primeira aprovação (resposta inclui senhaInicialGerada) e avisa Adriana
+        const d = await res.json().catch(() => ({}));
+        if (d?.senhaInicialGerada) {
+          const msg = d.emailEnviado
+            ? `✅ Representante APROVADO!\n\nFoi enviado um email de boas-vindas pra ${d.email} com a senha temporária e o link do portal.\n\nSenha gerada (caso precise repassar manualmente): ${d.senhaInicialGerada}`
+            : `✅ Representante APROVADO!\n\n⚠️ Não foi possível enviar o email automático (${d.emailErro || "erro desconhecido"}).\n\nEnvie manualmente:\nEmail: ${d.email}\nSenha temporária: ${d.senhaInicialGerada}\nPortal: /manutencao/representante/login`;
+          alert(msg);
+        }
+        window.location.reload();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Erro ao salvar");
+      }
     });
 
     document.getElementById("formRepasse")!.addEventListener("submit", async (e) => {

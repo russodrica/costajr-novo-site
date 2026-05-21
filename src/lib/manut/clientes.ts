@@ -3,6 +3,7 @@ import { hashSenha, verificarSenha, signToken, gerarSenhaInicial } from "../auth
 import { criarPreference } from "../mercadopago";
 import { enviarSenhaTemporaria, enviarSenhaReset } from "../mailer";
 import { inclusoesParaDuracao } from "./planos-inclusos";
+import { regraIndicacaoPorDuracao } from "./indicacao-regras";
 
 const db = () => supabaseAdmin();
 
@@ -243,22 +244,37 @@ export async function contratarSubmit(payload: {
   // Registra uso do cupom + credita cashback no dono (cliente indicador OU representante)
   if (cupomData) {
     try {
-      const descontoPct = Number(cupomData.desconto_percentual || 0);
-      const duracaoCupomMeses = Math.max(1, Number(cupomData.duracao_meses || 1));
-      const valorMensalPlano = Number(plano.valorMensal || 0);
-
-      // Desconto sobre N parcelas mensais do plano (não sobre o total).
-      // Se o plano é de 12 meses e o cupom é "10% por 3 meses", desconto = valorMensal × 10% × 3.
-      // O frontend já aplica esse cálculo no valorTotal enviado — aqui registramos o valor histórico.
-      const mesesDescontados = Math.min(duracaoCupomMeses, duracaoMeses);
-      const descontoAplicado = valorMensalPlano > 0
-        ? (valorMensalPlano * descontoPct * mesesDescontados) / 100
-        : (valorCobranca * descontoPct) / 100; // fallback proporcional ao que o cliente pagou
-
-      const cashbackPct = Number(cupomData.cashback_pct || 0);
       const tipoCupom = String(cupomData.tipo || "desconto");
       const representanteId: string | null = cupomData.representante_id || null;
       const clienteDonoId: string | null = cupomData.cliente_dono_id || null;
+
+      // Para cupom de representante (programa Indique e Ganha), as regras NÃO vêm do registro
+      // armazenado: cada cupom tem 1 código só, mas aplica regras diferentes por plano.
+      // A tabela em ~/lib/manut/indicacao-regras define qual regra usar pra cada duração (3/6/12).
+      // Pra cupons normais (tipo='desconto' ou 'indicacao'), usa os valores fixos do registro.
+      let descontoPct: number;
+      let duracaoCupomMeses: number;
+      let cashbackPct: number;
+      if (tipoCupom === "representante") {
+        const regra = regraIndicacaoPorDuracao(duracaoMeses);
+        descontoPct = Number(regra.desconto_pct || 0);
+        duracaoCupomMeses = Number(regra.duracao_desconto_meses || 0);
+        cashbackPct = Number(regra.comissao_pct || 0);
+      } else {
+        descontoPct = Number(cupomData.desconto_percentual || 0);
+        duracaoCupomMeses = Math.max(1, Number(cupomData.duracao_meses || 1));
+        cashbackPct = Number(cupomData.cashback_pct || 0);
+      }
+
+      const valorMensalPlano = Number(plano.valorMensal || 0);
+
+      // Desconto sobre N parcelas mensais do plano (não sobre o total).
+      // Se o plano é de 12 meses e o cupom é "20% por 2 meses", desconto = valorMensal × 20% × 2.
+      // O frontend já aplica esse cálculo no valorTotal enviado — aqui registramos o valor histórico.
+      const mesesDescontados = Math.min(duracaoCupomMeses, duracaoMeses);
+      const descontoAplicado = valorMensalPlano > 0 && mesesDescontados > 0
+        ? (valorMensalPlano * descontoPct * mesesDescontados) / 100
+        : (descontoPct > 0 ? (valorCobranca * descontoPct) / 100 : 0); // fallback proporcional
 
       // Cashback do dono é calculado sobre o valor efetivamente pago pelo cliente (já com desconto aplicado).
       // Não credita cashback quando o dono == quem usa (cliente não pode ganhar comissão dele mesmo).
@@ -325,7 +341,14 @@ export async function contratarSubmit(payload: {
     linkPagamento: mp.initPoint,
     mpStatus: mp.ok ? "ok" : "fallback",
     mpMotivo: mp.ok ? null : mp.motivo,
-    cupomAplicado: cupomData ? { codigo: cupomData.codigo, desconto: Number(cupomData.desconto_percentual) } : null,
+    cupomAplicado: cupomData ? {
+      codigo: cupomData.codigo,
+      // Para cupom de representante, devolve o desconto efetivamente aplicado neste plano
+      // (não o valor armazenado no registro, que é genérico).
+      desconto: String(cupomData.tipo || "") === "representante"
+        ? Number(regraIndicacaoPorDuracao(duracaoMeses).desconto_pct || 0)
+        : Number(cupomData.desconto_percentual || 0),
+    } : null,
   };
 }
 

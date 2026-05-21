@@ -6,7 +6,8 @@ const ISSUER = "costajr.com.br";
 export type ClienteClaims = { sub: string; tipo: "cliente"; email: string; troca?: boolean };
 export type TecnicoClaims = { sub: string; tipo: "tecnico"; email: string; troca?: boolean };
 export type AdminClaims   = { sub: string; tipo: "admin"; email: string; role: string };
-export type AnyClaims = ClienteClaims | TecnicoClaims | AdminClaims;
+export type RepresentanteClaims = { sub: string; tipo: "representante"; email: string; troca?: boolean };
+export type AnyClaims = ClienteClaims | TecnicoClaims | AdminClaims | RepresentanteClaims;
 
 export async function signToken(claims: AnyClaims, ttl: string = "7d"): Promise<string> {
   return new SignJWT(claims as any)
@@ -55,6 +56,9 @@ export function getTecnicoToken(req: Request): string {
 export function getPortalToken(req: Request): string {
   return req.headers.get("x-portal-auth") || "";
 }
+export function getRepresentanteToken(req: Request): string {
+  return req.headers.get("x-rep-auth") || "";
+}
 
 export async function requireCliente(req: Request): Promise<ClienteClaims> {
   const tok = getClienteToken(req);
@@ -69,6 +73,14 @@ export async function requireTecnico(req: Request): Promise<TecnicoClaims> {
   if (!tok) throw new Error("Não autenticado");
   const claims = await verifyToken<TecnicoClaims>(tok);
   if (claims.tipo !== "tecnico") throw new Error("Token inválido");
+  return claims;
+}
+
+export async function requireRepresentante(req: Request): Promise<RepresentanteClaims> {
+  const tok = getRepresentanteToken(req);
+  if (!tok) throw new Error("Não autenticado");
+  const claims = await verifyToken<RepresentanteClaims>(tok);
+  if (claims.tipo !== "representante") throw new Error("Token inválido");
   return claims;
 }
 

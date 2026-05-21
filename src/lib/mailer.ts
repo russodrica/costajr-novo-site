@@ -199,6 +199,107 @@ export async function enviarEmailCupomRenovacao(args: {
   });
 }
 
+export async function enviarBoasVindasRepresentante(args: {
+  email: string;
+  nome: string;
+  codigos: string[];
+  senhaInicial: string;
+  regrasPorPlano: Array<{ label: string; meses: number; desconto_pct: number; duracao_desconto_meses: number; comissao_pct: number }>;
+}) {
+  const { email, nome, codigos, senhaInicial, regrasPorPlano } = args;
+  const cupomBlocos = codigos
+    .map(
+      (c) => `
+      <div style="background:#FEF2F2;border:2px dashed #C41E3A;border-radius:10px;padding:18px;text-align:center;margin-bottom:10px">
+        <div style="font-size:10.5px;color:#5B5F6B;letter-spacing:2px;text-transform:uppercase;font-weight:700">Seu cupom</div>
+        <div style="font-family:'Montserrat',Arial,sans-serif;font-size:30px;font-weight:700;color:#C41E3A;letter-spacing:3px;margin-top:6px;user-select:all">${c}</div>
+        <div style="font-size:12px;color:#5B5F6B;margin-top:8px">
+          Link direto: <a href="${SITE}/manutencao/contratar?cupom=${c}" style="color:#C41E3A;word-break:break-all">${SITE.replace(/^https?:\/\//, "")}/manutencao/contratar?cupom=${c}</a>
+        </div>
+      </div>`,
+    )
+    .join("");
+
+  const tabelaRegras = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;background:#F9FAFB;border-radius:8px;overflow:hidden;margin:8px 0 22px">
+      <thead>
+        <tr style="background:#E5E7EB;color:#2D2F36">
+          <th style="text-align:left;padding:8px 10px">Plano</th>
+          <th style="text-align:left;padding:8px 10px">Desconto cliente</th>
+          <th style="text-align:left;padding:8px 10px">Sua comissão</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${regrasPorPlano
+          .map(
+            (r) => `
+          <tr style="border-bottom:1px solid #E5E7EB">
+            <td style="padding:8px 10px"><strong>${r.label}</strong> (${r.meses}m)</td>
+            <td style="padding:8px 10px">${r.desconto_pct === 0 ? "<em>sem desconto</em>" : `${r.desconto_pct}% × ${r.duracao_desconto_meses} ${r.duracao_desconto_meses === 1 ? "mês" : "meses"}`}</td>
+            <td style="padding:8px 10px"><strong style="color:#166534">${r.comissao_pct}%</strong></td>
+          </tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+
+  return sendOrThrow({
+    to: email,
+    subject: "🎉 Cadastro aprovado — Costa Júnior Indique e Ganhe",
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#fff">
+        <div style="background:linear-gradient(135deg,#166534 0%,#15803D 100%);color:#FFF;padding:28px 28px;border-radius:12px;margin-bottom:28px;text-align:center">
+          <h1 style="margin:0 0 6px;font-size:24px">Bem-vindo, ${nome.split(" ")[0]}! 🎉</h1>
+          <p style="margin:0;color:#BBF7D0;font-size:14.5px">Seu cadastro no programa Indique e Ganhe foi APROVADO</p>
+        </div>
+
+        <p style="color:#2D2F36;font-size:15.5px;line-height:1.6;margin:0 0 18px">
+          Que bom ter você como representante da Costa Júnior! A partir de agora você já pode começar a divulgar e ganhar comissão por cada cliente que fechar plano com seu cupom.
+        </p>
+
+        <h3 style="color:#2D2F36;margin:28px 0 8px;font-size:16px">📣 ${codigos.length > 1 ? "Seus cupons" : "Seu cupom"}</h3>
+        ${cupomBlocos}
+
+        <h3 style="color:#2D2F36;margin:28px 0 8px;font-size:16px">💰 Quanto você ganha por venda</h3>
+        <p style="color:#5B5F6B;font-size:13.5px;margin:0 0 6px">A comissão muda conforme o plano que o cliente escolhe (você divulga um código só):</p>
+        ${tabelaRegras}
+
+        <h3 style="color:#2D2F36;margin:28px 0 8px;font-size:16px">🔐 Acesso ao Portal do Representante</h3>
+        <p style="color:#5B5F6B;font-size:14px;line-height:1.6;margin:0 0 10px">
+          Você tem agora um portal pra acompanhar suas vendas, ver o saldo de comissão acumulado, baixar materiais de divulgação e cadastrar sua chave PIX (pros repasses).
+        </p>
+        <div style="background:#F4F6F9;border-radius:8px;padding:18px 22px;margin:10px 0 14px">
+          <div style="font-size:13px;color:#5B5F6B;margin-bottom:6px">Seu login</div>
+          <div style="font-size:15px;color:#2D2F36;margin-bottom:14px"><strong>${email}</strong></div>
+          <div style="font-size:13px;color:#5B5F6B;margin-bottom:6px">Senha temporária</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;font-size:22px;font-weight:700;color:#C41E3A;letter-spacing:2px;user-select:all">${senhaInicial}</div>
+          <p style="font-size:12px;color:#9CA3AF;margin:10px 0 0">Ao entrar pela primeira vez, troque a senha por uma de sua preferência.</p>
+        </div>
+
+        <a href="${SITE}/manutencao/representante/login" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin-bottom:18px">
+          Acessar o Portal →
+        </a>
+
+        <h3 style="color:#2D2F36;margin:28px 0 8px;font-size:16px">🚀 Próximos passos</h3>
+        <ol style="color:#5B5F6B;font-size:14px;line-height:1.7;padding-left:22px;margin:0">
+          <li>Acesse o portal e cadastre sua <strong>chave PIX</strong> (na aba "Meu Perfil")</li>
+          <li>Veja os <strong>materiais de treinamento</strong> e o script pronto pra WhatsApp</li>
+          <li>Compartilhe seu cupom com sua rede — o link direto já leva o cliente pra contratação com o código aplicado</li>
+        </ol>
+
+        <p style="color:#5B5F6B;font-size:14px;line-height:1.6;margin:28px 0 0">
+          Qualquer dúvida, chame a gente: <a href="https://wa.me/551123696462" style="color:#C41E3A;font-weight:600">(11) 2369-6462</a>
+        </p>
+
+        <p style="color:#9CA3AF;font-size:11px;text-align:center;margin-top:32px;padding-top:16px;border-top:1px solid #E5E7EB">
+          Costa Júnior Engenharia e Construções Ltda · CNPJ 07.132.942/0001-72
+        </p>
+      </div>
+    `,
+  });
+}
+
 export async function enviarEmailSuporteAdmin(args: {
   clienteNome: string;
   email: string;

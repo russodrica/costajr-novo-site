@@ -1,0 +1,99 @@
+---
+export const prerender = false;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Trocar senha — Portal do Representante</title>
+  <meta name="theme-color" content="#C41E3A">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Open+Sans:wght@400;500;600&display=swap">
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    body{margin:0;font-family:'Open Sans',sans-serif;background:#F4F6F9;color:#2D2F36;min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .wrap{width:100%;max-width:420px;padding:24px}
+    .card{background:#fff;border-radius:12px;padding:36px;box-shadow:0 2px 20px rgba(0,0,0,.06)}
+    h2{font-family:'Montserrat',sans-serif;font-weight:700;font-size:20px;margin:0 0 8px;text-align:center}
+    .sub{color:#5B5F6B;font-size:13.5px;text-align:center;margin:0 0 24px}
+    .form-group{margin-bottom:18px}
+    label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+    input{width:100%;padding:12px 14px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:15px;font-family:'Open Sans',sans-serif;outline:none}
+    input:focus{border-color:#C41E3A}
+    .btn{width:100%;padding:14px;background:#C41E3A;color:#fff;border:0;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px;letter-spacing:.04em;cursor:pointer}
+    .btn:hover{background:#A01828}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .alert{padding:12px 16px;border-radius:8px;font-size:14px;margin-bottom:16px}
+    .alert-error{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+    .alert-success{background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>Defina sua nova senha</h2>
+      <p class="sub">Para sua segurança, troque a senha temporária por uma de sua preferência.</p>
+      <div id="alert" class="alert" style="display:none"></div>
+      <form id="form">
+        <div class="form-group">
+          <label for="atual">Senha atual</label>
+          <input type="password" id="atual" required autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label for="nova">Nova senha (mín. 6 caracteres)</label>
+          <input type="password" id="nova" required minlength="6" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="confirma">Confirme a nova senha</label>
+          <input type="password" id="confirma" required minlength="6" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn" id="btn">Salvar nova senha</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN_KEY = "manut_rep_token";
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) window.location.replace("/manutencao/representante/login");
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btn");
+      const alert = document.getElementById("alert");
+      alert.style.display = "none";
+
+      const atual = document.getElementById("atual").value;
+      const nova = document.getElementById("nova").value;
+      const conf = document.getElementById("confirma").value;
+      if (nova !== conf) {
+        alert.className = "alert alert-error";
+        alert.textContent = "A confirmação não bate com a nova senha.";
+        alert.style.display = "";
+        return;
+      }
+      btn.disabled = true; btn.textContent = "Salvando...";
+      try {
+        const res = await fetch("/api/manut/representante/trocar-senha", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-rep-auth": token },
+          body: JSON.stringify({ senhaAtual: atual, novaSenha: nova }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Erro ao trocar senha");
+        alert.className = "alert alert-success";
+        alert.textContent = "Senha trocada! Redirecionando…";
+        alert.style.display = "";
+        setTimeout(() => window.location.replace("/manutencao/representante/dashboard"), 700);
+      } catch (err) {
+        alert.className = "alert alert-error";
+        alert.textContent = err.message;
+        alert.style.display = "";
+        btn.disabled = false; btn.textContent = "Salvar nova senha";
+      }
+    });
+  </script>
+</body>
+</html>

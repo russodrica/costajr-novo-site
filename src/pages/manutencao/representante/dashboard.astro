@@ -1,0 +1,204 @@
+---
+import PortalRep from "../../../layouts/PortalRep.astro";
+export const prerender = false;
+---
+<PortalRep title="Dashboard" current="dashboard">
+  <div class="page-head">
+    <div>
+      <h1 id="saudacao">Olá!</h1>
+      <p class="sub">Acompanhe seus indicados, sua comissão acumulada e o histórico de repasses.</p>
+    </div>
+    <div>
+      <a class="btn btn-outline" id="copiarLinkRapido" href="#" style="margin-right:6px">📋 Copiar link de cadastro</a>
+      <a class="btn" href="/manutencao/representante/materiais">📚 Materiais</a>
+    </div>
+  </div>
+
+  <div id="alertaPix" class="alert alert-warn" style="display:none">
+    ⚠️ Você ainda não cadastrou sua chave PIX. <a href="/manutencao/representante/perfil" style="color:#92400E;font-weight:700;text-decoration:underline">Cadastre agora</a> pra não atrasar os repasses.
+  </div>
+
+  <div class="stats">
+    <div class="stat brand">
+      <div class="lbl">Saldo a receber</div>
+      <div class="val" id="m-saldo">—</div>
+    </div>
+    <div class="stat ok">
+      <div class="lbl">Vendas efetivadas</div>
+      <div class="val" id="m-vendas">—</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Total vendido</div>
+      <div class="val" id="m-volume">—</div>
+    </div>
+    <div class="stat warn">
+      <div class="lbl">Já recebido</div>
+      <div class="val" id="m-pago">—</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📣 Seus cupons</div>
+    <div id="cuponsBox" class="empty"><div class="ico">⏳</div>Carregando…</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">💼 Vendas efetivadas (últimas 100)</div>
+    <div id="vendasBox" class="empty"><div class="ico">⏳</div>Carregando…</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">💰 Histórico de repasses</div>
+    <div id="repassesBox" class="empty"><div class="ico">⏳</div>Carregando…</div>
+  </div>
+
+  <script>
+    const fmtMoney = (v: number) => "R$ " + Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("pt-BR") : "—";
+    const fmtDateTime = (d: string) => new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+    const repFetch = (window as any).repFetch;
+
+    (async () => {
+      try {
+        const res = await repFetch("/api/manut/representante/dashboard");
+        if (res.status === 401) { localStorage.clear(); window.location.replace("/manutencao/representante/login"); return; }
+        const d = await res.json();
+
+        // Saudação
+        const nome = (d?.representante?.nome || "").split(" ")[0];
+        if (nome) document.getElementById("saudacao").textContent = `Olá, ${nome}!`;
+
+        // Alerta PIX
+        if (!d?.representante?.chave_pix) {
+          document.getElementById("alertaPix").style.display = "";
+        }
+
+        // Métricas
+        document.getElementById("m-saldo").textContent = fmtMoney(d.metricas.saldoAtual);
+        document.getElementById("m-vendas").textContent = String(d.metricas.totalVendas);
+        document.getElementById("m-volume").textContent = fmtMoney(d.metricas.valorTotalVendido);
+        document.getElementById("m-pago").textContent = fmtMoney(d.metricas.totalRepassado);
+
+        // Cupons
+        const cupons = d.cupons || [];
+        const box = document.getElementById("cuponsBox");
+        if (cupons.length === 0) {
+          box.innerHTML = `<div class="ico">📭</div>Você ainda não tem cupons ativos. Entre em contato com a Adriana.`;
+        } else {
+          const regras = d.regrasIndicacao || [];
+          const regrasHtml = regras.map((r: any) => `
+            <tr style="border-bottom:1px solid #E5E7EB">
+              <td style="padding:6px 10px"><strong>${r.label}</strong> (${r.meses}m)</td>
+              <td style="padding:6px 10px">${r.desconto_pct === 0 ? "<em>sem desconto</em>" : `${r.desconto_pct}% × ${r.duracao_desconto_meses} ${r.duracao_desconto_meses === 1 ? "mês" : "meses"}`}</td>
+              <td style="padding:6px 10px"><strong style="color:#166534">${r.comissao_pct}%</strong></td>
+            </tr>`).join("");
+
+          box.classList.remove("empty");
+          box.innerHTML = cupons.map((c: any) => {
+            const link = `${window.location.origin}/manutencao/contratar?cupom=${encodeURIComponent(c.codigo)}`;
+            return `
+              <div style="border:2px dashed #C41E3A;border-radius:10px;padding:18px;margin-bottom:14px;background:#FFF">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                  <div>
+                    <div style="font-size:10.5px;color:#5B5F6B;letter-spacing:2px;text-transform:uppercase;font-weight:700">Código</div>
+                    <div style="font-family:'Montserrat',sans-serif;font-size:26px;font-weight:800;color:#C41E3A;letter-spacing:2px;user-select:all">${c.codigo}</div>
+                  </div>
+                  <div style="text-align:right">
+                    ${c.ativo ? '<span class="badge ok">ATIVO</span>' : '<span class="badge err">INATIVO</span>'}
+                    <div style="font-size:11px;color:#9CA3AF;margin-top:4px">Usos: ${c.usos_atuais || 0}${c.usos_maximos ? ` / ${c.usos_maximos}` : ""}</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+                  <button class="btn btn-outline btn-sm copiar-codigo" data-codigo="${c.codigo}">📋 Copiar código</button>
+                  <button class="btn btn-outline btn-sm copiar-link" data-link="${link}">🔗 Copiar link</button>
+                  <a class="btn btn-outline btn-sm" href="https://wa.me/?text=${encodeURIComponent(`Conheci a Costa Júnior, manutenção predial em SP. Pra ganhar desconto e me ajudar, use meu cupom ${c.codigo}:\n${link}`)}" target="_blank">💬 WhatsApp</a>
+                </div>
+                <div style="font-size:11.5px;color:#5B5F6B;margin-bottom:4px;font-weight:600">Como funciona a comissão:</div>
+                <table style="width:100%;border-collapse:collapse;font-size:12px;background:#F9FAFB;border-radius:6px;overflow:hidden">
+                  <thead><tr style="background:#E5E7EB;color:#2D2F36"><th style="text-align:left;padding:6px 10px">Plano</th><th style="text-align:left;padding:6px 10px">Desconto cliente</th><th style="text-align:left;padding:6px 10px">Sua comissão</th></tr></thead>
+                  <tbody>${regrasHtml}</tbody>
+                </table>
+              </div>
+            `;
+          }).join("");
+
+          box.querySelectorAll(".copiar-codigo").forEach((b) => b.addEventListener("click", (ev) => {
+            const codigo = (ev.currentTarget as HTMLElement).dataset.codigo;
+            if (codigo) { navigator.clipboard.writeText(codigo); (ev.currentTarget as HTMLElement).textContent = "✓ Copiado"; setTimeout(() => { (ev.currentTarget as HTMLElement).textContent = "📋 Copiar código"; }, 1500); }
+          }));
+          box.querySelectorAll(".copiar-link").forEach((b) => b.addEventListener("click", (ev) => {
+            const link = (ev.currentTarget as HTMLElement).dataset.link;
+            if (link) { navigator.clipboard.writeText(link); (ev.currentTarget as HTMLElement).textContent = "✓ Copiado"; setTimeout(() => { (ev.currentTarget as HTMLElement).textContent = "🔗 Copiar link"; }, 1500); }
+          }));
+
+          // Botão de copiar link no header (usa o 1º cupom)
+          const primeiro = cupons[0];
+          if (primeiro) {
+            const link = `${window.location.origin}/manutencao/contratar?cupom=${encodeURIComponent(primeiro.codigo)}`;
+            document.getElementById("copiarLinkRapido").addEventListener("click", (e) => {
+              e.preventDefault();
+              navigator.clipboard.writeText(link);
+              (e.currentTarget as HTMLElement).textContent = "✓ Copiado!";
+              setTimeout(() => { (e.currentTarget as HTMLElement).textContent = "📋 Copiar link de cadastro"; }, 1500);
+            });
+          }
+        }
+
+        // Vendas
+        const vendas = d.vendas || [];
+        const vBox = document.getElementById("vendasBox");
+        if (vendas.length === 0) {
+          vBox.innerHTML = `<div class="ico">🌱</div>Ainda não há vendas registradas. Divulgue seu cupom para começar!`;
+        } else {
+          vBox.classList.remove("empty");
+          vBox.innerHTML = `
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Data</th><th>Cliente</th><th>Valor da venda</th><th>Sua comissão</th><th>Desconto dado</th></tr></thead>
+                <tbody>
+                  ${vendas.map((u: any) => `
+                    <tr>
+                      <td>${fmtDateTime(u.created_at)}</td>
+                      <td>${u.cliente?.nome ? `<strong>${u.cliente.nome}</strong>` : "<em>cliente</em>"}${u.cliente?.email ? `<div style="font-size:11px;color:#9CA3AF">${u.cliente.email}</div>` : ""}</td>
+                      <td><strong>${fmtMoney(u.valor_compra)}</strong></td>
+                      <td style="color:#166534;font-weight:700">${fmtMoney(u.cashback_gerado)}</td>
+                      <td>${fmtMoney(u.desconto_aplicado)}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+
+        // Repasses
+        const repasses = d.repasses || [];
+        const rBox = document.getElementById("repassesBox");
+        if (repasses.length === 0) {
+          rBox.innerHTML = `<div class="ico">💸</div>Nenhum repasse registrado ainda. Quando a Costa Júnior pagar via PIX, o histórico aparece aqui.`;
+        } else {
+          rBox.classList.remove("empty");
+          rBox.innerHTML = `
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Data</th><th>Valor</th><th>Observação</th></tr></thead>
+                <tbody>
+                  ${repasses.map((r: any) => `
+                    <tr>
+                      <td>${fmtDate(r.data_repasse)}</td>
+                      <td style="color:#166534;font-weight:700">${fmtMoney(r.valor)}</td>
+                      <td style="color:#5B5F6B">${r.observacao || "—"}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+      } catch (e) {
+        document.getElementById("cuponsBox").innerHTML = `<div class="ico">⚠️</div>Erro ao carregar dados. Recarregue a página.`;
+      }
+    })();
+  </script>
+</PortalRep>

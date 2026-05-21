@@ -23,6 +23,8 @@ export const POST: APIRoute = async ({ request }) => {
       nome: body.nome,
       email: body.email,
       telefone: body.telefone,
+      chavePix: body.chave_pix,
+      tipoChavePix: body.tipo_chave_pix,
     });
     return jsonOk(rep, 201);
   } catch (e: any) {

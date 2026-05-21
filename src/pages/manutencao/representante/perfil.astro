@@ -1,0 +1,160 @@
+---
+import PortalRep from "../../../layouts/PortalRep.astro";
+export const prerender = false;
+---
+<PortalRep title="Meu Perfil" current="perfil">
+  <div class="page-head">
+    <div>
+      <h1>Meu Perfil</h1>
+      <p class="sub">Cadastre sua chave PIX (para receber repasses) e altere sua senha.</p>
+    </div>
+  </div>
+
+  <!-- Bloco PIX -->
+  <div class="card">
+    <div class="card-title">💳 Chave PIX para repasses</div>
+    <p style="color:#5B5F6B;font-size:13.5px;margin:0 0 14px;line-height:1.6">
+      Cadastre sua chave PIX para receber as comissões. A Costa Júnior usa essa chave pra fazer os repasses sempre que houver saldo a pagar.
+    </p>
+    <div id="alertPerfil" class="alert" style="display:none"></div>
+    <form id="formPerfil">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="tipoPix">Tipo da chave</label>
+          <select id="tipoPix">
+            <option value="">— selecione —</option>
+            <option value="cpf">CPF</option>
+            <option value="cnpj">CNPJ</option>
+            <option value="email">Email</option>
+            <option value="telefone">Telefone</option>
+            <option value="aleatoria">Chave aleatória</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="chavePix">Chave PIX</label>
+          <input id="chavePix" placeholder="Ex.: 123.456.789-00">
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="nome">Nome (somente leitura)</label>
+          <input id="nome" disabled style="background:#F4F6F9;color:#5B5F6B">
+        </div>
+        <div class="form-group">
+          <label for="email">Email (somente leitura)</label>
+          <input id="email" disabled style="background:#F4F6F9;color:#5B5F6B">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="telefone">Telefone (WhatsApp)</label>
+        <input id="telefone" type="tel" placeholder="(11) 99999-9999">
+      </div>
+      <button type="submit" class="btn" id="btnSalvarPerfil">Salvar perfil</button>
+    </form>
+  </div>
+
+  <!-- Bloco Senha -->
+  <div class="card">
+    <div class="card-title">🔐 Trocar senha</div>
+    <div id="alertSenha" class="alert" style="display:none"></div>
+    <form id="formSenha">
+      <div class="form-group">
+        <label for="atual">Senha atual</label>
+        <input type="password" id="atual" required autocomplete="current-password">
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="nova">Nova senha (mín. 6)</label>
+          <input type="password" id="nova" required minlength="6" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="confirma">Confirmar nova senha</label>
+          <input type="password" id="confirma" required minlength="6" autocomplete="new-password">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-outline" id="btnSalvarSenha">Trocar senha</button>
+    </form>
+  </div>
+
+  <script>
+    const repFetch = (window as any).repFetch;
+
+    // Máscara telefone
+    document.getElementById("telefone").addEventListener("input", (e) => {
+      const target = e.target as HTMLInputElement;
+      let v = target.value.replace(/\D/g, "").slice(0, 11);
+      if (v.length > 6) v = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+      else if (v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
+      target.value = v;
+    });
+
+    function showAlert(id: string, ok: boolean, msg: string) {
+      const el = document.getElementById(id);
+      el.className = "alert " + (ok ? "alert-ok" : "alert-err");
+      el.textContent = msg;
+      el.style.display = "";
+    }
+
+    (async () => {
+      const res = await repFetch("/api/manut/representante/me");
+      if (res.status === 401) { localStorage.clear(); window.location.replace("/manutencao/representante/login"); return; }
+      const r = await res.json();
+      (document.getElementById("nome") as HTMLInputElement).value = r.nome || "";
+      (document.getElementById("email") as HTMLInputElement).value = r.email || "";
+      (document.getElementById("telefone") as HTMLInputElement).value = r.telefone || "";
+      (document.getElementById("tipoPix") as HTMLSelectElement).value = r.tipo_chave_pix || "";
+      (document.getElementById("chavePix") as HTMLInputElement).value = r.chave_pix || "";
+    })();
+
+    document.getElementById("formPerfil").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btnSalvarPerfil") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Salvando...";
+      try {
+        const res = await repFetch("/api/manut/representante/me", {
+          method: "PATCH",
+          body: JSON.stringify({
+            telefone: (document.getElementById("telefone") as HTMLInputElement).value.trim() || null,
+            chave_pix: (document.getElementById("chavePix") as HTMLInputElement).value.trim() || null,
+            tipo_chave_pix: (document.getElementById("tipoPix") as HTMLSelectElement).value || null,
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Erro ao salvar");
+        // Atualiza cópia local
+        localStorage.setItem("manut_rep_user", JSON.stringify(d));
+        showAlert("alertPerfil", true, "✓ Perfil atualizado com sucesso.");
+      } catch (err: any) {
+        showAlert("alertPerfil", false, err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = "Salvar perfil";
+      }
+    });
+
+    document.getElementById("formSenha").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btnSalvarSenha") as HTMLButtonElement;
+      const nova = (document.getElementById("nova") as HTMLInputElement).value;
+      const conf = (document.getElementById("confirma") as HTMLInputElement).value;
+      if (nova !== conf) { showAlert("alertSenha", false, "A confirmação não bate com a nova senha."); return; }
+      btn.disabled = true; btn.textContent = "Trocando...";
+      try {
+        const res = await repFetch("/api/manut/representante/trocar-senha", {
+          method: "POST",
+          body: JSON.stringify({
+            senhaAtual: (document.getElementById("atual") as HTMLInputElement).value,
+            novaSenha: nova,
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Erro ao trocar senha");
+        showAlert("alertSenha", true, "✓ Senha alterada com sucesso.");
+        (document.getElementById("formSenha") as HTMLFormElement).reset();
+      } catch (err: any) {
+        showAlert("alertSenha", false, err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = "Trocar senha";
+      }
+    });
+  </script>
+</PortalRep>

@@ -622,16 +622,37 @@ const escoposManutencao = [
     return Math.round((mensalComCupom * mc + mensalSemCupom * ms) * 100) / 100;
   }
 
+  // Resolve as regras do cupom ativo conforme a duração do plano escolhida (m).
+  // - Cupom tipo='representante': usa a tabela regrasPorDuracao (1 código, 3 regras).
+  // - Cupom comum: usa os valores fixos do registro (mesma regra independente do plano).
+  // Retorna { descPct, durMeses } onde durMeses = quantos meses do plano recebem o desconto.
+  function regrasDoCupom(m) {
+    if (!cupomAtivo) return { descPct: 0, durMeses: 0 };
+    const regras = cupomAtivo.regrasPorDuracao;
+    if (cupomAtivo.tipo === "representante" && regras && regras[m]) {
+      return {
+        descPct: Number(regras[m].desconto_pct || 0),
+        durMeses: Number(regras[m].duracao_desconto_meses || 0),
+      };
+    }
+    return {
+      descPct: Number(cupomAtivo.desconto_percentual || 0),
+      durMeses: Number(cupomAtivo.duracao_meses || 0),
+    };
+  }
+
   function atualizarDuracao() {
     const base = dados.valorMensal;
-    const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
     [3, 6, 12].forEach(m => {
       const durDesc = { 3: 0, 6: 2, 12: 5 }[m];
-      const final = precoFinal(base, durDesc, cupDesc);
-      const totalPeriodo = final * m;
+      const { descPct: cupDesc, durMeses: cupDur } = regrasDoCupom(m);
+      // Preço "vitrine" mostrado no card = preço com cupom aplicado (durante o período de cupom)
+      const finalComCupom = precoFinal(base, durDesc, cupDesc);
+      // Total real respeita os meses que recebem cupom
+      const totalPeriodo = calcularValorTotalReal(base, durDesc, cupDesc, m, cupDur);
       const el = $(`dur-preco-${m}`);
       const elT = $(`dur-total-${m}`);
-      if (el) el.textContent = fmtMoney(final) + "/mês";
+      if (el) el.textContent = fmtMoney(finalComCupom) + "/mês";
       if (elT) elT.textContent = `Total: ${fmtMoney(totalPeriodo)}`;
     });
     atualizarVisualDuracao();
@@ -646,7 +667,7 @@ const escoposManutencao = [
     if (sel) {
       const m = parseInt(sel.value);
       const durDesc = { 3: 0, 6: 2, 12: 5 }[m] || 0;
-      const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
+      const { descPct: cupDesc, durMeses: cupDur } = regrasDoCupom(m);
       dados.duracaoMeses = m;
       dados.desconto = durDesc;
       const final = precoFinal(dados.valorMensal, durDesc, cupDesc);
@@ -658,13 +679,20 @@ const escoposManutencao = [
       // Linha de cupom no sim-box
       const cupomRow = $("sim-cupom-row");
       if (cupomAtivo && cupDesc > 0) {
-        const cupDur = Number(cupomAtivo.duracao_meses || 1);
-        const durStr = (cupDur > 1 && cupDur < m) ? ` × ${cupDur} ${cupDur === 1 ? "mês" : "meses"}` : "";
+        const durStr = (cupDur >= 1 && cupDur < m) ? ` × ${cupDur} ${cupDur === 1 ? "mês" : "meses"}` : "";
         $("sim-cupom-label").textContent = `Cupom ${cupomAtivo.codigo}`;
         $("sim-cupom-val").textContent = `-${cupDesc}%${durStr}`;
         cupomRow.style.display = "";
+      } else if (cupomAtivo && cupomAtivo.tipo === "representante") {
+        // Cupom de representante aplicado, mas plano trimestral não dá desconto pro cliente
+        // (a comissão vai pro representante mesmo assim). Mostra mensagem informativa.
+        $("sim-cupom-label").textContent = `Cupom ${cupomAtivo.codigo}`;
+        $("sim-cupom-val").textContent = "sem desconto neste plano";
+        $("sim-cupom-val").style.color = "#9CA3AF";
+        cupomRow.style.display = "";
       } else {
         cupomRow.style.display = "none";
+        $("sim-cupom-val").style.color = "#22C55E";
       }
     }
   }
@@ -692,7 +720,12 @@ const escoposManutencao = [
         cupomAtivo = d;
         msgEl.style.background = "#F0FDF4";
         msgEl.style.color = "#15803D";
-        msgEl.textContent = `✓ ${d.descricao || "Cupom válido"} — ${d.desconto_percentual}% de desconto aplicado`;
+        // Cupom de representante: mostra que o desconto varia por plano
+        if (d.tipo === "representante") {
+          msgEl.innerHTML = `✓ Cupom válido — desconto aplicado conforme o plano: <strong>Trimestral</strong> sem desconto · <strong>Semestral</strong> 20% × 1 mês · <strong>Anual</strong> 20% × 2 meses`;
+        } else {
+          msgEl.textContent = `✓ ${d.descricao || "Cupom válido"} — ${d.desconto_percentual}% de desconto aplicado`;
+        }
         msgEl.style.display = "";
         $("btnRemoverCupom").style.display = "";
         atualizarDuracao();
@@ -740,17 +773,20 @@ const escoposManutencao = [
   $("btn-e2").addEventListener("click", async () => {
     const m = dados.duracaoMeses;
     const durDesc = dados.desconto;
-    const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
-    const cupDur = cupomAtivo ? Number(cupomAtivo.duracao_meses || 1) : 0;
+    const { descPct: cupDesc, durMeses: cupDur } = regrasDoCupom(m);
     const baseOriginal = dados.valorMensal;
     // valorMensal mostrado: preço cheio com cupom (representa o valor durante o período do cupom)
     dados.valorMensal = precoFinal(baseOriginal, durDesc, cupDesc);
     // valorTotal real: respeita a duração do cupom (só desconta nos N meses, não em todos)
     dados.valorTotal = calcularValorTotalReal(baseOriginal, durDesc, cupDesc, m, cupDur);
     dados.planoLabel = `${dados.planoLabel} · ${duracaoLabels[m]}`;
-    if (cupomAtivo) {
+    if (cupomAtivo && cupDesc > 0) {
       const sufixoDur = (cupDur && cupDur < m) ? ` (${cupDur}/${m} mes${cupDur === 1 ? "" : "es"})` : "";
       dados.planoLabel += ` · Cupom ${cupomAtivo.codigo}${sufixoDur}`;
+    } else if (cupomAtivo) {
+      // Cupom aplicado, sem desconto neste plano (ex: representante + trimestral): registra mesmo assim
+      // pra contabilizar comissão do representante no backend.
+      dados.planoLabel += ` · Cupom ${cupomAtivo.codigo}`;
     }
     // Lead salvo só na etapa 3 (quando captura nome/email/telefone).
     irParaEtapa(3);

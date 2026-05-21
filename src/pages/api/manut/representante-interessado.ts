@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { Resend } from "resend";
 import { jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { listarRegrasIndicacao } from "~/lib/manut/indicacao-regras";
 
 export const prerender = false;
 
@@ -13,14 +14,15 @@ const FROM = import.meta.env.EMAIL_FROM || "onboarding@resend.dev";
  *
  * Fluxo (com aprovação manual da Adriana):
  * 1) Cria registro em manut_representantes com ativo=false (PENDENTE)
- * 2) Cria 1 cupom único com regras padrão (20% × 2 meses + 10% comissão = caso anual)
- *    também com ativo=false (PENDENTE)
+ * 2) Cria 1 cupom único tipo='representante' (ativo=false). As regras de desconto/comissão
+ *    NÃO são fixadas no registro: o sistema decide na hora da contratação consultando
+ *    a tabela em ~/lib/manut/indicacao-regras (regras variam por plano: trim/sem/anual).
  * 3) Email pra comercial@ com info + link pra aprovar
  * 4) Email confirmando recebimento pro novo representante (SEM citar o cupom — ele só
  *    recebe os códigos depois que Adriana aprovar e ela mesma manda o email comercial)
  *
- * Pra ATIVAR: Adriana vai em /admin/representantes → liga toggle "ativo". Depois em
- * /admin/cupons → ativa o cupom do rep (e ajusta os valores se quiser).
+ * Pra ATIVAR: Adriana vai em /admin/representantes → liga toggle "ativo". Quando ativa
+ * o representante, todos os cupons inativos vinculados são ativados juntos.
  *
  * Se rep já existir pelo email, NÃO recria — só notifica Adriana que houve nova
  * solicitação (talvez é um rep antigo que esqueceu).
@@ -101,17 +103,21 @@ export const POST: APIRoute = async ({ request }) => {
       const seq = String((existentes?.length ?? 0) + 1).padStart(2, "0");
       codigoCupom = `${prefixo}${seq}`; // ex: "MZ2601"
 
-      // ─── 4. Cria 1 cupom único com regras padrão (mais atrativo = anual) ─
-      // ativo=false → Adriana aprova depois em /admin/cupons
+      // ─── 4. Cria 1 cupom único tipo='representante' ────────────────
+      // As regras de desconto/duração/comissão NÃO são lidas do registro: o sistema
+      // resolve dinamicamente em runtime conforme o plano que o cliente escolhe
+      // (ver ~/lib/manut/indicacao-regras). Os campos abaixo guardam apenas o caso
+      // "anual" como referência histórica/fallback caso o tipo seja alterado.
+      // ativo=false → Adriana aprova depois (ativando o representante → propaga pro cupom)
       const { error: errCupom } = await db.from("manut_cupons").insert({
         codigo: codigoCupom,
-        descricao: `Indicação de ${nome.trim()} — aguardando aprovação`,
-        desconto_percentual: 20,
-        duracao_meses: 2, // Desconto vale por 2 meses (caso anual)
+        descricao: `Indicação de ${nome.trim()} — regras variam por plano (trim/sem/anual)`,
+        desconto_percentual: 20, // referência — não é usado pra cupom de representante
+        duracao_meses: 2,         // referência — não é usado pra cupom de representante
         tipo: "representante",
         representante_id: representanteId,
-        cashback_pct: 10, // Comissão padrão (caso anual)
-        ativo: false, // 👈 Pendente até Adriana aprovar
+        cashback_pct: 10,         // referência — não é usado pra cupom de representante
+        ativo: false,             // 👈 Pendente até Adriana aprovar
       });
       if (errCupom) {
         console.warn("[representante-interessado] falha ao criar cupom:", errCupom.message);
@@ -128,7 +134,10 @@ export const POST: APIRoute = async ({ request }) => {
       : "🤝 Novo cadastro AGUARDANDO APROVAÇÃO";
     const acaoAviso = avisoExistia
       ? `Esse email já está cadastrado em <a href="https://www.costajr.com.br/admin/representantes" style="color:${corAviso};font-weight:700">/admin/representantes</a>. Pode ser uma nova solicitação do mesmo representante ou alguém usando email duplicado. Avalie o caso.`
-      : `Acesse <a href="https://www.costajr.com.br/admin/representantes" style="color:${corAviso};font-weight:700">/admin/representantes</a>, valide o perfil e ATIVE o representante (toggle 'ativo'). Depois em <a href="https://www.costajr.com.br/admin/cupons" style="color:${corAviso};font-weight:700">/admin/cupons</a>, ative o cupom <strong>${codigoCupom || "(não foi criado)"}</strong> — ajuste valores se quiser antes de ativar.`;
+      : `Acesse <a href="https://www.costajr.com.br/admin/representantes" style="color:${corAviso};font-weight:700">/admin/representantes</a> e ATIVE o representante (toggle 'ativo'). Ao ativar, o cupom <strong>${codigoCupom || "(não foi criado)"}</strong> também é ativado automaticamente — não precisa mexer em /admin/cupons.`;
+
+    // Lista das 3 regras dinâmicas (mesmo conjunto pra todo cupom de representante)
+    const regras = listarRegrasIndicacao();
 
     const htmlAdmin = `
       <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:32px 24px;background:#fff">
@@ -153,11 +162,25 @@ export const POST: APIRoute = async ({ request }) => {
         <h3 style="color:#2D2F36;margin:24px 0 10px;font-size:16px">Cupom gerado (PENDENTE)</h3>
         <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:16px 20px;font-size:14px;color:#92400E;line-height:1.6">
           <p style="margin:0 0 8px"><strong>Código:</strong> <span style="font-family:monospace;font-size:16px">${codigoCupom}</span></p>
-          <p style="margin:0 0 4px">Regras padrão (ajuste antes de ativar):</p>
-          <ul style="margin:0;padding-left:18px">
-            <li>Desconto cliente: 20% × 2 meses</li>
-            <li>Comissão representante: 10%</li>
-          </ul>
+          <p style="margin:0 0 8px">Este é um cupom <strong>dinâmico</strong>: as regras variam conforme o plano que o cliente escolhe na contratação:</p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;background:#FFF;border-radius:6px;overflow:hidden;margin-top:8px">
+            <thead>
+              <tr style="background:#FDE68A;color:#7C2D12">
+                <th style="text-align:left;padding:6px 10px">Plano</th>
+                <th style="text-align:left;padding:6px 10px">Desconto cliente</th>
+                <th style="text-align:left;padding:6px 10px">Comissão rep.</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${regras.map(r => `
+                <tr style="border-bottom:1px solid #FDE68A">
+                  <td style="padding:6px 10px"><strong>${r.label}</strong> (${r.meses}m)</td>
+                  <td style="padding:6px 10px">${r.desconto_pct === 0 ? "<em>sem desconto</em>" : `${r.desconto_pct}% × ${r.duracao_desconto_meses} ${r.duracao_desconto_meses === 1 ? "mês" : "meses"}`}</td>
+                  <td style="padding:6px 10px"><strong>${r.comissao_pct}%</strong></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
         </div>` : ""}
 
         <div style="margin-top:24px;padding:14px 18px;background:${bgAviso};border:1px solid ${borderAviso};border-radius:8px">
