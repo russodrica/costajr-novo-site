@@ -196,7 +196,7 @@ Sabe quanto custa NÃO fazer manutenção preventiva?
 Loja parada de R$ 5.000-15.000/dia + reparo emergencial de R$ 1.500-4.000
 + cliente perdido + estresse da equipe.
 
-E quanto custa fazer? A partir de R$ 300/mês.
+E quanto custa fazer? A partir de R$ 250/mês.
 
 🔗 Link na bio — calcule o seu.
 ```
@@ -273,7 +273,7 @@ caminho mais barato no longo prazo é preventiva — basicamente uma visita
 mensal de 1-2h que pega problemas antes de virarem emergência.
 
 Quem é grande hoje (Carrefour, Smart Fit, Santander, Coca-Cola etc.) opera
-assim. Custa menos do que parece — começa em R$ 300/mês pra loja pequena.
+assim. Custa menos do que parece — começa em R$ 250/mês pra loja pequena.
 
 Se quiser olhar mais a fundo, esse artigo explica bem:
 https://www.costajr.com.br/artigos/manutencao-preventiva-vs-corretiva?utm_source=whatsapp&utm_medium=grupo
@@ -292,7 +292,7 @@ https://www.costajr.com.br/artigos/manutencao-preventiva-vs-corretiva?utm_source
 **Resposta:** Atendemos toda a Grande São Paulo — capital, ABC, Guarulhos, Osasco, Barueri e demais municípios da região metropolitana.
 
 **Pergunta:** Quanto custa manutenção predial?
-**Resposta:** Os planos começam em R$ 300/mês. O valor exato depende do tamanho da loja e especialidades. Você pode ver seu preço em 30s no nosso simulador online (sem cadastro): costajr.com.br/manutencao
+**Resposta:** Os planos começam em R$ 250/mês. O valor exato depende do tamanho da loja e especialidades. Você pode ver seu preço em 30s no nosso simulador online (sem cadastro): costajr.com.br/manutencao
 
 **Pergunta:** O técnico é sempre o mesmo?
 **Resposta:** Sim. Cada cliente tem um técnico vinculado que conhece sua instalação. Em caso de férias, entra um substituto com acesso ao mesmo histórico no app.
