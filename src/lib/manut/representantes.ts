@@ -72,7 +72,12 @@ export async function criarRepresentante(input: { nome: string; email: string; t
   return data as Representante;
 }
 
-/** Atualiza nome/email/telefone/ativo de um representante. */
+/** Atualiza nome/email/telefone/ativo de um representante.
+ *  Side effect: quando ATIVA um rep (patch.ativo=true), também ATIVA todos
+ *  os cupons inativos vinculados a ele — assim a Adriana só precisa de 1 clique
+ *  pra liberar representante + cupom. Desativação NÃO se propaga (ela pode
+ *  querer manter o rep ativo e pausar cupons separadamente).
+ */
 export async function atualizarRepresentante(id: string, patch: Partial<Pick<Representante, "nome" | "email" | "telefone" | "ativo">>): Promise<Representante> {
   const update: any = { updated_at: new Date().toISOString() };
   if (patch.nome !== undefined) update.nome = String(patch.nome).trim();
@@ -93,6 +98,22 @@ export async function atualizarRepresentante(id: string, patch: Partial<Pick<Rep
     .select("*")
     .single();
   if (error) throw new Error(error.message);
+
+  // Side effect: se ATIVOU o rep, propaga ativação pros cupons dele
+  if (patch.ativo === true) {
+    const { data: cuponsAtivados, error: errCupom } = await db()
+      .from("manut_cupons")
+      .update({ ativo: true })
+      .eq("representante_id", id)
+      .eq("ativo", false)
+      .select("codigo");
+    if (errCupom) {
+      console.warn("[representantes] falha ao ativar cupons:", errCupom.message);
+    } else if (cuponsAtivados && cuponsAtivados.length > 0) {
+      console.log(`[representantes] ${cuponsAtivados.length} cupom(ns) ativado(s) junto com representante ${id}:`, cuponsAtivados.map((c: any) => c.codigo).join(", "));
+    }
+  }
+
   return data as Representante;
 }
 

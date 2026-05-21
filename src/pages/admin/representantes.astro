@@ -117,6 +117,9 @@ const totalPago = (repasses || []).reduce((a: number, r: any) => a + Number(r.va
           <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
             <input type="checkbox" id="repAtivo" /> Representante ativo
           </label>
+          <small style="display:block;margin-top:6px;font-size:11.5px;color:#5B5F6B">
+            💡 Ao ativar, todos os cupons vinculados (atualmente inativos) também serão ativados automaticamente.
+          </small>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharRep()">Cancelar</button>
