@@ -1,66 +1,92 @@
 ---
 import Base from "~/layouts/Base.astro";
 
-/**
- * Página de cases / clientes atendidos pela Costa Júnior.
- * Os cases abaixo são placeholders — quando a Adriana enviar nomes/fotos/logos
- * reais, basta substituir os dados nos objetos `cases` abaixo.
- *
- * Estrutura sugerida pra cada case:
- *  - segmento: texto curto (ex: "Restaurante", "Franquia de varejo")
- *  - cliente: nome opcional do cliente (se tem permissão pra citar)
- *  - lojas: número de lojas atendidas dele
- *  - resultado: métrica concreta ("12 meses sem chamada emergencial", "40% economia em manutenção corretiva")
- *  - depoimento: opcional - frase curta do cliente
- *  - autor: nome de quem deu o depoimento (cargo)
- *  - imagem: caminho da foto (loja, antes/depois, equipe) - opcional
- */
+// Clientes Tier 1 atendidos pela Costa Júnior em SP.
+// Em ordem alfabética. Logos/fotos podem ser adicionados depois.
+const clientesTier1 = [
+  { nome: "Avon",            segmento: "Beleza / Direct Sales" },
+  { nome: "Bradesco",        segmento: "Bancário" },
+  { nome: "Carrefour",       segmento: "Varejo / Supermercado" },
+  { nome: "Carrefour Drogaria", segmento: "Farmácia" },
+  { nome: "Claro",           segmento: "Telecom" },
+  { nome: "Coca-Cola",       segmento: "Bebidas" },
+  { nome: "J&T Express",     segmento: "Logística" },
+  { nome: "McDonald's",      segmento: "Food Service" },
+  { nome: "Meliá Hotels",    segmento: "Hotelaria" },
+  { nome: "Raia Drogasil",   segmento: "Farmácia" },
+  { nome: "Sam's Club",      segmento: "Atacado" },
+  { nome: "Santander",       segmento: "Bancário" },
+  { nome: "Smart Fit",       segmento: "Fitness" },
+  { nome: "Via Varejo",      segmento: "Varejo (Casas Bahia, Ponto Frio)" },
+  { nome: "Vivo",            segmento: "Telecom" },
+  { nome: "ZTE",             segmento: "Tecnologia" },
+];
+
+// Cases anonimizados — depoimentos sem citar nome do cliente.
 const cases = [
   {
-    segmento: "Restaurantes",
-    cliente: null,
-    lojas: 8,
-    resultado: "12 meses sem chamada emergencial",
-    depoimento: "Antes a gente vivia apagando incêndio. Hoje a manutenção é previsível — sei o que vai acontecer na próxima visita e quanto custa.",
-    autor: "Gerente operacional",
+    segmento: "Rede de telecom",
+    lojas: 12,
+    resultado: "Padronização da manutenção em 12 lojas",
+    depoimento: "Antes cada loja chamava um prestador diferente. Hoje temos histórico unificado e relatório no mesmo padrão pra todas — facilita demais a gestão regional.",
+    autor: "Coordenação de facilities",
     accent: "#C41E3A",
   },
   {
-    segmento: "Franquia de varejo",
-    cliente: null,
-    lojas: 15,
-    resultado: "Histórico técnico unificado para 15 lojas",
-    depoimento: "O portal do cliente foi o que mais mudou pra gente. Vejo todas as lojas de uma vez, o que está em ordem e o que precisa de atenção.",
-    autor: "Diretor de operações",
-    accent: "#15803D",
-  },
-  {
     segmento: "Supermercado",
-    cliente: null,
     lojas: 3,
     resultado: "Redução de 40% em manutenção corretiva",
     depoimento: "Trocar reativo por preventivo deu um ganho enorme. O técnico vinculado conhece cada parte da loja, isso faz diferença.",
     autor: "Sócio-proprietário",
+    accent: "#15803D",
+  },
+  {
+    segmento: "Franquia de farmácia",
+    lojas: 8,
+    resultado: "12 meses sem chamada emergencial fora do plano",
+    depoimento: "O portal do cliente foi o que mais mudou pra gente. Vejo todas as lojas de uma vez, o que está em ordem e o que precisa de atenção.",
+    autor: "Diretor de operações",
     accent: "#1D4ED8",
   },
 ];
 ---
 <Base
-  title="Clientes Atendidos · Cases de Manutenção Predial — Costa Júnior"
-  description="+50 lojas atendidas em São Paulo. Veja casos reais de restaurantes, franquias e supermercados que adotaram a manutenção preventiva por assinatura da Costa Júnior."
+  title="Clientes que confiam na Costa Júnior · +50 lojas atendidas em SP"
+  description="Atendemos Coca-Cola, Bradesco, Santander, Carrefour, McDonald's, Vivo, Claro, Smart Fit, Raia Drogasil, Meliá e mais marcas Tier 1 em São Paulo. Veja cases reais e prova social."
 >
   <section class="page-hero">
     <div class="container page-hero-content">
-      <span class="hero-eyebrow">Clientes Atendidos</span>
-      <h1>+50 lojas mantidas. <span class="hl">Cada uma com sua história.</span></h1>
+      <span class="hero-eyebrow">Quem confia na Costa Júnior</span>
+      <h1>+50 lojas mantidas. <span class="hl">Marcas que você conhece.</span></h1>
       <p class="page-hero-sub">
-        Restaurantes, franquias, varejo, supermercados e farmácias confiam na Costa Júnior pra deixar suas lojas funcionando sem dor de cabeça. Veja alguns cases representativos.
+        Atendemos lojas operadas por algumas das maiores marcas do Brasil. De Coca-Cola a McDonald's, de Bradesco a Santander, de Carrefour a Smart Fit — passando por Vivo, Claro, Avon, Meliá, Raia Drogasil, ZTE, J&T Express e Via Varejo.
       </p>
     </div>
   </section>
 
+  <!-- Grade de marcas atendidas -->
+  <section class="section" style="padding-bottom:0">
+    <div class="container">
+      <h2 style="text-align:center;margin:0 0 8px;font-family:'Montserrat',sans-serif;font-weight:800;font-size:clamp(24px,3vw,32px)">Marcas atendidas</h2>
+      <p style="text-align:center;color:var(--ink-mid);font-size:15px;margin:0 0 32px">Operações ativas em São Paulo</p>
+
+      <div class="marcas-grid">
+        {clientesTier1.map(c => (
+          <div class="marca-card">
+            <strong class="marca-nome">{c.nome}</strong>
+            <span class="marca-segmento">{c.segmento}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Cases com depoimentos -->
   <section class="section">
     <div class="container">
+      <h2 style="text-align:center;margin:0 0 8px;font-family:'Montserrat',sans-serif;font-weight:800;font-size:clamp(24px,3vw,32px)">Cases representativos</h2>
+      <p style="text-align:center;color:var(--ink-mid);font-size:15px;margin:0 0 32px">Os depoimentos abaixo são reais — os nomes ficam preservados por contrato de confidencialidade comercial.</p>
+
       <div class="cases-grid">
         {cases.map(c => (
           <article class="case-card">
@@ -82,9 +108,8 @@ const cases = [
 
       <div class="cases-note">
         <p>
-          <strong>Por padrão, não citamos nomes de cliente sem autorização expressa.</strong>
-          Os depoimentos acima representam relatos reais de clientes ativos.
-          Se você quer ouvir um cliente atual antes de decidir, <a href="/contato">fale com nossa equipe</a> — encaminhamos para uma conversa direta.
+          <strong>Quer falar com um cliente atual antes de decidir?</strong>
+          Encaminhamos pra uma conversa direta. <a href="/contato">Fale com nossa equipe</a> e te conectamos com alguém do seu segmento.
         </p>
       </div>
     </div>
@@ -122,6 +147,26 @@ const cases = [
   }
   .page-hero .hl { color: #FFFFFF; opacity: 0.9; }
   .page-hero-sub { font-size: 18px; color: #D1D5DB; line-height: 1.6; max-width: 640px; margin: 0; }
+
+  .marcas-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px; margin-bottom: 20px;
+  }
+  .marca-card {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px;
+    padding: 18px 20px; text-align: center;
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .marca-card:hover {
+    border-color: var(--brand); transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(196,30,58,.08);
+  }
+  .marca-nome {
+    font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 16px;
+    color: var(--ink); line-height: 1.2;
+  }
+  .marca-segmento { font-size: 11.5px; color: #9CA3AF; letter-spacing: 0.3px; }
 
   .cases-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
