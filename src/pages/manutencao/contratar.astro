@@ -216,9 +216,20 @@ const escoposManutencao = [
       <div class="sim-row"><span>Preço base</span><strong id="sim-base">—</strong></div>
       <div class="sim-row" id="sim-extra-row"><span id="sim-extra-label">Especialidades extras</span><strong id="sim-extra">R$ 0</strong></div>
       <div class="sim-row" id="sim-cupom-row" style="display:none"><span id="sim-cupom-label">Cupom</span><strong id="sim-cupom-val" style="color:#22C55E">—</strong></div>
-      <div class="sim-total">
-        <span>Total mensal</span>
+
+      <!-- Detalhamento (quando há cupom com duração menor que o plano) -->
+      <div id="sim-detalhamento" style="display:none;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 14px;margin-top:10px">
+        <div class="sim-row" style="border:0;padding:4px 0"><span id="sim-mes-cupom-label" style="color:#92400E">Mês com cupom</span><strong id="sim-mes-cupom-val" style="color:#92400E">—</strong></div>
+        <div class="sim-row" style="border:0;padding:4px 0"><span id="sim-mes-normal-label" style="color:#92400E">Demais meses</span><strong id="sim-mes-normal-val" style="color:#92400E">—</strong></div>
+      </div>
+
+      <div class="sim-total" id="sim-total-bloco">
+        <span id="sim-total-label">Total mensal</span>
         <strong id="sim-total">—</strong>
+      </div>
+      <div class="sim-row" id="sim-periodo-row" style="display:none;padding-top:10px;margin-top:6px;border-top:2px solid #C41E3A">
+        <span style="font-weight:700;font-size:14px;color:#2D2F36">Total do período</span>
+        <strong id="sim-periodo-val" style="color:#C41E3A;font-size:22px">—</strong>
       </div>
     </div>
 
@@ -670,22 +681,30 @@ const escoposManutencao = [
       const { descPct: cupDesc, durMeses: cupDur } = regrasDoCupom(m);
       dados.duracaoMeses = m;
       dados.desconto = durDesc;
-      const final = precoFinal(dados.valorMensal, durDesc, cupDesc);
 
-      // Atualiza total exibido
-      let totalStr = fmtMoney(final) + `/mês · ${duracaoLabels[m]}`;
-      $("sim-total").textContent = totalStr;
+      // Cálculo dos 2 valores mensais distintos:
+      //  - mensalComCupom: meses 1..cupDur (recebem cupom + desconto de duração)
+      //  - mensalSemCupom: meses (cupDur+1)..m (só desconto de duração, sem cupom)
+      const mensalSemCupom = dados.valorMensal * (1 - durDesc / 100);
+      const mensalComCupom = mensalSemCupom * (1 - cupDesc / 100);
+      const mesesComCupom = Math.max(0, Math.min(cupDur || 0, m));
+      const mesesSemCupom = m - mesesComCupom;
+      const totalPeriodo = (mensalComCupom * mesesComCupom + mensalSemCupom * mesesSemCupom);
+
+      const temCupomEfetivo = cupomAtivo && cupDesc > 0 && mesesComCupom > 0;
+      const cupomReduzMenosQueOPlano = temCupomEfetivo && mesesComCupom < m;
 
       // Linha de cupom no sim-box
       const cupomRow = $("sim-cupom-row");
-      if (cupomAtivo && cupDesc > 0) {
-        const durStr = (cupDur >= 1 && cupDur < m) ? ` × ${cupDur} ${cupDur === 1 ? "mês" : "meses"}` : "";
+      if (temCupomEfetivo) {
+        const durStr = (mesesComCupom >= 1 && mesesComCupom < m)
+          ? ` × ${mesesComCupom} ${mesesComCupom === 1 ? "mês" : "meses"}`
+          : "";
         $("sim-cupom-label").textContent = `Cupom ${cupomAtivo.codigo}`;
         $("sim-cupom-val").textContent = `-${cupDesc}%${durStr}`;
+        $("sim-cupom-val").style.color = "#22C55E";
         cupomRow.style.display = "";
       } else if (cupomAtivo && cupomAtivo.tipo === "representante") {
-        // Cupom de representante aplicado, mas plano trimestral não dá desconto pro cliente
-        // (a comissão vai pro representante mesmo assim). Mostra mensagem informativa.
         $("sim-cupom-label").textContent = `Cupom ${cupomAtivo.codigo}`;
         $("sim-cupom-val").textContent = "sem desconto neste plano";
         $("sim-cupom-val").style.color = "#9CA3AF";
@@ -693,6 +712,42 @@ const escoposManutencao = [
       } else {
         cupomRow.style.display = "none";
         $("sim-cupom-val").style.color = "#22C55E";
+      }
+
+      // Detalhamento mês-a-mês (só aparece quando cupom dura MENOS que o plano)
+      const det = $("sim-detalhamento");
+      const totalBloco = $("sim-total-bloco");
+      if (cupomReduzMenosQueOPlano) {
+        // Cupom parcial: esconde "Total mensal" único (confunde) e destaca os 2 períodos
+        const labelComCupom = mesesComCupom === 1
+          ? `1º mês (com cupom)`
+          : `Meses 1 a ${mesesComCupom} (com cupom)`;
+        const labelSemCupom = mesesSemCupom === 1
+          ? `Mês ${mesesComCupom + 1}`
+          : `Meses ${mesesComCupom + 1} a ${m}`;
+        $("sim-mes-cupom-label").textContent = labelComCupom;
+        $("sim-mes-cupom-val").textContent = fmtMoney(mensalComCupom);
+        $("sim-mes-normal-label").textContent = labelSemCupom;
+        $("sim-mes-normal-val").textContent = fmtMoney(mensalSemCupom);
+        det.style.display = "";
+        totalBloco.style.display = "none";
+      } else {
+        // Sem cupom OU cupom cobre o plano todo → mostra "Total mensal" único
+        det.style.display = "none";
+        totalBloco.style.display = "";
+        $("sim-total-label").textContent = "Total mensal";
+        const mensal = temCupomEfetivo ? mensalComCupom : mensalSemCupom;
+        $("sim-total").textContent = fmtMoney(mensal) + `/mês · ${duracaoLabels[m]}`;
+      }
+
+      // Total do período (sempre visível quando há mais de 1 mês — fica em destaque
+      // pra ser o número final que o cliente paga, sem ambiguidade)
+      const periodoRow = $("sim-periodo-row");
+      if (m > 1) {
+        $("sim-periodo-val").textContent = fmtMoney(totalPeriodo) + ` (${m} meses)`;
+        periodoRow.style.display = "";
+      } else {
+        periodoRow.style.display = "none";
       }
     }
   }
