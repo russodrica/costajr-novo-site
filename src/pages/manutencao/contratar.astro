@@ -236,10 +236,10 @@ const escoposManutencao = [
     <!-- Duração / desconto -->
     <div class="dur-titulo">Escolha a duração do plano</div>
     <div class="dur-grid">
-      <label class="dur-card" data-meses="3" data-desc="5">
+      <label class="dur-card" data-meses="3" data-desc="0">
         <input type="radio" name="duracao" value="3" checked>
         <div class="dur-nome">Trimestral</div>
-        <div class="dur-desc-tag">5% de desconto</div>
+        <div class="dur-desc-tag">Sem desconto</div>
         <div class="dur-preco" id="dur-preco-3">—</div>
         <div class="dur-total" id="dur-total-3"></div>
         <ul class="dur-bonus">
@@ -248,10 +248,10 @@ const escoposManutencao = [
           <li>+1 chamado emergencial durante a vigência</li>
         </ul>
       </label>
-      <label class="dur-card" data-meses="6" data-desc="10">
+      <label class="dur-card" data-meses="6" data-desc="2">
         <input type="radio" name="duracao" value="6">
         <div class="dur-nome">Semestral</div>
-        <div class="dur-desc-tag">10% de desconto</div>
+        <div class="dur-desc-tag">2% de desconto</div>
         <div class="dur-preco" id="dur-preco-6">—</div>
         <div class="dur-total" id="dur-total-6"></div>
         <ul class="dur-bonus">
@@ -260,11 +260,11 @@ const escoposManutencao = [
           <li>+2 chamados emergenciais durante a vigência</li>
         </ul>
       </label>
-      <label class="dur-card recomendado" data-meses="12" data-desc="15">
+      <label class="dur-card recomendado" data-meses="12" data-desc="5">
         <input type="radio" name="duracao" value="12">
         <div class="dur-badge">Melhor valor</div>
         <div class="dur-nome">Anual</div>
-        <div class="dur-desc-tag">15% de desconto</div>
+        <div class="dur-desc-tag">5% de desconto</div>
         <div class="dur-preco" id="dur-preco-12">—</div>
         <div class="dur-total" id="dur-total-12"></div>
         <ul class="dur-bonus">
@@ -626,7 +626,7 @@ const escoposManutencao = [
     const base = dados.valorMensal;
     const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
     [3, 6, 12].forEach(m => {
-      const durDesc = { 3: 5, 6: 10, 12: 15 }[m];
+      const durDesc = { 3: 0, 6: 2, 12: 5 }[m];
       const final = precoFinal(base, durDesc, cupDesc);
       const totalPeriodo = final * m;
       const el = $(`dur-preco-${m}`);
@@ -645,7 +645,7 @@ const escoposManutencao = [
     const sel = document.querySelector("input[name=duracao]:checked");
     if (sel) {
       const m = parseInt(sel.value);
-      const durDesc = { 3: 5, 6: 10, 12: 15 }[m] || 0;
+      const durDesc = { 3: 0, 6: 2, 12: 5 }[m] || 0;
       const cupDesc = cupomAtivo ? Number(cupomAtivo.desconto_percentual) : 0;
       dados.duracaoMeses = m;
       dados.desconto = durDesc;
