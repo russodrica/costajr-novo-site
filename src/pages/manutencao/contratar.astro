@@ -250,9 +250,6 @@ const escoposManutencao = [
       <label class="dur-card" data-meses="3" data-desc="0">
         <input type="radio" name="duracao" value="3" checked>
         <div class="dur-nome">Trimestral</div>
-        <div class="dur-desc-tag">Sem desconto</div>
-        <div class="dur-preco" id="dur-preco-3">—</div>
-        <div class="dur-total" id="dur-total-3"></div>
         <ul class="dur-bonus">
           <li>3 visitas preventivas (1 por mês)</li>
           <li>+1 visita extra durante a vigência</li>
@@ -262,9 +259,6 @@ const escoposManutencao = [
       <label class="dur-card" data-meses="6" data-desc="2">
         <input type="radio" name="duracao" value="6">
         <div class="dur-nome">Semestral</div>
-        <div class="dur-desc-tag">2% de desconto</div>
-        <div class="dur-preco" id="dur-preco-6">—</div>
-        <div class="dur-total" id="dur-total-6"></div>
         <ul class="dur-bonus">
           <li>6 visitas preventivas (1 por mês)</li>
           <li>+6 visitas extras durante a vigência</li>
@@ -275,9 +269,6 @@ const escoposManutencao = [
         <input type="radio" name="duracao" value="12">
         <div class="dur-badge">Melhor valor</div>
         <div class="dur-nome">Anual</div>
-        <div class="dur-desc-tag">5% de desconto</div>
-        <div class="dur-preco" id="dur-preco-12">—</div>
-        <div class="dur-total" id="dur-total-12"></div>
         <ul class="dur-bonus">
           <li>12 visitas preventivas (1 por mês)</li>
           <li>+14 visitas extras durante a vigência</li>
@@ -653,19 +644,8 @@ const escoposManutencao = [
   }
 
   function atualizarDuracao() {
-    const base = dados.valorMensal;
-    [3, 6, 12].forEach(m => {
-      const durDesc = { 3: 0, 6: 2, 12: 5 }[m];
-      const { descPct: cupDesc, durMeses: cupDur } = regrasDoCupom(m);
-      // Preço "vitrine" mostrado no card = preço com cupom aplicado (durante o período de cupom)
-      const finalComCupom = precoFinal(base, durDesc, cupDesc);
-      // Total real respeita os meses que recebem cupom
-      const totalPeriodo = calcularValorTotalReal(base, durDesc, cupDesc, m, cupDur);
-      const el = $(`dur-preco-${m}`);
-      const elT = $(`dur-total-${m}`);
-      if (el) el.textContent = fmtMoney(finalComCupom) + "/mês";
-      if (elT) elT.textContent = `Total: ${fmtMoney(totalPeriodo)}`;
-    });
+    // Cards de duração agora mostram só nome + visitas — o valor exato está
+    // no resumo acima. Só atualizamos a parte visual (seleção + sim-box).
     atualizarVisualDuracao();
   }
 
@@ -1254,10 +1234,7 @@ const escoposManutencao = [
     padding: 2px 8px; border-radius: 20px; white-space: nowrap;
     font-family: 'Montserrat', sans-serif; text-transform: uppercase; letter-spacing: 0.06em;
   }
-  .dur-nome { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px; color: #2D2F36; }
-  .dur-desc-tag { font-size: 11px; font-weight: 600; color: #22C55E; }
-  .dur-preco { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px; color: #C41E3A; margin-top: 4px; }
-  .dur-total { font-size: 11px; color: #6B7280; }
+  .dur-nome { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; color: #2D2F36; margin-top: 4px; }
   .dur-bonus {
     list-style: none; padding: 8px 0 0; margin: 8px 0 0;
     border-top: 1px dashed #E5E7EB; width: 100%;
