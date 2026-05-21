@@ -75,9 +75,11 @@ export const POST: APIRoute = async ({ request }) => {
       representanteId = novo.id;
       isNovo = true;
 
-      // ─── 3. Gera código curto: INICIAIS + ANO(2d) + SEQUENCIA(2d)
-      // Ex: Marcel Zara em 2026 → "MZ2601" (1º cupom com esse prefixo)
-      //     Se outro Marcel Z. se cadastrar → "MZ2602"
+      // ─── 3. Gera código curto: INICIAIS(2) + ANO(2d) + SEQUENCIA_GLOBAL(2d)
+      // Sequência é GLOBAL por ano — incrementa pra qualquer iniciais, não só pro prefixo.
+      // Ex: 1º cadastrado em 2026 = Marcel Zara → MZ2601
+      //     2º cadastrado em 2026 = Adriana Russo → AR2602
+      //     3º cadastrado em 2026 = (qualquer um) → XX2603
       const normalizar = (s: string) => s
         .toUpperCase()
         .replace(/[ÀÁÂÃÄÅ]/g, "A")
@@ -93,15 +95,17 @@ export const POST: APIRoute = async ({ request }) => {
       let iniciais = palavras.slice(0, 2).map(p => p[0]).join("");
       if (iniciais.length < 2) iniciais = (iniciais + iniciais).slice(0, 2) || "RP";
       const anoCurto = String(new Date().getFullYear()).slice(-2);
-      const prefixo = `${iniciais}${anoCurto}`; // ex: "MZ26"
 
-      // Conta quantos cupons já têm esse prefixo no banco pra calcular próxima sequência
-      const { data: existentes } = await db
+      // Conta TODOS os cupons no formato __ANO__ (qualquer iniciais + ano corrente + 2 dígitos)
+      // pra calcular sequência global. Filtra regex pra garantir o formato exato `LL26NN`.
+      const { data: candidatos } = await db
         .from("manut_cupons")
         .select("codigo")
-        .like("codigo", `${prefixo}%`);
-      const seq = String((existentes?.length ?? 0) + 1).padStart(2, "0");
-      codigoCupom = `${prefixo}${seq}`; // ex: "MZ2601"
+        .like("codigo", `__${anoCurto}__`);
+      const formatoValido = new RegExp(`^[A-Z]{2}${anoCurto}\\d{2}$`);
+      const existentes = (candidatos || []).filter((c: any) => formatoValido.test(c.codigo));
+      const seq = String(existentes.length + 1).padStart(2, "0");
+      codigoCupom = `${iniciais}${anoCurto}${seq}`; // ex: "AR2602"
 
       // ─── 4. Cria 1 cupom único tipo='representante' ────────────────
       // As regras de desconto/duração/comissão NÃO são lidas do registro: o sistema
