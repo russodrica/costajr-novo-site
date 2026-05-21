@@ -577,8 +577,10 @@ const escoposManutencao = [
     const espLabels = espsNomes.map(id => especialidades.find(e => e.id === id)?.label || id);
     $("sim-tipo").textContent = tipo.label;
     $("sim-esps").textContent = espLabels.join(", ");
-    $("sim-base").textContent = fmtMoney(preco);
-    $("sim-extra-label").textContent = extras > 0 ? `+${espsNomes.length - 1} especialidade(s) extra` : "Sem especialidades extras";
+    $("sim-base").textContent = fmtMoney(preco) + " (1 disciplina inclusa)";
+    $("sim-extra-label").textContent = extras > 0
+      ? `+${espsNomes.length - 1} disciplina(s) extra (R$ ${custoEsp}/cada)`
+      : "Sem disciplinas adicionais";
     $("sim-extra").textContent = fmtMoney(extras);
     $("sim-extra-row").style.opacity = extras > 0 ? "1" : "0.4";
     $("sim-total").textContent = fmtMoney(total);
