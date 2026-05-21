@@ -35,7 +35,7 @@ import Base from "~/layouts/Base.astro";
         <div class="passo-card">
           <div class="passo-num">1</div>
           <h3>Você se cadastra como representante</h3>
-          <p>Preenche o formulário abaixo. Em até 1 dia útil, criamos seu cupom de indicação personalizado.</p>
+          <p>Preenche o formulário abaixo. Nossa equipe avalia seu perfil e, se aprovado, em até 1 dia útil você recebe seu cupom personalizado por email.</p>
         </div>
         <div class="passo-card">
           <div class="passo-num">2</div>
@@ -267,7 +267,7 @@ import Base from "~/layouts/Base.astro";
           body: JSON.stringify({ nome, telefone: tel, email, mensagem }),
         });
         if (res.ok) {
-          alert.innerHTML = "✅ <strong>Cadastro feito!</strong> Acabamos de enviar seus 3 cupons personalizados pra <strong>" + email + "</strong>. Confere a caixa de entrada (e a pasta de spam, só por garantia).";
+          alert.innerHTML = "✅ <strong>Recebemos seu cadastro!</strong> Nossa equipe vai avaliar em até 1 dia útil. Se aprovado, te mandamos seu cupom personalizado por email.";
           alert.className = "form-status sucesso";
           alert.style.display = "";
           document.getElementById("form-rep").reset();
