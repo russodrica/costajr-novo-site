@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireTecnico, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { listarLojaIdsDoTecnico } from "~/lib/manut/tecnicos";
 
 export const prerender = false;
 
@@ -29,13 +30,27 @@ export const POST: APIRoute = async ({ request }) => {
     if (!valor || Number(valor) <= 0) throw new Error("Valor inválido");
     if (!loja_id || !cliente_id) throw new Error("Loja e cliente são obrigatórios");
 
+    // SEGURANÇA (IDOR): o técnico só pode lançar material em loja vinculada a ele.
+    const lojasDele = await listarLojaIdsDoTecnico(claims.sub);
+    if (!lojasDele.includes(loja_id)) {
+      return jsonErr(403, "Loja não vinculada a este técnico");
+    }
+    // O cliente_id precisa ser o dono real da loja (não o enviado pelo técnico).
+    const { data: loja } = await supabaseAdmin()
+      .from("manut_lojas")
+      .select("cliente_id")
+      .eq("id", loja_id)
+      .maybeSingle();
+    if (!loja) throw new Error("Loja não encontrada");
+    const clienteReal = (loja as any).cliente_id;
+
     const { data, error } = await supabaseAdmin()
       .from("manut_materiais")
       .insert({
         tecnico_solicitante_id: claims.sub,
         chamado_id: chamado_id || null,
         loja_id,
-        cliente_id,
+        cliente_id: clienteReal,
         descricao: descricao.trim(),
         valor: Number(valor),
         status: "pendente_aprovacao",

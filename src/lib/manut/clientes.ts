@@ -7,6 +7,45 @@ import { regraIndicacaoPorDuracao } from "./indicacao-regras";
 
 const db = () => supabaseAdmin();
 
+// ─── Preço autoritativo (servidor) ───────────────────────────────────────────
+// SEGURANÇA: nunca confiar no valor enviado pelo cliente. O valor cobrado é
+// SEMPRE recalculado aqui a partir da tabela manut_precificacao + nº de
+// especialidades + desconto de duração. Espelha a lógica do wizard
+// (contratar.astro), que é só de UI.
+const DESCONTO_DURACAO: Record<number, number> = { 1: 0, 3: 0, 6: 2, 12: 5 };
+
+async function calcularPrecoServidor(args: {
+  tamanho: string;
+  especialidades: string[];
+  duracaoMeses: number;
+  cupom?: { desconto_percentual?: number | null; duracao_meses?: number | null } | null;
+}): Promise<{ valorMensal: number; valorTotal: number }> {
+  const { data: precos } = await db()
+    .from("manut_precificacao")
+    .select("tipo_loja, preco_base, custo_especialidade");
+  const linha = (precos ?? []).find((p: any) => p.tipo_loja === args.tamanho) as any;
+  // Fallback defensivo (mesmos valores do wizard) se a tabela não tiver a linha
+  const fallback: Record<string, number> = { quiosque: 250, ate40: 280, "41a80": 300, "81a120": 400, "121a250": 650 };
+  const precoBase = Number(linha?.preco_base ?? fallback[args.tamanho] ?? 280);
+  const custoEsp = Number(linha?.custo_especialidade ?? (precos as any[])?.[0]?.custo_especialidade ?? 50);
+
+  const nEsp = Array.isArray(args.especialidades) ? args.especialidades.length : 0;
+  const baseMensal = precoBase + Math.max(0, nEsp - 1) * custoEsp;
+
+  const durDesc = DESCONTO_DURACAO[args.duracaoMeses] ?? 0;
+  const mensalSemCupom = baseMensal * (1 - durDesc / 100);
+
+  const cupDesc = Number(args.cupom?.desconto_percentual ?? 0);
+  const meses = args.duracaoMeses > 0 ? args.duracaoMeses : 1;
+  const mesesCupom = Math.max(0, Math.min(Number(args.cupom?.duracao_meses ?? 0), meses));
+  const mensalComCupom = mensalSemCupom * (1 - cupDesc / 100);
+
+  const valorMensal = Math.round(mensalSemCupom * 100) / 100;
+  const valorTotal =
+    Math.round((mensalComCupom * mesesCupom + mensalSemCupom * (meses - mesesCupom)) * 100) / 100;
+  return { valorMensal, valorTotal };
+}
+
 // ─── Login / autenticação cliente ──────────────────────────────────────────
 export async function clienteLogin({ email, senha }: { email: string; senha: string }) {
   const { data: cli } = await db()
@@ -134,8 +173,25 @@ export async function contratarSubmit(payload: {
   const email = loja.email.toLowerCase();
   const { data: dup } = await db().from("manut_clientes").select("*").eq("email", email).maybeSingle();
 
+  // SEGURANÇA: recalcular o preço no servidor. O id do plano vem como
+  // "<tamanho>-<esp1>_<esp2>"; o tamanho é o prefixo antes do primeiro "-".
+  const tamanho = String(plano.id).split("-")[0];
+  const especialidades = loja.especialidades ?? [];
+  const duracaoMeses = plano.duracaoMeses ?? 1;
+  const precoServidor = await calcularPrecoServidor({
+    tamanho,
+    especialidades,
+    duracaoMeses,
+    cupom: cupomData,
+  });
+  // A partir daqui, IGNORAMOS plano.valorMensal/valorTotal vindos do cliente.
+  const valorMensalServidor = precoServidor.valorMensal;
+  const valorCobrancaServidor = precoServidor.valorTotal;
+
   // Resolve inclusoes (visitas extras + emergenciais) com base na duracao do plano
   const inclusoes = inclusoesParaDuracao(plano.duracaoMeses ?? 1);
+  // Nº de visitas preventivas = 1 por mês de plano (não confiar no cliente)
+  const visitasServidor = duracaoMeses;
 
   let cliente: any;
   let senhaInicial: string | null = null;
@@ -148,8 +204,8 @@ export async function contratarSubmit(payload: {
         nome: loja.nomeResp,
         telefone: loja.telefone || dup.telefone,
         plano_selecionado: plano.id,
-        valor_mensal_contratado: plano.valorMensal,
-        visitas_contratadas: plano.visitas,
+        valor_mensal_contratado: valorMensalServidor,
+        visitas_contratadas: visitasServidor,
         extras_contratados: inclusoes.extras,
         emergenciais_contratados: inclusoes.emergenciais,
         extras_disponiveis: inclusoes.extras,
@@ -175,8 +231,8 @@ export async function contratarSubmit(payload: {
         senha_hash: await hashSenha(senhaInicial),
         senha_troca_obrigatoria: true,
         plano_selecionado: plano.id,
-        valor_mensal_contratado: plano.valorMensal,
-        visitas_contratadas: plano.visitas,
+        valor_mensal_contratado: valorMensalServidor,
+        visitas_contratadas: visitasServidor,
         extras_contratados: inclusoes.extras,
         emergenciais_contratados: inclusoes.emergenciais,
         extras_disponiveis: inclusoes.extras,
@@ -205,8 +261,8 @@ export async function contratarSubmit(payload: {
     status: "pendente"
   });
 
-  const valorCobranca = plano.valorTotal ?? plano.valorMensal;
-  const duracaoMeses = plano.duracaoMeses ?? 1;
+  // Valor cobrado = valor TOTAL calculado no servidor (nunca o do cliente)
+  const valorCobranca = valorCobrancaServidor;
 
   // Pagamento pendente
   const { data: pag } = await db()

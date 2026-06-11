@@ -30,6 +30,9 @@ export const prerender = false;
     .alert { padding: 11px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
     .link-back { display: block; text-align: center; font-size: 13px; color: #4B5563; margin-top: 20px; }
     .link-back:hover { color: #C41E3A; }
+    .link-forgot { display: block; text-align: center; margin-top: 16px; font-size: 13px; color: #6B7280; cursor: pointer; }
+    .link-forgot:hover { color: #C41E3A; }
+    .alert.ok { background: #DCFCE7; color: #166534; border-color: #BBF7D0; }
   </style>
 </head>
 <body>
@@ -52,6 +55,19 @@ export const prerender = false;
         </div>
         <button type="submit" class="btn" id="btn">Entrar</button>
       </form>
+      <span class="link-forgot" id="showReset">Esqueci minha senha</span>
+
+      <!-- RESET SENHA -->
+      <div id="resetSection" style="display:none;margin-top:18px;border-top:1px solid var(--border);padding-top:18px">
+        <p style="font-size:13px;color:#5B5F6B;margin:0 0 14px">Informe seu e-mail cadastrado. Enviaremos uma nova senha temporária.</p>
+        <div id="resetAlert" class="alert" style="display:none"></div>
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" id="resetEmail" placeholder="tecnico@costajr.com.br">
+        </div>
+        <button type="button" class="btn" id="resetBtn">Enviar nova senha</button>
+        <span class="link-forgot" id="showLogin">Voltar para o login</span>
+      </div>
     </div>
     <a href="/" class="link-back">← Voltar ao site</a>
   </div>
@@ -80,6 +96,35 @@ export const prerender = false;
       } catch (err) {
         alert.textContent = err.message; alert.style.display = "";
         btn.disabled = false; btn.textContent = "Entrar";
+      }
+    });
+
+    // ─── Esqueci minha senha ───────────────────────────────────────────
+    const formEl = document.getElementById("form");
+    const resetSection = document.getElementById("resetSection");
+    document.getElementById("showReset").addEventListener("click", () => {
+      formEl.style.display = "none"; resetSection.style.display = "block";
+      document.getElementById("resetEmail").value = document.getElementById("email").value || "";
+    });
+    document.getElementById("showLogin").addEventListener("click", () => {
+      resetSection.style.display = "none"; formEl.style.display = "";
+    });
+    document.getElementById("resetBtn").addEventListener("click", async () => {
+      const rbtn = document.getElementById("resetBtn");
+      const ra = document.getElementById("resetAlert");
+      const email = document.getElementById("resetEmail").value.trim();
+      if (!email) { ra.className = "alert"; ra.textContent = "Informe o e-mail"; ra.style.display = ""; return; }
+      rbtn.disabled = true; rbtn.textContent = "Enviando...";
+      try {
+        await fetch("/api/manut/tecnico/reset-senha", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email })
+        });
+        ra.className = "alert ok";
+        ra.textContent = "Se o e-mail estiver cadastrado, enviaremos uma nova senha temporária em breve.";
+        ra.style.display = "";
+      } finally {
+        rbtn.disabled = false; rbtn.textContent = "Enviar nova senha";
       }
     });
   </script>

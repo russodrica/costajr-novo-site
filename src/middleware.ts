@@ -14,6 +14,15 @@ import {
 export const onRequest = defineMiddleware(async (context, next) => {
   const response = await next();
 
+  // Headers de segurança em todas as respostas
+  try {
+    response.headers.set("X-Content-Type-Options", "nosniff");
+    response.headers.set("X-Frame-Options", "SAMEORIGIN");
+    response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    response.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self)");
+    response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  } catch { /* respostas imutáveis (ex.: assets) podem recusar set — ignora */ }
+
   try {
     const req = context.request;
     if (req.method !== "GET") return response;

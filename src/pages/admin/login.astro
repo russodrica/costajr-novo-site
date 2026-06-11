@@ -44,6 +44,20 @@ if (token) {
       <input type="password" id="senha" name="senha" required autocomplete="current-password" placeholder="••••••••" />
       <button type="submit" id="btn">Entrar</button>
     </form>
+    <div style="text-align:center;margin-top:14px">
+      <a href="#" id="linkForgot" style="font-size:0.8rem;color:#C41E3A;text-decoration:none;font-weight:600">Esqueci minha senha</a>
+    </div>
+
+    <!-- Bloco "Esqueci minha senha" (escondido por padrão) -->
+    <div id="forgotBox" style="display:none;margin-top:18px;border-top:1px solid #eee;padding-top:18px">
+      <div id="forgotMsg" style="display:none;border-radius:7px;padding:10px 14px;font-size:0.85rem;margin-bottom:12px"></div>
+      <label for="forgotEmail">E-mail cadastrado</label>
+      <input type="email" id="forgotEmail" placeholder="seu.email@costajr.com.br" autocomplete="username" />
+      <button type="button" id="btnForgot">Enviar senha temporária</button>
+      <div style="text-align:center;margin-top:10px">
+        <a href="#" id="linkVoltar" style="font-size:0.8rem;color:#888;text-decoration:none">Voltar ao login</a>
+      </div>
+    </div>
   </div>
   <script>
     document.getElementById("form")?.addEventListener("submit", async (e) => {
@@ -75,6 +89,50 @@ if (token) {
         err.style.display = "block";
         btn.disabled = false;
         btn.textContent = "Entrar";
+      }
+    });
+
+    // ─── Esqueci minha senha ───────────────────────────────────────────
+    const $ = (id: string) => document.getElementById(id) as HTMLElement;
+    const formEl = $("form");
+    const forgotBox = $("forgotBox");
+    $("linkForgot")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      formEl.style.display = "none";
+      forgotBox.style.display = "block";
+      ($("forgotEmail") as HTMLInputElement).value =
+        ($("email") as HTMLInputElement).value || "";
+    });
+    $("linkVoltar")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      forgotBox.style.display = "none";
+      formEl.style.display = "block";
+    });
+    $("btnForgot")?.addEventListener("click", async () => {
+      const btnF = $("btnForgot") as HTMLButtonElement;
+      const msg = $("forgotMsg");
+      const email = ($("forgotEmail") as HTMLInputElement).value.trim();
+      if (!email) { msg.textContent = "Informe o e-mail."; msg.style.cssText = "display:block;background:#FEE2E2;color:#991B1B;border-radius:7px;padding:10px 14px;font-size:0.85rem;margin-bottom:12px"; return; }
+      btnF.disabled = true; btnF.textContent = "Enviando...";
+      try {
+        const res = await fetch("/api/admin/forgot-senha", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          msg.textContent = data.message || "Se o e-mail estiver cadastrado, enviaremos uma senha temporária.";
+          msg.style.cssText = "display:block;background:#DCFCE7;color:#166534;border-radius:7px;padding:10px 14px;font-size:0.85rem;margin-bottom:12px";
+        } else {
+          msg.textContent = data.error || "Não foi possível processar. Tente novamente.";
+          msg.style.cssText = "display:block;background:#FEE2E2;color:#991B1B;border-radius:7px;padding:10px 14px;font-size:0.85rem;margin-bottom:12px";
+        }
+      } catch {
+        msg.textContent = "Erro de conexão. Tente novamente.";
+        msg.style.cssText = "display:block;background:#FEE2E2;color:#991B1B;border-radius:7px;padding:10px 14px;font-size:0.85rem;margin-bottom:12px";
+      } finally {
+        btnF.disabled = false; btnF.textContent = "Enviar senha temporária";
       }
     });
   </script>

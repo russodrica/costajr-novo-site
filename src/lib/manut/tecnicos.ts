@@ -1,7 +1,31 @@
 import { supabaseAdmin } from "../supabase";
 import { verificarSenha, hashSenha, signToken, gerarSenhaInicial } from "../auth";
+import { enviarSenhaReset } from "../mailer";
 
 const db = () => supabaseAdmin();
+
+// Reset público de senha do técnico ("Esqueci minha senha"): gera senha
+// temporária, grava e envia por e-mail. Resposta genérica (não vaza existência).
+export async function tecnicoResetSenha(email: string) {
+  const { data: tec } = await db()
+    .from("manut_tecnicos")
+    .select("id,nome,email")
+    .eq("email", email.toLowerCase().trim())
+    .maybeSingle();
+  if (!tec) return { ok: true, emailEnviado: false };
+  const novaSenha = gerarSenhaInicial();
+  await db()
+    .from("manut_tecnicos")
+    .update({ senha_hash: await hashSenha(novaSenha), senha_troca_obrigatoria: true })
+    .eq("id", tec.id);
+  try {
+    await enviarSenhaReset(tec.email ?? email, tec.nome ?? "Técnico", novaSenha);
+    return { ok: true, emailEnviado: true };
+  } catch (e: any) {
+    console.error("[mailer][tecnico-reset]", e.message);
+    return { ok: true, emailEnviado: false, emailErro: e.message };
+  }
+}
 
 export async function tecnicoLogin({ email, senha }: { email: string; senha: string }) {
   const { data: tec } = await db()

@@ -1,6 +1,12 @@
 import { SignJWT, jwtVerify } from "jose";
 
-const SECRET = new TextEncoder().encode(import.meta.env.JWT_SECRET || "dev-secret");
+// JWT_SECRET é obrigatório. Em produção, nunca cair no fallback de dev:
+// um secret previsível torna todos os tokens forjáveis (acesso total).
+const _rawSecret = import.meta.env.JWT_SECRET;
+if (!_rawSecret && import.meta.env.PROD) {
+  throw new Error("[auth] JWT_SECRET não configurado — defina nas variáveis de ambiente.");
+}
+const SECRET = new TextEncoder().encode(_rawSecret || "dev-secret-CHANGE-ME");
 const ISSUER = "costajr.com.br";
 
 export type ClienteClaims = { sub: string; tipo: "cliente"; email: string; troca?: boolean };
@@ -87,8 +93,14 @@ export async function requireRepresentante(req: Request): Promise<RepresentanteC
 export async function requireAdmin(req: Request): Promise<AdminClaims> {
   const tok = getPortalToken(req);
   if (!tok) throw new Error("Não autenticado");
-  // Bypass para desenvolvimento — header x-portal-auth: bypass
-  if (tok === "bypass" && import.meta.env.ADMIN_BYPASS_KEY) {
+  // Bypass APENAS em desenvolvimento e somente se o token enviado for EXATAMENTE
+  // o valor da chave secreta (não apenas a palavra "bypass"). Em produção é
+  // totalmente desabilitado — antes bastava enviar "bypass" para virar admin.
+  if (
+    import.meta.env.DEV &&
+    import.meta.env.ADMIN_BYPASS_KEY &&
+    tok === import.meta.env.ADMIN_BYPASS_KEY
+  ) {
     return { sub: "bypass-admin", tipo: "admin", email: "admin@costajr.com.br", role: "admin" };
   }
   const claims = await verifyToken<AdminClaims>(tok);

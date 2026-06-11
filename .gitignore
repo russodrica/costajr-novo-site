@@ -8,3 +8,9 @@ dist
 .DS_Store
 *.log
 wp-dump.sql
+
+# Saídas de scripts utilitários — contêm senhas em texto, NUNCA commitar
+scripts/SENHA-INICIAIS.txt
+scripts/SENHAS-INICIAIS.txt
+scripts/SENHA-TEMPORARIA-ADMIN.txt
+scripts/resultado-*.log
