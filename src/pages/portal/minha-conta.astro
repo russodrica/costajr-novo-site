@@ -1,0 +1,94 @@
+---
+export const prerender = false;
+import Portal from "~/layouts/Portal.astro";
+---
+<Portal title="Minha Conta" tipo="colaborador" activePage="minha-conta">
+  <div style="max-width:560px;margin:0 auto">
+    <h1 style="font-size:22px;font-weight:700;margin:8px 0 18px">Minha Conta</h1>
+
+    <!-- Dados do perfil -->
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:22px;margin-bottom:20px">
+      <h2 style="font-size:15px;font-weight:700;margin:0 0 4px">Dados do perfil</h2>
+      <p style="font-size:13px;color:#6B7280;margin:0 0 16px">E-mail e cargo são definidos pelo RH. Você pode ajustar seu nome de exibição.</p>
+      <div id="msgPerfil" style="display:none"></div>
+      <label style="display:block;font-size:12.5px;font-weight:600;margin:10px 0 5px">E-mail</label>
+      <input id="email" disabled style="width:100%;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:9px;background:#F3F4F6;font-size:14px" />
+      <label style="display:block;font-size:12.5px;font-weight:600;margin:10px 0 5px">Cargo</label>
+      <input id="role" disabled style="width:100%;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:9px;background:#F3F4F6;font-size:14px" />
+      <label style="display:block;font-size:12.5px;font-weight:600;margin:10px 0 5px">Nome de exibição</label>
+      <input id="nome" placeholder="Seu nome" style="width:100%;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:14px" />
+      <button id="btnSalvarPerfil" style="margin-top:16px;background:#C41E3A;color:#fff;border:0;border-radius:9px;padding:11px 20px;font-weight:700;cursor:pointer">Salvar nome</button>
+    </div>
+
+    <!-- Trocar senha -->
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:22px">
+      <h2 style="font-size:15px;font-weight:700;margin:0 0 16px">Trocar senha</h2>
+      <div id="msgSenha" style="display:none"></div>
+      <label style="display:block;font-size:12.5px;font-weight:600;margin:10px 0 5px">Senha atual</label>
+      <input type="password" id="atual" autocomplete="current-password" style="width:100%;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:14px" />
+      <label style="display:block;font-size:12.5px;font-weight:600;margin:10px 0 5px">Nova senha</label>
+      <input type="password" id="nova" minlength="6" autocomplete="new-password" style="width:100%;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:14px" />
+      <label style="display:block;font-size:12.5px;font-weight:600;margin:10px 0 5px">Confirmar nova senha</label>
+      <input type="password" id="conf" minlength="6" autocomplete="new-password" style="width:100%;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:14px" />
+      <button id="btnSenha" style="margin-top:16px;background:#C41E3A;color:#fff;border:0;border-radius:9px;padding:11px 20px;font-weight:700;cursor:pointer">Alterar senha</button>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem("portal_colab_token");
+    if (!token) window.location.replace("/portal/login");
+    const ROLE_LABEL: Record<string,string> = { admin:"Administrador", coordenador:"Coordenador", financeiro:"Financeiro", comercial:"Comercial", rh:"Recursos Humanos", operacional:"Operacional" };
+    const $ = (id: string) => document.getElementById(id) as HTMLElement;
+    function show(el: HTMLElement, t: string, ok: boolean) {
+      el.textContent = t;
+      el.style.cssText = `display:block;border-radius:8px;padding:11px 14px;font-size:13px;margin-bottom:12px;${ok ? "background:#DCFCE7;color:#166534;border:1px solid #BBF7D0" : "background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA"}`;
+    }
+    const H = { "x-portal-auth": token!, "content-type": "application/json" };
+
+    (async () => {
+      try {
+        const res = await fetch("/api/portal/perfil", { headers: { "x-portal-auth": token! } });
+        const d = await res.json();
+        if (res.ok) {
+          ($("email") as HTMLInputElement).value = d.email || "";
+          ($("role") as HTMLInputElement).value = ROLE_LABEL[d.role] || d.role || "";
+          ($("nome") as HTMLInputElement).value = d.display_name || d.full_name || "";
+        }
+      } catch {}
+    })();
+
+    $("btnSalvarPerfil").addEventListener("click", async () => {
+      const btn = $("btnSalvarPerfil") as HTMLButtonElement;
+      const nome = ($("nome") as HTMLInputElement).value.trim();
+      if (!nome) { show($("msgPerfil"), "Informe o nome.", false); return; }
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/portal/perfil", { method: "PATCH", headers: H, body: JSON.stringify({ display_name: nome }) });
+        const d = await res.json().catch(() => ({}));
+        show($("msgPerfil"), res.ok ? "Nome atualizado!" : (d.error || "Erro ao salvar."), res.ok);
+        if (res.ok) {
+          const u = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
+          u.nome = nome; localStorage.setItem("portal_colab_token_user", JSON.stringify(u));
+        }
+      } catch { show($("msgPerfil"), "Erro de conexão.", false); }
+      finally { btn.disabled = false; }
+    });
+
+    $("btnSenha").addEventListener("click", async () => {
+      const btn = $("btnSenha") as HTMLButtonElement;
+      const atual = ($("atual") as HTMLInputElement).value;
+      const nova = ($("nova") as HTMLInputElement).value;
+      const conf = ($("conf") as HTMLInputElement).value;
+      if (!atual || !nova) { show($("msgSenha"), "Preencha a senha atual e a nova.", false); return; }
+      if (nova !== conf) { show($("msgSenha"), "As senhas não coincidem.", false); return; }
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/portal/trocar-senha", { method: "POST", headers: H, body: JSON.stringify({ senhaAtual: atual, novaSenha: nova }) });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { show($("msgSenha"), "Senha alterada com sucesso!", true); ($("atual") as HTMLInputElement).value = ($("nova") as HTMLInputElement).value = ($("conf") as HTMLInputElement).value = ""; }
+        else show($("msgSenha"), d.error || "Erro ao alterar a senha.", false);
+      } catch { show($("msgSenha"), "Erro de conexão.", false); }
+      finally { btn.disabled = false; }
+    });
+  </script>
+</Portal>

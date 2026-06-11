@@ -1,0 +1,91 @@
+---
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+export const prerender = false;
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+const forcado = Astro.url.searchParams.get("forcado") === "1";
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trocar senha — CJR Admin</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Open Sans', sans-serif; background: #1C1E22; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .box { background: #fff; border-radius: 14px; padding: 38px 34px; width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    .logo { font-family: 'Montserrat', sans-serif; font-size: 1.9rem; font-weight: 700; color: #C41E3A; text-align: center; }
+    .logo-sub { text-align: center; font-size: 0.72rem; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 22px; }
+    h2 { font-family: 'Montserrat', sans-serif; font-size: 1.05rem; color: #2D2F36; text-align: center; margin-bottom: 6px; }
+    .info { font-size: 0.85rem; color: #6B7280; text-align: center; margin-bottom: 22px; }
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: #555; margin: 12px 0 5px; }
+    input { width: 100%; padding: 10px 14px; border: 1px solid #D1D5DB; border-radius: 7px; font-size: 0.9rem; outline: none; }
+    input:focus { border-color: #C41E3A; box-shadow: 0 0 0 3px rgba(196,30,58,0.1); }
+    button { width: 100%; padding: 11px; background: #C41E3A; color: #fff; border: none; border-radius: 7px; font-size: 0.95rem; font-weight: 600; cursor: pointer; font-family: 'Montserrat', sans-serif; margin-top: 18px; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .msg { border-radius: 7px; padding: 10px 14px; font-size: 0.85rem; margin-bottom: 14px; display: none; }
+    .msg.err { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+    .msg.ok { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+    .voltar { display: block; text-align: center; margin-top: 16px; font-size: 0.82rem; color: #6B7280; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="logo">CJR</div>
+    <div class="logo-sub">Painel Administrativo</div>
+    <h2>Trocar senha</h2>
+    <p class="info" id="info">
+      {forcado
+        ? "Você está usando uma senha temporária. Defina uma nova senha para continuar."
+        : "Defina uma nova senha de acesso."}
+    </p>
+    <div class="msg" id="msg"></div>
+    <form id="form">
+      <label for="atual">Senha atual {forcado ? "(a temporária)" : ""}</label>
+      <input type="password" id="atual" required autocomplete="current-password" />
+      <label for="nova">Nova senha</label>
+      <input type="password" id="nova" required minlength="6" autocomplete="new-password" />
+      <label for="conf">Confirmar nova senha</label>
+      <input type="password" id="conf" required minlength="6" autocomplete="new-password" />
+      <button type="submit" id="btn">Salvar nova senha</button>
+    </form>
+    {!forcado && <a class="voltar" href="/admin">← Voltar ao painel</a>}
+  </div>
+  <script>
+    const form = document.getElementById("form") as HTMLFormElement;
+    const msg = document.getElementById("msg") as HTMLElement;
+    const btn = document.getElementById("btn") as HTMLButtonElement;
+    function show(t: string, ok: boolean) { msg.textContent = t; msg.className = "msg " + (ok ? "ok" : "err"); msg.style.display = "block"; }
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const atual = (document.getElementById("atual") as HTMLInputElement).value;
+      const nova = (document.getElementById("nova") as HTMLInputElement).value;
+      const conf = (document.getElementById("conf") as HTMLInputElement).value;
+      if (nova !== conf) { show("As senhas não coincidem.", false); return; }
+      btn.disabled = true; btn.textContent = "Salvando...";
+      try {
+        const res = await fetch("/api/portal/trocar-senha", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ senhaAtual: atual, novaSenha: nova }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          show("Senha alterada com sucesso! Redirecionando...", true);
+          setTimeout(() => window.location.href = "/admin", 1200);
+        } else {
+          show(data.error || "Não foi possível alterar a senha.", false);
+          btn.disabled = false; btn.textContent = "Salvar nova senha";
+        }
+      } catch {
+        show("Erro de conexão. Tente novamente.", false);
+        btn.disabled = false; btn.textContent = "Salvar nova senha";
+      }
+    });
+  </script>
+</body>
+</html>

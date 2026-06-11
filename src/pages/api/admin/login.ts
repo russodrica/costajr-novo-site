@@ -10,7 +10,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const db = supabaseAdmin();
     const { data: perfil, error } = await db
       .from("portal_profiles")
-      .select("id, email, display_name, role, approval_status, senha_hash")
+      .select("id, email, display_name, role, approval_status, senha_hash, senha_troca_obrigatoria")
       .eq("email", email.toLowerCase().trim())
       .single();
 
@@ -37,7 +37,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       secure: import.meta.env.PROD,
     });
 
-    return jsonOk({ ok: true, nome: perfil.display_name, role: perfil.role });
+    return jsonOk({ ok: true, nome: perfil.display_name, role: perfil.role, troca: !!perfil.senha_troca_obrigatoria });
   } catch (e: any) {
     return jsonErr(500, e.message);
   }

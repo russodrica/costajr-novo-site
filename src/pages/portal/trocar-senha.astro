@@ -1,0 +1,90 @@
+---
+export const prerender = false;
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Trocar senha — Portal do Colaborador</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;500;600&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root { --brand: #C41E3A; --brand-dark: #A01828; }
+    body { margin: 0; font-family: 'Open Sans', sans-serif; background: linear-gradient(135deg, #1A1C20 0%, #2D2F36 60%, #3A1419 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .card { background: #fff; border-radius: 16px; padding: 40px 36px; width: 100%; max-width: 420px; box-shadow: 0 24px 64px rgba(0,0,0,.4); }
+    .logo { text-align: center; margin-bottom: 24px; }
+    .logo img { height: 38px; }
+    h1 { font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 800; margin: 0 0 6px; color: #1E2128; text-align: center; }
+    .sub { font-size: 14px; color: #6B7280; margin: 0 0 24px; text-align: center; }
+    label { display: block; font-size: 12.5px; font-weight: 600; color: #374151; margin: 12px 0 5px; }
+    input { width: 100%; padding: 11px 14px; border: 1.5px solid #E5E7EB; border-radius: 9px; font-size: 14px; color: #1E2128; outline: none; }
+    input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(196,30,58,.1); }
+    .btn { width: 100%; padding: 12px; border-radius: 9px; border: 0; cursor: pointer; background: var(--brand); color: #fff; font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 14px; margin-top: 20px; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .msg { border-radius: 8px; padding: 11px 14px; font-size: 13px; margin-bottom: 16px; display: none; }
+    .msg.err { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+    .msg.ok { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+    .voltar { display: block; text-align: center; margin-top: 16px; font-size: 13px; color: #9CA3AF; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo"><img src="/logo-cjr.png" alt="Costa Júnior"></div>
+    <h1>Trocar senha</h1>
+    <p class="sub" id="sub">Defina uma nova senha de acesso.</p>
+    <div class="msg" id="msg"></div>
+    <form id="form">
+      <label for="atual">Senha atual</label>
+      <input type="password" id="atual" required autocomplete="current-password">
+      <label for="nova">Nova senha</label>
+      <input type="password" id="nova" required minlength="6" autocomplete="new-password">
+      <label for="conf">Confirmar nova senha</label>
+      <input type="password" id="conf" required minlength="6" autocomplete="new-password">
+      <button class="btn" type="submit" id="btn">Salvar nova senha</button>
+    </form>
+    <a class="voltar" href="/portal" id="voltar">← Voltar ao portal</a>
+  </div>
+  <script>
+    const token = localStorage.getItem("portal_colab_token");
+    if (!token) window.location.replace("/portal/login");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("forcado") === "1") {
+      (document.getElementById("sub") as HTMLElement).textContent = "Você está usando uma senha temporária. Defina uma nova senha para continuar.";
+      (document.getElementById("voltar") as HTMLElement).style.display = "none";
+    }
+    const form = document.getElementById("form") as HTMLFormElement;
+    const msg = document.getElementById("msg") as HTMLElement;
+    const btn = document.getElementById("btn") as HTMLButtonElement;
+    function show(t: string, ok: boolean) { msg.textContent = t; msg.className = "msg " + (ok ? "ok" : "err"); msg.style.display = "block"; }
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const atual = (document.getElementById("atual") as HTMLInputElement).value;
+      const nova = (document.getElementById("nova") as HTMLInputElement).value;
+      const conf = (document.getElementById("conf") as HTMLInputElement).value;
+      if (nova !== conf) { show("As senhas não coincidem.", false); return; }
+      btn.disabled = true; btn.textContent = "Salvando...";
+      try {
+        const res = await fetch("/api/portal/trocar-senha", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-portal-auth": token! },
+          body: JSON.stringify({ senhaAtual: atual, novaSenha: nova }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          show("Senha alterada com sucesso! Redirecionando...", true);
+          setTimeout(() => window.location.href = "/portal", 1200);
+        } else {
+          show(data.error || "Não foi possível alterar a senha.", false);
+          btn.disabled = false; btn.textContent = "Salvar nova senha";
+        }
+      } catch {
+        show("Erro de conexão. Tente novamente.", false);
+        btn.disabled = false; btn.textContent = "Salvar nova senha";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -129,7 +129,7 @@ export const prerender = false;
         }
         localStorage.setItem("portal_colab_token", data.token);
         localStorage.setItem("portal_colab_token_user", JSON.stringify(data.user));
-        window.location.replace("/portal");
+        window.location.replace(data.troca ? "/portal/trocar-senha?forcado=1" : "/portal");
       } catch {
         erro.textContent = "Erro de conexão. Tente novamente.";
         erro.classList.add("show");

@@ -76,7 +76,8 @@ if (token) {
           body: JSON.stringify({ email, senha }),
         });
         if (res.ok) {
-          window.location.href = "/admin";
+          const data = await res.json().catch(() => ({}));
+          window.location.href = data.troca ? "/admin/trocar-senha?forcado=1" : "/admin";
         } else {
           const data = await res.json();
           err.textContent = data.error || "Credenciais inválidas";

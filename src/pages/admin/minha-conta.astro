@@ -1,0 +1,89 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+export const prerender = false;
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+---
+<Admin title="Minha Conta" current="minha-conta">
+  <div style="max-width:560px">
+    <h1 style="font-size:22px;font-weight:700;margin-bottom:18px">Minha Conta</h1>
+
+    <!-- Dados do perfil -->
+    <div class="card" style="margin-bottom:20px">
+      <h2 style="font-size:15px;font-weight:700;margin-bottom:4px">Dados do perfil</h2>
+      <p style="font-size:13px;color:#6B7280;margin-bottom:16px">E-mail e cargo são definidos pelo administrador. Você pode ajustar seu nome de exibição.</p>
+      <div id="msgPerfil" style="display:none;border-radius:7px;padding:10px 14px;font-size:13px;margin-bottom:12px"></div>
+      <div class="form-group"><label>E-mail</label><input id="email" disabled style="background:#F3F4F6" /></div>
+      <div class="form-group"><label>Cargo</label><input id="role" disabled style="background:#F3F4F6" /></div>
+      <div class="form-group"><label>Nome de exibição</label><input id="nome" placeholder="Seu nome" /></div>
+      <button class="btn btn-primary" id="btnSalvarPerfil">Salvar nome</button>
+    </div>
+
+    <!-- Trocar senha -->
+    <div class="card">
+      <h2 style="font-size:15px;font-weight:700;margin-bottom:16px">Trocar senha</h2>
+      <div id="msgSenha" style="display:none;border-radius:7px;padding:10px 14px;font-size:13px;margin-bottom:12px"></div>
+      <div class="form-group"><label>Senha atual</label><input type="password" id="atual" autocomplete="current-password" /></div>
+      <div class="form-group"><label>Nova senha</label><input type="password" id="nova" minlength="6" autocomplete="new-password" /></div>
+      <div class="form-group"><label>Confirmar nova senha</label><input type="password" id="conf" minlength="6" autocomplete="new-password" /></div>
+      <button class="btn btn-primary" id="btnSenha">Alterar senha</button>
+    </div>
+  </div>
+
+  <script>
+    const ROLE_LABEL: Record<string,string> = { admin:"Administrador", coordenador:"Coordenador", financeiro:"Financeiro", comercial:"Comercial", rh:"RH", operacional:"Operacional" };
+    const $ = (id: string) => document.getElementById(id) as HTMLElement;
+    function show(el: HTMLElement, t: string, ok: boolean) {
+      el.textContent = t;
+      el.style.cssText = `display:block;border-radius:7px;padding:10px 14px;font-size:13px;margin-bottom:12px;${ok ? "background:#DCFCE7;color:#166534;border:1px solid #BBF7D0" : "background:#FEE2E2;color:#991B1B;border:1px solid #FECACA"}`;
+    }
+
+    // Carrega perfil
+    (async () => {
+      try {
+        const res = await fetch("/api/portal/perfil");
+        const d = await res.json();
+        if (res.ok) {
+          ($("email") as HTMLInputElement).value = d.email || "";
+          ($("role") as HTMLInputElement).value = ROLE_LABEL[d.role] || d.role || "";
+          ($("nome") as HTMLInputElement).value = d.display_name || d.full_name || "";
+        }
+      } catch {}
+    })();
+
+    // Salvar nome
+    $("btnSalvarPerfil").addEventListener("click", async () => {
+      const btn = $("btnSalvarPerfil") as HTMLButtonElement;
+      const nome = ($("nome") as HTMLInputElement).value.trim();
+      if (!nome) { show($("msgPerfil"), "Informe o nome.", false); return; }
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/portal/perfil", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ display_name: nome }) });
+        const d = await res.json().catch(() => ({}));
+        show($("msgPerfil"), res.ok ? "Nome atualizado!" : (d.error || "Erro ao salvar."), res.ok);
+      } catch { show($("msgPerfil"), "Erro de conexão.", false); }
+      finally { btn.disabled = false; }
+    });
+
+    // Trocar senha
+    $("btnSenha").addEventListener("click", async () => {
+      const btn = $("btnSenha") as HTMLButtonElement;
+      const atual = ($("atual") as HTMLInputElement).value;
+      const nova = ($("nova") as HTMLInputElement).value;
+      const conf = ($("conf") as HTMLInputElement).value;
+      if (!atual || !nova) { show($("msgSenha"), "Preencha a senha atual e a nova.", false); return; }
+      if (nova !== conf) { show($("msgSenha"), "As senhas não coincidem.", false); return; }
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/portal/trocar-senha", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ senhaAtual: atual, novaSenha: nova }) });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { show($("msgSenha"), "Senha alterada com sucesso!", true); ($("atual") as HTMLInputElement).value = ($("nova") as HTMLInputElement).value = ($("conf") as HTMLInputElement).value = ""; }
+        else show($("msgSenha"), d.error || "Erro ao alterar a senha.", false);
+      } catch { show($("msgSenha"), "Erro de conexão.", false); }
+      finally { btn.disabled = false; }
+    });
+  </script>
+</Admin>

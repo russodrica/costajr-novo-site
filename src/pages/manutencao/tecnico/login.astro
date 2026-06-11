@@ -92,7 +92,7 @@ export const prerender = false;
         if (!res.ok) throw new Error(data.error || "Credenciais inválidas");
         localStorage.setItem(TOKEN_KEY, data.token);
         localStorage.setItem(TOKEN_KEY + "_user", JSON.stringify(data.tecnico));
-        window.location.replace("/manutencao/tecnico/dashboard");
+        window.location.replace(data.trocaObrigatoria ? "/manutencao/tecnico/trocar-senha" : "/manutencao/tecnico/dashboard");
       } catch (err) {
         alert.textContent = err.message; alert.style.display = "";
         btn.disabled = false; btn.textContent = "Entrar";

@@ -12,7 +12,7 @@ export const POST: APIRoute = async ({ request }) => {
     const sb = supabaseAdmin();
     const { data: profile, error } = await sb
       .from("portal_profiles")
-      .select("id, email, display_name, full_name, role, approval_status, senha_hash")
+      .select("id, email, display_name, full_name, role, approval_status, senha_hash, senha_troca_obrigatoria")
       .eq("email", email.toLowerCase().trim())
       .single();
 
@@ -33,6 +33,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     return jsonOk({
       token,
+      troca: !!profile.senha_troca_obrigatoria,
       user: {
         id: profile.id,
         email: profile.email,
