@@ -20,7 +20,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     let emailEnviado = false;
     let emailErro: string | undefined;
     try {
-      await enviarSenhaReset(tec.email, tec.nome ?? "Técnico", senha);
+      await enviarSenhaReset(tec.email, tec.nome ?? "Técnico", senha, "/manutencao/tecnico/login");
       emailEnviado = true;
     } catch (e: any) {
       console.error("[mailer][admin-reset-tecnico]", e.message);

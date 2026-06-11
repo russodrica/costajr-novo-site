@@ -21,7 +21,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     let emailEnviado = false;
     let emailErro: string | undefined;
     try {
-      await enviarSenhaReset(mem.email, nome, senha);
+      await enviarSenhaReset(mem.email, nome, senha, "/portal/login");
       emailEnviado = true;
     } catch (e: any) {
       console.error("[mailer][admin-reset-membro]", e.message);

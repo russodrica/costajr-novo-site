@@ -27,6 +27,11 @@ export const POST: APIRoute = async ({ request }) => {
     if (!email || typeof email !== "string") return jsonErr(400, "Informe o e-mail.");
     const alvo = email.toLowerCase().trim();
 
+    // Descobre de qual tela veio o pedido para mandar o link de login correto.
+    // /admin/login (admin) ou /portal/login (colaborador) usam o mesmo backend.
+    const referer = request.headers.get("referer") || "";
+    const loginPath = referer.includes("/admin") ? "/admin/login" : "/portal/login";
+
     if (!limitar(alvo)) {
       return jsonErr(429, "Muitas solicitações. Aguarde alguns minutos e tente novamente.");
     }
@@ -62,7 +67,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     const nome = perfil.display_name || perfil.full_name || "Colaborador";
     try {
-      await enviarSenhaReset(perfil.email, nome, novaSenha);
+      await enviarSenhaReset(perfil.email, nome, novaSenha, loginPath);
     } catch (e: any) {
       console.error("[admin/forgot-senha] e-mail falhou:", e?.message);
       // Mantém resposta genérica mesmo se o e-mail falhar.

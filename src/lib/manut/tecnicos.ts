@@ -19,7 +19,7 @@ export async function tecnicoResetSenha(email: string) {
     .update({ senha_hash: await hashSenha(novaSenha), senha_troca_obrigatoria: true })
     .eq("id", tec.id);
   try {
-    await enviarSenhaReset(tec.email ?? email, tec.nome ?? "Técnico", novaSenha);
+    await enviarSenhaReset(tec.email ?? email, tec.nome ?? "Técnico", novaSenha, "/manutencao/tecnico/login");
     return { ok: true, emailEnviado: true };
   } catch (e: any) {
     console.error("[mailer][tecnico-reset]", e.message);

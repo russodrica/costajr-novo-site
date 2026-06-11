@@ -18,10 +18,17 @@ async function sendOrThrow(payload: { to: string; subject: string; html: string 
   return data;
 }
 
-function htmlSenha(nome: string, senha: string, contexto: "boas-vindas" | "reset") {
+// loginPath: caminho da tela de login correta para quem recebe o e-mail
+// (admin, colaborador, técnico ou cliente). Default = portal do cliente.
+function htmlSenha(
+  nome: string,
+  senha: string,
+  contexto: "boas-vindas" | "reset",
+  loginPath: string = "/manutencao/cliente/login"
+) {
   const titulo = contexto === "boas-vindas" ? "Sua senha temporária" : "Recuperação de senha";
   const subtitulo = contexto === "boas-vindas"
-    ? "Sua senha temporária de acesso ao Portal do Cliente é:"
+    ? "Sua senha temporária de acesso ao portal é:"
     : "Recebemos uma solicitação de recuperação de senha para sua conta. Sua nova senha temporária é:";
   const rodape = contexto === "boas-vindas"
     ? "Se você não solicitou este acesso, ignore este email."
@@ -35,7 +42,7 @@ function htmlSenha(nome: string, senha: string, contexto: "boas-vindas" | "reset
         <span style="font-size:28px;font-weight:700;letter-spacing:0.1em;color:#C41E3A">${senha}</span>
       </div>
       <p style="color:#5B5F6B;margin:0 0 24px">Ao entrar, você será solicitado a criar uma nova senha pessoal.</p>
-      <a href="${SITE}/manutencao/cliente/login"
+      <a href="${SITE}${loginPath}"
          style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px">
         Acessar o portal
       </a>
@@ -47,19 +54,25 @@ function htmlSenha(nome: string, senha: string, contexto: "boas-vindas" | "reset
   `;
 }
 
-export async function enviarSenhaTemporaria(email: string, nome: string, senha: string) {
+export async function enviarSenhaTemporaria(
+  email: string, nome: string, senha: string,
+  loginPath: string = "/manutencao/cliente/login"
+) {
   return sendOrThrow({
     to: email,
     subject: "Sua senha temporária — Portal Costa Júnior",
-    html: htmlSenha(nome, senha, "boas-vindas"),
+    html: htmlSenha(nome, senha, "boas-vindas", loginPath),
   });
 }
 
-export async function enviarSenhaReset(email: string, nome: string, senha: string) {
+export async function enviarSenhaReset(
+  email: string, nome: string, senha: string,
+  loginPath: string = "/manutencao/cliente/login"
+) {
   return sendOrThrow({
     to: email,
     subject: "Recuperação de senha — Portal Costa Júnior",
-    html: htmlSenha(nome, senha, "reset"),
+    html: htmlSenha(nome, senha, "reset", loginPath),
   });
 }
 
