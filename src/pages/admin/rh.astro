@@ -641,7 +641,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
     async function excluirDoc(id: string, titulo: string) {
       if (!confirm(`Excluir o documento "${titulo}"?\n\nEssa ação não pode ser desfeita.`)) return;
-      const res = await fetch(`/api/admin/rh/documentos/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/rh/documentos/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) window.location.reload();
       else { const d = await res.json().catch(() => ({} as any)); alert("Erro ao excluir: " + (d.error || `HTTP ${res.status}`)); }
     }

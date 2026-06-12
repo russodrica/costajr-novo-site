@@ -469,7 +469,7 @@ const catJson = JSON.stringify((categorias || []).map((c: any) => ({ id: c.id, n
 
     async function cancelarLanc(id) {
       if (!confirm("Cancelar este lançamento? Ele continua no histórico com status cancelado.")) return;
-      const res = await fetch(`/api/admin/fin/lancamentos/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/fin/lancamentos/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) window.location.reload();
       else { const d = await res.json().catch(() => ({})); alert("Erro ao cancelar: " + (d.error || `HTTP ${res.status}`)); }
     }

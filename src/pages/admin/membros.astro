@@ -281,7 +281,7 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
 
     async function excluirMembro(id, nome) {
       if (!confirm(`Excluir o membro "${nome}"?\n\nSe ele tiver histórico (fórum, termos), será apenas desativado. Esta ação não pode ser desfeita.`)) return;
-      const res = await fetch(`/api/admin/membros/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/membros/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       const d = await res.json().catch(() => ({}));
       if (res.ok) { if (d.aviso) alert(d.aviso); window.location.reload(); }
       else alert(d.error || "Erro ao excluir");
