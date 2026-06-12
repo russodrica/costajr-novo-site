@@ -228,6 +228,17 @@ sair do ar, re-hospedar (ex: YouTube nao listado) e atualizar `url_video`.
 **Dashboard admin** reformulado: pendencias criticas, KPIs com comparativo mensal,
 graficos CSS puros (sem lib), funil comercial. Layout admin com menu agrupado colapsavel.
 
+**Migracao Vobi (11/06/2026):** dados financeiros da Vobi importados para o modulo
+Financeiro via `scripts/migrar-vobi.mjs` + migration 024 (colunas `vobi_id`, RODADA).
+Importados: 250 categorias, 226 projetos→obras, 24.161 lancamentos (1.941 receitas,
+22.220 despesas). Fonte: export JSON gerado no navegador logado em app.vobi.com.br
+(o token da sessao funciona na API v2; as credenciais system UUID/SECRET da skill
+estavam revogadas). Para re-sincronizar: gerar novo export pelo navegador e rodar
+`node scripts/migrar-vobi.mjs <arquivo.json>` — e idempotente (upsert por vobi_id).
+API Vobi: docs em https://api.vobi.com.br/v2/docs/ (spec completo extraido em
+D:/temp/vobi_openapi.json). A Vobi continua sendo o sistema operacional do
+financeiro ate decisao de troca — o modulo /admin/financeiro e a visao consolidada.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
