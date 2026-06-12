@@ -26,8 +26,8 @@ export const POST: APIRoute = async ({ request }) => {
     const claims = await requireAdmin(request);
     if (!["admin", "coordenador", "comercial"].includes(claims.role)) return jsonErr(403, "Sem permissão.");
     const body = await request.json();
-    if (!body.nome || !body.email) return jsonErr(400, "Nome e e-mail são obrigatórios.");
-    const campos = ["nome", "nome_loja", "email", "telefone", "plano", "valor", "observacoes", "etapa", "responsavel", "proximo_contato", "origem"];
+    if (!body.nome) return jsonErr(400, "Nome é obrigatório.");
+    const campos = ["nome", "nome_loja", "email", "telefone", "plano", "valor", "observacoes", "etapa", "responsavel", "proximo_contato", "origem", "tipo_cliente"];
     const row: Record<string, unknown> = {};
     for (const c of campos) if (body[c] !== undefined && body[c] !== "") row[c] = body[c];
     if (!row.etapa) row.etapa = "novo";

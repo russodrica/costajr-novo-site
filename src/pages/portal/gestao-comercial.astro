@@ -20,6 +20,7 @@ import Portal from "~/layouts/Portal.astro";
       <div class="gc-stat"><div class="gc-stat-v" id="st-conv" style="color:#16A34A">—</div><div class="gc-stat-l">Convertidos no mês</div></div>
       <div class="gc-stat"><div class="gc-stat-v" id="st-taxa">—</div><div class="gc-stat-l">Taxa de conversão</div></div>
       <div class="gc-stat"><div class="gc-stat-v" id="st-atrasados" style="color:#B91C1C">—</div><div class="gc-stat-l">Contatos atrasados</div></div>
+      <div class="gc-stat"><div class="gc-stat-v" id="st-semcontato" style="color:#D97706">—</div><div class="gc-stat-l">Sem contato +15 dias</div></div>
     </div>
 
     <!-- Kanban -->
@@ -38,7 +39,7 @@ import Portal from "~/layouts/Portal.astro";
           <div class="gc-field"><label>Empresa / Loja</label><input name="nome_loja" /></div>
         </div>
         <div class="gc-row">
-          <div class="gc-field"><label>E-mail *</label><input name="email" type="email" required /></div>
+          <div class="gc-field"><label>E-mail</label><input name="email" type="email" /></div>
           <div class="gc-field"><label>Telefone</label><input name="telefone" /></div>
         </div>
         <div class="gc-row">
@@ -53,6 +54,20 @@ import Portal from "~/layouts/Portal.astro";
             </select>
           </div>
           <div class="gc-field"><label>Origem</label><input name="origem" placeholder="Indicação, site, ligação..." /></div>
+        </div>
+        <div class="gc-row">
+          <div class="gc-field"><label>Tipo de cliente</label>
+            <select name="tipo_cliente">
+              <option value="">—</option>
+              <option>Varejo</option>
+              <option>Hospital</option>
+              <option>Galpão</option>
+              <option>Indústria</option>
+              <option>Condomínio</option>
+              <option>Outro</option>
+            </select>
+          </div>
+          <button type="button" class="gc-btn sec" id="btnContatoHoje" style="align-self:end;margin-bottom:12px" onclick="registrarContato()">📞 Registrar contato hoje</button>
         </div>
         <div class="gc-row">
           <div class="gc-field"><label>Plano / serviço</label><input name="plano" /></div>
@@ -126,6 +141,7 @@ import Portal from "~/layouts/Portal.astro";
     function esc(s: any) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
     function brl(v: any) { return v == null ? "" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
     function diasDesde(d: string) { return Math.floor((Date.now() - new Date(d).getTime()) / 864e5); }
+    function diasSemContato(l: any) { const ref = l.ultima_interacao_em || l.updated_at || l.created_at; return ref ? diasDesde(ref) : 999; }
 
     async function carregar() {
       const res = await fetch("/api/portal/comercial/leads", { headers: { "x-portal-auth": token! } });
@@ -161,6 +177,8 @@ import Portal from "~/layouts/Portal.astro";
       (document.getElementById("st-conv") as HTMLElement).textContent = String(convMes);
       (document.getElementById("st-taxa") as HTMLElement).textContent = taxa + "%";
       (document.getElementById("st-atrasados") as HTMLElement).textContent = String(atrasados);
+      const semContato15 = noFunil.filter(l => diasSemContato(l) > 15).length;
+      (document.getElementById("st-semcontato") as HTMLElement).textContent = String(semContato15);
 
       const kb = document.getElementById("kanban")!;
       kb.innerHTML = ETAPAS.map(e => {
@@ -172,7 +190,9 @@ import Portal from "~/layouts/Portal.astro";
             ${l.nome_loja ? `<div class="loja">${esc(l.nome_loja)}</div>` : ""}
             ${l.valor != null ? `<div class="valor">${brl(l.valor)}${l.plano ? ` · ${esc(l.plano)}` : ""}</div>` : (l.plano ? `<div class="loja">${esc(l.plano)}</div>` : "")}
             <div class="meta">
+              ${l.tipo_cliente ? `<span>🏢 ${esc(l.tipo_cliente)}</span>` : ""}
               ${l.responsavel ? `<span>👤 ${esc(String(l.responsavel).split("@")[0])}</span>` : ""}
+              ${(() => { const d = diasSemContato(l); return d > 15 && !["convertido","perdido"].includes(l.etapa) ? `<span class="${d > 30 ? "atrasado" : ""}" style="${d <= 30 ? "color:#D97706;font-weight:700" : ""}">⏰ ${d}d sem contato</span>` : ""; })()}
               ${l.proximo_contato ? `<span class="${l.proximo_contato < hoje ? "atrasado" : ""}">📞 ${l.proximo_contato.slice(8, 10)}/${l.proximo_contato.slice(5, 7)}${l.proximo_contato < hoje ? " atrasado" : ""}</span>` : ""}
               <span>há ${diasDesde(l.created_at)}d</span>
             </div>
@@ -232,6 +252,13 @@ import Portal from "~/layouts/Portal.astro";
       document.getElementById("modalLead")!.classList.add("open");
     }
     function fecharModalLead() { document.getElementById("modalLead")!.classList.remove("open"); }
+    async function registrarContato() {
+      const f = document.getElementById("formLead") as HTMLFormElement;
+      const id = (f.querySelector("[name=id]") as HTMLInputElement).value;
+      if (!id) { alert("Salve o lead primeiro."); return; }
+      const res = await fetch("/api/portal/comercial/leads?id=" + id, { method: "PATCH", headers: H, body: JSON.stringify({ ultima_interacao_em: new Date().toISOString() }) });
+      if (res.ok) { fecharModalLead(); carregar(); } else alert("Erro ao registrar contato.");
+    }
 
     document.getElementById("formLead")?.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -250,6 +277,7 @@ import Portal from "~/layouts/Portal.astro";
     (window as any).abrirNovoLead = abrirNovoLead;
     (window as any).editarLead = editarLead;
     (window as any).fecharModalLead = fecharModalLead;
+    (window as any).registrarContato = registrarContato;
     carregar();
   </script>
 </Portal>
