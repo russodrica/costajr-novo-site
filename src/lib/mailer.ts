@@ -372,3 +372,46 @@ export async function enviarEmailSuporteAdmin(args: {
     }),
   });
 }
+
+export async function enviarLembretePagamento(args: {
+  email: string;
+  nome: string;
+  referencia: string;
+  valor: number;
+  vencimento: string; // dd/mm/aaaa
+  situacao: "vence_em_breve" | "vence_hoje" | "atrasado";
+}) {
+  const titulos = {
+    vence_em_breve: "Seu pagamento vence em breve",
+    vence_hoje: "Seu pagamento vence hoje",
+    atrasado: "Pagamento em aberto — evite a suspensão do plano",
+  } as const;
+  const mensagens = {
+    vence_em_breve: `O pagamento do seu plano de manutenção (referência ${args.referencia}) vence em ${args.vencimento}.`,
+    vence_hoje: `O pagamento do seu plano de manutenção (referência ${args.referencia}) vence hoje, ${args.vencimento}.`,
+    atrasado: `Identificamos que o pagamento do seu plano de manutenção (referência ${args.referencia}), vencido em ${args.vencimento}, ainda está em aberto.`,
+  } as const;
+  const valorFmt = args.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return sendOrThrow({
+    to: args.email,
+    subject: `${titulos[args.situacao]} — Costa Júnior`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#fff">
+        <img src="${SITE}/logo-cjr.png" alt="Costa Júnior" style="height:48px;margin-bottom:24px">
+        <h2 style="color:#2D2F36;margin:0 0 8px">Olá, ${args.nome}!</h2>
+        <p style="color:#5B5F6B;margin:0 0 16px">${mensagens[args.situacao]}</p>
+        <div style="background:#F4F6F9;border-radius:8px;padding:20px;text-align:center;margin-bottom:24px">
+          <span style="font-size:26px;font-weight:700;color:#C41E3A">${valorFmt}</span>
+        </div>
+        <a href="${SITE}/manutencao/cliente/login"
+           style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px">
+          Acessar o portal e pagar
+        </a>
+        <p style="color:#9CA3AF;font-size:12px;margin-top:32px">
+          Se o pagamento já foi feito, desconsidere este aviso.<br>
+          Costa Júnior — Engenharia e Construções Ltda
+        </p>
+      </div>
+    `,
+  });
+}

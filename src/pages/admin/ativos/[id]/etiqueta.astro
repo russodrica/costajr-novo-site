@@ -1,0 +1,77 @@
+---
+import { verifyToken, type AdminClaims } from "../../../../lib/auth";
+import { supabaseAdmin } from "../../../../lib/supabase";
+import QRCode from "qrcode";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { return Astro.redirect("/admin/login"); }
+
+const id = Astro.params.id!;
+const db = supabaseAdmin();
+const { data: ativo } = await db.from("ativos").select("*").eq("id", id).maybeSingle();
+if (!ativo) return Astro.redirect("/admin/ativos");
+
+const urlAtivo = `https://costajr.com.br/admin/ativos/${id}`;
+const qrDataUrl = await QRCode.toDataURL(urlAtivo, { width: 360, margin: 1, color: { dark: "#1E2128", light: "#FFFFFF" } });
+
+const categorias: Record<string, string> = {
+  telefonia: "Telefonia", informatica: "Informática", equipamento_obra: "Equip. de Obra",
+  epi: "EPI", veiculo: "Veículo", mobiliario: "Mobiliário", outros: "Outros",
+};
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Etiqueta — {ativo.descricao}</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; background: #F2F4F8; display: flex; flex-direction: column; align-items: center; padding: 32px 16px; gap: 20px; }
+    .acoes { display: flex; gap: 10px; }
+    .btn { padding: 10px 22px; border-radius: 8px; border: 0; cursor: pointer; font-weight: 700; font-size: 14px; }
+    .btn-print { background: #C41E3A; color: #fff; }
+    .btn-voltar { background: #fff; color: #374151; border: 1px solid #D1D5DB; text-decoration: none; display: inline-flex; align-items: center; }
+    .etiqueta {
+      background: #fff; border: 2px solid #1E2128; border-radius: 10px;
+      width: 320px; padding: 16px; text-align: center;
+    }
+    .etq-marca { font-size: 13px; font-weight: 800; color: #C41E3A; letter-spacing: .5px; border-bottom: 2px solid #C41E3A; padding-bottom: 6px; margin-bottom: 10px; }
+    .etq-qr { width: 180px; height: 180px; }
+    .etq-desc { font-size: 13.5px; font-weight: 700; color: #1E2128; margin-top: 8px; line-height: 1.3; }
+    .etq-meta { font-size: 11px; color: #444; margin-top: 6px; line-height: 1.5; }
+    .etq-pat { font-size: 16px; font-weight: 800; color: #1E2128; margin-top: 6px; letter-spacing: .5px; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .acoes, .dica { display: none !important; }
+      .etiqueta { border-radius: 0; margin: 4mm; page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="acoes">
+    <a class="btn btn-voltar" href={`/admin/ativos/${id}`}>← Voltar ao ativo</a>
+    <button class="btn btn-print" onclick="window.print()">🖨️ Imprimir etiqueta</button>
+  </div>
+
+  <div class="etiqueta">
+    <div class="etq-marca">COSTA JÚNIOR ENGENHARIA — PATRIMÔNIO</div>
+    <img class="etq-qr" src={qrDataUrl} alt="QR code do ativo" />
+    <div class="etq-desc">{ativo.descricao}</div>
+    <div class="etq-meta">
+      {categorias[ativo.categoria] || ativo.categoria}
+      {ativo.marca || ativo.modelo ? ` · ${[ativo.marca, ativo.modelo].filter(Boolean).join(" ")}` : ""}
+      {ativo.numero_serie ? <><br/>S/N: {ativo.numero_serie}</> : null}
+    </div>
+    {ativo.numero_patrimonial && <div class="etq-pat">PAT. {ativo.numero_patrimonial}</div>}
+  </div>
+
+  <p class="dica" style="font-size:12.5px;color:#6B7280;max-width:340px;text-align:center">
+    Cole a etiqueta no equipamento. Ao escanear o QR, a equipe autorizada abre a ficha completa
+    do ativo com histórico, termo e movimentações.
+  </p>
+</body>
+</html>

@@ -62,6 +62,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       {ativo.descricao}
       <span class={`badge ${statusBadge[ativo.status] || "badge-gray"}`}>{statusLabels[ativo.status] || ativo.status}</span>
     </span>
+    <a class="btn btn-outline" href={`/admin/ativos/${id}/etiqueta`}>🏷️ Etiqueta QR</a>
     <button class="btn btn-secondary" onclick="abrirModal('modalEditar')">✏️ Editar dados</button>
   </div>
 

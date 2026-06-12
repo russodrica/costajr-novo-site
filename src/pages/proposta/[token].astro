@@ -1,0 +1,133 @@
+---
+// Página PÚBLICA de aceite de proposta comercial (acessada pelo link enviado ao cliente).
+export const prerender = false;
+import { supabaseAdmin } from "~/lib/supabase";
+
+const token = Astro.params.token!;
+const db = supabaseAdmin();
+const { data: p } = await db.from("com_propostas").select("*").eq("token", token).maybeSingle();
+
+const hoje = new Date().toISOString().slice(0, 10);
+const expirada = p?.valido_ate && p.valido_ate < hoje && p.status !== "aceita";
+function fmtMoney(v: number | null) { if (v == null) return "—"; return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtData(d: string | null) { if (!d) return "—"; return new Date(d + "T12:00:00").toLocaleDateString("pt-BR"); }
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Proposta Comercial — Costa Júnior Engenharia</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Open Sans', sans-serif; background: #F2F4F8; color: #1E2128; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .cartao { background: #fff; border-radius: 16px; box-shadow: 0 10px 40px rgba(16,24,40,.1); max-width: 560px; width: 100%; overflow: hidden; }
+    .topo { background: linear-gradient(135deg, #1A1C20, #3A1419); color: #fff; padding: 26px 30px; }
+    .topo .marca { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px; color: #FF5A73; letter-spacing: 1px; }
+    .topo h1 { font-family: 'Montserrat', sans-serif; font-size: 21px; margin-top: 8px; }
+    .corpo { padding: 28px 30px; }
+    .linha { display: flex; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid #F3F4F6; font-size: 14.5px; }
+    .linha dt { color: #6B7280; font-weight: 600; }
+    .linha dd { font-weight: 700; text-align: right; }
+    .valor { font-family: 'Montserrat', sans-serif; font-size: 28px; color: #C41E3A; }
+    .obs { background: #F8F9FB; border-radius: 10px; padding: 14px 16px; font-size: 13.5px; color: #444; margin: 16px 0; white-space: pre-wrap; }
+    .acoes { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+    .btn { padding: 14px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 800; font-size: 15px; font-family: 'Montserrat', sans-serif; transition: .15s; }
+    .btn:hover { opacity: .9; }
+    .btn-aceitar { background: #16A34A; color: #fff; }
+    .btn-recusar { background: #fff; color: #B91C1C; border: 1.5px solid #FCA5A5; }
+    .btn-pdf { background: #F3F4F6; color: #374151; text-decoration: none; text-align: center; display: block; }
+    input, textarea { width: 100%; padding: 12px; border: 1.5px solid #D1D5DB; border-radius: 10px; font-size: 14.5px; font-family: 'Open Sans', sans-serif; outline: none; margin-bottom: 10px; }
+    input:focus, textarea:focus { border-color: #C41E3A; }
+    .status-final { text-align: center; padding: 28px 10px; }
+    .status-final .icone { font-size: 52px; }
+    .status-final h2 { font-family: 'Montserrat', sans-serif; margin: 12px 0 6px; }
+    .status-final p { color: #6B7280; font-size: 14px; }
+    .rodape { text-align: center; font-size: 12px; color: #9CA3AF; padding: 0 24px 24px; }
+    .oculto { display: none; }
+  </style>
+</head>
+<body>
+  <div class="cartao">
+    {!p ? (
+      <div class="status-final" style="padding:48px 24px">
+        <div class="icone">🔍</div>
+        <h2>Proposta não encontrada</h2>
+        <p>Verifique o link recebido ou fale com nosso time comercial.</p>
+      </div>
+    ) : (
+      <>
+        <div class="topo">
+          <div class="marca">COSTA JÚNIOR ENGENHARIA</div>
+          <h1>{p.titulo}</h1>
+        </div>
+        <div class="corpo">
+          <dl>
+            <div class="linha"><dt>Cliente</dt><dd>{p.cliente_nome}</dd></div>
+            <div class="linha"><dt>Valor</dt><dd class="valor">{fmtMoney(p.valor)}</dd></div>
+            {p.valido_ate && <div class="linha"><dt>Válida até</dt><dd>{fmtData(p.valido_ate)}</dd></div>}
+          </dl>
+          {p.observacoes && <div class="obs">{p.observacoes}</div>}
+          {p.url_pdf && <a class="btn btn-pdf" href={p.url_pdf} target="_blank" rel="noopener">📄 Ver proposta completa (PDF)</a>}
+
+          {p.status === "aceita" ? (
+            <div class="status-final">
+              <div class="icone">✅</div>
+              <h2>Proposta aceita</h2>
+              <p>Aceita em {new Date(p.aceita_em).toLocaleString("pt-BR")}{p.aceite_nome ? ` por ${p.aceite_nome}` : ""}.<br/>Nosso time entrará em contato para os próximos passos!</p>
+            </div>
+          ) : p.status === "recusada" ? (
+            <div class="status-final">
+              <div class="icone">📋</div>
+              <h2>Proposta recusada</h2>
+              <p>Se mudou de ideia ou quer renegociar, fale com a gente!</p>
+            </div>
+          ) : expirada ? (
+            <div class="status-final">
+              <div class="icone">⏰</div>
+              <h2>Proposta expirada</h2>
+              <p>O prazo de validade terminou. Fale com nosso comercial para uma proposta atualizada.</p>
+            </div>
+          ) : (
+            <div class="acoes" id="acoes">
+              <input id="nome" placeholder="Seu nome completo (responsável pelo aceite)" />
+              <button class="btn btn-aceitar" onclick="decidir('aceitar')">✓ Aceitar proposta</button>
+              <button class="btn btn-recusar" onclick="mostrarRecusa()">Recusar</button>
+              <div id="boxRecusa" class="oculto">
+                <textarea id="motivo" rows="3" placeholder="Conte o motivo (opcional) — nos ajuda a melhorar"></textarea>
+                <button class="btn btn-recusar" style="width:100%" onclick="decidir('recusar')">Confirmar recusa</button>
+              </div>
+              <p id="msg" style="font-size:13px;color:#B91C1C"></p>
+            </div>
+          )}
+        </div>
+        <div class="rodape">O aceite eletrônico registra data, hora e IP, e tem valor de manifestação de vontade.<br/>Costa Júnior Engenharia e Construções · costajr.com.br</div>
+      </>
+    )}
+  </div>
+
+  <script is:inline define:vars={{ token }}>
+    function mostrarRecusa() { document.getElementById("boxRecusa").classList.remove("oculto"); }
+    async function decidir(acao) {
+      const nome = document.getElementById("nome").value.trim();
+      if (acao === "aceitar" && !nome) { document.getElementById("msg").textContent = "Informe seu nome para registrar o aceite."; return; }
+      const motivo = document.getElementById("motivo")?.value?.trim() || "";
+      const res = await fetch(`/api/proposta/${token}/decidir`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ acao, nome, motivo }),
+      });
+      if (res.ok) window.location.reload();
+      else {
+        const d = await res.json().catch(() => ({}));
+        document.getElementById("msg").textContent = d.error || "Erro ao registrar. Tente novamente.";
+      }
+    }
+    window.decidir = decidir;
+    window.mostrarRecusa = mostrarRecusa;
+  </script>
+</body>
+</html>

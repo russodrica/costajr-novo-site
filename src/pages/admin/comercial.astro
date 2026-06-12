@@ -205,6 +205,7 @@ function jsonSafe(v: unknown) { return JSON.stringify(v ?? []).replace(/</g, "\\
                 <td>{fmtDate(p.created_at)}</td>
                 <td>
                   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    {p.token && <button class="btn btn-info btn-sm" onclick={`copiarLinkProposta('${p.token}')`} title="Copia o link público onde o cliente aceita ou recusa a proposta">🔗 Link de aceite</button>}
                     <button class="btn btn-secondary btn-sm" onclick={`editarProposta('${p.id}')`}>Editar</button>
                     <select class="filter-select" style="padding:3px 8px;font-size:0.78rem" onchange={`mudarStatusProposta('${p.id}', this.value); this.selectedIndex=0`}>
                       <option value="">— status —</option>
@@ -509,6 +510,14 @@ function jsonSafe(v: unknown) { return JSON.stringify(v ?? []).replace(/</g, "\\
     (window as any).abrirModalMeta = abrirModalMeta;
     (window as any).abrirLead = abrirLead;
     (window as any).abrirNovaProposta = abrirNovaProposta;
+    function copiarLinkProposta(token) {
+      const link = `${window.location.origin}/proposta/${token}`;
+      navigator.clipboard.writeText(link).then(
+        () => alert("Link de aceite copiado!\n\n" + link + "\n\nEnvie ao cliente por e-mail ou WhatsApp — ele aceita ou recusa direto pelo link."),
+        () => prompt("Copie o link de aceite:", link)
+      );
+    }
+    (window as any).copiarLinkProposta = copiarLinkProposta;
     (window as any).editarProposta = editarProposta;
     (window as any).mudarStatusProposta = mudarStatusProposta;
   </script>

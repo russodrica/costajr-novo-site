@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/cashback-renovacao",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/regua-cobranca",
+      "schedule": "0 12 * * *"
     }
   ],
   "headers": [
