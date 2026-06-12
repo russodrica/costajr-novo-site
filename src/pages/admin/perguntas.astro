@@ -1,0 +1,138 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const [{ data: pendentes }, { data: respondidas }] = await Promise.all([
+  db.from("portal_pending_questions").select("*").eq("status", "pending").order("created_at", { ascending: false }),
+  db.from("portal_pending_questions").select("*").eq("status", "answered").order("answered_at", { ascending: false }).limit(30),
+]);
+
+const categorias = ["Geral", "Administrativo", "Financeiro", "Trabalhista", "Segurança do Trabalho", "RH", "Recrutamento", "Comercial", "Operacional"];
+function fmtDT(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
+---
+<Admin title="Perguntas (JunIA)" current="perguntas">
+
+  <div class="section-header">
+    <span class="section-title">⏳ Aguardando resposta ({pendentes?.length ?? 0})</span>
+  </div>
+  <div id="msgResp"></div>
+
+  {pendentes?.length ? (
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:28px">
+      {pendentes.map((p: any) => (
+        <div class="card" style="border-left:4px solid #D9A406">
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:240px">
+              <div style="font-weight:700;font-size:.95rem">{p.question}</div>
+              <div style="font-size:.75rem;color:var(--ink-light);margin-top:6px">
+                {p.user_name || "—"} · {fmtDT(p.created_at)}
+                {p.category && <span class="badge badge-blue" style="margin-left:8px">{p.category}</span>}
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:flex-start">
+              <button class="btn btn-primary btn-sm" onclick={`responder('${p.id}')`}>✍️ Responder</button>
+              <button class="btn btn-outline btn-sm" onclick={`ignorar('${p.id}')`}>Ignorar</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : <div class="card" style="margin-bottom:28px"><div class="empty-state"><strong>Tudo respondido! 🎉</strong><p>Quando a JunIA não souber responder, a pergunta aparece aqui.</p></div></div>}
+
+  <div class="section-header"><span class="section-title">✅ Respondidas recentemente</span></div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Pergunta</th><th>Resposta</th><th>Por</th><th>Quando</th><th>KB</th></tr></thead>
+        <tbody>
+          {respondidas?.length ? respondidas.map((p: any) => (
+            <tr>
+              <td style="max-width:240px">{p.question}</td>
+              <td style="max-width:300px;font-size:.8rem;color:var(--ink-mid)">{(p.answer || "").slice(0, 140)}{(p.answer || "").length > 140 ? "…" : ""}</td>
+              <td style="font-size:.78rem">{(p.answered_by || "—").split("@")[0]}</td>
+              <td style="font-size:.78rem">{fmtDT(p.answered_at)}</td>
+              <td>{p.added_to_kb ? <span class="badge badge-green">na KB ✓</span> : <span class="badge badge-gray">—</span>}</td>
+            </tr>
+          )) : <tr><td colspan="5" style="text-align:center;color:#999;padding:24px">Nenhuma resposta ainda</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal responder -->
+  <div class="modal-overlay" id="modalResp">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-title">✍️ Responder pergunta</div>
+      <p id="respPergunta" style="background:var(--bg);border-radius:8px;padding:12px 14px;font-size:.88rem;font-weight:600;margin-bottom:14px"></p>
+      <form id="formResp">
+        <input type="hidden" id="respId" />
+        <div class="form-group"><label>Resposta *</label><textarea id="respTexto" rows="5" required placeholder="Escreva a resposta — ela vai direto para o chat do colaborador"></textarea></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="respKb" checked style="width:16px;height:16px;accent-color:#C41E3A" />
+              Adicionar à base de conhecimento
+            </label>
+            <p style="font-size:11.5px;color:var(--ink-light);margin-top:4px">A JunIA passa a responder isso sozinha — e tenta resolver outras pendências parecidas.</p>
+          </div>
+          <div class="form-group"><label>Categoria</label>
+            <select id="respCat">{categorias.map(c => <option value={c}>{c}</option>)}</select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharResp()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Enviar resposta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script define:vars={{ pendentes: pendentes || [] }}>
+    window.__pendentes = pendentes;
+  </script>
+  <script>
+    function fecharResp() { document.getElementById("modalResp")!.classList.remove("open"); }
+    function responder(id) {
+      const p = (window as any).__pendentes.find((x: any) => x.id === id);
+      if (!p) return;
+      (document.getElementById("respId") as HTMLInputElement).value = id;
+      document.getElementById("respPergunta")!.textContent = p.question;
+      (document.getElementById("respTexto") as HTMLTextAreaElement).value = "";
+      if (p.category) (document.getElementById("respCat") as HTMLSelectElement).value = p.category;
+      document.getElementById("modalResp")!.classList.add("open");
+    }
+    document.getElementById("formResp")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        id: (document.getElementById("respId") as HTMLInputElement).value,
+        resposta: (document.getElementById("respTexto") as HTMLTextAreaElement).value.trim(),
+        adicionar_kb: (document.getElementById("respKb") as HTMLInputElement).checked,
+        categoria: (document.getElementById("respCat") as HTMLSelectElement).value,
+      };
+      const res = await fetch("/api/admin/perguntas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (d.pendentes_reaproveitadas) alert(`Resposta enviada! Ela também resolveu automaticamente ${d.pendentes_reaproveitadas} outra(s) pendência(s) parecida(s). 🎉`);
+        window.location.reload();
+      } else {
+        document.getElementById("msgResp")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao responder"}</div>`;
+        fecharResp();
+      }
+    });
+    async function ignorar(id) {
+      if (!confirm("Ignorar esta pergunta? Ela sai da fila sem resposta ao colaborador.")) return;
+      const res = await fetch("/api/admin/perguntas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, acao: "ignorar" }) });
+      if (res.ok) window.location.reload(); else alert("Erro ao ignorar");
+    }
+    (window as any).responder = responder;
+    (window as any).ignorar = ignorar;
+    (window as any).fecharResp = fecharResp;
+  </script>
+</Admin>

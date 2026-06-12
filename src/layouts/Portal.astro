@@ -10,6 +10,7 @@ const icons: Record<string, string> = {
   home:         `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
   onboarding:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
   treinamentos: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
+  junia:        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`,
   forum:        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
   documentos:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
   comercial:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
@@ -33,6 +34,7 @@ const navs: Record<string, { href: string; label: string; id: string; badge?: bo
     { href: "/portal",                    label: "Início",           id: "home"         },
     { href: "/portal/onboarding",         label: "Onboarding",       id: "onboarding",  area: "onboarding" },
     { href: "/portal/treinamentos",       label: "Treinamentos",     id: "treinamentos", area: "treinamentos" },
+    { href: "/portal/junia",              label: "JunIA 🤖",         id: "junia",       area: "forum" },
     { href: "/portal/forum",              label: "Fórum",            id: "forum",       area: "forum" },
     { href: "/portal/documentos",         label: "Documentos",       id: "documentos",  area: "documentos" },
     { href: "/portal/gestao-comercial",   label: "Gest. Comercial",  id: "comercial",   area: "comercial" },
@@ -215,6 +217,40 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
     }
     .btn-refresh:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
     .btn-refresh:disabled { opacity: .5; cursor: not-allowed; }
+    .notif-wrap { position: relative; }
+    .btn-notif {
+      width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border);
+      background: #fff; color: var(--ink-mid); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; position: relative;
+      transition: .15s;
+    }
+    .btn-notif:hover { border-color: var(--brand); color: var(--brand); }
+    .notif-badge {
+      position: absolute; top: -4px; right: -4px; min-width: 17px; height: 17px;
+      border-radius: 99px; background: var(--brand); color: #fff;
+      font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+      padding: 0 4px; border: 2px solid #fff;
+    }
+    .notif-drop {
+      display: none; position: absolute; right: 0; top: 44px; width: 340px; max-width: 90vw;
+      background: #fff; border: 1px solid var(--border); border-radius: 14px;
+      box-shadow: 0 16px 48px rgba(0,0,0,.16); z-index: 200; overflow: hidden;
+    }
+    .notif-drop.open { display: block; }
+    .notif-drop-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px; border-bottom: 1px solid var(--border-light); font-size: 13px;
+    }
+    .notif-drop-head button { background: none; border: 0; color: var(--brand); font-size: 11.5px; font-weight: 700; cursor: pointer; font-family: 'Open Sans', sans-serif; }
+    .notif-list { max-height: 360px; overflow-y: auto; }
+    .notif-item { display: block; padding: 11px 14px; border-bottom: 1px solid var(--border-light); text-decoration: none; color: inherit; cursor: pointer; transition: background .12s; }
+    .notif-item:hover { background: #F7F8FA; }
+    .notif-item.nao-lida { background: #FFF8F0; }
+    .notif-item.nao-lida:hover { background: #FFF1E0; }
+    .notif-item strong { display: block; font-size: 12.5px; color: var(--ink); }
+    .notif-item p { margin: 3px 0 0; font-size: 12px; color: var(--ink-mid); line-height: 1.45; }
+    .notif-item span { display: block; margin-top: 4px; font-size: 10.5px; color: var(--ink-light); }
+    .notif-empty { padding: 22px 14px; text-align: center; font-size: 12.5px; color: var(--ink-light); margin: 0; }
     .topbar-user-avatar {
       width: 34px; height: 34px; border-radius: 50%;
       background: var(--brand); color: #fff;
@@ -442,6 +478,21 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
           <svg id="iconRefresh" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           <span id="labelRefresh">Atualizar</span>
         </button>
+        {tipo === "colaborador" && (
+          <div class="notif-wrap">
+            <button class="btn-notif" id="btnNotif" title="Notificações" aria-label="Notificações">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+            </button>
+            <div class="notif-drop" id="notifDrop">
+              <div class="notif-drop-head">
+                <strong>Notificações</strong>
+                <button id="notifTodas" type="button">Marcar todas como lidas</button>
+              </div>
+              <div class="notif-list" id="notifList"><p class="notif-empty">Carregando...</p></div>
+            </div>
+          </div>
+        )}
         <div class="topbar-user-avatar" id="topbarAvatar" title="">?</div>
       </div>
     </header>
@@ -509,6 +560,72 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
         })
         .catch(aplicarFallback);
     } else aplicarFallback();
+  }
+
+  // ── Notificações (colaborador) ──
+  if (tipo === "colaborador") {
+    const tk2 = localStorage.getItem(tokenKey);
+    const btnN = document.getElementById("btnNotif");
+    const drop = document.getElementById("notifDrop");
+    const badge = document.getElementById("notifBadge");
+    const lista = document.getElementById("notifList");
+    let notifs = [];
+
+    function tempoRel(d) {
+      const min = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
+      if (min < 1) return "agora";
+      if (min < 60) return `há ${min} min`;
+      const h = Math.floor(min / 60);
+      if (h < 24) return `há ${h}h`;
+      return new Date(d).toLocaleDateString("pt-BR");
+    }
+    function escN(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+    function renderNotifs() {
+      if (!lista) return;
+      if (!notifs.length) { lista.innerHTML = '<p class="notif-empty">Nenhuma notificação por aqui. 🔕</p>'; return; }
+      lista.innerHTML = notifs.map(n => `
+        <a class="notif-item ${n.lida ? "" : "nao-lida"}" data-id="${n.id}" data-link="${escN(n.link || "")}">
+          <strong>${escN(n.titulo)}</strong>
+          ${n.mensagem ? `<p>${escN(n.mensagem)}</p>` : ""}
+          <span>${tempoRel(n.created_at)}</span>
+        </a>`).join("");
+      lista.querySelectorAll(".notif-item").forEach(el => {
+        el.addEventListener("click", async (e) => {
+          e.preventDefault();
+          const id = el.getAttribute("data-id");
+          const link = el.getAttribute("data-link");
+          try { await fetch("/api/portal/notificacoes", { method: "PATCH", headers: { "x-portal-auth": tk2, "content-type": "application/json" }, body: JSON.stringify({ id }) }); } catch {}
+          if (link) window.location.href = link; else { el.classList.remove("nao-lida"); carregarNotifs(); }
+        });
+      });
+    }
+
+    async function carregarNotifs() {
+      if (!tk2) return;
+      try {
+        const res = await fetch("/api/portal/notificacoes", { headers: { "x-portal-auth": tk2 } });
+        if (!res.ok) return;
+        const d = await res.json();
+        notifs = d.notificacoes || [];
+        const naoLidas = d.nao_lidas || 0;
+        if (badge) {
+          badge.style.display = naoLidas > 0 ? "flex" : "none";
+          badge.textContent = naoLidas > 9 ? "9+" : String(naoLidas);
+        }
+        renderNotifs();
+      } catch {}
+    }
+
+    btnN?.addEventListener("click", (e) => { e.stopPropagation(); drop?.classList.toggle("open"); });
+    document.addEventListener("click", (e) => { if (drop && !drop.contains(e.target) && e.target !== btnN) drop.classList.remove("open"); });
+    document.getElementById("notifTodas")?.addEventListener("click", async () => {
+      try { await fetch("/api/portal/notificacoes", { method: "PATCH", headers: { "x-portal-auth": tk2, "content-type": "application/json" }, body: JSON.stringify({ todas: true }) }); } catch {}
+      carregarNotifs();
+    });
+
+    carregarNotifs();
+    setInterval(carregarNotifs, 60000);
   }
 
   // ── Logout ──

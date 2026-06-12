@@ -318,6 +318,38 @@ Melhorias implantadas (de docs/benchmark-melhorias.md):
 - Migrations 027 e 028 RODADAS em producao.
 - Pendentes do top 10: #1 D4Sign (aguardando token da conta).
 
+## Atualizacao 12/06/2026 (parte 3) — Plataforma Inteligente de Orcamentos (Comercial)
+
+**Novo projeto estrategico:** transformar a planilha de orcamento padrao em base
+oficial + modulo de orcamentos no portal. Pasta de trabalho:
+`D:\OneDrive - Costa Jr\Comercial\3_Propostas\_EM ANDAMENTO\!_PASTA PADRAO\ORÇAMENTO BASE\`
+
+**Feito em 12/06/2026 (Etapas 1 e 7 do plano):**
+- Estrutura de pastas criada (Banco de Dados, Composições, SINAPI, SICRO, Modelos,
+  Propostas, Cronogramas, Fluxo Financeiro, Templates, Logs).
+- Auditoria dos 1.837 itens da base (abas Civil 814, Elétrica 587, Hidráulica 322,
+  Ar Condicionado 114 do `ORÇAMENTO xxxx_NOME CLIENTE_ESCOPO_R00.xlsx`):
+  19 grupos mesmo-nome-preco-diferente (pior caso: R$ 39.829 de divergencia),
+  6 duplicados exatos, 103 quase-duplicados, 23 grafias de unidade, item EL597
+  duplicando H234 em disciplina errada.
+- Gerada `Banco de Dados\BASE_MESTRE_SERVICOS_v1.xlsx`: CADASTRO_SERVICOS
+  padronizado (+ colunas SINAPI/SICRO vazias p/ Etapa 2), PARAMETROS_BDI,
+  CAD_EQUIPAMENTOS/EQUIPES/INSUMOS (Etapa 3, vazios), DE_PARA_UNIDADES,
+  AUDITORIA (141 achados com gravidade e acao recomendada).
+- Plano executivo das Etapas 2-8 em `PLANO_EXECUTIVO_PLATAFORMA_ORCAMENTOS.md`
+  (SINAPI/SICRO, banco Supabase `orc_*`, modulo /admin/orcamentos, geracao de
+  documentos, fluxo financeiro por data de inicio, IA hibrida Claude+embeddings).
+
+**Como funciona o modelo da planilha atual:** quantidades sao digitadas nas abas
+de disciplina; a aba DEFINITIVA puxa via VLOOKUP e aplica multiplicador V3 =
+1 + imposto(25%) + ISS(5%) + resultado(faixa 25-50%) + contingencia(3%) +
+custo financeiro(1,5%) + indireto(15,5%) + grau de risco(0-50%). Parametros vem
+da `COMPOSIÇÃO_CUSTO.xlsx`. Template de proposta = PPTX de 11 slides na mesma pasta.
+
+**PENDENTE (bloqueia base v2):** equipe revisar aba AUDITORIA e definir precos
+unicos para os 19 grupos divergentes. Proximas fases: banco Supabase + CRUD,
+montador de orcamento, SINAPI, IA de leitura de PDF, geracao de documentos.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
