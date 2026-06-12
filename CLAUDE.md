@@ -350,6 +350,37 @@ da `COMPOSIÇÃO_CUSTO.xlsx`. Template de proposta = PPTX de 11 slides na mesma 
 unicos para os 19 grupos divergentes. Proximas fases: banco Supabase + CRUD,
 montador de orcamento, SINAPI, IA de leitura de PDF, geracao de documentos.
 
+## Atualizacao 12/06/2026 (parte 3) — Ondas Manus: Membros, Comercial e JunIA
+
+Plano por ondas (ordem da Adriana): Membros OK > Comercial OK > JunIA OK >
+Gestao de Conteudo > Onboarding > Obras > Ativos > RH > Financeiro.
+Auditoria completa em docs/auditoria-manus-gaps.md.
+
+**Onda Membros (commit c1f4dc6):** multiplos perfis por usuario
+(portal_profiles.roles text[]), flag trabalhista, avatar, editar/excluir membro,
+central de permissoes /admin/permissoes (matriz portal_permissoes: areas do
+portal + categorias de KB por perfil; lib/permissoes.ts com exigirArea).
+Migrations 030/031 RODADAS. LICAO: Astro 5 CSRF bloqueia POST/PUT/DELETE/PATCH
+sem content-type application/json (403 "Cross-site ... forbidden") — TODO fetch
+non-GET precisa do header.
+
+**Onda Comercial (commits 1394c29/19dfde4):** kanban 6 etapas em
+/portal/gestao-comercial (perfis comerciais), interacoes por lead
+(com_interacoes, migration 032), rankings de vendedores, indicadores do funil.
+
+**Onda JunIA (12/06/2026):** chat inteligente SEM LLM (busca pontuada na KB,
+igual ao Manus). /portal/junia (conversas, sugestoes, msg pendente com borda
+amarela), /admin/perguntas (fila de pendencias; responder envia pro chat do
+colaborador + notifica + opcional adiciona a KB + re-analise automatica de
+pendencias parecidas), sino de notificacoes no topo do portal
+(portal_notificacoes, badge + dropdown, polling 60s). Motor em src/lib/junia.ts:
+deteccao de categoria por keywords, score (pergunta exata +10, resposta +5,
+keyword +3/+1, threshold 6), filtro por categorias_kb do perfil,
+redirecionamentos (financeiro → Vobi, RH → DP, recrutamento → R&S), gate
+trabalhista. Migration 033 RODADA. QA E2E 13/13 em producao (scripts/qa-junia.mjs
+e qa-junia-fin.mjs): pergunta de categoria restrita redireciona p/ operacional
+e responde da KB p/ perfil financeiro (by design).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
