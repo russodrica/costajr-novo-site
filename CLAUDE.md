@@ -236,8 +236,28 @@ Importados: 250 categorias, 226 projetos→obras, 24.161 lancamentos (1.941 rece
 estavam revogadas). Para re-sincronizar: gerar novo export pelo navegador e rodar
 `node scripts/migrar-vobi.mjs <arquivo.json>` — e idempotente (upsert por vobi_id).
 API Vobi: docs em https://api.vobi.com.br/v2/docs/ (spec completo extraido em
-D:/temp/vobi_openapi.json). A Vobi continua sendo o sistema operacional do
-financeiro ate decisao de troca — o modulo /admin/financeiro e a visao consolidada.
+D:/temp/vobi_openapi.json). Credenciais system validas no .env (VOBI_UUID/VOBI_SECRET).
+
+**OBJETIVO ESTRATEGICO (decisao da Adriana em 11/06/2026): ELIMINAR a Vobi e ter
+plataforma propria.** Mapeamento de uso real da Vobi (via API): Financeiro 26k
+lancamentos (pesado), orcamentos de obra refurbish-items 500+, biblioteca de itens
+500+, 28 templates, tarefas 500+, anotacoes 480, diario de obra 7. NAO usam:
+pedidos de compra (0), cotacoes (0), medicoes (0), estoque (0), propostas (1).
+Cadastros: 2.542 fornecedores + 453 clientes.
+
+Plano de substituicao por fases (a executar):
+- Fase A: Cadastros (fornecedores/clientes como entidades) + Financeiro operacional
+  (contas bancarias, anexos, recorrencia, DRE, centro de custo) + importar
+  fornecedores/clientes completos da Vobi
+- Fase B: Orcamentos de obra (biblioteca de composicoes, orcamento por obra com BDI,
+  proposta em PDF) + importar biblioteca e orcamentos da Vobi
+- Fase C: Planejamento (cronograma/tarefas por obra, diario de obra, anotacoes)
+- Fase D: rodar em paralelo, sincronizacao final, cancelar assinatura Vobi
+
+**Videos de treinamento re-hospedados no YouTube do canal CJR (11/06/2026, nao
+listados):** Fusao Santander = youtu.be/cVrim8iT4YM, Liberacao de Acesso Santander
+= youtu.be/INC3RDHqpEk. URLs atualizadas em portal_treinamentos_videos. O player
+do portal converte links do YouTube em embed automaticamente.
 
 ## Convencoes desta pasta para o Claude Code
 
