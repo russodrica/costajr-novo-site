@@ -1,0 +1,88 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { d4signConfigurado, listarCofres, listarDocumentos, D4_STATUS } from "../../lib/d4sign";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const configurada = d4signConfigurado();
+let cofres: any[] = [];
+let documentos: any[] = [];
+let erro: string | null = null;
+const cofreFiltro = Astro.url.searchParams.get("cofre") || "";
+
+if (configurada) {
+  try {
+    cofres = await listarCofres();
+    documentos = await listarDocumentos(cofreFiltro || undefined);
+  } catch (e: any) {
+    erro = e.message;
+  }
+}
+
+const statusBadge: Record<string, string> = { "1": "badge-gray", "2": "badge-yellow", "3": "badge-orange", "4": "badge-green", "5": "badge-blue", "6": "badge-red", "7": "badge-gray" };
+---
+<Admin title="Assinaturas (D4Sign)" current="assinaturas">
+
+  {!configurada && (
+    <div class="card" style="max-width:720px">
+      <div class="section-title" style="margin-bottom:10px">🔌 Conectar a D4Sign</div>
+      <p style="font-size:.9rem;color:var(--ink-mid);line-height:1.7">
+        A integração está <strong>pronta no código</strong>, faltando apenas o Token da API.<br/><br/>
+        1. No painel da D4Sign, acesse <strong>Dev (API) → Meus Dados da API</strong>.<br/>
+        2. O campo <strong>tokenAPI</strong> da sua conta está vazio — solicite a <strong>ativação da API</strong> ao
+        suporte/comercial da D4Sign (suporte@d4sign.com.br). É um recurso do plano; peça também aumento do
+        limite de requisições/hora.<br/>
+        3. Com o token em mãos, adicione <code>D4SIGN_TOKEN=...</code> nas variáveis de ambiente da Vercel
+        (Settings → Environment Variables) e no <code>.env</code> local.<br/><br/>
+        A partir daí esta página lista os documentos dos cofres, e os termos de responsabilidade de
+        equipamentos ganham o botão <strong>"Enviar p/ assinatura D4Sign"</strong> — o colaborador recebe por
+        e-mail e assina com validade jurídica.
+      </p>
+    </div>
+  )}
+
+  {configurada && erro && <div class="alert alert-error">Erro ao consultar a D4Sign: {erro}</div>}
+
+  {configurada && !erro && (
+    <>
+      <div class="toolbar">
+        <span class="toolbar-title">Documentos ({documentos.length})</span>
+        <select class="filter-select" onchange="filtrarCofre(this.value)">
+          <option value="" selected={!cofreFiltro}>Todos os cofres</option>
+          {cofres.map((c: any) => <option value={c.uuid_safe} selected={c.uuid_safe === cofreFiltro}>{c["name-safe"]}</option>)}
+        </select>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Documento</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {documentos.length ? documentos.map((d: any) => (
+                <tr>
+                  <td><strong>{d.nameDoc}</strong></td>
+                  <td><span class={`badge ${statusBadge[d.statusId] || "badge-gray"}`}>{D4_STATUS[d.statusId] || d.statusName}</span></td>
+                  <td style="text-align:right">
+                    <a class="btn btn-secondary btn-sm" href={`https://secure.d4sign.com.br/desk`} target="_blank" rel="noopener">Abrir na D4Sign ↗</a>
+                  </td>
+                </tr>
+              )) : <tr><td colspan="3"><div class="empty-state"><strong>Nenhum documento</strong></div></td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  )}
+
+  <script>
+    function filtrarCofre(v) {
+      const url = new URL(window.location.href);
+      if (v) url.searchParams.set("cofre", v); else url.searchParams.delete("cofre");
+      window.location.href = url.toString();
+    }
+    (window as any).filtrarCofre = filtrarCofre;
+  </script>
+</Admin>

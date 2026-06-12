@@ -204,7 +204,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
             {documentos.length ? documentos.map(d => (
               <tr>
                 <td><strong>{d.rh_colaboradores?.nome || "—"}</strong></td>
-                <td>{d.url ? <a href={d.url} target="_blank" rel="noopener">{d.titulo}</a> : d.titulo}</td>
+                <td>{(d.storage_path || d.url) ? <a href={`/api/admin/rh/documentos/${d.id}/arquivo`} target="_blank" rel="noopener" title="Abre via link seguro temporário">📎 {d.titulo}</a> : d.titulo}</td>
                 <td><span class={`badge ${badgeTipoDoc[d.tipo] || "badge-gray"}`}>{tiposDoc[d.tipo] || d.tipo}</span></td>
                 <td class={classValidade(d.validade)}>
                   {fmtData(d.validade)}

@@ -259,6 +259,41 @@ listados):** Fusao Santander = youtu.be/cVrim8iT4YM, Liberacao de Acesso Santand
 = youtu.be/INC3RDHqpEk. URLs atualizadas em portal_treinamentos_videos. O player
 do portal converte links do YouTube em embed automaticamente.
 
+## Atualizacao 12/06/2026 — Monday, D4Sign e seguranca/LGPD
+
+**Importacao Monday (concluida):** board "RH" (6629107099) do Monday importado:
+96 colaboradores -> rh_colaboradores (upsert por monday_id) e 306 documentos
+(RG/CNH/ASO/EPI/NRs/contratos) baixados e re-hospedados no bucket PRIVADO `rh`
+do Supabase Storage -> rh_documentos (upsert por monday_asset_id, com validade).
+Script: scripts/importar-rh-monday.mjs (depende de exports em D:/temp gerados
+via MCP do Monday). Acesso aos arquivos: somente via
+/api/admin/rh/documentos/[id]/arquivo (admin autenticado -> URL assinada 10min).
+PENDENTE: board "DOCUMENTOS EMPRESA" (6803034312) ainda nao importado.
+
+**D4Sign (codigo pronto, aguardando token):** a conta D4Sign da Adriana NAO tem
+token de API gerado (campo vazio no menu Dev API) — precisa pedir ativacao ao
+suporte/comercial da D4Sign. Quando chegar: D4SIGN_TOKEN no .env + Vercel env.
+Integracao: src/lib/d4sign.ts (cofres, upload, signatarios, envio, webhook,
+download), src/lib/termoPdf.ts (gera PDF do termo com pdf-lib),
+POST /api/admin/termos/[id]/enviar-d4sign (botao na tela do ativo),
+POST /api/d4sign/webhook (atualiza status/aceite), /admin/assinaturas (lista
+documentos dos cofres; mostra instrucoes de setup quando sem token).
+Migrations 025 (d4sign_* em ativos_termos) e 026 (monday_id/storage_path) RODADAS.
+
+**Seguranca/LGPD (estado em 12/06/2026):**
+- Buckets: `rh` PRIVADO (docs pessoais sensiveis); preventivas/materiais/chamados/
+  portal publicos (operacionais; URLs nao enumeraveis). RECOMENDACAO futura:
+  tornar `materiais` privado (comprovantes de pagamento).
+- Headers de seguranca adicionados no vercel.json (nosniff, X-Frame-Options,
+  HSTS, Referrer-Policy, noindex em /admin e /portal).
+- RLS habilitado em todas as tabelas; acesso so via service role no backend.
+- MELHORIAS RECOMENDADAS (nao feitas): trocar hash de senha SHA256+salt fixo por
+  bcrypt/argon2 (exige migracao gradual); rate limiting nos logins; CORS dos
+  endpoints JSON usa allow-origin * (cookies SameSite mitigam CSRF).
+
+**Benchmark de mercado:** relatorio completo em docs/benchmark-melhorias.md
+(gap analysis vs Sienge/Convenia/CV CRM/Mobuss/Fracttal + top 10 melhorias).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.

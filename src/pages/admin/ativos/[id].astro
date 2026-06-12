@@ -135,7 +135,13 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
                         ? <span class="badge badge-yellow">Aguardando aceite</span>
                         : <span class="badge badge-gray">Cancelado</span>}
                   </td>
-                  <td><button class="btn btn-secondary btn-sm" onclick={`verTermo('${t.id}')`}>Ver / imprimir</button></td>
+                  <td style="white-space:nowrap">
+                    <button class="btn btn-secondary btn-sm" onclick={`verTermo('${t.id}')`}>Ver / imprimir</button>
+                    {t.status === "pendente" && !t.d4sign_uuid && (
+                      <button class="btn btn-info btn-sm" onclick={`enviarD4Sign('${t.id}')`} title="Envia para assinatura com validade jurídica via D4Sign">✍️ D4Sign</button>
+                    )}
+                    {t.d4sign_uuid && <span class="badge badge-blue" title="Enviado para assinatura via D4Sign">D4Sign ✓</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -550,9 +556,18 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       w.print();
     }
 
+    async function enviarD4Sign(termoId) {
+      if (!confirm("Enviar este termo para assinatura via D4Sign? O colaborador receberá o documento por e-mail.")) return;
+      const res = await fetch(`/api/admin/termos/${termoId}/enviar-d4sign`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const d = await res.json();
+      if (res.ok) { alert("Termo enviado para assinatura!"); window.location.reload(); }
+      else alert(d.error || "Erro ao enviar para a D4Sign");
+    }
+
     (window as any).fecharModais = fecharModais;
     (window as any).abrirModal = abrirModal;
     (window as any).verTermo = verTermo;
     (window as any).imprimirTermo = imprimirTermo;
+    (window as any).enviarD4Sign = enviarD4Sign;
   </script>
 </Admin>
