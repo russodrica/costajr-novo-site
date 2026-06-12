@@ -191,6 +191,43 @@ Já está usando Claude Code com vários MCPs configurados (Wix, Vobi, Monday, M
 
 ---
 
+## Atualizacao 11/06/2026 — Melhorias do PDF + modulos de gestao empresarial
+
+**Correcoes aplicadas (PDF de melhorias):**
+- Membros/Materiais/Alt. Preco Estoque: filtro padrao escondia registros — agora padrao "todos" com contadores
+- admin/leads usava coluna inexistente `status_crm` — corrigido para `etapa`
+- Dashboard buscava leads na tabela errada (`leads` em vez de `manut_leads`)
+- "Analytics" renomeado para "Analise do Site"
+
+**Causa raiz do portal colaborador vazio:** a migration `004_portal_colaborador.sql`
+nunca tinha sido rodada em producao. Aplicada em 11/06/2026 junto com as novas
+(020-023) via SQL Editor. **Migrations 004, 020, 021, 022, 023 = RODADAS em producao.**
+
+**Conteudo do Manus importado** via `scripts/importar-conteudo-manus.mjs` (idempotente):
+36 Q&As na base de conhecimento, video institucional + 8 PDFs de politicas
+(onboarding + documentos, re-hospedados no bucket `portal` do Supabase Storage),
+3 treinamentos Santander. ATENCAO: os 2 videos de treinamento grandes (Fusao
+Santander 428MB, Liberacao de Acesso 53MB) continuam no CDN do Manus
+(files.manuscdn.com) por excederem o limite de upload do Supabase — se o CDN
+sair do ar, re-hospedar (ex: YouTube nao listado) e atualizar `url_video`.
+
+**Modulos novos (menu "Empresa" no admin):**
+- `/admin/ativos` + `/admin/ativos/[id]` — Ativos Patrimoniais: cadastro por categoria
+  (telefonia/informatica/equip. obra/EPI/veiculo/mobiliario) com campos especificos,
+  movimentacoes auditaveis (tabela `ativos_movimentos`, nunca apagar), termo de
+  responsabilidade gerado na entrega com aceite digital no portal (data/hora/IP),
+  manutencoes, ocorrencias, baixa/descarte. API central: `/api/admin/ativos/[id]/movimentar`
+- `/admin/obras` — Obras & Projetos (ativos podem ser transferidos para obras)
+- `/admin/rh` — RH: ficha do colaborador, ferias/ausencias, documentos com validade, aniversariantes
+- `/admin/financeiro` — contas a pagar/receber (`fin_lancamentos`), categorias, fluxo de
+  caixa consolidado com `manut_pagamentos`
+- `/admin/comercial` — CRM kanban sobre `manut_leads.etapa` com drag & drop, propostas
+  (`com_propostas`), metas mensais (`com_metas`)
+- Portal do Colaborador: `/portal/meus-equipamentos` (equipamentos + aceite de termos)
+
+**Dashboard admin** reformulado: pendencias criticas, KPIs com comparativo mensal,
+graficos CSS puros (sem lib), funil comercial. Layout admin com menu agrupado colapsavel.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.

@@ -55,7 +55,7 @@ async function rest(method, path, body) {
 
 async function tabelaExiste(t) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${t}?select=*&limit=0`, { headers });
-  return res.status === 200;
+  return res.ok; // 200 ou 206 (com linhas)
 }
 
 // ─── Storage ────────────────────────────────────────────────────────────────
@@ -91,6 +91,11 @@ async function migrarArquivo(urlOrigem, destino, contentType) {
     return urlOrigem;
   }
   const buf = Buffer.from(await dl.arrayBuffer());
+  const LIMITE_MB = 45; // limite de upload do Supabase (free tier ~50MB/arquivo)
+  if (buf.length > LIMITE_MB * 1024 * 1024) {
+    console.log(`${(buf.length / 1024 / 1024).toFixed(0)}MB — acima do limite de ${LIMITE_MB}MB, mantendo URL original do Manus`);
+    return urlOrigem;
+  }
   process.stdout.write(`${(buf.length / 1024 / 1024).toFixed(1)}MB ↑ subindo ... `);
   const up = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${destino}`, {
     method: "POST",
