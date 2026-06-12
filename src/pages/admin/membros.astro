@@ -48,7 +48,7 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
         <thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>Status</th><th>Último acesso</th><th>Cadastro</th><th>Ações</th></tr></thead>
         <tbody>
           {membros?.length ? membros.map((m: any) => (
-            <tr>
+            <tr data-membro-id={m.id} data-nome={m.display_name || m.full_name || ""} data-email={m.email || ""}>
               <td><strong>{m.display_name || m.full_name || "—"}</strong></td>
               <td>{m.email}</td>
               <td><span class={`badge ${badgeRole[m.role]}`}>{m.role}</span></td>
@@ -64,7 +64,9 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
                     </>
                   )}
                   <button class="btn btn-secondary btn-sm" onclick={`editarRole('${m.id}','${m.role}')`}>Cargo</button>
+                  <button class="btn btn-secondary btn-sm" onclick={`editarMembro('${m.id}')`}>✏️ Editar</button>
                   <button class="btn btn-info btn-sm" onclick={`resetarSenha('${m.id}')`}>Reset senha</button>
+                  <button class="btn btn-danger btn-sm" onclick={`excluirMembro('${m.id}', '${(m.display_name || m.email || "").replace(/'/g, "")}')`}>🗑</button>
                 </div>
               </td>
             </tr>
@@ -91,6 +93,23 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharModal('modalNovo')">Cancelar</button>
           <button type="submit" class="btn btn-primary">Criar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal editar membro (nome/e-mail) -->
+  <div class="modal-overlay" id="modalEditarMembro">
+    <div class="modal" style="max-width:400px">
+      <div class="modal-title">Editar Membro</div>
+      <div id="msgEditarMembro"></div>
+      <form id="formEditarMembro">
+        <input type="hidden" id="editMembroId" />
+        <div class="form-group"><label>Nome</label><input id="editDisplayName" /></div>
+        <div class="form-group"><label>E-mail</label><input id="editEmail" type="email" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalEditarMembro')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
         </div>
       </form>
     </div>
@@ -169,6 +188,36 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
       else { const d = await res.json(); msg.innerHTML = `<div class="alert alert-error">${d.error}</div>`; }
     });
 
+    // editar nome/e-mail
+    const membrosDados: Record<string, any> = {};
+    document.querySelectorAll("tr[data-membro]").forEach(() => {});
+    function editarMembro(id) {
+      const linha = document.querySelector(`[data-membro-id="${id}"]`);
+      (document.getElementById("editMembroId") as HTMLInputElement).value = id;
+      (document.getElementById("editDisplayName") as HTMLInputElement).value = linha?.getAttribute("data-nome") || "";
+      (document.getElementById("editEmail") as HTMLInputElement).value = linha?.getAttribute("data-email") || "";
+      document.getElementById("modalEditarMembro")!.classList.add("open");
+    }
+    document.getElementById("formEditarMembro")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = (document.getElementById("editMembroId") as HTMLInputElement).value;
+      const body = {
+        display_name: (document.getElementById("editDisplayName") as HTMLInputElement).value.trim(),
+        email: (document.getElementById("editEmail") as HTMLInputElement).value.trim().toLowerCase(),
+      };
+      const res = await fetch(`/api/admin/membros/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else { const d = await res.json().catch(() => ({})); document.getElementById("msgEditarMembro")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`; }
+    });
+
+    async function excluirMembro(id, nome) {
+      if (!confirm(`Excluir o membro "${nome}"?\n\nSe ele tiver histórico (fórum, termos), será apenas desativado. Esta ação não pode ser desfeita.`)) return;
+      const res = await fetch(`/api/admin/membros/${id}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { if (d.aviso) alert(d.aviso); window.location.reload(); }
+      else alert(d.error || "Erro ao excluir");
+    }
+
     (window as any).filtrar = filtrar;
     (window as any).fecharModal = fecharModal;
     (window as any).abrirModalNovo = abrirModalNovo;
@@ -176,5 +225,7 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
     (window as any).aprovar = aprovar;
     (window as any).rejeitar = rejeitar;
     (window as any).resetarSenha = resetarSenha;
+    (window as any).editarMembro = editarMembro;
+    (window as any).excluirMembro = excluirMembro;
   </script>
 </Admin>
