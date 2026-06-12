@@ -94,7 +94,11 @@ const tipoLabel: Record<string, string> = { texto: "Texto", video: "Vídeo", pdf
       </div>
       <div class="form-group">
         <label>URL do Recurso (link, vídeo ou PDF)</label>
-        <input type="url" id="f-url" placeholder="https://...">
+        <div style="display:flex;gap:8px">
+          <input type="url" id="f-url" placeholder="https://..." style="flex:1">
+          <button type="button" class="btn btn-secondary" id="btnUpOnb" onclick="enviarArquivoCJR('f-url','btnUpOnb')">📎 Enviar arquivo</button>
+        </div>
+        <p style="font-size:11.5px;color:var(--ink-light);margin:4px 0 0">Cole um link (YouTube, site) ou clique em "Enviar arquivo" para subir um PDF/imagem.</p>
       </div>
       <div class="form-group">
         <label>Acesso restrito (deixe "all" para todos)</label>
@@ -115,6 +119,7 @@ const tipoLabel: Record<string, string> = { texto: "Texto", video: "Vídeo", pdf
     </div>
   </div>
 
+  <script src="/admin-upload.js" is:inline></script>
   <script>
     function openModal(s?: any) {
       document.getElementById("edit-id")!.value = s?.id || "";

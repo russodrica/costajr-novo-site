@@ -21,7 +21,10 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
 <Admin title="Base de Conhecimento" current="portal-kb">
   <div class="toolbar">
     <span class="toolbar-title">Base de Conhecimento ({kb?.length ?? 0})</span>
-    <button class="btn btn-primary" onclick="openModal()">+ Nova pergunta</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" onclick="abrirImport()">📥 Importar de PDF/URL</button>
+      <button class="btn btn-primary" onclick="openModal()">+ Nova pergunta</button>
+    </div>
   </div>
 
   <div class="card">
@@ -61,7 +64,12 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
       <div class="form-row">
         <div class="form-group">
           <label>Categoria *</label>
-          <input type="text" id="f-cat" placeholder="ex: onboarding, financeiro, operacional">
+          <input type="text" id="f-cat" list="cats-kb" placeholder="ex: Geral, Financeiro, Operacional">
+          <datalist id="cats-kb">
+            <option value="Geral"/><option value="Administrativo"/><option value="Financeiro"/>
+            <option value="Trabalhista"/><option value="Segurança do Trabalho"/><option value="RH"/>
+            <option value="Recrutamento"/><option value="Comercial"/><option value="Operacional"/>
+          </datalist>
         </div>
         <div class="form-group">
           <label>Acesso (roles)</label>
@@ -91,7 +99,95 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
     </div>
   </div>
 
+  <!-- Modal importar PDF/URL -->
+  <div id="modalImport" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>📥 Importar conteúdo para a base</h2>
+        <button onclick="fecharImport()" class="modal-close">✕</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--ink-light);margin:0 0 14px">
+        Envie um PDF (políticas, manuais, normas) ou informe a URL de uma página.
+        O texto é dividido em blocos e a JunIA passa a usá-lo nas respostas.
+      </p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Título do conteúdo *</label>
+          <input type="text" id="imp-titulo" placeholder="ex: Política de EPIs 2026">
+        </div>
+        <div class="form-group">
+          <label>Categoria *</label>
+          <input type="text" id="imp-cat" list="cats-kb" placeholder="ex: Segurança do Trabalho">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Arquivo PDF (máx. 8MB)</label>
+        <input type="file" id="imp-arquivo" accept="application/pdf">
+      </div>
+      <div class="form-group">
+        <label>— ou — URL da página/PDF</label>
+        <input type="url" id="imp-url" placeholder="https://...">
+      </div>
+      <div class="form-group">
+        <label>Acesso (roles)</label>
+        <select id="imp-roles" multiple style="height:80px">
+          <option value="all" selected>Todos (all)</option>
+          <option value="admin">Admin</option>
+          <option value="coordenador">Coordenador</option>
+          <option value="financeiro">Financeiro</option>
+          <option value="comercial">Comercial</option>
+          <option value="rh">RH</option>
+          <option value="operacional">Operacional</option>
+        </select>
+      </div>
+      <div id="imp-msg"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="fecharImport()">Cancelar</button>
+        <button class="btn btn-primary" id="btnImportar" onclick="importar()">Importar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    function abrirImport() { document.getElementById("modalImport")!.style.display = "flex"; }
+    function fecharImport() { document.getElementById("modalImport")!.style.display = "none"; }
+
+    async function importar() {
+      const titulo = (document.getElementById("imp-titulo") as HTMLInputElement).value.trim();
+      const categoria = (document.getElementById("imp-cat") as HTMLInputElement).value.trim();
+      const url = (document.getElementById("imp-url") as HTMLInputElement).value.trim();
+      const arquivo = (document.getElementById("imp-arquivo") as HTMLInputElement).files?.[0];
+      const roles = Array.from((document.getElementById("imp-roles") as HTMLSelectElement).selectedOptions).map(o => o.value);
+      const msg = document.getElementById("imp-msg")!;
+      if (!titulo || !categoria) { msg.innerHTML = '<div class="alert alert-error">Preencha título e categoria.</div>'; return; }
+      if (!arquivo && !url) { msg.innerHTML = '<div class="alert alert-error">Escolha um PDF ou informe uma URL.</div>'; return; }
+      if (arquivo && arquivo.size > 8 * 1024 * 1024) { msg.innerHTML = '<div class="alert alert-error">PDF muito grande (máx. 8MB).</div>'; return; }
+
+      const btn = document.getElementById("btnImportar") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Importando...";
+      msg.innerHTML = '<div class="alert" style="background:#FFF8E7;border:1px solid #E8D49A;padding:8px 12px;border-radius:8px;font-size:12.5px">Lendo o conteúdo, aguarde…</div>';
+
+      const body: any = { titulo, categoria, access_roles: roles };
+      if (arquivo) {
+        body.arquivo_base64 = await new Promise<string>((resolve) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result).split(",")[1]);
+          r.readAsDataURL(arquivo);
+        });
+      } else { body.url = url; }
+
+      const res = await fetch("/api/admin/portal/kb/importar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await res.json().catch(() => ({}));
+      btn.disabled = false; btn.textContent = "Importar";
+      if (res.ok) {
+        alert(`Importado! ${d.blocos} bloco(s) adicionados à base (${d.caracteres} caracteres).`);
+        location.reload();
+      } else {
+        msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro na importação."}</div>`;
+      }
+    }
+    (window as any).abrirImport = abrirImport; (window as any).fecharImport = fecharImport; (window as any).importar = importar;
+
     function openModal(k?: any) {
       document.getElementById("edit-id")!.value = k?.id || "";
       (document.getElementById("f-cat") as HTMLInputElement).value = k?.category || "";

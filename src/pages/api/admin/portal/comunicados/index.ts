@@ -15,6 +15,26 @@ export const POST: APIRoute = async ({ request }) => {
       .insert({ title, content, category: category || "comunicado", target_role: target_role || "all", created_by: claims.sub })
       .select().single();
     if (error) return jsonErr(500, "Erro ao criar comunicado.");
+
+    // Notifica os colaboradores no sino do portal (todos ou só o perfil alvo)
+    try {
+      const { data: perfis } = await sb.from("portal_profiles").select("id, role, roles").eq("approval_status", "approved");
+      const alvo = target_role && target_role !== "all" ? target_role : null;
+      const destinatarios = (perfis || []).filter((p: any) => {
+        if (!alvo) return true;
+        const roles = p.roles?.length ? p.roles : [p.role];
+        return roles.includes(alvo);
+      });
+      if (destinatarios.length) {
+        await sb.from("portal_notificacoes").insert(destinatarios.map((p: any) => ({
+          user_id: p.id, tipo: "comunicado",
+          titulo: `📢 Novo comunicado: ${title}`,
+          mensagem: String(content).slice(0, 160),
+          link: "/portal",
+        })));
+      }
+    } catch { /* melhor-esforço; o comunicado já foi criado */ }
+
     return jsonOk(data, 201);
   } catch { return jsonErr(401, "Não autenticado."); }
 };

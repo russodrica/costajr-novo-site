@@ -165,7 +165,10 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
       </div>
       <div class="form-group">
         <label>URL do PDF * (Google Drive, link direto, etc.)</label>
-        <input type="url" id="mp-url" placeholder="https://...">
+        <div style="display:flex;gap:8px">
+          <input type="url" id="mp-url" placeholder="https://..." style="flex:1">
+          <button type="button" class="btn btn-secondary" id="btnUpPdf" onclick="enviarArquivoCJR('mp-url','btnUpPdf')">📎 Enviar PDF</button>
+        </div>
       </div>
       <div class="form-group">
         <label>Descrição</label>
@@ -191,6 +194,7 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
     </div>
   </div>
 
+  <script src="/admin-upload.js" is:inline></script>
   <script>
     function openModal(tipo: string, data?: any) {
       document.getElementById(`modal-${tipo}`)!.style.display = "flex";
