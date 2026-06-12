@@ -1,13 +1,14 @@
 import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
-import { requireAdmin, jsonOk, jsonErr, temPerfil } from "~/lib/auth";
+import { requireAdmin, jsonOk, jsonErr } from "~/lib/auth";
+import { exigirArea } from "~/lib/permissoes";
 
 export const prerender = false;
 
 export const GET: APIRoute = async ({ request }) => {
   try {
     const claims = await requireAdmin(request);
-    if (!temPerfil(claims, ["admin", "coordenador", "comercial"])) return jsonErr(403, "Sem permissão.");
+    try { await exigirArea(claims, "comercial"); } catch (e: any) { return jsonErr(403, e.message); }
     const sb = supabaseAdmin();
     const { data } = await sb
       .from("manut_leads")
@@ -24,7 +25,7 @@ export const GET: APIRoute = async ({ request }) => {
 export const POST: APIRoute = async ({ request }) => {
   try {
     const claims = await requireAdmin(request);
-    if (!temPerfil(claims, ["admin", "coordenador", "comercial"])) return jsonErr(403, "Sem permissão.");
+    try { await exigirArea(claims, "comercial"); } catch (e: any) { return jsonErr(403, e.message); }
     const body = await request.json();
     if (!body.nome) return jsonErr(400, "Nome é obrigatório.");
     const campos = ["nome", "nome_loja", "email", "telefone", "plano", "valor", "observacoes", "etapa", "responsavel", "proximo_contato", "origem", "tipo_cliente"];
@@ -44,7 +45,7 @@ export const POST: APIRoute = async ({ request }) => {
 export const PATCH: APIRoute = async ({ request }) => {
   try {
     const claims = await requireAdmin(request);
-    if (!temPerfil(claims, ["admin", "coordenador", "comercial"])) return jsonErr(403, "Sem permissão.");
+    try { await exigirArea(claims, "comercial"); } catch (e: any) { return jsonErr(403, e.message); }
     const url = new URL(request.url);
     const id = url.searchParams.get("id");
     if (!id) return jsonErr(400, "ID obrigatório.");

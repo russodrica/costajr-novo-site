@@ -1,0 +1,133 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+import { AREAS_PORTAL, CATEGORIAS_KB, PERFIS } from "../../lib/permissoes";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: linhas, error: permErro } = await db.from("portal_permissoes").select("*");
+const mapa: Record<string, { areas: string[]; categorias_kb: string[] }> = {};
+for (const l of linhas || []) mapa[l.perfil] = { areas: l.areas || [], categorias_kb: l.categorias_kb || [] };
+
+const perfilLabel: Record<string, string> = {
+  admin: "Admin", coordenador: "Coordenador", financeiro: "Financeiro",
+  comercial: "Comercial", rh: "RH / DP", operacional: "Operacional",
+};
+---
+<Admin title="Permissões de Acesso" current="permissoes">
+
+  {permErro && <div class="alert alert-error">Erro ao carregar permissões: {permErro.message}. Rode a migration <code>031_permissoes.sql</code> no Supabase.</div>}
+
+  <div class="section-header">
+    <div>
+      <span class="section-title">Liberações por perfil</span>
+      <p style="font-size:13px;color:var(--ink-mid);margin:4px 0 0">Marque o que cada perfil pode acessar no Portal do Colaborador. Quem tem mais de um perfil soma as liberações. <strong>Admin sempre tem acesso total.</strong></p>
+    </div>
+    <button class="btn btn-primary" onclick="salvarPermissoes()">💾 Salvar alterações</button>
+  </div>
+
+  <div id="msgPerm"></div>
+
+  <!-- Módulos do portal -->
+  <div class="card" style="margin-bottom:20px;padding:0;overflow:hidden">
+    <div class="perm-head">📱 Módulos do Portal</div>
+    <div class="table-wrap">
+      <table class="perm-table">
+        <thead>
+          <tr>
+            <th>Perfil</th>
+            {AREAS_PORTAL.map(a => <th style="text-align:center">{a.label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {PERFIS.map(p => (
+            <tr>
+              <td><strong style="text-transform:capitalize">{perfilLabel[p] || p}</strong>{p === "admin" && <span class="badge badge-gray" style="margin-left:6px">total</span>}</td>
+              {AREAS_PORTAL.map(a => (
+                <td style="text-align:center">
+                  <input type="checkbox" class="perm-check" data-perfil={p} data-tipo="area" data-valor={a.id}
+                    checked={p === "admin" ? true : (mapa[p]?.areas || []).includes(a.id)}
+                    disabled={p === "admin"} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Categorias da KB -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="perm-head">🔍 Categorias da Base de Conhecimento (Fórum/JunIA)</div>
+    <div class="table-wrap">
+      <table class="perm-table">
+        <thead>
+          <tr>
+            <th>Perfil</th>
+            {CATEGORIAS_KB.map(c => <th style="text-align:center;font-size:.65rem">{c}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {PERFIS.map(p => (
+            <tr>
+              <td><strong style="text-transform:capitalize">{perfilLabel[p] || p}</strong></td>
+              {CATEGORIAS_KB.map(c => (
+                <td style="text-align:center">
+                  <input type="checkbox" class="perm-check" data-perfil={p} data-tipo="cat" data-valor={c}
+                    checked={p === "admin" ? true : (mapa[p]?.categorias_kb || []).includes(c)}
+                    disabled={p === "admin"} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p style="font-size:12.5px;color:var(--ink-light);margin-top:14px">
+    💡 Obs.: a categoria <strong>Trabalhista</strong> tem uma trava extra individual — além do perfil liberar a categoria,
+    o membro precisa do "⚖️ trabalhista" dado na tela de Membros.
+  </p>
+
+  <style>
+    .perm-head { font-family: 'Montserrat', sans-serif; font-size: .85rem; font-weight: 700; padding: 14px 18px; border-bottom: 1px solid var(--border); background: #F8F9FB; }
+    .perm-table th { font-size: .68rem; }
+    .perm-table td { padding: 9px 12px; }
+    .perm-check { width: 17px; height: 17px; accent-color: #C41E3A; cursor: pointer; }
+    .perm-check:disabled { opacity: .45; cursor: not-allowed; }
+    .perm-table tbody tr:hover td { background: rgba(196,30,58,.03); }
+  </style>
+
+  <script>
+    async function salvarPermissoes() {
+      const porPerfil: Record<string, { perfil: string; areas: string[]; categorias_kb: string[] }> = {};
+      document.querySelectorAll(".perm-check").forEach((cb: any) => {
+        const p = cb.dataset.perfil;
+        if (!porPerfil[p]) porPerfil[p] = { perfil: p, areas: [], categorias_kb: [] };
+        if (cb.checked) {
+          if (cb.dataset.tipo === "area") porPerfil[p].areas.push(cb.dataset.valor);
+          else porPerfil[p].categorias_kb.push(cb.dataset.valor);
+        }
+      });
+      const res = await fetch("/api/admin/permissoes", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ permissoes: Object.values(porPerfil) }),
+      });
+      const d = await res.json().catch(() => ({}));
+      const msg = document.getElementById("msgPerm")!;
+      msg.innerHTML = res.ok
+        ? `<div class="alert alert-success">✅ Permissões salvas! Os colaboradores verão o efeito no próximo carregamento do portal.</div>`
+        : `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    (window as any).salvarPermissoes = salvarPermissoes;
+  </script>
+</Admin>

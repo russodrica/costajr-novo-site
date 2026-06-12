@@ -28,16 +28,16 @@ const icons: Record<string, string> = {
   tecnicos:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
 };
 
-const navs: Record<string, { href: string; label: string; id: string; badge?: boolean; roles?: string[] }[]> = {
+const navs: Record<string, { href: string; label: string; id: string; badge?: boolean; roles?: string[]; area?: string }[]> = {
   colaborador: [
     { href: "/portal",                    label: "Início",           id: "home"         },
-    { href: "/portal/onboarding",         label: "Onboarding",       id: "onboarding"   },
-    { href: "/portal/treinamentos",       label: "Treinamentos",     id: "treinamentos" },
-    { href: "/portal/forum",              label: "Fórum",            id: "forum"        },
-    { href: "/portal/documentos",         label: "Documentos",       id: "documentos"   },
-    { href: "/portal/gestao-comercial",   label: "Gest. Comercial",  id: "comercial",   roles: ["admin","coordenador","comercial"] },
-    { href: "/portal/gestao-manutencao",  label: "Gest. Manutenção", id: "gestao",      roles: ["admin","coordenador","operacional"] },
-    { href: "/portal/meus-equipamentos",  label: "Meus Equipamentos", id: "meus-equipamentos" },
+    { href: "/portal/onboarding",         label: "Onboarding",       id: "onboarding",  area: "onboarding" },
+    { href: "/portal/treinamentos",       label: "Treinamentos",     id: "treinamentos", area: "treinamentos" },
+    { href: "/portal/forum",              label: "Fórum",            id: "forum",       area: "forum" },
+    { href: "/portal/documentos",         label: "Documentos",       id: "documentos",  area: "documentos" },
+    { href: "/portal/gestao-comercial",   label: "Gest. Comercial",  id: "comercial",   area: "comercial" },
+    { href: "/portal/gestao-manutencao",  label: "Gest. Manutenção", id: "gestao",      area: "gestao" },
+    { href: "/portal/meus-equipamentos",  label: "Meus Equipamentos", id: "meus-equipamentos", area: "meus-equipamentos" },
     { href: "/portal/minha-conta",        label: "Minha Conta",      id: "minha-conta"  },
   ],
   cliente: [
@@ -401,10 +401,11 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
       {nav.map(item => (
         <a
           href={item.href}
-          class={[activePage === item.id ? "active" : "", item.roles ? "role-gated" : ""].join(" ").trim()}
+          class={[activePage === item.id ? "active" : "", item.roles ? "role-gated" : "", (item as any).area ? "area-gated" : ""].join(" ").trim()}
           id={`nav-item-${item.id}`}
           data-roles={item.roles ? item.roles.join(",") : ""}
-          style={item.roles ? "display:none" : ""}
+          data-area={(item as any).area || ""}
+          style={(item.roles || (item as any).area) ? "display:none" : ""}
         >
           <Fragment set:html={icons[item.id] || icons["documentos"]} />
           {item.label}
@@ -480,19 +481,34 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
     } catch {}
   }
 
-  // ── Role-gated nav items (colaborador only) ──
+  // ── Gating do menu (colaborador): consulta a matriz de Permissões de Acesso ──
   if (tipo === "colaborador") {
-    const userData2 = localStorage.getItem(userKey);
-    let userRoles = ["operacional"];
-    if (userData2) {
-      try { const u = JSON.parse(userData2); userRoles = (u.roles && u.roles.length ? u.roles : [u.role || "operacional"]); } catch {}
-    }
-    document.querySelectorAll(".role-gated").forEach(el => {
-      const roles = el.getAttribute("data-roles")?.split(",") || [];
-      if (roles.length === 0 || roles.some(r => userRoles.includes(r))) {
-        (el as HTMLElement).style.display = "";
-      }
-    });
+    const tk = localStorage.getItem(tokenKey);
+    const aplicarFallback = () => {
+      const userData2 = localStorage.getItem(userKey);
+      let userRoles = ["operacional"];
+      if (userData2) { try { const u = JSON.parse(userData2); userRoles = (u.roles && u.roles.length ? u.roles : [u.role || "operacional"]); } catch {} }
+      document.querySelectorAll(".area-gated").forEach(el => {
+        const area = el.getAttribute("data-area");
+        const basicas = ["onboarding","treinamentos","forum","documentos","meus-equipamentos"];
+        const ok = basicas.includes(area || "") ||
+          (area === "comercial" && userRoles.some(r => ["admin","coordenador","comercial"].includes(r))) ||
+          (area === "gestao" && userRoles.some(r => ["admin","coordenador","operacional"].includes(r)));
+        if (ok) (el as HTMLElement).style.display = "";
+      });
+    };
+    if (tk) {
+      fetch("/api/portal/permissoes", { headers: { "x-portal-auth": tk } })
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => {
+          const areas = d.areas || [];
+          document.querySelectorAll(".area-gated").forEach(el => {
+            const area = el.getAttribute("data-area");
+            if (!area || areas.includes(area)) (el as HTMLElement).style.display = "";
+          });
+        })
+        .catch(aplicarFallback);
+    } else aplicarFallback();
   }
 
   // ── Logout ──
