@@ -11,7 +11,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 const id = Astro.params.id!;
 const db = supabaseAdmin();
 
-const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutencoes }, { data: ocorrencias }, { data: membros }, { data: obras }] = await Promise.all([
+const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutencoes }, { data: ocorrencias }, { data: membros }, { data: obras }, { data: planos }] = await Promise.all([
   db.from("ativos").select("*").eq("id", id).maybeSingle(),
   db.from("ativos_movimentos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }).limit(500),
   db.from("ativos_termos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
@@ -19,7 +19,9 @@ const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutenc
   db.from("ativos_ocorrencias").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
   db.from("portal_profiles").select("id, display_name, full_name, email").eq("approval_status", "approved").order("display_name"),
   db.from("obras").select("id, nome, status").neq("status", "cancelada").order("nome"),
+  db.from("ativos_manutencao_planos").select("*").eq("ativo_id", id).eq("ativo", true).order("proxima_em"),
 ]);
+const hojeISO = new Date().toISOString().slice(0, 10);
 
 if (!ativo) return Astro.redirect("/admin/ativos");
 
@@ -170,6 +172,37 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
             </tbody>
           </table>
         ) : <div class="empty-state" style="padding:16px"><p>Nenhuma manutenção registrada.</p></div>}
+      </div>
+
+      <!-- Manutenção preventiva (planos) -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-header" style="margin-bottom:12px">
+          <span class="section-title">Manutenção preventiva ({planos?.length ?? 0})</span>
+          {!ativoEncerrado && <button class="btn btn-secondary btn-sm" onclick="abrirModal('modalPlano')">+ Novo plano</button>}
+        </div>
+        {planos?.length ? (
+          <table>
+            <thead><tr><th>Plano</th><th>Periodicidade</th><th>Última</th><th>Próxima</th><th></th></tr></thead>
+            <tbody>
+              {planos.map((pl: any) => (
+                <tr>
+                  <td><strong>{pl.titulo}</strong>{pl.observacoes && <div style="font-size:11.5px;color:#9CA3AF">{pl.observacoes}</div>}</td>
+                  <td>a cada {pl.periodicidade_dias} dias</td>
+                  <td>{fmtDate(pl.ultima_em)}</td>
+                  <td>
+                    <span class={pl.proxima_em <= hojeISO ? "badge badge-red" : pl.proxima_em <= new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10) ? "badge badge-orange" : "badge badge-green"}>
+                      {fmtDate(pl.proxima_em)}{pl.proxima_em <= hojeISO ? " — VENCIDA" : ""}
+                    </span>
+                  </td>
+                  <td style="white-space:nowrap;text-align:right">
+                    <button class="btn btn-success btn-sm" onclick={`executarPlano('${pl.id}')`} title="Registra a execução de hoje e reprograma a próxima">✓ Executada</button>
+                    <button class="btn btn-outline btn-sm" onclick={`desativarPlano('${pl.id}')`}>Desativar</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div class="empty-state" style="padding:16px"><p>Nenhum plano. Ex: "Troca de óleo a cada 180 dias", "Revisão geral anual".</p></div>}
       </div>
 
       <!-- Ocorrências -->
@@ -423,6 +456,25 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     </div>
   </div>
 
+  <!-- Modal novo plano de preventiva -->
+  <div class="modal-overlay" id="modalPlano">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-title">🗓️ Novo plano de manutenção preventiva</div>
+      <form id="formPlano">
+        <div class="form-group"><label>Título *</label><input name="titulo" required placeholder="Ex: Troca de óleo, Revisão geral, Calibração" /></div>
+        <div class="form-row">
+          <div class="form-group"><label>A cada quantos dias? *</label><input name="periodicidade_dias" type="number" min="1" required placeholder="Ex: 180" /></div>
+          <div class="form-group"><label>Próxima execução</label><input name="proxima_em" type="date" /></div>
+        </div>
+        <div class="form-group"><label>Observações</label><input name="observacoes" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Criar plano</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal termo -->
   <div class="modal-overlay" id="modalTermo">
     <div class="modal" style="max-width:640px">
@@ -565,10 +617,32 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       else alert(d.error || "Erro ao enviar para a D4Sign");
     }
 
+    // planos de preventiva
+    const ativoId = location.pathname.split("/").filter(Boolean).pop();
+    document.getElementById("formPlano")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = Object.fromEntries(new FormData(e.target as HTMLFormElement).entries());
+      const res = await fetch(`/api/admin/ativos/${ativoId}/planos`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else alert((await res.json()).error || "Erro ao criar plano");
+    });
+    async function executarPlano(id) {
+      if (!confirm("Registrar que esta manutenção preventiva foi executada hoje? A próxima será reprogramada automaticamente.")) return;
+      const res = await fetch(`/api/admin/ativos/${ativoId}/planos`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, acao: "executar" }) });
+      if (res.ok) window.location.reload(); else alert((await res.json()).error || "Erro");
+    }
+    async function desativarPlano(id) {
+      if (!confirm("Desativar este plano de manutenção?")) return;
+      const res = await fetch(`/api/admin/ativos/${ativoId}/planos`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, acao: "desativar" }) });
+      if (res.ok) window.location.reload(); else alert((await res.json()).error || "Erro");
+    }
+
     (window as any).fecharModais = fecharModais;
     (window as any).abrirModal = abrirModal;
     (window as any).verTermo = verTermo;
     (window as any).imprimirTermo = imprimirTermo;
     (window as any).enviarD4Sign = enviarD4Sign;
+    (window as any).executarPlano = executarPlano;
+    (window as any).desativarPlano = desativarPlano;
   </script>
 </Admin>

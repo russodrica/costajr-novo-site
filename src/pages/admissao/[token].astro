@@ -1,0 +1,265 @@
+---
+// Página PÚBLICA de admissão digital (candidato abre no celular pelo link do RH).
+// Os arquivos vão direto para o bucket PRIVADO "rh" via /api/admissao/[token]/enviar.
+export const prerender = false;
+import { supabaseAdmin } from "~/lib/supabase";
+
+const token = Astro.params.token!;
+const db = supabaseAdmin();
+const { data: adm } = await db
+  .from("rh_admissoes")
+  .select("id, nome, email, telefone, cargo, regime, status")
+  .eq("token", token)
+  .maybeSingle();
+
+let docs: any[] = [];
+if (adm) {
+  const { data } = await db
+    .from("rh_admissoes_docs")
+    .select("tipo, nome_arquivo, created_at")
+    .eq("admissao_id", adm.id)
+    .order("created_at", { ascending: true });
+  docs = data || [];
+}
+
+const ativa = adm && ["aguardando", "docs_enviados"].includes(adm.status);
+const primeiroNome = adm ? String(adm.nome).trim().split(/\s+/)[0] : "";
+
+// Checklist de documentos (5 principais + ASO opcional)
+const checklist: { tipo: string; titulo: string; dica: string; icone: string; opcional?: boolean }[] = [
+  { tipo: "rg", titulo: "RG ou CNH", dica: "Foto da frente e do verso (pode enviar 2 fotos)", icone: "🪪" },
+  { tipo: "cpf", titulo: "CPF", dica: "Se o número já estiver no RG/CNH, envie o mesmo documento", icone: "🔢" },
+  { tipo: "comprovante_residencia", titulo: "Comprovante de residência", dica: "Conta de luz, água ou internet recente", icone: "🏠" },
+  { tipo: "ctps", titulo: "CTPS digital", dica: "Print da tela do app Carteira de Trabalho Digital", icone: "📒" },
+  { tipo: "foto", titulo: "Foto 3x4", dica: "Pode ser uma selfie com fundo claro", icone: "📸" },
+  { tipo: "aso", titulo: "ASO — exame admissional", dica: "Só se você já tiver feito o exame (opcional)", icone: "🩺", opcional: true },
+];
+const tiposEnviados = new Set(docs.map((d) => d.tipo));
+const countPorTipo: Record<string, number> = {};
+for (const d of docs) countPorTipo[d.tipo] = (countPorTipo[d.tipo] || 0) + 1;
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admissão Digital — Costa Júnior Engenharia</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Open Sans', sans-serif; background: #F2F4F8; color: #1E2128; min-height: 100vh; padding: 14px; }
+    .cartao { background: #fff; border-radius: 16px; box-shadow: 0 10px 40px rgba(16,24,40,.1); max-width: 520px; width: 100%; margin: 0 auto; overflow: hidden; }
+    .topo { background: linear-gradient(135deg, #1A1C20, #3A1419); color: #fff; padding: 24px 22px; }
+    .topo .marca { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 14px; color: #FF5A73; letter-spacing: 1px; }
+    .topo h1 { font-family: 'Montserrat', sans-serif; font-size: 20px; margin-top: 8px; line-height: 1.35; }
+    .topo p { font-size: 13.5px; color: #D7D9DE; margin-top: 6px; }
+    .corpo { padding: 20px 18px 24px; }
+    .secao-titulo { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 14px; color: #C41E3A; text-transform: uppercase; letter-spacing: .5px; margin: 18px 0 10px; }
+    .progresso { background: #F8F9FB; border-radius: 12px; padding: 12px 14px; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .barra { flex: 1; height: 8px; background: #E5E7EB; border-radius: 99px; overflow: hidden; }
+    .barra > div { height: 100%; background: #16A34A; border-radius: 99px; transition: width .3s; }
+    .item { border: 1.5px solid #E5E7EB; border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+    .item.enviado { border-color: #BBF7D0; background: #F0FDF4; }
+    .item-cab { display: flex; align-items: flex-start; gap: 10px; }
+    .item-icone { font-size: 22px; line-height: 1; }
+    .item-titulo { font-weight: 700; font-size: 15px; }
+    .item-titulo .opc { font-weight: 600; font-size: 11.5px; color: #6B7280; background: #F3F4F6; border-radius: 99px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
+    .item-dica { font-size: 12.5px; color: #6B7280; margin-top: 2px; }
+    .item-ok { margin-left: auto; color: #16A34A; font-weight: 800; font-size: 14px; white-space: nowrap; }
+    .btn { display: block; width: 100%; padding: 13px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 800; font-size: 14.5px; font-family: 'Montserrat', sans-serif; transition: .15s; text-align: center; }
+    .btn:active { transform: scale(.98); }
+    .btn-enviar { background: #C41E3A; color: #fff; margin-top: 12px; }
+    .btn-mais { background: #fff; color: #C41E3A; border: 1.5px solid #FECACA; margin-top: 12px; }
+    .btn-salvar { background: #1E2128; color: #fff; margin-top: 4px; }
+    .btn[disabled] { opacity: .55; cursor: wait; }
+    label { display: block; font-size: 13px; font-weight: 700; color: #374151; margin: 12px 0 4px; }
+    input { width: 100%; padding: 12px; border: 1.5px solid #D1D5DB; border-radius: 10px; font-size: 15px; font-family: 'Open Sans', sans-serif; outline: none; }
+    input:focus { border-color: #C41E3A; }
+    .msg { font-size: 13px; margin-top: 8px; min-height: 18px; }
+    .msg.erro { color: #B91C1C; }
+    .msg.ok { color: #15803D; }
+    .status-final { text-align: center; padding: 40px 18px; }
+    .status-final .icone { font-size: 52px; }
+    .status-final h2 { font-family: 'Montserrat', sans-serif; margin: 12px 0 6px; }
+    .status-final p { color: #6B7280; font-size: 14px; }
+    .rodape { text-align: center; font-size: 11.5px; color: #9CA3AF; padding: 0 20px 22px; line-height: 1.6; }
+    .lgpd { background: #FFF7ED; border: 1px solid #FED7AA; border-radius: 10px; padding: 10px 12px; font-size: 12px; color: #7C2D12; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="cartao">
+    {!adm ? (
+      <div class="status-final">
+        <div class="icone">🔍</div>
+        <h2>Link não encontrado</h2>
+        <p>Verifique o link recebido ou fale com o RH da Costa Júnior.</p>
+      </div>
+    ) : !ativa ? (
+      <div class="status-final">
+        <div class="icone">{adm.status === "concluida" ? "🎉" : "📋"}</div>
+        <h2>{adm.status === "concluida" ? "Admissão concluída!" : "Admissão encerrada"}</h2>
+        <p>
+          {adm.status === "concluida"
+            ? `Tudo certo, ${primeiroNome}! Seus documentos foram recebidos e seu cadastro foi finalizado. Seja bem-vindo(a) à equipe!`
+            : "Este processo de admissão foi encerrado. Se você acha que isso é um engano, fale com o RH."}
+        </p>
+      </div>
+    ) : (
+      <>
+        <div class="topo">
+          <div class="marca">COSTA JÚNIOR ENGENHARIA</div>
+          <h1>Olá {primeiroNome}, bem-vindo(a) à Costa Júnior! 👷</h1>
+          <p>
+            {adm.cargo ? `Para concluir sua admissão como ${adm.cargo}, ` : "Para concluir sua admissão, "}
+            envie os documentos abaixo. É só fotografar com o celular — leva poucos minutos.
+          </p>
+        </div>
+        <div class="corpo">
+          <div class="progresso">
+            <span id="progTexto">…</span>
+            <div class="barra"><div id="progBarra" style="width:0%"></div></div>
+          </div>
+
+          <div class="secao-titulo">📎 Seus documentos</div>
+          {checklist.map((item) => {
+            const enviado = tiposEnviados.has(item.tipo);
+            const qtd = countPorTipo[item.tipo] || 0;
+            return (
+              <div class={`item${enviado ? " enviado" : ""}`} data-tipo={item.tipo}>
+                <div class="item-cab">
+                  <div class="item-icone">{item.icone}</div>
+                  <div>
+                    <div class="item-titulo">{item.titulo}{item.opcional && <span class="opc">opcional</span>}</div>
+                    <div class="item-dica">{item.dica}</div>
+                  </div>
+                  {enviado && <div class="item-ok">✓ {qtd > 1 ? `${qtd} enviados` : "Enviado"}</div>}
+                </div>
+                <input type="file" accept="image/*,application/pdf" capture="environment" style="display:none" id={`file-${item.tipo}`} />
+                <button class={`btn ${enviado ? "btn-mais" : "btn-enviar"}`} onclick={`enviarDoc('${item.tipo}')`}>
+                  {enviado ? "+ Enviar outro arquivo" : "📷 Fotografar / enviar"}
+                </button>
+                <div class="msg" id={`msg-${item.tipo}`}></div>
+              </div>
+            );
+          })}
+
+          <div class="secao-titulo">📱 Seus contatos</div>
+          <p style="font-size:13px;color:#6B7280">Confira se estão certos — é por aqui que o RH vai falar com você.</p>
+          <label for="telefone">Telefone / WhatsApp</label>
+          <input id="telefone" type="tel" inputmode="tel" placeholder="(11) 99999-9999" value={adm.telefone || ""} />
+          <label for="email">E-mail</label>
+          <input id="email" type="email" inputmode="email" placeholder="seuemail@exemplo.com" value={adm.email || ""} />
+          <button class="btn btn-salvar" style="margin-top:12px" id="btnSalvarContato" onclick="salvarContato()">Salvar contatos</button>
+          <div class="msg" id="msg-contato"></div>
+
+          <div class="lgpd">🔒 Seus documentos são enviados por conexão segura e guardados em área privada, acessível somente ao RH da Costa Júnior (LGPD).</div>
+        </div>
+        <div class="rodape">Dúvidas? Fale com o RH da Costa Júnior.<br/>Costa Júnior Engenharia e Construções · costajr.com.br</div>
+      </>
+    )}
+  </div>
+
+  {ativa && (
+    <script is:inline define:vars={{ token }}>
+      const OBRIGATORIOS = ["rg", "cpf", "comprovante_residencia", "ctps", "foto"];
+
+      function atualizarProgresso() {
+        const ok = OBRIGATORIOS.filter((t) => document.querySelector(`.item[data-tipo="${t}"]`)?.classList.contains("enviado")).length;
+        const texto = document.getElementById("progTexto");
+        const barra = document.getElementById("progBarra");
+        if (texto) texto.textContent = ok >= OBRIGATORIOS.length ? "Tudo enviado! 🎉" : `${ok} de ${OBRIGATORIOS.length}`;
+        if (barra) barra.style.width = Math.round((ok / OBRIGATORIOS.length) * 100) + "%";
+      }
+
+      function enviarDoc(tipo) {
+        const input = document.getElementById("file-" + tipo);
+        if (!input) return;
+        input.onchange = async () => {
+          const arquivo = input.files && input.files[0];
+          if (!arquivo) return;
+          const msg = document.getElementById("msg-" + tipo);
+          const botao = document.querySelector(`.item[data-tipo="${tipo}"] button.btn`);
+          msg.className = "msg";
+          if (arquivo.size > 10 * 1024 * 1024) {
+            msg.className = "msg erro";
+            msg.textContent = "Arquivo muito grande — o limite é 10 MB. Tente tirar a foto de novo.";
+            input.value = "";
+            return;
+          }
+          msg.textContent = "Enviando… aguarde 📤";
+          if (botao) botao.disabled = true;
+          try {
+            const fd = new FormData();
+            fd.append("tipo", tipo);
+            fd.append("arquivo", arquivo);
+            const res = await fetch(`/api/admissao/${token}/enviar`, { method: "POST", body: fd });
+            const d = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(d.error || "Erro ao enviar. Tente de novo.");
+            const item = document.querySelector(`.item[data-tipo="${tipo}"]`);
+            item.classList.add("enviado");
+            let okBadge = item.querySelector(".item-ok");
+            if (!okBadge) {
+              okBadge = document.createElement("div");
+              okBadge.className = "item-ok";
+              item.querySelector(".item-cab").appendChild(okBadge);
+            }
+            const atual = Number(item.dataset.qtd || 0);
+            item.dataset.qtd = String(atual + 1);
+            okBadge.textContent = atual + 1 > 1 ? `✓ ${atual + 1} enviados` : "✓ Enviado";
+            if (botao) { botao.className = "btn btn-mais"; botao.textContent = "+ Enviar outro arquivo"; }
+            msg.className = "msg ok";
+            msg.textContent = "Recebido com sucesso! ✓";
+            atualizarProgresso();
+          } catch (e) {
+            msg.className = "msg erro";
+            msg.textContent = e.message || "Erro ao enviar. Verifique a internet e tente de novo.";
+          } finally {
+            if (botao) botao.disabled = false;
+            input.value = "";
+          }
+        };
+        input.click();
+      }
+
+      async function salvarContato() {
+        const msg = document.getElementById("msg-contato");
+        const botao = document.getElementById("btnSalvarContato");
+        msg.className = "msg";
+        msg.textContent = "Salvando…";
+        botao.disabled = true;
+        try {
+          const res = await fetch(`/api/admissao/${token}/dados`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              telefone: document.getElementById("telefone").value,
+              email: document.getElementById("email").value,
+            }),
+          });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(d.error || "Erro ao salvar");
+          msg.className = "msg ok";
+          msg.textContent = "Contatos salvos! ✓";
+        } catch (e) {
+          msg.className = "msg erro";
+          msg.textContent = e.message || "Erro ao salvar. Tente de novo.";
+        } finally {
+          botao.disabled = false;
+        }
+      }
+
+      // inicializa contadores por tipo já enviados (vindos do servidor)
+      document.querySelectorAll(".item.enviado").forEach((item) => {
+        const badge = item.querySelector(".item-ok");
+        const m = badge && badge.textContent.match(/(\d+)/);
+        item.dataset.qtd = m ? m[1] : "1";
+      });
+      atualizarProgresso();
+      window.enviarDoc = enviarDoc;
+      window.salvarContato = salvarContato;
+    </script>
+  )}
+</body>
+</html>

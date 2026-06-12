@@ -97,6 +97,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
             </select>
           </div>
         </div>
+        <div id="chamadoDetalhes" style="margin-top:4px"></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
           <button type="submit" class="btn btn-primary">Salvar</button>
@@ -122,6 +123,19 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
       document.getElementById("chamadoStatus").value = c.status;
       document.getElementById("chamadoPrioridade").value = c.prioridade;
       document.getElementById("chamadoTecnico").value = c.tecnico_atribuido_id || "";
+
+      // Fotos antes/depois + geolocalização registradas pelo técnico
+      const thumb = (u) => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #E5E7EB"/></a>`;
+      const secao = (titulo, fotos) => `<div style="margin-top:10px"><strong style="font-size:11.5px;color:#6B7280;text-transform:uppercase;letter-spacing:.04em">${titulo}</strong><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${fotos.map(thumb).join("")}</div></div>`;
+      let det = "";
+      if (c.fotos_antes?.length) det += secao("Fotos antes", c.fotos_antes);
+      if (c.fotos_depois?.length) det += secao("Fotos depois", c.fotos_depois);
+      if (!c.fotos_depois?.length && c.fotos_evidencia?.length) det += secao("Fotos de evidência", c.fotos_evidencia);
+      if (c.geo_lat != null && c.geo_lng != null) {
+        det += `<div style="margin-top:10px;font-size:12.5px"><a href="https://www.google.com/maps?q=${c.geo_lat},${c.geo_lng}" target="_blank" rel="noopener" style="color:#C41E3A;font-weight:600;text-decoration:none">📍 Ver no mapa</a>${c.geo_registrado_em ? ` <span style="color:#999;font-size:11.5px">— registrado em ${new Date(c.geo_registrado_em).toLocaleString("pt-BR")}</span>` : ""}</div>`;
+      }
+      document.getElementById("chamadoDetalhes").innerHTML = det || `<div style="font-size:12px;color:#999;margin-top:6px">Sem fotos antes/depois nem geolocalização registradas.</div>`;
+
       document.getElementById("modalChamado").classList.add("open");
     }
     async function patchChamado(id, body) {

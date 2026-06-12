@@ -294,6 +294,30 @@ Migrations 025 (d4sign_* em ativos_termos) e 026 (monday_id/storage_path) RODADA
 **Benchmark de mercado:** relatorio completo em docs/benchmark-melhorias.md
 (gap analysis vs Sienge/Convenia/CV CRM/Mobuss/Fracttal + top 10 melhorias).
 
+## Atualizacao 12/06/2026 (parte 2) — Top 10 do benchmark IMPLANTADO
+
+Melhorias implantadas (de docs/benchmark-melhorias.md):
+- #2 OS do tecnico: foto ANTES obrigatoria p/ iniciar, foto DEPOIS p/ concluir,
+  GPS capturado no inicio (manut_chamados.fotos_antes/fotos_depois/geo_*).
+  Exigencia vale SO no fluxo do tecnico (param exigirFotos); admin nao exige.
+- #3 Etiqueta QR por ativo: /admin/ativos/[id]/etiqueta (lib qrcode)
+- #4 Conciliacao bancaria OFX: /admin/fin-conciliacao + src/lib/ofx.ts (parser
+  proprio sem dependencia), sugestoes de match por valor+-data, criar/ignorar
+- #5 Custo por obra: /admin/obras/[id] com orcado x realizado e % consumido
+- #6 Admissao digital: aba Admissoes no /admin/rh cria link publico
+  /admissao/[token]; candidato envia docs pelo celular -> bucket privado rh;
+  'Concluir' vira colaborador + docs migram p/ rh_documentos
+- #7 RDO diario de obra: secao na pagina da obra (clima/efetivo/atividades/
+  ocorrencias, unique por obra+data) — API /api/admin/obras/[id]/rdo
+- #8 Aceite online de proposta: /proposta/[token] (aceite registra nome/IP/data,
+  lead vira convertido) — botao 'Link de aceite' no CRM
+- #9 Regua de cobranca: cron diario /api/cron/regua-cobranca (3d antes/no dia/
+  3d depois, 1 email por estagio via manut_pagamentos.regua_estagio)
+- #10 Preventiva por ativo: planos com periodicidade em ativos_manutencao_planos,
+  botao 'Executada' reprograma; card 'Preventivas vencidas' na listagem
+- Migrations 027 e 028 RODADAS em producao.
+- Pendentes do top 10: #1 D4Sign (aguardando token da conta).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.

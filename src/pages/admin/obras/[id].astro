@@ -1,0 +1,339 @@
+---
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const id = Astro.params.id!;
+const db = supabaseAdmin();
+
+const [{ data: obra }, { data: lancamentos }, { data: ativos }, { data: rdos }] = await Promise.all([
+  db.from("obras").select("*").eq("id", id).maybeSingle(),
+  db.from("fin_lancamentos").select("*, categoria:fin_categorias(nome, cor)").eq("obra_id", id).neq("status", "cancelado").order("data_vencimento", { ascending: false }).limit(1000),
+  db.from("ativos").select("id, descricao, categoria, status, numero_patrimonial, alocado_para_nome").eq("alocado_para_tipo", "obra").eq("alocado_para_id", id).order("descricao"),
+  db.from("obras_rdo").select("*").eq("obra_id", id).order("data", { ascending: false }).limit(500),
+]);
+
+if (!obra) return Astro.redirect("/admin/obras");
+
+const statusLabels: Record<string, string> = { planejada: "Planejada", ativa: "Ativa", pausada: "Pausada", concluida: "Concluída", cancelada: "Cancelada" };
+const statusBadge: Record<string, string> = { planejada: "badge-blue", ativa: "badge-green", pausada: "badge-yellow", concluida: "badge-gray", cancelada: "badge-red" };
+const lancStatusLabels: Record<string, string> = { previsto: "Previsto", pago: "Pago", atrasado: "Atrasado", cancelado: "Cancelado" };
+const lancStatusBadge: Record<string, string> = { previsto: "badge-blue", pago: "badge-green", atrasado: "badge-red", cancelado: "badge-gray" };
+const ativoCategorias: Record<string, string> = { telefonia: "Telefonia", informatica: "Informática", equipamento_obra: "Equip. de Obra", epi: "EPI", veiculo: "Veículo", mobiliario: "Mobiliário", outros: "Outros" };
+const climaEmoji: Record<string, string> = { sol: "☀️", nublado: "☁️", chuva: "🌧️", impraticavel: "⛔" };
+const climaLabels: Record<string, string> = { sol: "Sol", nublado: "Nublado", chuva: "Chuva", impraticavel: "Impraticável" };
+
+function fmtMoney(v: number | null | undefined) { if (v == null) return "—"; return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR"); }
+function fmtDateLonga(d: string) {
+  return new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+// ───── Custo por obra (#5): orçado x realizado ─────
+const lancs = lancamentos || [];
+const soma = (tipo: string, statuses: string[]) =>
+  lancs.filter((l: any) => l.tipo === tipo && statuses.includes(l.status)).reduce((s: number, l: any) => s + Number(l.valor || 0), 0);
+
+const receitasPagas = soma("receita", ["pago"]);
+const receitasPrevistas = soma("receita", ["previsto", "atrasado"]);
+const despesasPagas = soma("despesa", ["pago"]);
+const despesasPrevistas = soma("despesa", ["previsto", "atrasado"]);
+const resultado = receitasPagas - despesasPagas;
+const orcado = Number(obra.valor_contrato || 0);
+const consumido = despesasPagas + despesasPrevistas;
+const pctConsumido = orcado > 0 ? (consumido / orcado) * 100 : null;
+const corBarra = pctConsumido == null ? "#9CA3AF" : pctConsumido < 80 ? "#22C55E" : pctConsumido <= 100 ? "#F59E0B" : "#EF4444";
+
+const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }); // YYYY-MM-DD
+---
+<Admin title={`Obra — ${obra.nome}`} current="obras">
+
+  <div class="toolbar">
+    <a href="/admin/obras" class="btn btn-secondary btn-sm">← Voltar</a>
+    <span class="toolbar-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      {obra.nome}
+      {obra.codigo && <span style="font-size:.8rem;color:#9CA3AF;font-weight:600">{obra.codigo}</span>}
+      <span class={`badge ${statusBadge[obra.status] || "badge-gray"}`}>{statusLabels[obra.status] || obra.status}</span>
+    </span>
+    <a href="/admin/obras" class="btn btn-secondary btn-sm" title="A edição dos dados da obra é feita na listagem">✏️ Editar na listagem</a>
+  </div>
+
+  <!-- Dados da obra -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="dl-inline">
+      <div><dt>Cliente</dt><dd>{obra.cliente || "—"}</dd></div>
+      <div><dt>Local</dt><dd>{[obra.cidade, obra.uf].filter(Boolean).join("/") || "—"}</dd></div>
+      <div><dt>Responsável</dt><dd>{obra.responsavel_nome || "—"}</dd></div>
+      <div><dt>Início</dt><dd>{fmtDate(obra.data_inicio)}</dd></div>
+      <div><dt>Previsão de fim</dt><dd>{fmtDate(obra.data_fim_prevista)}</dd></div>
+      <div><dt>Fim real</dt><dd>{fmtDate(obra.data_fim_real)}</dd></div>
+    </div>
+    {obra.observacoes && <p style="font-size:.82rem;color:#6B7280;margin:12px 0 0">{obra.observacoes}</p>}
+  </div>
+
+  <!-- ───── #5 Custo: orçado x realizado ───── -->
+  <div class="section-title" style="margin-bottom:12px">💰 Custo da obra — orçado x realizado</div>
+  <div class="card-grid" style="margin-bottom:14px">
+    <div class="stat-card">
+      <div class="stat-value">{fmtMoney(obra.valor_contrato)}</div>
+      <div class="stat-label">Valor do contrato (orçado)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#16A34A">{fmtMoney(receitasPagas)}</div>
+      <div class="stat-label">Receitas pagas {receitasPrevistas > 0 && <span style="display:block">+ {fmtMoney(receitasPrevistas)} previstas</span>}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#DC2626">{fmtMoney(despesasPagas)}</div>
+      <div class="stat-label">Despesas pagas {despesasPrevistas > 0 && <span style="display:block">+ {fmtMoney(despesasPrevistas)} previstas</span>}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style={`color:${resultado >= 0 ? "#16A34A" : "#DC2626"}`}>{fmtMoney(resultado)}</div>
+      <div class="stat-label">Resultado (receitas pagas − despesas pagas)</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <strong style="font-size:.85rem">% do orçado consumido (despesas pagas + previstas)</strong>
+      <span style={`font-size:.95rem;font-weight:700;color:${corBarra}`}>
+        {pctConsumido == null ? "Sem valor de contrato" : `${pctConsumido.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`}
+      </span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" style={`width:${pctConsumido == null ? 0 : Math.min(pctConsumido, 100)}%;background:${corBarra}`}></div>
+    </div>
+    <div style="font-size:.74rem;color:#9CA3AF;margin-top:6px">
+      {fmtMoney(consumido)} de {fmtMoney(orcado || null)}
+      {pctConsumido != null && pctConsumido > 100 && <strong style="color:#EF4444"> — orçamento estourado!</strong>}
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #E5E7EB">
+      <strong style="font-size:.88rem">Lançamentos da obra ({lancs.length})</strong>
+      <a href="/admin/financeiro" class="btn btn-outline btn-sm">Ver no Financeiro →</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Vencimento</th><th>Descrição</th><th>Categoria</th><th>Tipo</th><th>Valor</th><th>Status</th><th>Pago em</th></tr></thead>
+        <tbody>
+          {lancs.length ? lancs.map((l: any) => (
+            <tr>
+              <td>{fmtDate(l.data_vencimento)}</td>
+              <td style="max-width:280px">{l.descricao}</td>
+              <td>
+                {l.categoria
+                  ? <span style="display:inline-flex;align-items:center;gap:6px"><span class="cat-dot" style={`background:${l.categoria.cor || "#9CA3AF"}`}></span>{l.categoria.nome}</span>
+                  : "—"}
+              </td>
+              <td>{l.tipo === "receita" ? <span style="color:#16A34A;font-weight:600">Receita</span> : <span style="color:#DC2626;font-weight:600">Despesa</span>}</td>
+              <td style="white-space:nowrap;font-weight:600">{fmtMoney(l.valor)}</td>
+              <td><span class={`badge ${lancStatusBadge[l.status] || "badge-gray"}`}>{lancStatusLabels[l.status] || l.status}</span></td>
+              <td>{fmtDate(l.data_pagamento)}</td>
+            </tr>
+          )) : <tr><td colspan="7"><div class="empty-state"><strong>Nenhum lançamento vinculado a esta obra</strong><p>Vincule receitas e despesas à obra no módulo Financeiro.</p></div></td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ───── Ativos na obra ───── -->
+  <div class="section-title" style="margin-bottom:12px">🏷️ Ativos na obra ({ativos?.length ?? 0})</div>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ativo</th><th>Categoria</th><th>Nº patrimonial</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {ativos?.length ? ativos.map((a: any) => (
+            <tr>
+              <td><strong>{a.descricao}</strong></td>
+              <td>{ativoCategorias[a.categoria] || a.categoria}</td>
+              <td>{a.numero_patrimonial || "—"}</td>
+              <td><span class="badge badge-purple">{a.status?.replace(/_/g, " ")}</span></td>
+              <td><a href={`/admin/ativos/${a.id}`} class="btn btn-secondary btn-sm">Abrir</a></td>
+            </tr>
+          )) : <tr><td colspan="5"><div class="empty-state"><p>Nenhum ativo alocado nesta obra. Transfira pelo módulo Ativos.</p></div></td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ───── #7 RDO — Diário de obra ───── -->
+  <div class="toolbar" style="margin-bottom:12px">
+    <span class="section-title" style="flex:1">📋 RDO — Diário de Obra ({rdos?.length ?? 0})</span>
+    <button class="btn btn-primary" onclick="abrirModalRdo()">+ RDO de hoje</button>
+  </div>
+
+  <div id="msgRdo"></div>
+
+  <div class="rdo-lista">
+    {rdos?.length ? rdos.map((r: any) => (
+      <div class="card rdo-card">
+        <div class="rdo-head">
+          <div>
+            <strong class="rdo-data">{fmtDateLonga(r.data)}</strong>
+            <div class="rdo-meta">
+              {r.clima_manha && <span title={`Manhã: ${climaLabels[r.clima_manha]}`}>Manhã {climaEmoji[r.clima_manha]}</span>}
+              {r.clima_tarde && <span title={`Tarde: ${climaLabels[r.clima_tarde]}`}>Tarde {climaEmoji[r.clima_tarde]}</span>}
+              {r.efetivo != null && <span>👷 {r.efetivo} {r.efetivo === 1 ? "pessoa" : "pessoas"}</span>}
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick={`editarRdo('${r.id}')`}>✏️ Editar</button>
+        </div>
+        <div class="rdo-bloco"><span class="rdo-rotulo">Atividades</span><p>{r.atividades}</p></div>
+        {r.ocorrencias && <div class="rdo-bloco rdo-ocorrencia"><span class="rdo-rotulo">⚠️ Ocorrências</span><p>{r.ocorrencias}</p></div>}
+        {r.equipamentos && <div class="rdo-bloco"><span class="rdo-rotulo">Equipamentos</span><p>{r.equipamentos}</p></div>}
+        {r.fotos?.length > 0 && (
+          <div class="rdo-bloco"><span class="rdo-rotulo">Fotos</span>
+            <p>{r.fotos.map((f: string, i: number) => <a href={f} target="_blank" style="margin-right:10px">📷 Foto {i + 1}</a>)}</p>
+          </div>
+        )}
+        <div class="rdo-rodape">Registrado por {r.criado_por || "—"}</div>
+      </div>
+    )) : (
+      <div class="card"><div class="empty-state"><strong>Nenhum RDO registrado</strong><p>Clique em "+ RDO de hoje" para registrar o primeiro diário de obra.</p></div></div>
+    )}
+  </div>
+
+  <!-- Modal RDO -->
+  <div class="modal-overlay" id="modalRdo">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-title" id="tituloModalRdo">RDO — Diário de Obra</div>
+      <div id="msgModalRdo"></div>
+      <form id="formRdo">
+        <input type="hidden" name="rdo_id" />
+        <div class="form-row">
+          <div class="form-group"><label>Data *</label><input name="data" type="date" required value={hoje} /></div>
+          <div class="form-group"><label>Efetivo (nº de pessoas)</label><input name="efetivo" type="number" min="0" step="1" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Clima — manhã</label>
+            <select name="clima_manha">
+              <option value="">—</option>
+              <option value="sol">☀️ Sol</option>
+              <option value="nublado">☁️ Nublado</option>
+              <option value="chuva">🌧️ Chuva</option>
+              <option value="impraticavel">⛔ Impraticável</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Clima — tarde</label>
+            <select name="clima_tarde">
+              <option value="">—</option>
+              <option value="sol">☀️ Sol</option>
+              <option value="nublado">☁️ Nublado</option>
+              <option value="chuva">🌧️ Chuva</option>
+              <option value="impraticavel">⛔ Impraticável</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group"><label>Atividades executadas *</label><textarea name="atividades" rows="4" required placeholder="O que foi feito hoje na obra..."></textarea></div>
+        <div class="form-group"><label>Ocorrências (acidentes, paralisações, visitas, problemas)</label><textarea name="ocorrencias" rows="2"></textarea></div>
+        <div class="form-group"><label>Equipamentos em uso</label><textarea name="equipamentos" rows="2" placeholder="Ex: betoneira, andaime fachadeiro, martelete..."></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalRdo')">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnSalvarRdo">Salvar RDO</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <style>
+    .dl-inline { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 18px; }
+    .dl-inline dt { font-size: .72rem; color: var(--ink-light); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    .dl-inline dd { margin: 2px 0 0; font-size: .86rem; color: var(--ink); font-weight: 600; }
+    .progress-track { height: 14px; background: #F3F4F6; border-radius: 999px; overflow: hidden; border: 1px solid var(--border-light, #E5E7EB); }
+    .progress-fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+    .cat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+    .rdo-lista { display: flex; flex-direction: column; gap: 12px; }
+    .rdo-card { padding: 16px 20px; }
+    .rdo-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+    .rdo-data { font-size: .9rem; text-transform: capitalize; }
+    .rdo-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: .78rem; color: var(--ink-mid, #6B7280); margin-top: 4px; }
+    .rdo-bloco { margin-bottom: 8px; }
+    .rdo-bloco p { margin: 2px 0 0; font-size: .84rem; white-space: pre-wrap; }
+    .rdo-rotulo { font-size: .7rem; font-weight: 700; color: var(--ink-light); text-transform: uppercase; letter-spacing: .04em; }
+    .rdo-ocorrencia { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 8px 12px; }
+    .rdo-ocorrencia .rdo-rotulo, .rdo-ocorrencia p { color: #991B1B; }
+    .rdo-rodape { font-size: .7rem; color: #9CA3AF; margin-top: 6px; border-top: 1px solid var(--border-light, #F3F4F6); padding-top: 6px; }
+  </style>
+
+  <script define:vars={{ rdos: rdos || [], obraId: id, hoje }}>
+    window.__rdos = rdos;
+    window.__obraId = obraId;
+    window.__hoje = hoje;
+  </script>
+
+  <script>
+    function fecharModal(id: string) { document.getElementById(id)?.classList.remove("open"); }
+
+    function preencherFormRdo(r: any | null, dataPadrao: string) {
+      const f = document.getElementById("formRdo") as HTMLFormElement;
+      f.reset();
+      const set = (n: string, v: any) => { const el = f.querySelector(`[name="${n}"]`) as HTMLInputElement | null; if (el) el.value = v == null ? "" : String(v); };
+      if (r) {
+        set("rdo_id", r.id); set("data", r.data); set("efetivo", r.efetivo);
+        set("clima_manha", r.clima_manha || ""); set("clima_tarde", r.clima_tarde || "");
+        set("atividades", r.atividades); set("ocorrencias", r.ocorrencias || ""); set("equipamentos", r.equipamentos || "");
+        document.getElementById("tituloModalRdo")!.textContent = "Editar RDO";
+        document.getElementById("btnSalvarRdo")!.textContent = "Salvar alterações";
+      } else {
+        set("rdo_id", ""); set("data", dataPadrao);
+        document.getElementById("tituloModalRdo")!.textContent = "Novo RDO";
+        document.getElementById("btnSalvarRdo")!.textContent = "Salvar RDO";
+      }
+      document.getElementById("msgModalRdo")!.innerHTML = "";
+      document.getElementById("modalRdo")!.classList.add("open");
+    }
+
+    function abrirModalRdo() {
+      const hoje = (window as any).__hoje;
+      const existente = (window as any).__rdos.find((r: any) => r.data === hoje);
+      preencherFormRdo(existente || null, hoje);
+    }
+
+    function editarRdo(id: string) {
+      const r = (window as any).__rdos.find((x: any) => x.id === id);
+      if (r) preencherFormRdo(r, r.data);
+    }
+
+    // Se a data escolhida já tem RDO, vira edição automaticamente (evita erro de duplicidade)
+    document.querySelector("#formRdo [name=data]")?.addEventListener("change", (e) => {
+      const data = (e.target as HTMLInputElement).value;
+      const f = document.getElementById("formRdo") as HTMLFormElement;
+      const idAtual = (f.querySelector("[name=rdo_id]") as HTMLInputElement).value;
+      const existente = (window as any).__rdos.find((r: any) => r.data === data);
+      if (existente && existente.id !== idAtual) {
+        if (confirm(`Já existe RDO de ${data.split("-").reverse().join("/")}. Abrir para edição?`)) preencherFormRdo(existente, data);
+        else (e.target as HTMLInputElement).value = "";
+      }
+    });
+
+    document.getElementById("formRdo")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const fd = new FormData(f);
+      const body: Record<string, any> = Object.fromEntries(fd.entries());
+      const rdoId = body.rdo_id; delete body.rdo_id;
+      if (body.efetivo === "") delete body.efetivo; else body.efetivo = Number(body.efetivo);
+
+      const url = `/api/admin/obras/${(window as any).__obraId}/rdo`;
+      const res = await fetch(url, {
+        method: rdoId ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(rdoId ? { id: rdoId, ...body } : body),
+      });
+      const d = await res.json();
+      if (res.ok) window.location.reload();
+      else document.getElementById("msgModalRdo")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar RDO"}</div>`;
+    });
+
+    (window as any).fecharModal = fecharModal;
+    (window as any).abrirModalRdo = abrirModalRdo;
+    (window as any).editarRdo = editarRdo;
+  </script>
+</Admin>

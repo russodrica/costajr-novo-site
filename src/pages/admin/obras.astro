@@ -54,7 +54,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           {obras?.length ? obras.map((o: any) => (
             <tr>
               <td>
-                <strong>{o.nome}</strong>
+                <a href={`/admin/obras/${o.id}`} style="text-decoration:none;color:inherit"><strong>{o.nome}</strong></a>
                 {o.codigo && <div style="font-size:11.5px;color:#9CA3AF">{o.codigo}</div>}
               </td>
               <td>{o.cliente || "—"}</td>
@@ -68,7 +68,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
                   : <span style="color:#9CA3AF">0</span>}
               </td>
               <td><span class={`badge ${statusBadge[o.status] || "badge-gray"}`}>{statusLabels[o.status] || o.status}</span></td>
-              <td><button class="btn btn-secondary btn-sm" onclick={`editarObra(${JSON.stringify(JSON.stringify(o))})`}>Editar</button></td>
+              <td style="white-space:nowrap">
+                <a href={`/admin/obras/${o.id}`} class="btn btn-primary btn-sm">Abrir</a>
+                <button class="btn btn-secondary btn-sm" onclick={`editarObra(${JSON.stringify(JSON.stringify(o))})`}>Editar</button>
+              </td>
             </tr>
           )) : <tr><td colspan="9"><div class="empty-state"><strong>Nenhuma obra cadastrada</strong><p>Cadastre a primeira no botão "+ Nova obra".</p></div></td></tr>}
         </tbody>

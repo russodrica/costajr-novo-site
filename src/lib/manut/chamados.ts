@@ -182,12 +182,50 @@ export async function atualizarStatusChamado(args: {
   observacao?: string;
   motivoPendencia?: string;
   fotosEvidencia?: string[];
+  fotosAntes?: string[];
+  fotosDepois?: string[];
+  geo?: { lat: number; lng: number };
+  // true apenas no fluxo do técnico: exige foto ANTES p/ iniciar e foto DEPOIS p/ concluir.
+  // Fluxos admin / chamados antigos não passam por essa exigência.
+  exigirFotos?: boolean;
 }) {
   const updates: any = { status: args.status };
+
+  // Busca fotos já registradas para mesclar (e validar obrigatoriedade)
+  let atuais: { fotos_antes?: string[] | null; fotos_depois?: string[] | null; fotos_evidencia?: string[] | null } = {};
+  if (args.exigirFotos || args.fotosAntes?.length || args.fotosDepois?.length || args.fotosEvidencia?.length) {
+    const { data: atual } = await db()
+      .from("manut_chamados")
+      .select("fotos_antes,fotos_depois,fotos_evidencia")
+      .eq("id", args.chamadoId)
+      .maybeSingle();
+    atuais = atual || {};
+  }
+  const totalAntes = (atuais.fotos_antes?.length || 0) + (args.fotosAntes?.length || 0);
+  const totalDepois = (atuais.fotos_depois?.length || 0) + (args.fotosDepois?.length || 0);
+
+  if (args.exigirFotos && args.status === "em_andamento" && totalAntes < 1) {
+    throw new Error("Tire pelo menos 1 foto do local ANTES de iniciar o serviço");
+  }
+  if (args.exigirFotos && args.status === "concluido" && totalDepois < 1) {
+    throw new Error("Tire pelo menos 1 foto do local DEPOIS do serviço para concluir o chamado");
+  }
+
+  if (args.fotosAntes?.length) updates.fotos_antes = [...(atuais.fotos_antes || []), ...args.fotosAntes];
+  if (args.fotosDepois?.length) updates.fotos_depois = [...(atuais.fotos_depois || []), ...args.fotosDepois];
+  if (args.geo && Number.isFinite(args.geo.lat) && Number.isFinite(args.geo.lng)) {
+    updates.geo_lat = args.geo.lat;
+    updates.geo_lng = args.geo.lng;
+    updates.geo_registrado_em = new Date().toISOString();
+  }
+
   if (args.status === "concluido") {
     updates.data_conclusao = new Date().toISOString();
     if (args.observacao) updates.observacao_conclusao = args.observacao;
-    if (args.fotosEvidencia?.length) updates.fotos_evidencia = args.fotosEvidencia;
+    if (args.fotosEvidencia?.length) {
+      // Mescla com dedup: mantém retrocompatibilidade com o fluxo antigo (que enviava a lista completa)
+      updates.fotos_evidencia = [...new Set([...(atuais.fotos_evidencia || []), ...args.fotosEvidencia])];
+    }
   }
   if (args.status === "aguardando_material" && args.motivoPendencia) {
     updates.motivo_pendencia = args.motivoPendencia;
@@ -203,13 +241,19 @@ export async function atualizarStatusChamado(args: {
   return data;
 }
 
-// Upload de foto de evidência para o bucket "chamados"
+// Upload de foto para o bucket "chamados".
+// tipo "evidencia" (padrão): grava direto em fotos_evidencia (comportamento antigo).
+// tipo "antes" / "depois": só sobe o arquivo e devolve a URL — a gravação nas colunas
+// fotos_antes/fotos_depois acontece na mudança de status (atualizarStatusChamado).
 export async function uploadFotoEvidencia(args: {
   chamadoId: string;
   tecnicoId: string;
   mime: string;
   dataBase64: string;
+  tipo?: "evidencia" | "antes" | "depois";
 }) {
+  const tipo = args.tipo || "evidencia";
+
   // Valida chamado pertence ao técnico
   const { data: c } = await db()
     .from("manut_chamados")
@@ -219,7 +263,7 @@ export async function uploadFotoEvidencia(args: {
   if (!c || c.tecnico_atribuido_id !== args.tecnicoId) throw new Error("Chamado não encontrado ou não atribuído a você");
 
   const ext = (args.mime.split("/")[1] || "jpg").replace("jpeg", "jpg");
-  const path = `${args.chamadoId}/${Date.now()}.${ext}`;
+  const path = `${args.chamadoId}/${tipo === "evidencia" ? "" : `${tipo}_`}${Date.now()}.${ext}`;
   const buf = Buffer.from(args.dataBase64, "base64");
 
   const { error: upErr } = await db()
@@ -229,8 +273,10 @@ export async function uploadFotoEvidencia(args: {
 
   const { data: pub } = db().storage.from("chamados").getPublicUrl(path);
   const url = pub.publicUrl;
-  const fotos = [...(c.fotos_evidencia || []), url];
 
+  if (tipo !== "evidencia") return { url, fotos: [url] };
+
+  const fotos = [...(c.fotos_evidencia || []), url];
   await db()
     .from("manut_chamados")
     .update({ fotos_evidencia: fotos })

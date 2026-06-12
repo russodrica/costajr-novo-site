@@ -1,0 +1,196 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+---
+<Admin title="Conciliação Bancária" current="fin-conciliacao">
+  <div id="msg"></div>
+
+  <!-- Cards -->
+  <div class="card-grid">
+    <div class="stat-card">
+      <div class="stat-value" id="cardPendentes">—</div>
+      <div class="stat-label">Pendentes de conciliação</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="cardConciliadas" style="color:var(--green)">—</div>
+      <div class="stat-label">Conciliadas no mês</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="cardIgnoradas" style="color:var(--ink-light)">—</div>
+      <div class="stat-label">Ignoradas</div>
+    </div>
+  </div>
+
+  <!-- Upload OFX -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="section-header">
+      <span class="section-title">📥 Importar extrato (.ofx)</span>
+    </div>
+    <p style="font-size:.85rem;color:var(--ink-mid);margin-bottom:12px">
+      Baixe o extrato em formato <strong>OFX</strong> no internet banking e envie aqui.
+      Transações já importadas (mesmo FITID) são ignoradas automaticamente.
+    </p>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <input type="file" id="arquivoOfx" accept=".ofx,.OFX,text/plain" class="search-input" style="min-width:260px;padding:6px" />
+      <button class="btn btn-primary" id="btnImportar" onclick="importarOfx()">Importar extrato</button>
+    </div>
+  </div>
+
+  <!-- Filtro + tabela -->
+  <div class="toolbar">
+    <span class="toolbar-title">Transações do extrato</span>
+    <select class="filter-select" id="filtroStatus" onchange="carregar()">
+      <option value="pendente" selected>Pendentes</option>
+      <option value="conciliado">Conciliadas</option>
+      <option value="ignorado">Ignoradas</option>
+      <option value="todos">Todas</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Data</th><th>Conta</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Status</th><th>Sugestões / Ações</th></tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Carregando…</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const fmtData = (d: string) => { const [a, m, dd] = d.split("-"); return `${dd}/${m}/${a}`; };
+    const esc = (s: string) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    function mostrarMsg(texto: string, erro = false) {
+      const el = document.getElementById("msg")!;
+      el.innerHTML = `<div class="alert ${erro ? "alert-error" : "alert-success"}">${esc(texto)}</div>`;
+      setTimeout(() => { el.innerHTML = ""; }, 6000);
+    }
+
+    async function carregar() {
+      const status = (document.getElementById("filtroStatus") as HTMLSelectElement).value;
+      const tbody = document.getElementById("tbody")!;
+      tbody.innerHTML = `<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Carregando…</div></td></tr>`;
+      try {
+        const res = await fetch(`/api/admin/fin/ofx?status=${encodeURIComponent(status)}`);
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
+
+        document.getElementById("cardPendentes")!.textContent = String(d.contadores.pendentes);
+        document.getElementById("cardConciliadas")!.textContent = String(d.contadores.conciliadas_mes);
+        document.getElementById("cardIgnoradas")!.textContent = String(d.contadores.ignoradas);
+
+        if (!d.extrato.length) {
+          tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><strong>Nenhuma transação</strong>Importe um arquivo OFX acima para começar.</div></td></tr>`;
+          return;
+        }
+
+        const badge: Record<string, string> = { pendente: "badge-yellow", conciliado: "badge-green", ignorado: "badge-gray" };
+        tbody.innerHTML = d.extrato.map((t: any) => {
+          const valor = Number(t.valor);
+          const corValor = valor >= 0 ? "color:var(--green);font-weight:600" : "color:var(--red);font-weight:600";
+          const sinal = valor >= 0 ? "+" : "−";
+
+          let acoes = "—";
+          if (t.status === "pendente") {
+            const sugs = (t.sugestoes || []).map((s: any) =>
+              `<button class="btn btn-success btn-sm" style="margin:2px 2px 2px 0" title="${esc(s.tipo)} • ${esc(s.status)} • ${fmtData(s.data)} • ${fmtBRL(Number(s.valor))}"
+                 onclick="conciliar('${t.id}','${s.id}')">✓ Conciliar com ${esc(String(s.descricao).slice(0, 40))}</button>`
+            ).join("");
+            acoes = `${sugs}
+              <button class="btn btn-info btn-sm" style="margin:2px 2px 2px 0" onclick="criarLancamento('${t.id}')">+ Criar lançamento</button>
+              <button class="btn btn-outline btn-sm" style="margin:2px 0" onclick="ignorar('${t.id}')">Ignorar</button>`;
+          } else if (t.status === "conciliado" && t.lancamento_id) {
+            acoes = `<span style="font-size:.78rem;color:var(--ink-mid)">Lançamento vinculado</span>`;
+          }
+
+          return `<tr>
+            <td style="white-space:nowrap">${fmtData(t.data)}</td>
+            <td style="font-size:.78rem;color:var(--ink-mid)">${esc(t.conta || "—")}</td>
+            <td>${esc(t.descricao || "—")}</td>
+            <td style="text-align:right;white-space:nowrap;${corValor}">${sinal} ${fmtBRL(Math.abs(valor))}</td>
+            <td><span class="badge ${badge[t.status] || "badge-gray"}">${esc(t.status)}</span></td>
+            <td>${acoes}</td>
+          </tr>`;
+        }).join("");
+      } catch (e: any) {
+        tbody.innerHTML = `<tr><td colspan="6"><div class="alert alert-error" style="margin:12px">Erro ao carregar: ${esc(e.message)}</div></td></tr>`;
+      }
+    }
+
+    async function importarOfx() {
+      const input = document.getElementById("arquivoOfx") as HTMLInputElement;
+      const btn = document.getElementById("btnImportar") as HTMLButtonElement;
+      const arq = input.files?.[0];
+      if (!arq) { alert("Selecione um arquivo .ofx primeiro."); return; }
+
+      btn.disabled = true; btn.textContent = "Importando…";
+      try {
+        const conteudo = await new Promise<string>((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(String(fr.result));
+          fr.onerror = () => reject(new Error("Falha ao ler o arquivo"));
+          fr.readAsText(arq);
+        });
+        const res = await fetch("/api/admin/fin/ofx/importar", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ conteudo }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
+        mostrarMsg(`Importação concluída: ${d.importadas} nova(s), ${d.duplicadas} duplicada(s) ignorada(s).${d.conta ? " Conta: " + d.conta : ""}`);
+        input.value = "";
+        await carregar();
+      } catch (e: any) {
+        mostrarMsg("Erro na importação: " + e.message, true);
+      } finally {
+        btn.disabled = false; btn.textContent = "Importar extrato";
+      }
+    }
+
+    async function acaoConciliar(body: any, confirmacao?: string) {
+      if (confirmacao && !confirm(confirmacao)) return;
+      try {
+        const res = await fetch("/api/admin/fin/ofx/conciliar", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
+        await carregar();
+      } catch (e: any) {
+        alert("Erro: " + e.message);
+      }
+    }
+    function conciliar(extratoId: string, lancamentoId: string) {
+      acaoConciliar({ extrato_id: extratoId, lancamento_id: lancamentoId });
+    }
+    function criarLancamento(extratoId: string) {
+      acaoConciliar({ extrato_id: extratoId, criar_lancamento: true },
+        "Criar um lançamento novo (já pago) a partir desta transação do extrato?");
+    }
+    function ignorar(extratoId: string) {
+      acaoConciliar({ extrato_id: extratoId, acao: "ignorar" },
+        "Ignorar esta transação? Ela não aparecerá mais como pendente.");
+    }
+
+    (window as any).carregar = carregar;
+    (window as any).importarOfx = importarOfx;
+    (window as any).conciliar = conciliar;
+    (window as any).criarLancamento = criarLancamento;
+    (window as any).ignorar = ignorar;
+
+    carregar();
+  </script>
+</Admin>

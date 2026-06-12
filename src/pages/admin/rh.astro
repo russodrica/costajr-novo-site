@@ -9,18 +9,21 @@ try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") t
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 
 const db = supabaseAdmin();
-const [colabRes, ausRes, docRes] = await Promise.all([
+const [colabRes, ausRes, docRes, admRes] = await Promise.all([
   db.from("rh_colaboradores").select("*").order("nome", { ascending: true }),
   db.from("rh_ausencias").select("*, rh_colaboradores(nome)").order("data_inicio", { ascending: false }).limit(200),
   db.from("rh_documentos").select("*, rh_colaboradores(nome)").order("created_at", { ascending: false }).limit(200),
+  db.from("rh_admissoes").select("*, rh_admissoes_docs(id, tipo, nome_arquivo, created_at)").order("created_at", { ascending: false }).limit(200),
 ]);
 const colaboradores: any[] = colabRes.data || [];
 const ausencias: any[] = ausRes.data || [];
 const documentos: any[] = docRes.data || [];
+const admissoes: any[] = admRes.data || [];
 const erros = [
   colabRes.error && `Colaboradores: ${colabRes.error.message}`,
   ausRes.error && `Ausências: ${ausRes.error.message}`,
   docRes.error && `Documentos: ${docRes.error.message}`,
+  admRes.error && `Admissões: ${admRes.error.message} (rode a migration 028_melhorias_benchmark.sql no Supabase)`,
 ].filter(Boolean) as string[];
 
 // ── Datas de referência ──
@@ -52,6 +55,15 @@ const stAus: Record<string, string> = { solicitada: "Solicitada", aprovada: "Apr
 const badgeStAus: Record<string, string> = { solicitada: "badge-yellow", aprovada: "badge-green", rejeitada: "badge-red", concluida: "badge-gray" };
 const tiposDoc: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Outro" };
 const badgeTipoDoc: Record<string, string> = { contrato: "badge-blue", aso: "badge-green", ficha_epi: "badge-orange", advertencia: "badge-red", atestado: "badge-purple", certificado: "badge-blue", cnh: "badge-gray", outro: "badge-gray" };
+const stAdm: Record<string, string> = { aguardando: "Aguardando docs", docs_enviados: "Docs enviados", concluida: "Concluída", cancelada: "Cancelada" };
+const badgeStAdm: Record<string, string> = { aguardando: "badge-yellow", docs_enviados: "badge-blue", concluida: "badge-green", cancelada: "badge-gray" };
+const tiposDocAdm: Record<string, string> = { rg: "RG ou CNH", cpf: "CPF", cnh: "CNH", ctps: "CTPS digital", comprovante_residencia: "Comprovante de residência", foto: "Foto 3x4", aso: "ASO", outro: "Outro" };
+const DOCS_OBRIGATORIOS = ["rg", "cpf", "comprovante_residencia", "ctps", "foto"];
+function docsEnviadosAdm(a: any) {
+  const tipos = new Set((a.rh_admissoes_docs || []).map((d: any) => d.tipo));
+  return DOCS_OBRIGATORIOS.filter(t => tipos.has(t)).length;
+}
+const admissoesAbertas = admissoes.filter(a => a.status === "aguardando" || a.status === "docs_enviados").length;
 
 function fmtData(d: string | null | undefined) {
   if (!d) return "—";
@@ -107,6 +119,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     <button class="pill active" data-aba="colaboradores" onclick="mostrarAba('colaboradores')">Colaboradores <span class="count">{colaboradores.length}</span></button>
     <button class="pill" data-aba="ausencias" onclick="mostrarAba('ausencias')">Férias &amp; Ausências <span class="count">{ausencias.length}</span></button>
     <button class="pill" data-aba="documentos" onclick="mostrarAba('documentos')">Documentos <span class="count">{documentos.length}</span></button>
+    <button class="pill" data-aba="admissoes" onclick="mostrarAba('admissoes')">Admissões <span class="count">{admissoesAbertas}</span></button>
     <button class="pill" data-aba="aniversariantes" onclick="mostrarAba('aniversariantes')">Aniversariantes <span class="count">{aniversariantes.length}</span></button>
   </div>
 
@@ -219,6 +232,52 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
                 </td>
               </tr>
             )) : <tr><td colspan="5"><div class="empty-state"><strong>Nenhum documento cadastrado</strong>Anexe contratos, ASOs, fichas de EPI e certificados.</div></td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ ABA ADMISSÕES ════════ -->
+  <section class="tab-section" id="aba-admissoes" style="display:none">
+    <div class="toolbar">
+      <span class="toolbar-title">Admissão digital</span>
+      <button class="btn btn-primary" onclick="abrirModalAdmissao()">+ Nova admissão</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nome</th><th>Cargo</th><th>Status</th><th>Docs enviados</th><th>Criada em</th><th>Ações</th></tr></thead>
+          <tbody>
+            {admissoes.length ? admissoes.map(a => (
+              <tr>
+                <td><strong>{a.nome}</strong>{(a.email || a.telefone) && <div class="sub-info">{[a.email, a.telefone].filter(Boolean).join(" · ")}</div>}</td>
+                <td>{a.cargo || "—"}{a.regime && <div class="sub-info">{regimes[a.regime] || a.regime}</div>}</td>
+                <td><span class={`badge ${badgeStAdm[a.status] || "badge-gray"}`}>{stAdm[a.status] || a.status}</span></td>
+                <td>
+                  <strong>{docsEnviadosAdm(a)}/5</strong>
+                  {(a.rh_admissoes_docs || []).length > docsEnviadosAdm(a) && <span class="sub-info"> ({(a.rh_admissoes_docs || []).length} arquivos)</span>}
+                </td>
+                <td>{fmtData(a.created_at)}</td>
+                <td>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap">
+                    {(a.status === "aguardando" || a.status === "docs_enviados") && (
+                      <button class="btn btn-secondary btn-sm" onclick={`copiarLinkAdmissao('${a.token}', this)`}>🔗 Copiar link</button>
+                    )}
+                    {(a.rh_admissoes_docs || []).length > 0 && (
+                      <button class="btn btn-secondary btn-sm" onclick={`verDocsAdmissao('${a.id}')`}>Ver documentos</button>
+                    )}
+                    {(a.status === "aguardando" || a.status === "docs_enviados") && (
+                      <>
+                        <button class="btn btn-success btn-sm" onclick={`concluirAdmissao('${a.id}','${(a.nome || "").replace(/'/g, "")}')`}>Concluir → vira colaborador</button>
+                        <button class="btn btn-danger btn-sm" onclick={`cancelarAdmissao('${a.id}','${(a.nome || "").replace(/'/g, "")}')`}>Cancelar</button>
+                      </>
+                    )}
+                    {a.status === "concluida" && a.colaborador_id && <span class="sub-info" style="align-self:center">✓ Colaborador criado</span>}
+                  </div>
+                </td>
+              </tr>
+            )) : <tr><td colspan="6"><div class="empty-state"><strong>Nenhuma admissão criada</strong>Clique em “+ Nova admissão” para gerar o link e enviar ao candidato — ele preenche e fotografa os documentos pelo celular.</div></td></tr>}
           </tbody>
         </table>
       </div>
@@ -376,8 +435,60 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     </div>
   </div>
 
+  <!-- ════════ MODAL NOVA ADMISSÃO ════════ -->
+  <div class="modal-overlay" id="modalAdmissao">
+    <div class="modal">
+      <div class="modal-title">Nova admissão digital</div>
+      <div id="msgAdmissao"></div>
+      <form id="formAdmissao">
+        <div class="form-group"><label>Nome do candidato *</label><input name="nome" required /></div>
+        <div class="form-row">
+          <div class="form-group"><label>E-mail</label><input name="email" type="email" /></div>
+          <div class="form-group"><label>Telefone</label><input name="telefone" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Cargo</label><input name="cargo" /></div>
+          <div class="form-group"><label>Regime</label>
+            <select name="regime">
+              <option value="">—</option>
+              <option value="clt">CLT</option>
+              <option value="pj">PJ</option>
+              <option value="estagio">Estágio</option>
+              <option value="temporario">Temporário</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalAdmissao')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Criar e gerar link</button>
+        </div>
+      </form>
+      <div id="boxLinkAdmissao" style="display:none">
+        <div class="alert" style="background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;border-radius:8px;padding:12px;margin-bottom:12px">
+          ✅ Admissão criada! Envie o link abaixo ao candidato (WhatsApp ou e-mail) — ele abre no celular, confere os contatos e fotografa os documentos.
+        </div>
+        <div class="form-group"><label>Link público de admissão</label><input id="inputLinkAdmissao" readonly onclick="this.select()" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="window.location.reload()">Fechar</button>
+          <button type="button" class="btn btn-primary" onclick="copiarInputLink(this)">📋 Copiar link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ MODAL DOCUMENTOS DA ADMISSÃO ════════ -->
+  <div class="modal-overlay" id="modalDocsAdmissao">
+    <div class="modal">
+      <div class="modal-title" id="tituloDocsAdmissao">Documentos enviados</div>
+      <div id="listaDocsAdmissao"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModal('modalDocsAdmissao')">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Dados para os scripts client-side -->
-  <script type="application/json" id="dadosRH" set:html={JSON.stringify({ colaboradores, documentos })}></script>
+  <script type="application/json" id="dadosRH" set:html={JSON.stringify({ colaboradores, documentos, admissoes, tiposDocAdm })}></script>
 
   <script>
     const DADOS = JSON.parse((document.getElementById("dadosRH") as any)?.textContent || "{}");
@@ -385,6 +496,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     for (const c of DADOS.colaboradores || []) colabPorId[c.id] = c;
     const docPorId: Record<string, any> = {};
     for (const d of DADOS.documentos || []) docPorId[d.id] = d;
+    const admPorId: Record<string, any> = {};
+    for (const a of DADOS.admissoes || []) admPorId[a.id] = a;
+    const tiposDocAdm: Record<string, string> = DADOS.tiposDocAdm || {};
 
     // ── Abas ──
     function mostrarAba(aba: string) {
@@ -548,6 +662,106 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       else { const d = await res.json().catch(() => ({} as any)); msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`; }
     });
 
+    // ── Admissão digital ──
+    function abrirModalAdmissao() {
+      const form = document.getElementById("formAdmissao") as any;
+      form.reset();
+      form.style.display = "";
+      (document.getElementById("boxLinkAdmissao") as any).style.display = "none";
+      (document.getElementById("msgAdmissao") as any).innerHTML = "";
+      document.getElementById("modalAdmissao")?.classList.add("open");
+    }
+
+    async function copiarTexto(texto: string) {
+      try { await navigator.clipboard.writeText(texto); return true; }
+      catch {
+        // fallback p/ contextos sem clipboard API
+        const ta = document.createElement("textarea");
+        ta.value = texto; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); return true; } catch { return false; }
+        finally { document.body.removeChild(ta); }
+      }
+    }
+
+    async function copiarLinkAdmissao(token: string, botao?: any) {
+      const link = `${window.location.origin}/admissao/${token}`;
+      const ok = await copiarTexto(link);
+      if (botao) {
+        const original = botao.textContent;
+        botao.textContent = ok ? "✓ Copiado!" : "Erro ao copiar";
+        setTimeout(() => { botao.textContent = original; }, 1800);
+      }
+      if (!ok) prompt("Copie o link manualmente:", link);
+    }
+
+    async function copiarInputLink(botao: any) {
+      const input = document.getElementById("inputLinkAdmissao") as any;
+      const ok = await copiarTexto(input.value);
+      botao.textContent = ok ? "✓ Copiado!" : "Erro — copie manualmente";
+      setTimeout(() => { botao.textContent = "📋 Copiar link"; }, 1800);
+    }
+
+    document.getElementById("formAdmissao")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target as any);
+      const body = Object.fromEntries(fd.entries());
+      const msg = document.getElementById("msgAdmissao") as any;
+      const res = await fetch("/api/admin/rh/admissoes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json().catch(() => ({} as any));
+      if (res.ok) {
+        (e.target as any).style.display = "none";
+        msg.innerHTML = "";
+        (document.getElementById("inputLinkAdmissao") as any).value = `${window.location.origin}/admissao/${d.token}`;
+        (document.getElementById("boxLinkAdmissao") as any).style.display = "";
+      } else {
+        msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao criar admissão"}</div>`;
+      }
+    });
+
+    function verDocsAdmissao(id: string) {
+      const a = admPorId[id];
+      if (!a) { alert("Admissão não encontrada nos dados carregados. Recarregue a página."); return; }
+      (document.getElementById("tituloDocsAdmissao") as any).textContent = `Documentos de ${a.nome}`;
+      const docs = a.rh_admissoes_docs || [];
+      const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      (document.getElementById("listaDocsAdmissao") as any).innerHTML = docs.length
+        ? `<ul class="lista-docs-adm">` + docs.map((doc: any) => {
+            const data = doc.created_at ? new Date(doc.created_at).toLocaleString("pt-BR") : "";
+            return `<li>
+              <a href="/api/admin/rh/admissoes/${a.id}/docs/${doc.id}/arquivo" target="_blank" rel="noopener" title="Abre via link seguro temporário (10 min)">📎 ${esc(tiposDocAdm[doc.tipo] || doc.tipo)}</a>
+              <span class="sub-info">${esc(doc.nome_arquivo || "")}${data ? " · " + data : ""}</span>
+            </li>`;
+          }).join("") + `</ul>`
+        : `<div class="empty-state"><strong>Nenhum documento enviado ainda</strong></div>`;
+      document.getElementById("modalDocsAdmissao")?.classList.add("open");
+    }
+
+    async function concluirAdmissao(id: string, nome: string) {
+      if (!confirm(`Concluir a admissão de "${nome}"?\n\nIsso vai:\n• Criar o colaborador no RH (status Ativo, admissão hoje)\n• Mover os documentos enviados para a ficha do colaborador\n• Encerrar o link público de admissão`)) return;
+      const res = await fetch(`/api/admin/rh/admissoes/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ acao: "concluir" }),
+      });
+      if (res.ok) window.location.reload();
+      else { const d = await res.json().catch(() => ({} as any)); alert("Erro ao concluir: " + (d.error || `HTTP ${res.status}`)); }
+    }
+
+    async function cancelarAdmissao(id: string, nome: string) {
+      if (!confirm(`Cancelar a admissão de "${nome}"?\n\nO link público deixará de aceitar envios.`)) return;
+      const res = await fetch(`/api/admin/rh/admissoes/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ acao: "cancelar" }),
+      });
+      if (res.ok) window.location.reload();
+      else { const d = await res.json().catch(() => ({} as any)); alert("Erro ao cancelar: " + (d.error || `HTTP ${res.status}`)); }
+    }
+
     (window as any).mostrarAba = mostrarAba;
     (window as any).fecharModal = fecharModal;
     (window as any).filtrarColabs = filtrarColabs;
@@ -559,6 +773,12 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).abrirModalDoc = abrirModalDoc;
     (window as any).editarDoc = editarDoc;
     (window as any).excluirDoc = excluirDoc;
+    (window as any).abrirModalAdmissao = abrirModalAdmissao;
+    (window as any).copiarLinkAdmissao = copiarLinkAdmissao;
+    (window as any).copiarInputLink = copiarInputLink;
+    (window as any).verDocsAdmissao = verDocsAdmissao;
+    (window as any).concluirAdmissao = concluirAdmissao;
+    (window as any).cancelarAdmissao = cancelarAdmissao;
   </script>
 
   <style>
@@ -571,6 +791,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       padding: 10px 4px; border-bottom: 1px solid #F3F4F6;
     }
     .lista-aniversariantes li:last-child { border-bottom: none; }
+    .lista-docs-adm { list-style: none; margin: 0 0 8px; padding: 0; }
+    .lista-docs-adm li { display: flex; flex-direction: column; gap: 2px; padding: 9px 4px; border-bottom: 1px solid #F3F4F6; }
+    .lista-docs-adm li:last-child { border-bottom: none; }
+    .lista-docs-adm a { font-weight: 600; }
     .aniv-dia { font-weight: 700; color: #C41E3A; min-width: 86px; white-space: nowrap; }
     .aniv-nome { font-weight: 600; }
     .aniv-cargo { color: #9CA3AF; font-size: 0.82rem; }

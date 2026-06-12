@@ -31,6 +31,12 @@ const valorTotal = (todosAtivos || []).reduce((s, a) => s + (Number(a.valor_aqui
 const hoje = new Date(); const em60 = new Date(); em60.setDate(em60.getDate() + 60);
 const garantiaVencendo = (todosAtivos || []).filter(a => a.garantia && a.garantia_fim && new Date(a.garantia_fim) >= hoje && new Date(a.garantia_fim) <= em60).length;
 
+// preventivas de ativos vencidas (melhoria #10)
+const { count: preventivasVencidas } = await db.from("ativos_manutencao_planos")
+  .select("*", { count: "exact", head: true })
+  .eq("ativo", true)
+  .lte("proxima_em", hoje.toISOString().slice(0, 10));
+
 const categorias: Record<string, string> = {
   telefonia: "Telefonia", informatica: "Informática", equipamento_obra: "Equip. de Obra",
   epi: "EPI", veiculo: "Veículo", mobiliario: "Mobiliário", outros: "Outros",
@@ -64,6 +70,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
     <div class="stat-card"><div class="stat-value" style="color:#B91C1C">{(porStatus.extraviado ?? 0) + (porStatus.roubado ?? 0) + (porStatus.danificado ?? 0)}</div><div class="stat-label">Extraviado/roubado/danificado</div></div>
     <div class="stat-card"><div class="stat-value" style="color:#16A34A;font-size:1.35rem">{fmtMoney(valorTotal)}</div><div class="stat-label">Valor do patrimônio</div></div>
     <div class="stat-card"><div class="stat-value" style={garantiaVencendo ? "color:#D97706" : ""}>{garantiaVencendo}</div><div class="stat-label">Garantias vencendo (60d)</div></div>
+    <div class="stat-card"><div class="stat-value" style={preventivasVencidas ? "color:#B91C1C" : "color:#16A34A"}>{preventivasVencidas ?? 0}</div><div class="stat-label">Preventivas vencidas</div></div>
   </div>
 
   <!-- Filtros -->

@@ -221,6 +221,7 @@ const catJson = JSON.stringify((categorias || []).map((c: any) => ({ id: c.id, n
       <option value="todas">Todas as categorias</option>
       {(categorias || []).map((c: any) => <option value={c.id} selected={c.id === filtroCategoria}>{c.nome} ({c.tipo})</option>)}
     </select>
+    <a href="/admin/fin-conciliacao" class="btn btn-secondary">🏦 Conciliação OFX</a>
     <button class="btn btn-secondary" onclick="abrirModalCategorias()">Categorias</button>
     <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo lançamento</button>
   </div>

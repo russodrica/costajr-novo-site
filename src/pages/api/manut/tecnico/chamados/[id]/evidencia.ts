@@ -7,15 +7,18 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const claims = await requireTecnico(request);
-    const { mime, data_base64 } = await request.json();
+    const { mime, data_base64, tipo } = await request.json();
     if (!mime || !data_base64) return jsonErr(400, "mime e data_base64 obrigatórios");
     const tiposOk = ["image/jpeg", "image/png", "image/webp"];
     if (!tiposOk.includes(mime)) return jsonErr(400, "Formato inválido (use JPG, PNG ou WEBP)");
+    const tiposFoto = ["evidencia", "antes", "depois"];
+    if (tipo && !tiposFoto.includes(tipo)) return jsonErr(400, "Tipo de foto inválido");
     const r = await uploadFotoEvidencia({
       chamadoId: params.id!,
       tecnicoId: claims.sub,
       mime,
       dataBase64: data_base64,
+      tipo,
     });
     return jsonOk(r);
   } catch (e: any) {
