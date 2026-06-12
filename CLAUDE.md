@@ -381,6 +381,17 @@ trabalhista. Migration 033 RODADA. QA E2E 13/13 em producao (scripts/qa-junia.mj
 e qa-junia-fin.mjs): pergunta de categoria restrita redireciona p/ operacional
 e responde da KB p/ perfil financeiro (by design).
 
+**Onda Gestao de Conteudo (12/06/2026, commit 1b99364):** as 4 telas do admin
+(comunicados, KB, onboarding, treinamentos) auditadas — CRUD ok, CSRF ok.
+Novidades: (1) upload de arquivo direto ao bucket portal via URL assinada
+(/api/admin/portal/upload-url + public/admin-upload.js; contorna limite de
+4,5MB de body da Vercel; max 45MB; videos grandes → YouTube); botoes "Enviar
+arquivo/PDF" no Onboarding e Treinamentos. (2) Importar KB de PDF/URL
+(/api/admin/portal/kb/importar, lib unpdf; blocos ~1500 chars; alimenta a
+JunIA) com modal na tela Base de Conhecimento. (3) Publicar comunicado notifica
+colaboradores no sino (todos ou perfil alvo). QA E2E 16/16 em producao
+(scripts/qa-conteudo.mjs).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
