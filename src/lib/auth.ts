@@ -11,7 +11,18 @@ const ISSUER = "costajr.com.br";
 
 export type ClienteClaims = { sub: string; tipo: "cliente"; email: string; troca?: boolean };
 export type TecnicoClaims = { sub: string; tipo: "tecnico"; email: string; troca?: boolean };
-export type AdminClaims   = { sub: string; tipo: "admin"; email: string; role: string };
+export type AdminClaims   = { sub: string; tipo: "admin"; email: string; role: string; roles?: string[]; trabalhista?: boolean };
+
+/** Perfis efetivos do usuário (múltiplos perfis com fallback no cargo único). */
+export function perfisDe(claims: AdminClaims): string[] {
+  const lista = claims.roles && claims.roles.length ? claims.roles : [claims.role];
+  return lista.filter(Boolean);
+}
+
+/** true se o usuário tem ao menos um dos perfis aceitos. */
+export function temPerfil(claims: AdminClaims, aceitos: string[]): boolean {
+  return perfisDe(claims).some((r) => aceitos.includes(r));
+}
 export type RepresentanteClaims = { sub: string; tipo: "representante"; email: string; troca?: boolean };
 export type AnyClaims = ClienteClaims | TecnicoClaims | AdminClaims | RepresentanteClaims;
 

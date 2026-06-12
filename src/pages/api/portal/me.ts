@@ -10,7 +10,7 @@ export const GET: APIRoute = async ({ request }) => {
     const sb = supabaseAdmin();
     const { data: profile } = await sb
       .from("portal_profiles")
-      .select("id, email, display_name, full_name, role, approval_status, last_login_at, created_at")
+      .select("id, email, display_name, full_name, role, roles, tem_trabalhista, avatar_url, approval_status, last_login_at, created_at")
       .eq("id", claims.sub)
       .single();
 

@@ -11,7 +11,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 const filtroStatus = Astro.url.searchParams.get("status") || "todos";
 const db = supabaseAdmin();
 let qMembros = db.from("portal_profiles")
-  .select("id, email, display_name, full_name, role, approval_status, last_login_at, created_at")
+  .select("id, email, display_name, full_name, role, roles, tem_trabalhista, avatar_url, approval_status, last_login_at, created_at")
   .order("created_at", { ascending: false });
 if (filtroStatus !== "todos") qMembros = qMembros.eq("approval_status", filtroStatus);
 const { data: membros, error: membrosErro } = await qMembros;
@@ -48,10 +48,22 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
         <thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>Status</th><th>Último acesso</th><th>Cadastro</th><th>Ações</th></tr></thead>
         <tbody>
           {membros?.length ? membros.map((m: any) => (
-            <tr data-membro-id={m.id} data-nome={m.display_name || m.full_name || ""} data-email={m.email || ""}>
-              <td><strong>{m.display_name || m.full_name || "—"}</strong></td>
+            <tr data-membro-id={m.id} data-nome={m.display_name || m.full_name || ""} data-email={m.email || ""} data-roles={(m.roles?.length ? m.roles : [m.role]).join(",")}>
+              <td>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span class="avatar-mini" onclick={`trocarAvatar('${m.id}')`} title="Clique para trocar a foto">
+                    {m.avatar_url ? <img src={m.avatar_url} alt="" /> : <span>{(m.display_name || m.full_name || m.email || "?").slice(0, 1).toUpperCase()}</span>}
+                  </span>
+                  <strong>{m.display_name || m.full_name || "—"}</strong>
+                </div>
+              </td>
               <td>{m.email}</td>
-              <td><span class={`badge ${badgeRole[m.role]}`}>{m.role}</span></td>
+              <td>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  {(m.roles?.length ? m.roles : [m.role]).filter(Boolean).map((r: string) => <span class={`badge ${badgeRole[r] || "badge-gray"}`}>{r}</span>)}
+                  {m.tem_trabalhista && <span class="badge badge-purple" title="Tem acesso a conteúdo trabalhista">⚖️ trabalhista</span>}
+                </div>
+              </td>
               <td><span class={`badge ${badgeSt[m.approval_status]}`}>{m.approval_status}</span></td>
               <td>{fmtDate(m.last_login_at)}</td>
               <td>{fmtDate(m.created_at)}</td>
@@ -63,7 +75,8 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
                       <button class="btn btn-danger btn-sm" onclick={`rejeitar('${m.id}')`}>Rejeitar</button>
                     </>
                   )}
-                  <button class="btn btn-secondary btn-sm" onclick={`editarRole('${m.id}','${m.role}')`}>Cargo</button>
+                  <button class="btn btn-secondary btn-sm" onclick={`editarPerfis('${m.id}')`}>👥 Perfis</button>
+                  <button class={`btn btn-sm ${m.tem_trabalhista ? "btn-outline" : "btn-warning"}`} onclick={`toggleTrabalhista('${m.id}', ${m.tem_trabalhista ? "false" : "true"})`}>{m.tem_trabalhista ? "Remover trabalhista" : "⚖️ Dar trabalhista"}</button>
                   <button class="btn btn-secondary btn-sm" onclick={`editarMembro('${m.id}')`}>✏️ Editar</button>
                   <button class="btn btn-info btn-sm" onclick={`resetarSenha('${m.id}')`}>Reset senha</button>
                   <button class="btn btn-danger btn-sm" onclick={`excluirMembro('${m.id}', '${(m.display_name || m.email || "").replace(/'/g, "")}')`}>🗑</button>
@@ -115,24 +128,51 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
     </div>
   </div>
 
-  <!-- Modal editar cargo -->
-  <div class="modal-overlay" id="modalRole">
-    <div class="modal" style="max-width:360px">
-      <div class="modal-title">Alterar Cargo</div>
-      <form id="formRole">
-        <input type="hidden" id="roleMembroId" />
-        <div class="form-group"><label>Cargo</label>
-          <select id="roleSelect">
-            {roles.map(r => <option value={r}>{r}</option>)}
-          </select>
+  <!-- Modal perfis (múltiplos) -->
+  <div class="modal-overlay" id="modalPerfis">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-title">👥 Perfis do membro</div>
+      <p style="font-size:12.5px;color:#6B7280;margin:-8px 0 14px">O membro pode acumular vários perfis (como no portal antigo). O primeiro marcado vira o perfil principal.</p>
+      <form id="formPerfis">
+        <input type="hidden" id="perfisMembroId" />
+        <div class="perfis-grid">
+          {roles.map(r => (
+            <label class="perfil-check">
+              <input type="checkbox" name="perfil" value={r} />
+              <span>{r}</span>
+            </label>
+          ))}
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalRole')">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Salvar</button>
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalPerfis')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar perfis</button>
         </div>
       </form>
     </div>
   </div>
+
+  <input type="file" id="inputAvatar" accept="image/*" style="display:none" />
+
+  <style>
+    .avatar-mini {
+      width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex: none;
+      background: linear-gradient(135deg, #C41E3A, #8B0F25); color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 14px; cursor: pointer; border: 2px solid #fff;
+      box-shadow: 0 1px 4px rgba(16,24,40,.2); transition: transform .15s;
+    }
+    .avatar-mini:hover { transform: scale(1.12); }
+    .avatar-mini img { width: 100%; height: 100%; object-fit: cover; }
+    .perfis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .perfil-check {
+      display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+      border: 1.5px solid #E5E7EB; border-radius: 8px; cursor: pointer;
+      font-size: .85rem; font-weight: 600; transition: .15s; text-transform: capitalize;
+    }
+    .perfil-check:hover { border-color: #C41E3A; }
+    .perfil-check:has(input:checked) { border-color: #C41E3A; background: rgba(196,30,58,.06); }
+    .perfil-check input { accent-color: #C41E3A; width: 15px; height: 15px; }
+  </style>
 
   <script>
     function filtrar(s) {
@@ -142,11 +182,47 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
     }
     function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
     function abrirModalNovo() { document.getElementById("modalNovo").classList.add("open"); }
-    function editarRole(id, role) {
-      document.getElementById("roleMembroId").value = id;
-      document.getElementById("roleSelect").value = role;
-      document.getElementById("modalRole").classList.add("open");
+
+    // ── Perfis múltiplos ──
+    function editarPerfis(id) {
+      const linha = document.querySelector(`[data-membro-id="${id}"]`);
+      const atuais = (linha?.getAttribute("data-roles") || "").split(",").filter(Boolean);
+      (document.getElementById("perfisMembroId") as HTMLInputElement).value = id;
+      document.querySelectorAll("#formPerfis input[name=perfil]").forEach((cb: any) => { cb.checked = atuais.includes(cb.value); });
+      document.getElementById("modalPerfis")!.classList.add("open");
     }
+    document.getElementById("formPerfis")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = (document.getElementById("perfisMembroId") as HTMLInputElement).value;
+      const marcados = Array.from(document.querySelectorAll("#formPerfis input[name=perfil]:checked")).map((cb: any) => cb.value);
+      if (!marcados.length) { alert("Selecione ao menos 1 perfil."); return; }
+      await patch(id, { roles: marcados, role: marcados[0] });
+    });
+
+    // ── Trabalhista ──
+    async function toggleTrabalhista(id, dar) {
+      const msg = dar === true || dar === "true"
+        ? "Dar acesso a conteúdo TRABALHISTA para este membro?"
+        : "Remover o acesso a conteúdo trabalhista deste membro?";
+      if (!confirm(msg)) return;
+      await patch(id, { tem_trabalhista: dar === true || dar === "true" });
+    }
+
+    // ── Avatar ──
+    let avatarMembroId = "";
+    function trocarAvatar(id) {
+      avatarMembroId = id;
+      (document.getElementById("inputAvatar") as HTMLInputElement).click();
+    }
+    document.getElementById("inputAvatar")?.addEventListener("change", async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file || !avatarMembroId) return;
+      if (file.size > 5 * 1024 * 1024) { alert("Imagem muito grande (máx. 5MB)"); return; }
+      const b64 = await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.readAsDataURL(file); });
+      const resp = await fetch(`/api/admin/membros/${avatarMembroId}/avatar`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ imagem_base64: b64, content_type: file.type }) });
+      if (resp.ok) window.location.reload();
+      else alert((await resp.json()).error || "Erro ao enviar foto");
+    });
 
     async function patch(id, body) {
       const res = await fetch(`/api/admin/membros/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -170,13 +246,6 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
         alert("Erro ao resetar senha: " + (d.error || ""));
       }
     }
-
-    document.getElementById("formRole")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const id = document.getElementById("roleMembroId").value;
-      const role = document.getElementById("roleSelect").value;
-      await patch(id, { role });
-    });
 
     document.getElementById("formNovo")?.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -221,7 +290,9 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
     (window as any).filtrar = filtrar;
     (window as any).fecharModal = fecharModal;
     (window as any).abrirModalNovo = abrirModalNovo;
-    (window as any).editarRole = editarRole;
+    (window as any).editarPerfis = editarPerfis;
+    (window as any).toggleTrabalhista = toggleTrabalhista;
+    (window as any).trocarAvatar = trocarAvatar;
     (window as any).aprovar = aprovar;
     (window as any).rejeitar = rejeitar;
     (window as any).resetarSenha = resetarSenha;

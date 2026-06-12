@@ -9,7 +9,19 @@ import Portal from "~/layouts/Portal.astro";
     <!-- Dados do perfil -->
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:22px;margin-bottom:20px">
       <h2 style="font-size:15px;font-weight:700;margin:0 0 4px">Dados do perfil</h2>
-      <p style="font-size:13px;color:#6B7280;margin:0 0 16px">E-mail e cargo são definidos pelo RH. Você pode ajustar seu nome de exibição.</p>
+      <p style="font-size:13px;color:#6B7280;margin:0 0 16px">E-mail e cargo são definidos pelo RH. Você pode ajustar seu nome de exibição e sua foto.</p>
+
+      <!-- Avatar -->
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:18px">
+        <div id="avatarBox" onclick="document.getElementById('inputAvatarMe').click()" title="Clique para trocar a foto"
+          style="width:72px;height:72px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,#C41E3A,#8B0F25);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;cursor:pointer;border:3px solid #fff;box-shadow:0 2px 10px rgba(16,24,40,.25)">?</div>
+        <div>
+          <button type="button" onclick="document.getElementById('inputAvatarMe').click()"
+            style="background:#F3F4F6;border:1px solid #D1D5DB;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">📷 Alterar foto</button>
+          <p style="font-size:11.5px;color:#9CA3AF;margin:6px 0 0">JPG/PNG até 5MB</p>
+        </div>
+        <input type="file" id="inputAvatarMe" accept="image/*" style="display:none" />
+      </div>
       <div id="msgPerfil" style="display:none"></div>
       <label style="display:block;font-size:12.5px;font-weight:600;margin:10px 0 5px">E-mail</label>
       <input id="email" disabled style="width:100%;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:9px;background:#F3F4F6;font-size:14px" />
@@ -51,11 +63,28 @@ import Portal from "~/layouts/Portal.astro";
         const d = await res.json();
         if (res.ok) {
           ($("email") as HTMLInputElement).value = d.email || "";
-          ($("role") as HTMLInputElement).value = ROLE_LABEL[d.role] || d.role || "";
+          const perfis = (d.roles && d.roles.length ? d.roles : [d.role]).filter(Boolean);
+          ($("role") as HTMLInputElement).value = perfis.map((r: string) => ROLE_LABEL[r] || r).join(", ") + (d.tem_trabalhista ? " · ⚖️ trabalhista" : "");
           ($("nome") as HTMLInputElement).value = d.display_name || d.full_name || "";
+          if (d.avatar_url) $("avatarBox").innerHTML = `<img src="${d.avatar_url}" style="width:100%;height:100%;object-fit:cover" />`;
+          else $("avatarBox").textContent = (d.display_name || d.email || "?").slice(0, 1).toUpperCase();
         }
       } catch {}
     })();
+
+    // upload de avatar próprio
+    document.getElementById("inputAvatarMe")?.addEventListener("change", async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) { show($("msgPerfil"), "Imagem muito grande (máx. 5MB).", false); return; }
+      const b64 = await new Promise<string>((res2) => { const r = new FileReader(); r.onload = () => res2(String(r.result).split(",")[1]); r.readAsDataURL(file); });
+      const resp = await fetch("/api/portal/avatar", { method: "POST", headers: H, body: JSON.stringify({ imagem_base64: b64, content_type: file.type }) });
+      const d = await resp.json().catch(() => ({}));
+      if (resp.ok && d.avatar_url) {
+        $("avatarBox").innerHTML = `<img src="${d.avatar_url}" style="width:100%;height:100%;object-fit:cover" />`;
+        show($("msgPerfil"), "Foto atualizada!", true);
+      } else show($("msgPerfil"), d.error || "Erro ao enviar foto.", false);
+    });
 
     $("btnSalvarPerfil").addEventListener("click", async () => {
       const btn = $("btnSalvarPerfil") as HTMLButtonElement;

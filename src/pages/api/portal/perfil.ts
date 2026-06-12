@@ -26,7 +26,7 @@ export const GET: APIRoute = async ({ request }) => {
     const db = supabaseAdmin();
     const { data, error } = await db
       .from("portal_profiles")
-      .select("id, email, display_name, full_name, role")
+      .select("id, email, display_name, full_name, role, roles, tem_trabalhista, avatar_url")
       .eq("id", claims.sub)
       .single();
     if (error || !data) return jsonErr(404, "Usuário não encontrado.");

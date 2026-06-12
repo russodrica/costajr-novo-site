@@ -483,13 +483,13 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
   // ── Role-gated nav items (colaborador only) ──
   if (tipo === "colaborador") {
     const userData2 = localStorage.getItem(userKey);
-    let userRole = "operacional";
+    let userRoles = ["operacional"];
     if (userData2) {
-      try { userRole = JSON.parse(userData2).role || "operacional"; } catch {}
+      try { const u = JSON.parse(userData2); userRoles = (u.roles && u.roles.length ? u.roles : [u.role || "operacional"]); } catch {}
     }
     document.querySelectorAll(".role-gated").forEach(el => {
       const roles = el.getAttribute("data-roles")?.split(",") || [];
-      if (roles.length === 0 || roles.includes(userRole)) {
+      if (roles.length === 0 || roles.some(r => userRoles.includes(r))) {
         (el as HTMLElement).style.display = "";
       }
     });
