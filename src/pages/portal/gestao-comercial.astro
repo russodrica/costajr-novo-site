@@ -5,134 +5,251 @@ import Portal from "~/layouts/Portal.astro";
 <Portal title="Gestão Comercial" tipo="colaborador" activePage="comercial">
   <div class="section-header">
     <h2>Gestão Comercial</h2>
-    <a href="/admin/leads" class="btn btn-outline btn-sm">Ver painel admin completo →</a>
+    <button class="gc-btn" onclick="abrirNovoLead()">+ Novo lead</button>
   </div>
 
-  <div id="loading" class="loading"><div class="spinner"></div> Carregando dados...</div>
+  <div id="loading" class="loading"><div class="spinner"></div> Carregando funil...</div>
+  <div id="sem-permissao" style="display:none"></div>
+
   <div id="content" style="display:none">
-
-    <!-- Stats -->
-    <div class="stats-grid" style="margin-bottom:24px">
-      <div class="stat-card accent">
-        <div class="stat-icon" style="background:rgba(196,30,58,.1);color:var(--brand)">💰</div>
-        <div class="stat-label">Leads Novos</div>
-        <div class="stat-value" id="stat-novos">—</div>
-        <div class="stat-sub">este mês</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon" style="background:#ECFDF5;color:#22C55E">✅</div>
-        <div class="stat-label">Convertidos</div>
-        <div class="stat-value" id="stat-conv">—</div>
-        <div class="stat-sub">este mês</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon" style="background:#FFF7ED;color:#F59E0B">📋</div>
-        <div class="stat-label">Em negociação</div>
-        <div class="stat-value" id="stat-neg">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon" style="background:#EFF6FF;color:#3B82F6">📬</div>
-        <div class="stat-label">Proposta enviada</div>
-        <div class="stat-value" id="stat-prop">—</div>
-      </div>
+    <!-- Indicadores -->
+    <div class="gc-stats">
+      <div class="gc-stat"><div class="gc-stat-v" id="st-funil">—</div><div class="gc-stat-l">No funil</div></div>
+      <div class="gc-stat"><div class="gc-stat-v" id="st-valor" style="color:#16A34A">—</div><div class="gc-stat-l">Valor potencial</div></div>
+      <div class="gc-stat"><div class="gc-stat-v" id="st-novos" style="color:#1D4ED8">—</div><div class="gc-stat-l">Novos no mês</div></div>
+      <div class="gc-stat"><div class="gc-stat-v" id="st-conv" style="color:#16A34A">—</div><div class="gc-stat-l">Convertidos no mês</div></div>
+      <div class="gc-stat"><div class="gc-stat-v" id="st-taxa">—</div><div class="gc-stat-l">Taxa de conversão</div></div>
+      <div class="gc-stat"><div class="gc-stat-v" id="st-atrasados" style="color:#B91C1C">—</div><div class="gc-stat-l">Contatos atrasados</div></div>
     </div>
 
-    <!-- Tabela de leads -->
-    <div class="card">
-      <div class="section-header" style="margin-bottom:16px">
-        <h2 style="font-size:16px;margin:0">Leads de Manutenção</h2>
-        <select id="filtro-etapa" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Open Sans',sans-serif;outline:none;background:#fff">
-          <option value="">Todas as etapas</option>
-          <option value="novo">Novos</option>
-          <option value="contato_feito">Contato feito</option>
-          <option value="proposta_enviada">Proposta enviada</option>
-          <option value="negociando">Negociando</option>
-          <option value="convertido">Convertido</option>
-          <option value="perdido">Perdido</option>
-        </select>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Nome / Loja</th>
-              <th>Contato</th>
-              <th>Plano</th>
-              <th>Etapa</th>
-              <th>Data</th>
-            </tr>
-          </thead>
-          <tbody id="leads-tbody"></tbody>
-        </table>
-      </div>
+    <!-- Kanban -->
+    <div class="gc-kanban" id="kanban"></div>
+  </div>
+
+  <!-- Modal lead (novo/editar) -->
+  <div class="gc-overlay" id="modalLead">
+    <div class="gc-modal">
+      <h3 id="modalLeadTitulo">Novo lead</h3>
+      <div id="msgLead"></div>
+      <form id="formLead">
+        <input type="hidden" name="id" />
+        <div class="gc-row">
+          <div class="gc-field"><label>Nome *</label><input name="nome" required /></div>
+          <div class="gc-field"><label>Empresa / Loja</label><input name="nome_loja" /></div>
+        </div>
+        <div class="gc-row">
+          <div class="gc-field"><label>E-mail *</label><input name="email" type="email" required /></div>
+          <div class="gc-field"><label>Telefone</label><input name="telefone" /></div>
+        </div>
+        <div class="gc-row">
+          <div class="gc-field"><label>Etapa</label>
+            <select name="etapa">
+              <option value="novo">Novo</option>
+              <option value="contato_feito">Contato feito</option>
+              <option value="proposta_enviada">Proposta enviada</option>
+              <option value="negociando">Negociando</option>
+              <option value="convertido">Convertido</option>
+              <option value="perdido">Perdido</option>
+            </select>
+          </div>
+          <div class="gc-field"><label>Origem</label><input name="origem" placeholder="Indicação, site, ligação..." /></div>
+        </div>
+        <div class="gc-row">
+          <div class="gc-field"><label>Plano / serviço</label><input name="plano" /></div>
+          <div class="gc-field"><label>Valor (R$)</label><input name="valor" type="number" step="0.01" min="0" /></div>
+        </div>
+        <div class="gc-row">
+          <div class="gc-field"><label>Responsável</label><input name="responsavel" /></div>
+          <div class="gc-field"><label>Próximo contato</label><input name="proximo_contato" type="date" /></div>
+        </div>
+        <div class="gc-field"><label>Observações</label><textarea name="observacoes" rows="3"></textarea></div>
+        <div class="gc-acoes">
+          <button type="button" class="gc-btn sec" onclick="fecharModalLead()">Cancelar</button>
+          <button type="submit" class="gc-btn">Salvar</button>
+        </div>
+      </form>
     </div>
   </div>
+
+  <style>
+    .gc-btn { background: var(--brand); color: #fff; border: 0; border-radius: 8px; padding: 9px 18px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Open Sans', sans-serif; transition: .15s; }
+    .gc-btn:hover { opacity: .88; }
+    .gc-btn.sec { background: #F3F4F6; color: #374151; border: 1px solid #D1D5DB; }
+    .gc-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .gc-stat { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+    .gc-stat-v { font-family: 'Montserrat', sans-serif; font-size: 22px; font-weight: 800; color: var(--ink); }
+    .gc-stat-l { font-size: 11.5px; color: var(--ink-mid); margin-top: 2px; }
+
+    .gc-kanban { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 16px; align-items: flex-start; }
+    .gc-col { min-width: 250px; width: 250px; background: #F2F4F8; border-radius: 12px; flex: none; }
+    .gc-col-head { padding: 10px 14px; font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 800; color: #fff; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center; }
+    .gc-col-head .soma { font-size: 10.5px; font-weight: 600; opacity: .9; }
+    .gc-col-body { padding: 8px; min-height: 80px; display: flex; flex-direction: column; gap: 8px; }
+    .gc-col-body.dragover { background: rgba(196,30,58,.06); border-radius: 0 0 12px 12px; }
+    .gc-card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: grab; box-shadow: 0 1px 3px rgba(16,24,40,.06); transition: .15s; }
+    .gc-card:hover { box-shadow: 0 4px 12px rgba(16,24,40,.1); border-color: var(--brand); }
+    .gc-card.arrastando { opacity: .5; }
+    .gc-card h4 { font-size: 13px; font-weight: 800; margin: 0 0 2px; color: var(--ink); font-family: 'Montserrat', sans-serif; }
+    .gc-card .loja { font-size: 11.5px; color: var(--ink-mid); }
+    .gc-card .valor { font-size: 12.5px; font-weight: 700; color: #16A34A; margin-top: 4px; }
+    .gc-card .meta { font-size: 10.5px; color: var(--ink-light); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .gc-card .atrasado { color: #B91C1C; font-weight: 700; }
+    .gc-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .gc-overlay.open { display: flex; }
+    .gc-modal { background: #fff; border-radius: 14px; padding: 24px; max-width: 560px; width: 100%; max-height: 92vh; overflow-y: auto; }
+    .gc-modal h3 { font-family: 'Montserrat', sans-serif; margin: 0 0 16px; }
+    .gc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .gc-field { margin-bottom: 12px; }
+    .gc-field label { display: block; font-size: 12px; font-weight: 700; color: #555; margin-bottom: 4px; }
+    .gc-field input, .gc-field select, .gc-field textarea { width: 100%; padding: 9px 12px; border: 1.5px solid #D1D5DB; border-radius: 8px; font-size: 13.5px; font-family: 'Open Sans', sans-serif; outline: none; box-sizing: border-box; }
+    .gc-field input:focus, .gc-field select:focus, .gc-field textarea:focus { border-color: var(--brand); }
+    .gc-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+    .gc-erro { background: #FEE2E2; color: #991B1B; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 12px; }
+    @media (max-width: 640px) { .gc-row { grid-template-columns: 1fr; } }
+  </style>
 
   <script>
     const token = localStorage.getItem("portal_colab_token");
     if (!token) { window.location.replace("/portal/login"); throw 0; }
-    const userData = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
-    const role = userData.role || "operacional";
-    if (!["admin","coordenador","comercial"].includes(role)) {
-      document.getElementById("loading")!.innerHTML = '<div class="empty-state"><strong>Acesso restrito</strong><p>Esta área é exclusiva para o time comercial.</p></div>';
-    } else {
-      loadLeads();
-    }
+    const H = { "x-portal-auth": token!, "content-type": "application/json" };
 
-    let allLeads: any[] = [];
+    const ETAPAS = [
+      { id: "novo", titulo: "Novo", cor: "#3B82F6" },
+      { id: "contato_feito", titulo: "Contato feito", cor: "#D9A406" },
+      { id: "proposta_enviada", titulo: "Proposta enviada", cor: "#EA7317" },
+      { id: "negociando", titulo: "Negociando", cor: "#7C3AED" },
+      { id: "convertido", titulo: "Convertido", cor: "#16A34A" },
+      { id: "perdido", titulo: "Perdido", cor: "#6B7280" },
+    ];
+    let leads: any[] = [];
 
-    const etapaLabel: Record<string,string> = {
-      novo: "Novo", contato_feito: "Contato feito", proposta_enviada: "Proposta enviada",
-      negociando: "Negociando", convertido: "Convertido", perdido: "Perdido",
-    };
-    const etapaBadge: Record<string,string> = {
-      novo: "badge-aberto", contato_feito: "badge-em_andamento", proposta_enviada: "badge-aguardando_material",
-      negociando: "badge-pendente", convertido: "badge-concluido", perdido: "badge-cancelado",
-    };
+    function esc(s: any) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+    function brl(v: any) { return v == null ? "" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+    function diasDesde(d: string) { return Math.floor((Date.now() - new Date(d).getTime()) / 864e5); }
 
-    function renderLeads(leads: any[]) {
-      const tbody = document.getElementById("leads-tbody")!;
-      tbody.innerHTML = leads.length
-        ? leads.map((l: any) => `
-          <tr>
-            <td><strong>${l.nome}</strong>${l.nome_loja ? `<br><span style="font-size:12px;color:var(--ink-light)">${l.nome_loja}</span>` : ""}</td>
-            <td><span style="font-size:13px">${l.email}<br>${l.telefone||""}</span></td>
-            <td>${l.plano ? `<span style="font-size:13px">${l.plano}</span>` : "—"}</td>
-            <td><span class="badge ${etapaBadge[l.etapa]||""}">${etapaLabel[l.etapa]||l.etapa}</span></td>
-            <td style="font-size:12.5px;color:var(--ink-light)">${new Date(l.created_at).toLocaleDateString("pt-BR")}</td>
-          </tr>`)
-          .join("")
-        : `<tr><td colspan="5" style="text-align:center;color:var(--ink-light);padding:32px">Nenhum lead encontrado.</td></tr>`;
-    }
-
-    async function loadLeads() {
-      try {
-        const res = await fetch("/api/portal/comercial/leads", { headers: { "x-portal-auth": token! } });
-        allLeads = res.ok ? await res.json() : [];
-        document.getElementById("loading")!.style.display = "none";
-        document.getElementById("content")!.style.display = "";
-
-        const mes = new Date().getMonth();
-        const ano = new Date().getFullYear();
-        const destesMes = (etapa: string) => allLeads.filter(l => {
-          const d = new Date(l.created_at);
-          return l.etapa === etapa && d.getMonth() === mes && d.getFullYear() === ano;
-        }).length;
-
-        document.getElementById("stat-novos")!.textContent = String(destesMes("novo"));
-        document.getElementById("stat-conv")!.textContent  = String(destesMes("convertido"));
-        document.getElementById("stat-neg")!.textContent   = String(allLeads.filter(l => l.etapa === "negociando").length);
-        document.getElementById("stat-prop")!.textContent  = String(allLeads.filter(l => l.etapa === "proposta_enviada").length);
-
-        renderLeads(allLeads);
-
-        document.getElementById("filtro-etapa")!.addEventListener("change", (e) => {
-          const val = (e.target as HTMLSelectElement).value;
-          renderLeads(val ? allLeads.filter(l => l.etapa === val) : allLeads);
-        });
-      } catch {
-        document.getElementById("loading")!.innerHTML = '<div class="empty-state"><strong>Erro ao carregar</strong></div>';
+    async function carregar() {
+      const res = await fetch("/api/portal/comercial/leads", { headers: { "x-portal-auth": token! } });
+      document.getElementById("loading")!.style.display = "none";
+      if (res.status === 403) {
+        document.getElementById("sem-permissao")!.style.display = "";
+        document.getElementById("sem-permissao")!.innerHTML = `<div class="gc-erro">Esta área é exclusiva para o time comercial. Fale com o administrador se precisar de acesso.</div>`;
+        return;
       }
+      if (!res.ok) {
+        document.getElementById("sem-permissao")!.style.display = "";
+        document.getElementById("sem-permissao")!.innerHTML = `<div class="gc-erro">Erro ao carregar os leads. Atualize a página.</div>`;
+        return;
+      }
+      leads = await res.json();
+      document.getElementById("content")!.style.display = "";
+      render();
     }
+
+    function render() {
+      const mes = new Date().toISOString().slice(0, 7);
+      const hoje = new Date().toISOString().slice(0, 10);
+      const noFunil = leads.filter(l => !["convertido", "perdido"].includes(l.etapa));
+      const valorFunil = noFunil.reduce((s, l) => s + (Number(l.valor) || 0), 0);
+      const novosMes = leads.filter(l => (l.created_at || "").slice(0, 7) === mes).length;
+      const convMes = leads.filter(l => l.etapa === "convertido" && (l.updated_at || "").slice(0, 7) === mes).length;
+      const convTotal = leads.filter(l => l.etapa === "convertido").length;
+      const taxa = leads.length ? Math.round((convTotal / leads.length) * 100) : 0;
+      const atrasados = noFunil.filter(l => l.proximo_contato && l.proximo_contato < hoje).length;
+      (document.getElementById("st-funil") as HTMLElement).textContent = String(noFunil.length);
+      (document.getElementById("st-valor") as HTMLElement).textContent = valorFunil ? brl(valorFunil) : "R$ 0";
+      (document.getElementById("st-novos") as HTMLElement).textContent = String(novosMes);
+      (document.getElementById("st-conv") as HTMLElement).textContent = String(convMes);
+      (document.getElementById("st-taxa") as HTMLElement).textContent = taxa + "%";
+      (document.getElementById("st-atrasados") as HTMLElement).textContent = String(atrasados);
+
+      const kb = document.getElementById("kanban")!;
+      kb.innerHTML = ETAPAS.map(e => {
+        const itens = leads.filter(l => l.etapa === e.id);
+        const soma = itens.reduce((s, l) => s + (Number(l.valor) || 0), 0);
+        const cards = itens.map(l => `
+          <div class="gc-card" draggable="true" data-id="${l.id}" onclick="editarLead('${l.id}')">
+            <h4>${esc(l.nome)}</h4>
+            ${l.nome_loja ? `<div class="loja">${esc(l.nome_loja)}</div>` : ""}
+            ${l.valor != null ? `<div class="valor">${brl(l.valor)}${l.plano ? ` · ${esc(l.plano)}` : ""}</div>` : (l.plano ? `<div class="loja">${esc(l.plano)}</div>` : "")}
+            <div class="meta">
+              ${l.responsavel ? `<span>👤 ${esc(String(l.responsavel).split("@")[0])}</span>` : ""}
+              ${l.proximo_contato ? `<span class="${l.proximo_contato < hoje ? "atrasado" : ""}">📞 ${l.proximo_contato.slice(8, 10)}/${l.proximo_contato.slice(5, 7)}${l.proximo_contato < hoje ? " atrasado" : ""}</span>` : ""}
+              <span>há ${diasDesde(l.created_at)}d</span>
+            </div>
+          </div>`).join("");
+        return `
+          <div class="gc-col">
+            <div class="gc-col-head" style="background:${e.cor}">
+              <span>${e.titulo} (${itens.length})</span>
+              <span class="soma">${soma ? brl(soma) : ""}</span>
+            </div>
+            <div class="gc-col-body" data-etapa="${e.id}">${cards}</div>
+          </div>`;
+      }).join("");
+
+      kb.querySelectorAll(".gc-card").forEach(card => {
+        card.addEventListener("dragstart", (ev: any) => { ev.dataTransfer.setData("text/plain", (card as HTMLElement).dataset.id!); card.classList.add("arrastando"); });
+        card.addEventListener("dragend", () => card.classList.remove("arrastando"));
+      });
+      kb.querySelectorAll(".gc-col-body").forEach(col => {
+        col.addEventListener("dragover", (ev) => { ev.preventDefault(); col.classList.add("dragover"); });
+        col.addEventListener("dragleave", () => col.classList.remove("dragover"));
+        col.addEventListener("drop", async (ev: any) => {
+          ev.preventDefault();
+          col.classList.remove("dragover");
+          const id = ev.dataTransfer.getData("text/plain");
+          const etapa = (col as HTMLElement).dataset.etapa!;
+          const lead = leads.find(l => l.id === id);
+          if (!lead || lead.etapa === etapa) return;
+          const anterior = lead.etapa;
+          lead.etapa = etapa;
+          render();
+          const res = await fetch(`/api/portal/comercial/leads?id=${id}`, { method: "PATCH", headers: H, body: JSON.stringify({ etapa }) });
+          if (!res.ok) { lead.etapa = anterior; render(); alert("Erro ao mover o lead."); }
+        });
+      });
+    }
+
+    function abrirNovoLead() {
+      const f = document.getElementById("formLead") as HTMLFormElement;
+      f.reset();
+      (f.querySelector("[name=id]") as HTMLInputElement).value = "";
+      document.getElementById("modalLeadTitulo")!.textContent = "Novo lead";
+      document.getElementById("msgLead")!.innerHTML = "";
+      document.getElementById("modalLead")!.classList.add("open");
+    }
+    function editarLead(id: string) {
+      const l = leads.find(x => x.id === id);
+      if (!l) return;
+      const f = document.getElementById("formLead") as HTMLFormElement;
+      f.reset();
+      for (const [k, v] of Object.entries(l)) {
+        const input = f.querySelector(`[name="${k}"]`) as HTMLInputElement | null;
+        if (input && v != null) input.value = k === "proximo_contato" ? String(v).slice(0, 10) : String(v);
+      }
+      document.getElementById("modalLeadTitulo")!.textContent = "Editar lead";
+      document.getElementById("msgLead")!.innerHTML = "";
+      document.getElementById("modalLead")!.classList.add("open");
+    }
+    function fecharModalLead() { document.getElementById("modalLead")!.classList.remove("open"); }
+
+    document.getElementById("formLead")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const body: Record<string, any> = Object.fromEntries(new FormData(f).entries());
+      const id = body.id; delete body.id;
+      if (body.valor) body.valor = Number(body.valor);
+      const res = id
+        ? await fetch(`/api/portal/comercial/leads?id=${id}`, { method: "PATCH", headers: H, body: JSON.stringify(body) })
+        : await fetch("/api/portal/comercial/leads", { method: "POST", headers: H, body: JSON.stringify(body) });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { fecharModalLead(); carregar(); }
+      else document.getElementById("msgLead")!.innerHTML = `<div class="gc-erro">${esc(d.error || "Erro ao salvar")}</div>`;
+    });
+
+    (window as any).abrirNovoLead = abrirNovoLead;
+    (window as any).editarLead = editarLead;
+    (window as any).fecharModalLead = fecharModalLead;
+    carregar();
   </script>
 </Portal>

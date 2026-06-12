@@ -13,8 +13,29 @@ export const GET: APIRoute = async ({ request }) => {
       .from("manut_leads")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(1000);
     return jsonOk(data || []);
+  } catch {
+    return jsonErr(401, "Não autenticado.");
+  }
+};
+
+// POST — cadastrar novo lead (perfis comerciais)
+export const POST: APIRoute = async ({ request }) => {
+  try {
+    const claims = await requireAdmin(request);
+    if (!["admin", "coordenador", "comercial"].includes(claims.role)) return jsonErr(403, "Sem permissão.");
+    const body = await request.json();
+    if (!body.nome || !body.email) return jsonErr(400, "Nome e e-mail são obrigatórios.");
+    const campos = ["nome", "nome_loja", "email", "telefone", "plano", "valor", "observacoes", "etapa", "responsavel", "proximo_contato", "origem"];
+    const row: Record<string, unknown> = {};
+    for (const c of campos) if (body[c] !== undefined && body[c] !== "") row[c] = body[c];
+    if (!row.etapa) row.etapa = "novo";
+    if (!row.responsavel) row.responsavel = (claims as any).email || null;
+    const sb = supabaseAdmin();
+    const { data, error } = await sb.from("manut_leads").insert(row).select().single();
+    if (error) return jsonErr(400, error.message);
+    return jsonOk(data, 201);
   } catch {
     return jsonErr(401, "Não autenticado.");
   }
