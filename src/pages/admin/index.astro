@@ -12,6 +12,14 @@ try {
 } catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 
 const db = supabaseAdmin();
+
+// Período dos gráficos (meses)
+const mesesParam = Number(Astro.url.searchParams.get("meses")) || 6;
+const meses = [3, 6, 12].includes(mesesParam) ? mesesParam : 6;
+const inicioGraficos = new Date();
+inicioGraficos.setMonth(inicioGraficos.getMonth() - (meses - 1));
+inicioGraficos.setDate(1); inicioGraficos.setHours(0, 0, 0, 0);
+
 const [
   { count: clientesAtivos },
   { count: clientesPendentes },
@@ -25,6 +33,13 @@ const [
   { count: leadsNovos },
   { count: suporteAberto },
   { count: preventivas },
+  { count: altPrecoPendentes },
+  { data: chamadosRecentes },
+  { data: leadsRecentes },
+  { data: chamadosPeriodo },
+  { data: pagamentosPeriodo },
+  { data: leadsPeriodo },
+  { data: leadsFunil },
 ] = await Promise.all([
   db.from("manut_clientes").select("*", { count: "exact", head: true }).eq("status", "ativo"),
   db.from("manut_clientes").select("*", { count: "exact", head: true }).eq("status", "pendente"),
@@ -35,90 +50,248 @@ const [
   db.from("manut_pagamentos").select("*", { count: "exact", head: true }).eq("status", "atrasado"),
   db.from("manut_materiais").select("*", { count: "exact", head: true }).eq("status", "pendente_aprovacao"),
   db.from("portal_profiles").select("*", { count: "exact", head: true }).eq("approval_status", "pending"),
-  db.from("leads").select("*", { count: "exact", head: true }).eq("status", "novo"),
+  db.from("manut_leads").select("*", { count: "exact", head: true }).eq("etapa", "novo"),
   db.from("manut_suporte").select("*", { count: "exact", head: true }).eq("status", "aberto"),
   db.from("manut_preventivas").select("*", { count: "exact", head: true }).eq("status", "agendada"),
+  db.from("manut_estoque_alteracoes").select("*", { count: "exact", head: true }).eq("status", "pendente"),
+  db.from("manut_chamados").select("id, tipo, descricao, status, prioridade, data_abertura, manut_clientes(nome)").order("data_abertura", { ascending: false }).limit(5),
+  db.from("manut_leads").select("id, nome, email, telefone, plano, etapa, created_at").order("created_at", { ascending: false }).limit(5),
+  db.from("manut_chamados").select("status, data_abertura").gte("data_abertura", inicioGraficos.toISOString()).limit(5000),
+  db.from("manut_pagamentos").select("valor, status, data_pagamento, created_at").gte("created_at", inicioGraficos.toISOString()).limit(5000),
+  db.from("manut_leads").select("etapa, created_at").gte("created_at", inicioGraficos.toISOString()).limit(5000),
+  db.from("manut_leads").select("etapa").limit(5000),
 ]);
 
-// Chamados recentes
-const { data: chamadosRecentes } = await db
-  .from("manut_chamados")
-  .select("id, tipo, descricao, status, prioridade, data_abertura, manut_clientes(nome)")
-  .order("data_abertura", { ascending: false })
-  .limit(5);
+// ── Pendências críticas (só aparecem quando > 0) ──
+const pendencias = [
+  { label: "Chamados abertos", count: chamadosAbertos ?? 0, href: "/admin/chamados?status=aberto", nivel: "alto", icon: "🚨" },
+  { label: "Pagamentos atrasados", count: pagamentosAtrasados ?? 0, href: "/admin/pagamentos?status=atrasado", nivel: "alto", icon: "💸" },
+  { label: "Clientes inadimplentes", count: clientesInadimplentes ?? 0, href: "/admin/clientes?status=inadimplente", nivel: "alto", icon: "⚠️" },
+  { label: "Materiais p/ aprovar", count: materiaisPendentes ?? 0, href: "/admin/materiais?status=pendente_aprovacao", nivel: "medio", icon: "🔩" },
+  { label: "Alterações de preço", count: altPrecoPendentes ?? 0, href: "/admin/estoque-alteracoes", nivel: "medio", icon: "💲" },
+  { label: "Membros p/ aprovar", count: membrosPendentes ?? 0, href: "/admin/membros?status=pending", nivel: "medio", icon: "🪪" },
+  { label: "Suporte aberto", count: suporteAberto ?? 0, href: "/admin/suporte", nivel: "medio", icon: "💬" },
+  { label: "Leads sem contato", count: leadsNovos ?? 0, href: "/admin/leads", nivel: "medio", icon: "📣" },
+].filter(p => p.count > 0);
 
-// Leads recentes
-const { data: leadsRecentes } = await db
-  .from("leads")
-  .select("id, nome, email, telefone, origem, status, created_at")
-  .order("created_at", { ascending: false })
-  .limit(5);
+// ── Agregação por mês ──
+function chaveMes(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+const mesesLista: { chave: string; rotulo: string }[] = [];
+for (let i = 0; i < meses; i++) {
+  const d = new Date(inicioGraficos);
+  d.setMonth(d.getMonth() + i);
+  mesesLista.push({ chave: chaveMes(d), rotulo: d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "") });
+}
+
+const chamadosPorMes = Object.fromEntries(mesesLista.map(m => [m.chave, 0]));
+for (const c of chamadosPeriodo || []) {
+  const k = chaveMes(new Date(c.data_abertura));
+  if (k in chamadosPorMes) chamadosPorMes[k]++;
+}
+const receitaPorMes = Object.fromEntries(mesesLista.map(m => [m.chave, 0]));
+for (const p of pagamentosPeriodo || []) {
+  if (p.status !== "pago" || !p.data_pagamento) continue;
+  const k = chaveMes(new Date(p.data_pagamento));
+  if (k in receitaPorMes) receitaPorMes[k] += Number(p.valor) || 0;
+}
+const leadsPorMes = Object.fromEntries(mesesLista.map(m => [m.chave, 0]));
+for (const l of leadsPeriodo || []) {
+  const k = chaveMes(new Date(l.created_at));
+  if (k in leadsPorMes) leadsPorMes[k]++;
+}
+
+// ── Comparativo mês atual × mês anterior ──
+const agora = new Date();
+const mesAtualK = chaveMes(agora);
+const mesAnterior = new Date(agora); mesAnterior.setMonth(mesAnterior.getMonth() - 1);
+const mesAnteriorK = chaveMes(mesAnterior);
+function variacao(atual: number, anterior: number): { texto: string; cor: string } {
+  if (anterior === 0 && atual === 0) return { texto: "—", cor: "#9CA3AF" };
+  if (anterior === 0) return { texto: "novo", cor: "#16A34A" };
+  const pct = ((atual - anterior) / anterior) * 100;
+  const sinal = pct > 0 ? "▲" : pct < 0 ? "▼" : "•";
+  return { texto: `${sinal} ${Math.abs(pct).toFixed(0)}% vs mês ant.`, cor: pct > 0 ? "#16A34A" : pct < 0 ? "#B91C1C" : "#9CA3AF" };
+}
+const compChamados = variacao(chamadosPorMes[mesAtualK] ?? 0, chamadosPorMes[mesAnteriorK] ?? 0);
+const compReceita = variacao(receitaPorMes[mesAtualK] ?? 0, receitaPorMes[mesAnteriorK] ?? 0);
+const compLeads = variacao(leadsPorMes[mesAtualK] ?? 0, leadsPorMes[mesAnteriorK] ?? 0);
+
+// ── Funil comercial (todas as etapas, histórico completo) ──
+const etapasFunil = ["novo", "contato_feito", "proposta_enviada", "negociando", "convertido", "perdido"];
+const etapaLabels: Record<string, string> = { novo: "Novo", contato_feito: "Contato feito", proposta_enviada: "Proposta enviada", negociando: "Negociando", convertido: "Convertido", perdido: "Perdido" };
+const funil = Object.fromEntries(etapasFunil.map(e => [e, 0]));
+for (const l of leadsFunil || []) if (l.etapa in funil) funil[l.etapa]++;
+const maxFunil = Math.max(1, ...Object.values(funil));
+
+// ── Status dos chamados no período (donut) ──
+const chamadosStatus: Record<string, number> = {};
+for (const c of chamadosPeriodo || []) chamadosStatus[c.status] = (chamadosStatus[c.status] || 0) + 1;
+const statusCores: Record<string, string> = { aberto: "#EF4444", em_andamento: "#3B82F6", aguardando_material: "#F59E0B", pendente: "#F59E0B", concluido: "#22C55E", cancelado: "#9CA3AF" };
+const totalChamadosPeriodo = Object.values(chamadosStatus).reduce((a, b) => a + b, 0);
+let anguloAcum = 0;
+const fatias = Object.entries(chamadosStatus).map(([status, qtd]) => {
+  const ini = anguloAcum;
+  anguloAcum += (qtd / Math.max(1, totalChamadosPeriodo)) * 360;
+  return `${statusCores[status] || "#9CA3AF"} ${ini.toFixed(1)}deg ${anguloAcum.toFixed(1)}deg`;
+});
+const donutCss = fatias.length ? `conic-gradient(${fatias.join(",")})` : "conic-gradient(#E5E7EB 0deg 360deg)";
+
+const maxChamadosMes = Math.max(1, ...Object.values(chamadosPorMes));
+const maxReceitaMes = Math.max(1, ...Object.values(receitaPorMes));
+const maxLeadsMes = Math.max(1, ...Object.values(leadsPorMes));
 
 function badgeChamado(status: string) {
   const m: Record<string, string> = { aberto: "badge-red", em_andamento: "badge-blue", aguardando_material: "badge-orange", concluido: "badge-green", cancelado: "badge-gray" };
   return m[status] || "badge-gray";
 }
+const badgeEtapa: Record<string, string> = { novo: "badge-blue", contato_feito: "badge-yellow", proposta_enviada: "badge-orange", negociando: "badge-purple", convertido: "badge-green", perdido: "badge-gray" };
 function fmtDate(d: string | null) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
+function fmtMoney(v: number) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }); }
 ---
 <Admin title="Dashboard" current="dashboard">
-  <!-- Stats -->
-  <div class="card-grid">
-    <a href="/admin/clientes?status=ativo" class="stat-card" style="text-decoration:none">
-      <div class="stat-value">{clientesAtivos ?? 0}</div>
+
+  {pendencias.length > 0 && (
+    <div class="pend-strip">
+      <div class="pend-head">⚡ Pendências que precisam de ação</div>
+      <div class="pend-cards">
+        {pendencias.map(p => (
+          <a href={p.href} class={`pend-card ${p.nivel}`}>
+            <span class="pend-icon">{p.icon}</span>
+            <span class="pend-count">{p.count}</span>
+            <span class="pend-label">{p.label}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  )}
+
+  <!-- KPIs com comparativo -->
+  <div class="kpi-grid">
+    <a href="/admin/clientes?status=ativo" class="stat-card">
+      <div class="stat-value" style="color:#16A34A">{clientesAtivos ?? 0}</div>
       <div class="stat-label">Clientes ativos</div>
+      <div class="stat-sub">{clientesPendentes ?? 0} aguardando ativação</div>
     </a>
-    <a href="/admin/clientes?status=pendente" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#F59E0B">{clientesPendentes ?? 0}</div>
-      <div class="stat-label">Aguardando ativação</div>
+    <a href="/admin/chamados" class="stat-card">
+      <div class="stat-value">{chamadosPorMes[mesAtualK] ?? 0}</div>
+      <div class="stat-label">Chamados este mês</div>
+      <div class="stat-sub" style={`color:${compChamados.cor}`}>{compChamados.texto}</div>
     </a>
-    <a href="/admin/clientes?status=inadimplente" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#EF4444">{clientesInadimplentes ?? 0}</div>
-      <div class="stat-label">Inadimplentes</div>
+    <a href="/admin/pagamentos" class="stat-card">
+      <div class="stat-value" style="color:#16A34A">{fmtMoney(receitaPorMes[mesAtualK] ?? 0)}</div>
+      <div class="stat-label">Recebido este mês</div>
+      <div class="stat-sub" style={`color:${compReceita.cor}`}>{compReceita.texto}</div>
     </a>
-    <a href="/admin/chamados?status=aberto" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#EF4444">{chamadosAbertos ?? 0}</div>
-      <div class="stat-label">Chamados abertos</div>
+    <a href="/admin/leads" class="stat-card">
+      <div class="stat-value" style="color:#1D4ED8">{leadsPorMes[mesAtualK] ?? 0}</div>
+      <div class="stat-label">Leads este mês</div>
+      <div class="stat-sub" style={`color:${compLeads.cor}`}>{compLeads.texto}</div>
     </a>
-    <a href="/admin/chamados?status=em_andamento" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#3B82F6">{chamadosAndamento ?? 0}</div>
-      <div class="stat-label">Em andamento</div>
-    </a>
-    <a href="/admin/tecnicos" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#22C55E">{tecnicosAtivos ?? 0}</div>
+    <a href="/admin/tecnicos" class="stat-card">
+      <div class="stat-value" style="color:#1D4ED8">{tecnicosAtivos ?? 0}</div>
       <div class="stat-label">Técnicos ativos</div>
+      <div class="stat-sub">{chamadosAndamento ?? 0} chamados em andamento</div>
     </a>
-    <a href="/admin/pagamentos?status=atrasado" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#EF4444">{pagamentosAtrasados ?? 0}</div>
-      <div class="stat-label">Pgtos. atrasados</div>
-    </a>
-    <a href="/admin/materiais" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#F59E0B">{materiaisPendentes ?? 0}</div>
-      <div class="stat-label">Materiais p/ aprovar</div>
-    </a>
-    <a href="/admin/membros" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#F59E0B">{membrosPendentes ?? 0}</div>
-      <div class="stat-label">Membros pendentes</div>
-    </a>
-    <a href="/admin/leads" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#3B82F6">{leadsNovos ?? 0}</div>
-      <div class="stat-label">Leads novos</div>
-    </a>
-    <a href="/admin/suporte" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#F59E0B">{suporteAberto ?? 0}</div>
-      <div class="stat-label">Suporte aberto</div>
-    </a>
-    <a href="/admin/preventivas" class="stat-card" style="text-decoration:none">
-      <div class="stat-value" style="color:#22C55E">{preventivas ?? 0}</div>
+    <a href="/admin/preventivas" class="stat-card">
+      <div class="stat-value" style="color:#16A34A">{preventivas ?? 0}</div>
       <div class="stat-label">Preventivas agendadas</div>
+      <div class="stat-sub">&nbsp;</div>
     </a>
   </div>
 
+  <!-- Filtro de período -->
+  <div class="section-header" style="margin-top:8px">
+    <span class="section-title">Desempenho</span>
+    <div class="pills">
+      {[3, 6, 12].map(m => (
+        <a href={`/admin?meses=${m}`} class={`pill ${m === meses ? "active" : ""}`}>{m} meses</a>
+      ))}
+    </div>
+  </div>
+
+  <!-- Gráficos -->
+  <div class="charts-grid">
+    <div class="card">
+      <div class="chart-title">Chamados por mês</div>
+      <div class="bar-chart">
+        {mesesLista.map(m => (
+          <div class="bar-col">
+            <div class="bar-val">{chamadosPorMes[m.chave] || ""}</div>
+            <div class="bar" style={`height:${Math.max(2, (chamadosPorMes[m.chave] / maxChamadosMes) * 100)}%`} title={`${m.rotulo}: ${chamadosPorMes[m.chave]}`}></div>
+            <div class="bar-lbl">{m.rotulo}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">Receita recebida por mês</div>
+      <div class="bar-chart">
+        {mesesLista.map(m => (
+          <div class="bar-col">
+            <div class="bar-val" style="font-size:9.5px">{receitaPorMes[m.chave] ? fmtMoney(receitaPorMes[m.chave]) : ""}</div>
+            <div class="bar bar-green" style={`height:${Math.max(2, (receitaPorMes[m.chave] / maxReceitaMes) * 100)}%`} title={`${m.rotulo}: ${fmtMoney(receitaPorMes[m.chave])}`}></div>
+            <div class="bar-lbl">{m.rotulo}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">Leads por mês</div>
+      <div class="bar-chart">
+        {mesesLista.map(m => (
+          <div class="bar-col">
+            <div class="bar-val">{leadsPorMes[m.chave] || ""}</div>
+            <div class="bar bar-blue" style={`height:${Math.max(2, (leadsPorMes[m.chave] / maxLeadsMes) * 100)}%`} title={`${m.rotulo}: ${leadsPorMes[m.chave]}`}></div>
+            <div class="bar-lbl">{m.rotulo}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chart-title">Chamados por status ({meses} meses)</div>
+      <div class="donut-wrap">
+        <div class="donut" style={`background:${donutCss}`}>
+          <div class="donut-hole">
+            <strong>{totalChamadosPeriodo}</strong>
+            <span>chamados</span>
+          </div>
+        </div>
+        <div class="donut-legend">
+          {Object.entries(chamadosStatus).map(([status, qtd]) => (
+            <div class="legend-item">
+              <span class="legend-dot" style={`background:${statusCores[status] || "#9CA3AF"}`}></span>
+              {status.replace(/_/g, " ")} <strong>{qtd}</strong>
+            </div>
+          ))}
+          {totalChamadosPeriodo === 0 && <div class="legend-item" style="color:#9CA3AF">Sem chamados no período</div>}
+        </div>
+      </div>
+    </div>
+
+    <div class="card funil-card">
+      <div class="chart-title">Funil comercial (todos os leads) <a href="/admin/comercial" class="btn btn-secondary btn-sm" style="float:right">Abrir CRM</a></div>
+      <div class="funil">
+        {etapasFunil.map(e => (
+          <div class="funil-row">
+            <span class="funil-lbl">{etapaLabels[e]}</span>
+            <div class="funil-bar-wrap">
+              <div class={`funil-bar ${e === "convertido" ? "ok" : e === "perdido" ? "ruim" : ""}`} style={`width:${Math.max(1.5, (funil[e] / maxFunil) * 100)}%`}></div>
+            </div>
+            <span class="funil-val">{funil[e]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+
   <!-- Dois painéis lado a lado -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:8px">
-    <!-- Chamados recentes -->
+  <div class="panels-grid">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <strong>Chamados recentes</strong>
@@ -132,7 +305,7 @@ function fmtDate(d: string | null) {
               <tr>
                 <td>{(c.manut_clientes as any)?.nome ?? "—"}</td>
                 <td>{c.tipo}</td>
-                <td><span class={`badge ${badgeChamado(c.status)}`}>{c.status.replace("_"," ")}</span></td>
+                <td><span class={`badge ${badgeChamado(c.status)}`}>{c.status.replace("_", " ")}</span></td>
                 <td>{fmtDate(c.data_abertura)}</td>
               </tr>
             )) : <tr><td colspan="4" style="text-align:center;color:#999;padding:20px">Nenhum chamado</td></tr>}
@@ -141,7 +314,6 @@ function fmtDate(d: string | null) {
       </div>
     </div>
 
-    <!-- Leads recentes -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <strong>Leads recentes</strong>
@@ -149,13 +321,13 @@ function fmtDate(d: string | null) {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Nome</th><th>Origem</th><th>Status</th><th>Data</th></tr></thead>
+          <thead><tr><th>Nome</th><th>Plano</th><th>Etapa</th><th>Data</th></tr></thead>
           <tbody>
             {leadsRecentes?.length ? leadsRecentes.map((l: any) => (
               <tr>
                 <td>{l.nome}</td>
-                <td>{l.origem}</td>
-                <td><span class={`badge ${l.status === "novo" ? "badge-blue" : l.status === "convertido" ? "badge-green" : "badge-gray"}`}>{l.status}</span></td>
+                <td>{l.plano ?? "—"}</td>
+                <td><span class={`badge ${badgeEtapa[l.etapa] || "badge-gray"}`}>{(l.etapa || "").replace(/_/g, " ")}</span></td>
                 <td>{fmtDate(l.created_at)}</td>
               </tr>
             )) : <tr><td colspan="4" style="text-align:center;color:#999;padding:20px">Nenhum lead</td></tr>}
@@ -166,10 +338,64 @@ function fmtDate(d: string | null) {
   </div>
 
   <style>
-    .stat-card { transition: box-shadow 0.15s; color: inherit; }
-    .stat-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
-    @media (max-width: 768px) {
-      div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+    /* Pendências */
+    .pend-strip { margin-bottom: 22px; }
+    .pend-head { font-family: 'Montserrat', sans-serif; font-size: .82rem; font-weight: 700; color: var(--ink-mid); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .06em; }
+    .pend-cards { display: flex; gap: 10px; flex-wrap: wrap; }
+    .pend-card {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; border-radius: 99px; text-decoration: none;
+      font-size: .82rem; font-weight: 600; transition: var(--transition);
+      border: 1px solid transparent;
+    }
+    .pend-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .pend-card.alto  { background: var(--red-bg); color: #991B1B; border-color: #FECACA; }
+    .pend-card.medio { background: var(--amber-bg); color: #92400E; border-color: #FDE68A; }
+    .pend-icon { font-size: .95rem; }
+    .pend-count { font-family: 'Montserrat', sans-serif; font-size: 1.05rem; font-weight: 800; }
+
+    /* KPIs */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .stat-sub { font-size: .72rem; color: var(--ink-light); margin-top: 6px; font-weight: 600; }
+
+    /* Gráficos */
+    .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .chart-title { font-family: 'Montserrat', sans-serif; font-size: .85rem; font-weight: 700; margin-bottom: 16px; color: var(--ink); }
+    .bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 150px; }
+    .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+    .bar-val { font-size: 10.5px; font-weight: 700; color: var(--ink-mid); white-space: nowrap; }
+    .bar { width: 100%; max-width: 46px; border-radius: 6px 6px 2px 2px; background: linear-gradient(180deg, #C41E3A, #8B0F25); min-height: 2px; transition: var(--transition); }
+    .bar-green { background: linear-gradient(180deg, #22C55E, #15803D); }
+    .bar-blue { background: linear-gradient(180deg, #3B82F6, #1D4ED8); }
+    .bar-col:hover .bar { opacity: .8; }
+    .bar-lbl { font-size: 10.5px; color: var(--ink-light); text-transform: capitalize; }
+
+    /* Donut */
+    .donut-wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .donut { width: 140px; height: 140px; border-radius: 50%; position: relative; flex: none; }
+    .donut-hole {
+      position: absolute; inset: 22px; background: #fff; border-radius: 50%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .donut-hole strong { font-family: 'Montserrat', sans-serif; font-size: 1.3rem; }
+    .donut-hole span { font-size: .65rem; color: var(--ink-light); }
+    .donut-legend { display: flex; flex-direction: column; gap: 6px; font-size: .8rem; color: var(--ink-mid); }
+    .legend-item { display: flex; align-items: center; gap: 8px; text-transform: capitalize; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+
+    /* Funil */
+    .funil { display: flex; flex-direction: column; gap: 8px; }
+    .funil-row { display: flex; align-items: center; gap: 10px; }
+    .funil-lbl { width: 118px; font-size: .78rem; color: var(--ink-mid); font-weight: 600; flex: none; }
+    .funil-bar-wrap { flex: 1; background: var(--border-light); border-radius: 99px; height: 18px; overflow: hidden; }
+    .funil-bar { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #C41E3A, #E04860); transition: var(--transition); }
+    .funil-bar.ok { background: linear-gradient(90deg, #16A34A, #22C55E); }
+    .funil-bar.ruim { background: #9CA3AF; }
+    .funil-val { width: 30px; text-align: right; font-size: .8rem; font-weight: 700; flex: none; }
+
+    .panels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) {
+      .panels-grid { grid-template-columns: 1fr; }
     }
   </style>
 </Admin>

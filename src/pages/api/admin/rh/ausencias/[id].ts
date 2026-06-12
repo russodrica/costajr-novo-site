@@ -1,0 +1,32 @@
+import type { APIRoute } from "astro";
+import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
+import { supabaseAdmin } from "../../../../../lib/supabase";
+
+export const prerender = false;
+
+// PATCH /api/admin/rh/ausencias/[id] — aprova/rejeita/conclui e edita demais campos
+export const PATCH: APIRoute = async ({ request, params }) => {
+  try {
+    const admin = await requireAdminCookie(request);
+    const id = params.id!;
+    const body = await request.json();
+
+    const editaveis = ["tipo", "data_inicio", "data_fim", "dias", "motivo", "status", "observacoes"];
+    const patch: Record<string, unknown> = {};
+    for (const c of editaveis) if (body[c] !== undefined) patch[c] = body[c] === "" ? null : body[c];
+
+    // Quem mudou o status (aprovada/rejeitada/concluida) fica registrado
+    if (body.status && ["aprovada", "rejeitada", "concluida"].includes(body.status)) {
+      patch.aprovado_por = admin.email;
+    }
+
+    if (!Object.keys(patch).length) return jsonErr(400, "Nada para atualizar");
+
+    const db = supabaseAdmin();
+    const { data, error } = await db.from("rh_ausencias").update(patch).eq("id", id).select().single();
+    if (error) return jsonErr(400, error.message);
+    return jsonOk(data);
+  } catch (e: any) {
+    return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
+  }
+};

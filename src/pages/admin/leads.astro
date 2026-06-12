@@ -11,7 +11,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 const filtroCrm = Astro.url.searchParams.get("crm") || "";
 const db = supabaseAdmin();
 let q = db.from("manut_leads").select("*").order("created_at", { ascending: false });
-if (filtroCrm) q = q.eq("status_crm", filtroCrm);
+if (filtroCrm) q = q.eq("etapa", filtroCrm);
 const { data: leads } = await q;
 
 const passoLabel: Record<number, string> = {
@@ -80,15 +80,15 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
                   : <span style="color:#999">—</span>}
               </td>
               <td>
-                <span class={`badge ${crmBadge[l.status_crm] ?? "badge-gray"}`}>
-                  {crmLabel[l.status_crm] ?? l.status_crm}
+                <span class={`badge ${crmBadge[l.etapa] ?? "badge-gray"}`}>
+                  {crmLabel[l.etapa] ?? l.etapa}
                 </span>
               </td>
               <td>{fmtDate(l.created_at)}</td>
               <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                 <select class="filter-select" style="padding:3px 8px;font-size:0.8rem" onchange={`patchCrm('${l.id}', this.value); this.selectedIndex=0`}>
                   <option value="">— mover CRM —</option>
-                  {["novo","contato_feito","proposta_enviada","negociando","perdido"].filter(s => s !== l.status_crm).map(s => <option value={s}>{crmLabel[s]}</option>)}
+                  {["novo","contato_feito","proposta_enviada","negociando","perdido"].filter(s => s !== l.etapa).map(s => <option value={s}>{crmLabel[s]}</option>)}
                 </select>
                 <button class="btn btn-success btn-sm" data-action="converter" data-id={l.id} data-nome={l.nome}>✔ Converter</button>
                 <button class="btn btn-danger btn-sm" data-action="excluir" data-id={l.id} data-nome={l.nome}>🗑</button>
@@ -142,8 +142,9 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).to
         }
       }
     });
-    async function patchCrm(id, status_crm) {
-      await fetch("/api/admin/leads/" + id, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status_crm: status_crm }) });
+    async function patchCrm(id, etapa) {
+      var res = await fetch("/api/admin/leads/" + id, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ etapa: etapa }) });
+      if (!res.ok) { var d = await res.json().catch(function() { return {}; }); alert("Erro ao mover: " + (d.error || res.status)); return; }
       window.location.reload();
     }
 

@@ -1,0 +1,161 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const filtroStatus = Astro.url.searchParams.get("status") || "todas";
+
+let q = db.from("obras").select("*").order("created_at", { ascending: false }).limit(500);
+if (filtroStatus !== "todas") q = q.eq("status", filtroStatus);
+const { data: obras, error: obrasErro } = await q;
+
+// ativos por obra (contagem)
+const { data: ativosObras } = await db.from("ativos").select("alocado_para_id").eq("alocado_para_tipo", "obra");
+const ativosPorObra: Record<string, number> = {};
+for (const a of ativosObras || []) if (a.alocado_para_id) ativosPorObra[a.alocado_para_id] = (ativosPorObra[a.alocado_para_id] || 0) + 1;
+
+const contagens: Record<string, number> = { todas: 0, planejada: 0, ativa: 0, pausada: 0, concluida: 0, cancelada: 0 };
+{
+  const { data: todasObras } = await db.from("obras").select("status");
+  for (const o of todasObras || []) { contagens.todas++; if (o.status in contagens) contagens[o.status]++; }
+}
+
+const statusLabels: Record<string, string> = { todas: "Todas", planejada: "Planejada", ativa: "Ativa", pausada: "Pausada", concluida: "Concluída", cancelada: "Cancelada" };
+const statusBadge: Record<string, string> = { planejada: "badge-blue", ativa: "badge-green", pausada: "badge-yellow", concluida: "badge-gray", cancelada: "badge-red" };
+function fmtMoney(v: number | null) { if (v == null) return "—"; return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + "T12:00:00").toLocaleDateString("pt-BR"); }
+const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+---
+<Admin title="Obras & Projetos" current="obras">
+
+  {obrasErro && <div class="alert alert-error">Erro ao carregar obras: {obrasErro.message}. Se o módulo é novo, rode a migration <code>020_ativos_obras.sql</code> no Supabase.</div>}
+
+  <div class="toolbar">
+    <span class="toolbar-title">Obras ({obras?.length ?? 0})</span>
+    <div class="pills">
+      {Object.entries(statusLabels).map(([k, v]) => (
+        <a href={`/admin/obras?status=${k}`} class={`pill ${k === filtroStatus ? "active" : ""}`}>{v} <span class="count">{contagens[k]}</span></a>
+      ))}
+    </div>
+    <button class="btn btn-primary" onclick="abrirModalObra()">+ Nova obra</button>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Obra</th><th>Cliente</th><th>Local</th><th>Início</th><th>Previsão fim</th><th>Valor contrato</th><th>Ativos</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {obras?.length ? obras.map((o: any) => (
+            <tr>
+              <td>
+                <strong>{o.nome}</strong>
+                {o.codigo && <div style="font-size:11.5px;color:#9CA3AF">{o.codigo}</div>}
+              </td>
+              <td>{o.cliente || "—"}</td>
+              <td>{[o.cidade, o.uf].filter(Boolean).join("/") || "—"}</td>
+              <td>{fmtDate(o.data_inicio)}</td>
+              <td>{fmtDate(o.data_fim_prevista)}</td>
+              <td>{fmtMoney(o.valor_contrato)}</td>
+              <td>
+                {ativosPorObra[o.id]
+                  ? <a href={`/admin/ativos?busca=${encodeURIComponent(o.nome)}`} class="badge badge-purple">{ativosPorObra[o.id]} 🏷️</a>
+                  : <span style="color:#9CA3AF">0</span>}
+              </td>
+              <td><span class={`badge ${statusBadge[o.status] || "badge-gray"}`}>{statusLabels[o.status] || o.status}</span></td>
+              <td><button class="btn btn-secondary btn-sm" onclick={`editarObra(${JSON.stringify(JSON.stringify(o))})`}>Editar</button></td>
+            </tr>
+          )) : <tr><td colspan="9"><div class="empty-state"><strong>Nenhuma obra cadastrada</strong><p>Cadastre a primeira no botão "+ Nova obra".</p></div></td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal obra (novo/editar) -->
+  <div class="modal-overlay" id="modalObra">
+    <div class="modal" style="max-width:600px">
+      <div class="modal-title" id="tituloModalObra">Nova Obra</div>
+      <div id="msgObra"></div>
+      <form id="formObra">
+        <input type="hidden" name="id" />
+        <div class="form-row">
+          <div class="form-group" style="grid-column:span 2"><label>Nome da obra *</label><input name="nome" required placeholder="Ex: CBA_1023_Vila Joaniza_Telhado" /></div>
+          <div class="form-group"><label>Código</label><input name="codigo" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Cliente / contratante</label><input name="cliente" /></div>
+          <div class="form-group"><label>Responsável</label><input name="responsavel_nome" /></div>
+        </div>
+        <div class="form-group"><label>Endereço</label><input name="endereco" /></div>
+        <div class="form-row">
+          <div class="form-group"><label>Cidade</label><input name="cidade" /></div>
+          <div class="form-group"><label>UF</label>
+            <select name="uf"><option value="">—</option>{ufs.map(u => <option value={u}>{u}</option>)}</select>
+          </div>
+          <div class="form-group"><label>Status</label>
+            <select name="status">
+              {["planejada","ativa","pausada","concluida","cancelada"].map(s => <option value={s} selected={s === "ativa"}>{statusLabels[s]}</option>)}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Início</label><input name="data_inicio" type="date" /></div>
+          <div class="form-group"><label>Fim previsto</label><input name="data_fim_prevista" type="date" /></div>
+          <div class="form-group"><label>Fim real</label><input name="data_fim_real" type="date" /></div>
+        </div>
+        <div class="form-group"><label>Valor do contrato (R$)</label><input name="valor_contrato" type="number" step="0.01" min="0" /></div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalObra')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
+    function abrirModalObra() {
+      const f = document.getElementById("formObra") as HTMLFormElement;
+      f.reset();
+      (f.querySelector("[name=id]") as HTMLInputElement).value = "";
+      document.getElementById("tituloModalObra")!.textContent = "Nova Obra";
+      document.getElementById("modalObra")!.classList.add("open");
+    }
+    function editarObra(json) {
+      const o = JSON.parse(json);
+      const f = document.getElementById("formObra") as HTMLFormElement;
+      f.reset();
+      for (const [k, v] of Object.entries(o)) {
+        const input = f.querySelector(`[name="${k}"]`) as HTMLInputElement | null;
+        if (input && v != null) input.value = String(v);
+      }
+      document.getElementById("tituloModalObra")!.textContent = "Editar Obra";
+      document.getElementById("modalObra")!.classList.add("open");
+    }
+
+    document.getElementById("formObra")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const fd = new FormData(f);
+      const body: Record<string, any> = Object.fromEntries(fd.entries());
+      const id = body.id; delete body.id;
+      if (body.valor_contrato) body.valor_contrato = Number(body.valor_contrato);
+
+      const url = id ? `/api/admin/obras/${id}` : "/api/admin/obras";
+      const res = await fetch(url, { method: id ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await res.json();
+      if (res.ok) window.location.reload();
+      else document.getElementById("msgObra")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
+    });
+
+    (window as any).fecharModal = fecharModal;
+    (window as any).abrirModalObra = abrirModalObra;
+    (window as any).editarObra = editarObra;
+  </script>
+</Admin>

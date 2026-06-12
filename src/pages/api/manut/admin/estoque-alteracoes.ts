@@ -16,13 +16,15 @@ async function ensureAdmin(request: Request) {
 export const GET: APIRoute = async ({ request, url }) => {
   try {
     await ensureAdmin(request);
-    const status = url.searchParams.get("status") || "pendente";
-    const { data } = await supabaseAdmin()
+    const status = url.searchParams.get("status") || "todos";
+    let q = supabaseAdmin()
       .from("manut_estoque_alteracoes")
       .select("*, manut_estoque(nome,unidade,loja_id,manut_lojas(nome,manut_clientes(nome))), manut_tecnicos(nome,email)")
-      .eq("status", status)
       .order("created_at", { ascending: false })
       .limit(200);
+    if (status !== "todos") q = q.eq("status", status);
+    const { data, error } = await q;
+    if (error) return jsonErr(500, error.message);
     return jsonOk(data || []);
   } catch (e: any) {
     return jsonErr(e.message === "Não autorizado" ? 401 : 500, e.message);

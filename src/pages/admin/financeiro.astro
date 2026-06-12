@@ -1,0 +1,537 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+
+// ── Datas de referência ──
+function chaveMes(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+const hoje = new Date();
+const hojeStr = `${chaveMes(hoje)}-${String(hoje.getDate()).padStart(2, "0")}`;
+const mesAtual = chaveMes(hoje);
+
+// ── Filtros (query params) ──
+const mesParam = Astro.url.searchParams.get("mes") || mesAtual;
+const filtroMes = /^\d{4}-\d{2}$/.test(mesParam) ? mesParam : mesAtual;
+const filtroTipo = Astro.url.searchParams.get("tipo") || "todos";
+const filtroStatus = Astro.url.searchParams.get("status") || "todos";
+const filtroCategoria = Astro.url.searchParams.get("categoria") || "todas";
+
+const [fAno, fMes] = filtroMes.split("-").map(Number);
+const mesInicio = `${filtroMes}-01`;
+const mesFim = fMes === 12 ? `${fAno + 1}-01-01` : `${fAno}-${String(fMes + 1).padStart(2, "0")}-01`;
+
+// ── Período do gráfico: 6 meses até o mês corrente ──
+const inicioGrafico = new Date();
+inicioGrafico.setMonth(inicioGrafico.getMonth() - 5);
+inicioGrafico.setDate(1); inicioGrafico.setHours(0, 0, 0, 0);
+const inicioGraficoStr = `${chaveMes(inicioGrafico)}-01`;
+
+// ── Queries (capturando erros: tabelas fin_* podem ainda não existir em produção) ──
+let qLanc = db.from("fin_lancamentos")
+  .select("*, fin_categorias(nome, cor)")
+  .gte("data_vencimento", mesInicio).lt("data_vencimento", mesFim)
+  .order("data_vencimento", { ascending: false })
+  .limit(1000);
+if (filtroTipo !== "todos") qLanc = qLanc.eq("tipo", filtroTipo);
+if (filtroStatus !== "todos") qLanc = qLanc.eq("status", filtroStatus);
+if (filtroCategoria !== "todas") qLanc = qLanc.eq("categoria_id", filtroCategoria);
+
+const [
+  { data: lancamentos, error: lancErro },
+  { data: categorias, error: catErro },
+  { data: lancPeriodo, error: periodoErro },
+  { data: manutPeriodo, error: manutPeriodoErro },
+  { data: manutMes, error: manutMesErro },
+] = await Promise.all([
+  qLanc,
+  db.from("fin_categorias").select("*").order("tipo", { ascending: true }).order("nome", { ascending: true }),
+  db.from("fin_lancamentos").select("tipo, valor, status, data_vencimento, data_pagamento")
+    .or(`data_vencimento.gte.${inicioGraficoStr},data_pagamento.gte.${inicioGraficoStr}`).limit(5000),
+  db.from("manut_pagamentos").select("valor, data_pagamento").eq("status", "pago")
+    .gte("data_pagamento", inicioGraficoStr).limit(5000),
+  db.from("manut_pagamentos").select("id, referencia, valor, status, data_vencimento, data_pagamento")
+    .gte("data_vencimento", mesInicio).lt("data_vencimento", mesFim)
+    .order("data_vencimento", { ascending: true }).limit(500),
+]);
+
+const erros = [
+  lancErro && `Lançamentos: ${lancErro.message}`,
+  catErro && `Categorias: ${catErro.message}`,
+  periodoErro && `Fluxo de caixa: ${periodoErro.message}`,
+  manutPeriodoErro && `Recebimentos de manutenção (período): ${manutPeriodoErro.message}`,
+  manutMesErro && `Recebimentos de manutenção (mês): ${manutMesErro.message}`,
+].filter(Boolean) as string[];
+
+// ── Agregações do mês corrente (cards) ──
+let aReceber = 0, aPagar = 0, atrasadosQtd = 0, atrasadosValor = 0;
+let recebidoMes = 0, pagoMes = 0, recPrevMes = 0, despPrevMes = 0;
+for (const l of lancPeriodo || []) {
+  const v = Number(l.valor) || 0;
+  const venc = String(l.data_vencimento || "");
+  const mesVenc = venc.slice(0, 7);
+  const mesPag = String(l.data_pagamento || "").slice(0, 7);
+  if (mesVenc === mesAtual && (l.status === "previsto" || l.status === "atrasado")) {
+    if (l.tipo === "receita") aReceber += v; else aPagar += v;
+  }
+  if (l.status === "atrasado" || (l.status === "previsto" && venc && venc < hojeStr)) {
+    atrasadosQtd++; atrasadosValor += v;
+  }
+  if (l.status === "pago" && mesPag === mesAtual) {
+    if (l.tipo === "receita") recebidoMes += v; else pagoMes += v;
+  }
+  if (mesVenc === mesAtual && l.status !== "cancelado") {
+    if (l.tipo === "receita") recPrevMes += v; else despPrevMes += v;
+  }
+}
+let manutRecebidoMes = 0;
+for (const p of manutPeriodo || []) {
+  if (p.data_pagamento && chaveMes(new Date(p.data_pagamento)) === mesAtual) manutRecebidoMes += Number(p.valor) || 0;
+}
+const recebidoTotalMes = recebidoMes + manutRecebidoMes;
+const saldoMes = recPrevMes - despPrevMes;
+
+// ── Fluxo de caixa (6 meses): entradas = fin receitas pagas + manut recebido; saídas = fin despesas pagas ──
+const mesesLista: { chave: string; rotulo: string }[] = [];
+for (let i = 0; i < 6; i++) {
+  const d = new Date(inicioGrafico);
+  d.setMonth(d.getMonth() + i);
+  mesesLista.push({ chave: chaveMes(d), rotulo: d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "") });
+}
+const entradaPorMes = Object.fromEntries(mesesLista.map(m => [m.chave, 0]));
+const saidaPorMes = Object.fromEntries(mesesLista.map(m => [m.chave, 0]));
+for (const l of lancPeriodo || []) {
+  if (l.status !== "pago" || !l.data_pagamento) continue;
+  const k = String(l.data_pagamento).slice(0, 7);
+  if (!(k in entradaPorMes)) continue;
+  const v = Number(l.valor) || 0;
+  if (l.tipo === "receita") entradaPorMes[k] += v; else saidaPorMes[k] += v;
+}
+for (const p of manutPeriodo || []) {
+  if (!p.data_pagamento) continue;
+  const k = chaveMes(new Date(p.data_pagamento));
+  if (k in entradaPorMes) entradaPorMes[k] += Number(p.valor) || 0;
+}
+const maxFluxo = Math.max(1, ...Object.values(entradaPorMes), ...Object.values(saidaPorMes));
+
+// ── Helpers de exibição ──
+function fmtMoney(v: number) { return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtDateStr(d: string | null) {
+  if (!d) return "—";
+  const [a, m, dia] = String(d).slice(0, 10).split("-");
+  return `${dia}/${m}/${a}`;
+}
+function fmtDateTz(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
+function statusEfetivo(l: any) {
+  return l.status === "previsto" && l.data_vencimento && String(l.data_vencimento) < hojeStr ? "atrasado" : l.status;
+}
+const badgeStatus: Record<string, string> = { previsto: "badge-blue", pago: "badge-green", atrasado: "badge-red", cancelado: "badge-gray" };
+const badgeManut: Record<string, string> = { pendente: "badge-yellow", pago: "badge-green", atrasado: "badge-red", cancelado: "badge-gray" };
+
+const tipoLabels: Record<string, string> = { todos: "Todos os tipos", receita: "Receitas", despesa: "Despesas" };
+const statusLabels: Record<string, string> = { todos: "Todos os status", previsto: "Previsto", pago: "Pago", atrasado: "Atrasado", cancelado: "Cancelado" };
+
+// ── JSON para o client (edição + select de categorias) ──
+const lancJson = JSON.stringify((lancamentos || []).map((l: any) => ({
+  id: l.id, tipo: l.tipo, descricao: l.descricao, categoria_id: l.categoria_id,
+  valor: l.valor, data_vencimento: l.data_vencimento, data_pagamento: l.data_pagamento,
+  status: l.status, forma_pagamento: l.forma_pagamento, fornecedor_cliente: l.fornecedor_cliente,
+  recorrente: l.recorrente, observacoes: l.observacoes,
+}))).replace(/</g, "\\u003c");
+const catJson = JSON.stringify((categorias || []).map((c: any) => ({ id: c.id, nome: c.nome, tipo: c.tipo, cor: c.cor })))
+  .replace(/</g, "\\u003c");
+---
+<Admin title="Financeiro" current="financeiro">
+
+  {erros.map(e => <div class="alert alert-error">Erro ao carregar dados — {e}. Verifique se a migration 022_financeiro.sql foi aplicada no Supabase.</div>)}
+
+  <!-- Cards do mês corrente -->
+  <div class="card-grid">
+    <div class="stat-card">
+      <div class="stat-value" style="color:#16A34A">{fmtMoney(aReceber)}</div>
+      <div class="stat-label">A receber (mês)</div>
+      <div class="stat-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#B91C1C">{fmtMoney(aPagar)}</div>
+      <div class="stat-label">A pagar (mês)</div>
+      <div class="stat-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#B91C1C">{atrasadosQtd}</div>
+      <div class="stat-label">Atrasados (receber + pagar)</div>
+      <div class="stat-sub">{atrasadosQtd ? fmtMoney(atrasadosValor) + " em aberto" : "Nada atrasado"}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#16A34A">{fmtMoney(recebidoTotalMes)}</div>
+      <div class="stat-label">Recebido no mês</div>
+      <div class="stat-sub">{fmtMoney(manutRecebidoMes)} de manutenção</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#B91C1C">{fmtMoney(pagoMes)}</div>
+      <div class="stat-label">Pago no mês</div>
+      <div class="stat-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style={`color:${saldoMes >= 0 ? "#16A34A" : "#B91C1C"}`}>{fmtMoney(saldoMes)}</div>
+      <div class="stat-label">Saldo previsto do mês</div>
+      <div class="stat-sub">receitas − despesas do mês</div>
+    </div>
+  </div>
+
+  <!-- Fluxo de caixa -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="section-header" style="margin-bottom:10px">
+      <span class="section-title">Fluxo de caixa (6 meses)</span>
+      <div class="fluxo-legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#22C55E"></span> Entradas (receitas + manutenção)</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#EF4444"></span> Saídas (despesas pagas)</span>
+      </div>
+    </div>
+    <div class="bar-chart">
+      {mesesLista.map(m => (
+        <div class="bar-col">
+          <div class="bar-group">
+            <div class="bar bar-entrada" style={`height:${Math.max(2, (entradaPorMes[m.chave] / maxFluxo) * 100)}%`} title={`Entradas ${m.rotulo}: ${fmtMoney(entradaPorMes[m.chave])}`}></div>
+            <div class="bar bar-saida" style={`height:${Math.max(2, (saidaPorMes[m.chave] / maxFluxo) * 100)}%`} title={`Saídas ${m.rotulo}: ${fmtMoney(saidaPorMes[m.chave])}`}></div>
+          </div>
+          <div class="bar-lbl">{m.rotulo}</div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <!-- Filtros + ações -->
+  <div class="toolbar">
+    <span class="toolbar-title">Lançamentos ({lancamentos?.length ?? 0})</span>
+    <input type="month" class="search-input" style="min-width:auto" value={filtroMes} onchange="filtrar('mes', this.value)" />
+    <select class="filter-select" onchange="filtrar('tipo', this.value)">
+      {["todos", "receita", "despesa"].map(t => <option value={t} selected={t === filtroTipo}>{tipoLabels[t]}</option>)}
+    </select>
+    <select class="filter-select" onchange="filtrar('status', this.value)">
+      {["todos", "previsto", "pago", "atrasado", "cancelado"].map(s => <option value={s} selected={s === filtroStatus}>{statusLabels[s]}</option>)}
+    </select>
+    <select class="filter-select" onchange="filtrar('categoria', this.value)">
+      <option value="todas">Todas as categorias</option>
+      {(categorias || []).map((c: any) => <option value={c.id} selected={c.id === filtroCategoria}>{c.nome} ({c.tipo})</option>)}
+    </select>
+    <button class="btn btn-secondary" onclick="abrirModalCategorias()">Categorias</button>
+    <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo lançamento</button>
+  </div>
+
+  <!-- Tabela de lançamentos -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Vencimento</th><th>Descrição</th><th>Categoria</th><th>Fornecedor/Cliente</th><th>Tipo</th><th>Valor</th><th>Status</th><th>Ações</th></tr>
+        </thead>
+        <tbody>
+          {lancamentos?.length ? lancamentos.map((l: any) => {
+            const st = statusEfetivo(l);
+            return (
+              <tr>
+                <td>{fmtDateStr(l.data_vencimento)}</td>
+                <td><strong>{l.descricao}</strong>{l.recorrente && <span title="Recorrente"> 🔁</span>}</td>
+                <td>
+                  <span class="cat-dot" style={`background:${(l.fin_categorias as any)?.cor || "#9CA3AF"}`}></span>
+                  {(l.fin_categorias as any)?.nome ?? "—"}
+                </td>
+                <td>{l.fornecedor_cliente || "—"}</td>
+                <td><span class={`badge ${l.tipo === "receita" ? "badge-green" : "badge-red"}`}>{l.tipo}</span></td>
+                <td style={`font-weight:700;color:${l.tipo === "receita" ? "#16A34A" : "#B91C1C"}`}>
+                  {l.tipo === "receita" ? "+" : "−"} {fmtMoney(Number(l.valor))}
+                </td>
+                <td><span class={`badge ${badgeStatus[st] || "badge-gray"}`}>{st}</span></td>
+                <td>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap">
+                    {(st === "previsto" || st === "atrasado") && (
+                      <button class="btn btn-success btn-sm" onclick={`marcarPago('${l.id}')`}>Marcar pago</button>
+                    )}
+                    <button class="btn btn-secondary btn-sm" onclick={`editarLanc('${l.id}')`}>Editar</button>
+                    {st !== "cancelado" && (
+                      <button class="btn btn-danger btn-sm" onclick={`cancelarLanc('${l.id}')`}>Cancelar</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          }) : (
+            <tr><td colspan="8">
+              <div class="empty-state"><strong>Nenhum lançamento no período</strong>Ajuste os filtros ou crie um novo lançamento.</div>
+            </td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recebimentos de manutenção (consolidação, somente leitura) -->
+  <div class="card">
+    <div class="section-header">
+      <span class="section-title">Recebimentos de manutenção — {fmtDateStr(mesInicio)?.slice(3)}</span>
+      <a href="/admin/pagamentos" class="btn btn-secondary btn-sm">Ver tudo</a>
+    </div>
+    <p style="font-size:.78rem;color:#9CA3AF;margin:-8px 0 12px">Origem: contratos de manutenção (manut_pagamentos). Consolidados como receitas na visão de caixa — somente leitura aqui.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Vencimento</th><th>Referência</th><th>Valor</th><th>Status</th></tr></thead>
+        <tbody>
+          {manutMes?.length ? manutMes.map((p: any) => (
+            <tr>
+              <td>{fmtDateTz(p.data_vencimento)}</td>
+              <td>{p.referencia || "—"} <span class="badge badge-purple">Manutenção</span></td>
+              <td style="font-weight:700;color:#16A34A">+ {fmtMoney(Number(p.valor))}</td>
+              <td><span class={`badge ${badgeManut[p.status] || "badge-gray"}`}>{p.status}</span></td>
+            </tr>
+          )) : (
+            <tr><td colspan="4" style="text-align:center;color:#999;padding:24px">Nenhum recebimento de manutenção no mês filtrado</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal novo/editar lançamento -->
+  <div class="modal-overlay" id="modalLanc">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-title" id="modalLancTitulo">Novo lançamento</div>
+      <div id="msgLanc"></div>
+      <form id="formLanc">
+        <input type="hidden" id="lancId" />
+        <div class="form-group">
+          <label>Tipo *</label>
+          <div style="display:flex;gap:18px">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0">
+              <input type="radio" name="tipo" value="receita" checked onchange="atualizarCategorias('receita')" style="width:auto" /> Receita
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0">
+              <input type="radio" name="tipo" value="despesa" onchange="atualizarCategorias('despesa')" style="width:auto" /> Despesa
+            </label>
+          </div>
+        </div>
+        <div class="form-group"><label>Descrição *</label><input name="descricao" required /></div>
+        <div class="form-row">
+          <div class="form-group"><label>Categoria</label><select name="categoria_id" id="catSelect"><option value="">— Sem categoria —</option></select></div>
+          <div class="form-group"><label>Valor (R$) *</label><input name="valor" type="number" step="0.01" min="0" required /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Vencimento *</label><input name="data_vencimento" type="date" required /></div>
+          <div class="form-group"><label>Status</label>
+            <select name="status">
+              <option value="previsto">Previsto</option>
+              <option value="pago">Pago</option>
+              <option value="atrasado">Atrasado</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Data de pagamento</label><input name="data_pagamento" type="date" /></div>
+          <div class="form-group"><label>Forma de pagamento</label>
+            <select name="forma_pagamento">
+              <option value="">—</option>
+              <option value="pix">PIX</option>
+              <option value="boleto">Boleto</option>
+              <option value="transferencia">Transferência</option>
+              <option value="cartao">Cartão</option>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="outro">Outro</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group"><label>Fornecedor / Cliente</label><input name="fornecedor_cliente" /></div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400">
+            <input type="checkbox" name="recorrente" style="width:auto" /> Lançamento recorrente (repete todo mês)
+          </label>
+        </div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalLanc')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal categorias -->
+  <div class="modal-overlay" id="modalCat">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-title">Categorias</div>
+      <div id="msgCat"></div>
+      <div class="cat-lista">
+        {(categorias || []).length ? (categorias || []).map((c: any) => (
+          <div class="cat-item">
+            <span class="cat-dot" style={`background:${c.cor || "#9CA3AF"}`}></span>
+            <span style="flex:1">{c.nome}</span>
+            <span class={`badge ${c.tipo === "receita" ? "badge-green" : "badge-red"}`}>{c.tipo}</span>
+          </div>
+        )) : <div style="color:#999;font-size:.85rem;padding:8px 0">Nenhuma categoria cadastrada</div>}
+      </div>
+      <form id="formCat" style="margin-top:16px;border-top:1px solid #E5E7EB;padding-top:16px">
+        <div class="form-row">
+          <div class="form-group"><label>Nome *</label><input name="nome" required /></div>
+          <div class="form-group"><label>Tipo *</label>
+            <select name="tipo"><option value="receita">Receita</option><option value="despesa">Despesa</option></select>
+          </div>
+          <div class="form-group" style="min-width:80px"><label>Cor</label><input name="cor" type="color" value="#9CA3AF" style="height:38px;padding:4px" /></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalCat')">Fechar</button>
+          <button type="submit" class="btn btn-primary">Criar categoria</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="application/json" id="dadosLanc" set:html={lancJson}></script>
+  <script type="application/json" id="dadosCat" set:html={catJson}></script>
+
+  <script>
+    const lancData = JSON.parse(document.getElementById("dadosLanc")?.textContent || "[]");
+    const catData = JSON.parse(document.getElementById("dadosCat")?.textContent || "[]");
+
+    function filtrar(param, valor) {
+      const url = new URL(window.location.href);
+      if (valor) url.searchParams.set(param, valor); else url.searchParams.delete(param);
+      window.location.href = url.toString();
+    }
+    function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
+
+    function atualizarCategorias(tipo, selecionada) {
+      const sel = document.getElementById("catSelect");
+      sel.innerHTML = '<option value="">— Sem categoria —</option>';
+      for (const c of catData) {
+        if (c.tipo !== tipo) continue;
+        const opt = document.createElement("option");
+        opt.value = c.id; opt.textContent = c.nome;
+        if (c.id === selecionada) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+
+    function abrirModalNovo() {
+      const form = document.getElementById("formLanc") as any;
+      form.reset();
+      document.getElementById("lancId").value = "";
+      document.getElementById("modalLancTitulo").textContent = "Novo lançamento";
+      document.getElementById("msgLanc").innerHTML = "";
+      form.querySelector('input[name=tipo][value=receita]').checked = true;
+      form.querySelector('input[name=data_vencimento]').value = new Date().toISOString().slice(0, 10);
+      atualizarCategorias("receita");
+      document.getElementById("modalLanc").classList.add("open");
+    }
+
+    function editarLanc(id) {
+      const l = lancData.find((x) => x.id === id);
+      if (!l) return alert("Lançamento não encontrado");
+      const form = document.getElementById("formLanc") as any;
+      form.reset();
+      document.getElementById("lancId").value = l.id;
+      document.getElementById("modalLancTitulo").textContent = "Editar lançamento";
+      document.getElementById("msgLanc").innerHTML = "";
+      form.querySelector(`input[name=tipo][value=${l.tipo}]`).checked = true;
+      atualizarCategorias(l.tipo, l.categoria_id);
+      form.querySelector("input[name=descricao]").value = l.descricao || "";
+      form.querySelector("input[name=valor]").value = l.valor ?? "";
+      form.querySelector("input[name=data_vencimento]").value = (l.data_vencimento || "").slice(0, 10);
+      form.querySelector("input[name=data_pagamento]").value = (l.data_pagamento || "").slice(0, 10);
+      form.querySelector("select[name=status]").value = l.status || "previsto";
+      form.querySelector("select[name=forma_pagamento]").value = l.forma_pagamento || "";
+      form.querySelector("input[name=fornecedor_cliente]").value = l.fornecedor_cliente || "";
+      form.querySelector("input[name=recorrente]").checked = !!l.recorrente;
+      form.querySelector("textarea[name=observacoes]").value = l.observacoes || "";
+      document.getElementById("modalLanc").classList.add("open");
+    }
+
+    function abrirModalCategorias() {
+      document.getElementById("msgCat").innerHTML = "";
+      document.getElementById("modalCat").classList.add("open");
+    }
+
+    async function marcarPago(id) {
+      const res = await fetch(`/api/admin/fin/lancamentos/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "pago", data_pagamento: new Date().toISOString().slice(0, 10) }),
+      });
+      if (res.ok) window.location.reload();
+      else { const d = await res.json().catch(() => ({})); alert("Erro ao marcar como pago: " + (d.error || `HTTP ${res.status}`)); }
+    }
+
+    async function cancelarLanc(id) {
+      if (!confirm("Cancelar este lançamento? Ele continua no histórico com status cancelado.")) return;
+      const res = await fetch(`/api/admin/fin/lancamentos/${id}`, { method: "DELETE" });
+      if (res.ok) window.location.reload();
+      else { const d = await res.json().catch(() => ({})); alert("Erro ao cancelar: " + (d.error || `HTTP ${res.status}`)); }
+    }
+
+    document.getElementById("formLanc")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target as any;
+      const fd = new FormData(form);
+      const body: Record<string, any> = {};
+      for (const [k, v] of fd.entries()) body[k] = v;
+      body.recorrente = fd.get("recorrente") === "on";
+      body.valor = parseFloat(String(body.valor).replace(",", "."));
+      const id = document.getElementById("lancId").value;
+      const url = id ? `/api/admin/fin/lancamentos/${id}` : "/api/admin/fin/lancamentos";
+      const res = await fetch(url, { method: id ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else {
+        const d = await res.json().catch(() => ({}));
+        document.getElementById("msgLanc").innerHTML = `<div class="alert alert-error">${d.error || `HTTP ${res.status}`}</div>`;
+      }
+    });
+
+    document.getElementById("formCat")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target as any);
+      const body = Object.fromEntries(fd.entries());
+      const res = await fetch("/api/admin/fin/categorias", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else {
+        const d = await res.json().catch(() => ({}));
+        document.getElementById("msgCat").innerHTML = `<div class="alert alert-error">${d.error || `HTTP ${res.status}`}</div>`;
+      }
+    });
+
+    (window as any).filtrar = filtrar;
+    (window as any).fecharModal = fecharModal;
+    (window as any).atualizarCategorias = atualizarCategorias;
+    (window as any).abrirModalNovo = abrirModalNovo;
+    (window as any).editarLanc = editarLanc;
+    (window as any).abrirModalCategorias = abrirModalCategorias;
+    (window as any).marcarPago = marcarPago;
+    (window as any).cancelarLanc = cancelarLanc;
+  </script>
+
+  <style>
+    .stat-sub { font-size: .72rem; color: var(--ink-light); margin-top: 6px; font-weight: 600; }
+
+    /* Gráfico de barras (padrão do dashboard, agrupado entrada × saída) */
+    .bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 160px; }
+    .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+    .bar-group { display: flex; align-items: flex-end; justify-content: center; gap: 4px; height: 100%; width: 100%; }
+    .bar { width: 100%; max-width: 26px; border-radius: 6px 6px 2px 2px; min-height: 2px; transition: var(--transition); }
+    .bar-entrada { background: linear-gradient(180deg, #22C55E, #15803D); }
+    .bar-saida { background: linear-gradient(180deg, #EF4444, #B91C1C); }
+    .bar-col:hover .bar { opacity: .8; }
+    .bar-lbl { font-size: 10.5px; color: var(--ink-light); text-transform: capitalize; }
+    .fluxo-legend { display: flex; gap: 16px; flex-wrap: wrap; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: .76rem; color: var(--ink-mid); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+
+    /* Categorias */
+    .cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; flex: none; }
+    .cat-lista { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+    .cat-item { display: flex; align-items: center; gap: 8px; font-size: .85rem; padding: 6px 8px; border: 1px solid var(--border-light); border-radius: 8px; }
+  </style>
+</Admin>

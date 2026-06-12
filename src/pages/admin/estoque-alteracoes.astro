@@ -11,7 +11,8 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
   <div class="section-header">
     <p style="margin:0;font-size:13.5px;color:#5B5F6B">Pedidos de alteração de preço enviados pelos técnicos. Aprovar aplica o novo valor no estoque da loja.</p>
     <div style="display:flex;gap:6px">
-      <button class="ea-pill active" data-status="pendente">Pendentes</button>
+      <button class="ea-pill active" data-status="todos">Todas</button>
+      <button class="ea-pill" data-status="pendente">Pendentes</button>
       <button class="ea-pill" data-status="aprovada">Aprovadas</button>
       <button class="ea-pill" data-status="rejeitada">Rejeitadas</button>
     </div>
@@ -36,7 +37,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 </style>
 
 <script>
-  let filtro = "pendente";
+  let filtro = "todos";
 
   function fmtMoney(v) { return v == null ? "—" : "R$ " + Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2}); }
   function fmtDate(d) { return d ? new Date(d).toLocaleString("pt-BR") : "—"; }
@@ -49,6 +50,10 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
     document.getElementById("loading").style.display = "none";
     document.getElementById("content").style.display = "";
 
+    if (!res.ok) {
+      document.getElementById("content").innerHTML = `<div class="card"><div class="empty-state"><strong>Erro ao carregar</strong><p>${data?.error || `HTTP ${res.status}`}</p></div></div>`;
+      return;
+    }
     if (!data?.length) {
       document.getElementById("content").innerHTML = `<div class="card"><div class="empty-state"><strong>Nada por aqui</strong><p>Nenhuma alteração no filtro "${filtro}".</p></div></div>`;
       return;

@@ -1,0 +1,560 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+
+// ── Leads: ordena por kanban_ordem (migration 023); cai pra created_at se a coluna não existir
+let leads: any[] = [];
+let leadsErro: string | null = null;
+{
+  let r = await db.from("manut_leads").select("*")
+    .order("kanban_ordem", { ascending: true })
+    .order("created_at", { ascending: false });
+  if (r.error) {
+    r = await db.from("manut_leads").select("*").order("created_at", { ascending: false });
+  }
+  if (r.error) leadsErro = r.error.message; else leads = r.data || [];
+}
+
+// ── Propostas (tabela com_propostas pode não existir ainda — não quebra a página)
+let propostas: any[] = [];
+let propostasErro: string | null = null;
+{
+  const r = await db.from("com_propostas").select("*, manut_leads(nome)").order("created_at", { ascending: false });
+  if (r.error) propostasErro = r.error.message; else propostas = r.data || [];
+}
+
+// ── Meta do mês corrente (tabela com_metas pode não existir ainda)
+const hoje = new Date();
+const mesRef = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+let meta: any = null;
+let metaErro: string | null = null;
+{
+  const r = await db.from("com_metas").select("*").eq("referencia", mesRef).maybeSingle();
+  if (r.error) metaErro = r.error.message; else meta = r.data;
+}
+const migrationPendente = !!(propostasErro || metaErro);
+
+// ── Indicadores
+const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+function noMes(d: string | null) {
+  if (!d) return false;
+  const t = new Date(d);
+  return t >= inicioMes && t < fimMes;
+}
+const convertidosMes = leads.filter((l) => l.etapa === "convertido" && noMes(l.updated_at));
+const valorConvertidoMes = convertidosMes.reduce((s, l) => s + Number(l.valor || 0), 0);
+const leadsNovosMes = leads.filter((l) => noMes(l.created_at)).length;
+const funil = leads.filter((l) => l.etapa !== "convertido" && l.etapa !== "perdido");
+const valorFunil = funil.reduce((s, l) => s + Number(l.valor || 0), 0);
+const totalConvertidos = leads.filter((l) => l.etapa === "convertido").length;
+const taxaConversao = leads.length ? Math.round((totalConvertidos / leads.length) * 100) : 0;
+
+// ── Formatadores
+function fmtBRL(n: number) { return Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtDate(d: string | null) {
+  if (!d) return "—";
+  const t = String(d).length === 10 ? new Date(d + "T12:00:00") : new Date(d);
+  return t.toLocaleDateString("pt-BR");
+}
+function tempoDesde(d: string) {
+  const dias = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+  if (dias <= 0) return "hoje";
+  if (dias === 1) return "há 1 dia";
+  if (dias < 60) return `há ${dias} dias`;
+  return `há ${Math.floor(dias / 30)} meses`;
+}
+const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+function atrasado(d: string | null) { return !!d && String(d).slice(0, 10) < hojeISO; }
+let mesLabel = hoje.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+mesLabel = mesLabel.charAt(0).toUpperCase() + mesLabel.slice(1);
+
+// ── Kanban
+const colunas = [
+  { key: "novo",             label: "Novo",             cor: "#1E40AF", bg: "#DBEAFE" },
+  { key: "contato_feito",    label: "Contato feito",    cor: "#854D0E", bg: "#FEF9C3" },
+  { key: "proposta_enviada", label: "Proposta enviada", cor: "#9A3412", bg: "#FFEDD5" },
+  { key: "negociando",       label: "Negociando",       cor: "#5B21B6", bg: "#EDE9FE" },
+  { key: "convertido",       label: "Convertido",       cor: "#166534", bg: "#DCFCE7" },
+  { key: "perdido",          label: "Perdido",          cor: "#374151", bg: "#F3F4F6" },
+];
+const etapaLabels: Record<string, string> = Object.fromEntries(colunas.map((c) => [c.key, c.label]));
+
+// ── Propostas: labels e badges
+const propLabel: Record<string, string> = { rascunho: "Rascunho", enviada: "Enviada", aceita: "Aceita", recusada: "Recusada", expirada: "Expirada" };
+const propBadge: Record<string, string> = { rascunho: "badge-gray", enviada: "badge-blue", aceita: "badge-green", recusada: "badge-red", expirada: "badge-orange" };
+const propStatus = ["rascunho", "enviada", "aceita", "recusada", "expirada"];
+
+// ── Metas: barras de progresso
+const metasBarras = [
+  { label: "Valor convertido", atual: valorConvertidoMes, alvo: Number(meta?.meta_valor || 0), brl: true },
+  { label: "Leads novos",      atual: leadsNovosMes,       alvo: Number(meta?.meta_leads || 0), brl: false },
+  { label: "Conversões",       atual: convertidosMes.length, alvo: Number(meta?.meta_conversoes || 0), brl: false },
+];
+
+// JSON seguro para embutir na página (evita fechar a tag <script>)
+function jsonSafe(v: unknown) { return JSON.stringify(v ?? []).replace(/</g, "\\u003c"); }
+---
+<Admin title="Comercial (CRM)" current="comercial">
+  {leadsErro && <div class="alert alert-error">Erro ao carregar leads: {leadsErro}</div>}
+  {migrationPendente && (
+    <div class="alert alert-error">
+      <strong>Módulo Comercial parcialmente disponível.</strong> As tabelas de propostas/metas ainda não existem no banco —
+      rode <code>db/migrations/023_comercial.sql</code> no Supabase (SQL Editor) para liberar tudo.
+    </div>
+  )}
+
+  <!-- ── Meta do mês ── -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="section-header" style="margin-bottom:12px">
+      <span class="section-title">🎯 Meta do mês — {mesLabel}</span>
+      <button class="btn btn-primary btn-sm" onclick="abrirModalMeta()" disabled={metaErro ? true : undefined}>Definir metas</button>
+    </div>
+    {!meta && !metaErro && <div style="font-size:.8rem;color:#9CA3AF;margin-bottom:10px">Nenhuma meta definida para este mês ainda.</div>}
+    <div class="metas-grid">
+      {metasBarras.map((m) => {
+        const pct = m.alvo > 0 ? Math.min(100, Math.round((m.atual / m.alvo) * 100)) : 0;
+        return (
+          <div class="meta-item">
+            <div class="meta-top">
+              <span>{m.label}</span>
+              <strong>{m.brl ? fmtBRL(m.atual) : m.atual} <span class="meta-alvo">/ {m.alvo ? (m.brl ? fmtBRL(m.alvo) : m.alvo) : "—"}</span></strong>
+            </div>
+            <div class="meta-bar"><div class={`meta-fill ${pct >= 100 ? "ok" : ""}`} style={`width:${pct}%`}></div></div>
+            <div class="meta-pct">{m.alvo > 0 ? `${pct}% da meta` : "sem meta definida"}</div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+
+  <!-- ── Indicadores ── -->
+  <div class="card-grid">
+    <div class="stat-card"><div class="stat-value">{funil.length}</div><div class="stat-label">Leads no funil</div></div>
+    <div class="stat-card"><div class="stat-value" style="font-size:1.35rem">{fmtBRL(valorFunil)}</div><div class="stat-label">Valor potencial no funil</div></div>
+    <div class="stat-card"><div class="stat-value">{convertidosMes.length}</div><div class="stat-label">Convertidos no mês</div></div>
+    <div class="stat-card"><div class="stat-value">{taxaConversao}%</div><div class="stat-label">Taxa de conversão (histórico)</div></div>
+  </div>
+
+  <!-- ── Kanban ── -->
+  <div class="section-header">
+    <span class="section-title">Funil de vendas</span>
+    <span style="font-size:.75rem;color:#9CA3AF">Arraste os cards entre as colunas · clique em um card para editar</span>
+  </div>
+  <div class="kanban-wrap">
+    {colunas.map((c) => {
+      const items = leads.filter((l) => l.etapa === c.key);
+      const soma = items.reduce((s, l) => s + Number(l.valor || 0), 0);
+      return (
+        <div class="kanban-col">
+          <div class="kanban-head" style={`background:${c.bg};color:${c.cor}`}>
+            <span class="kanban-title">{c.label}</span>
+            <span class="kanban-count" data-count>{items.length}</span>
+            <span class="kanban-sum" data-sum>{fmtBRL(soma)}</span>
+          </div>
+          <div class="kanban-body" data-drop={c.key}>
+            {items.map((l) => (
+              <div class="kanban-card" draggable="true" data-id={l.id} data-valor={Number(l.valor || 0)}>
+                <div class="kc-nome">{l.nome}</div>
+                {l.nome_loja && <div class="kc-loja">{l.nome_loja}</div>}
+                <div class="kc-plano">{l.plano || "Sem plano"} · {l.valor ? fmtBRL(Number(l.valor)) : "—"}</div>
+                {l.responsavel && <div class="kc-resp">👤 {l.responsavel}</div>}
+                {l.proximo_contato && (
+                  <div class={`kc-prox ${atrasado(l.proximo_contato) ? "atrasado" : ""}`}>
+                    📅 {fmtDate(l.proximo_contato)}{atrasado(l.proximo_contato) ? " · atrasado" : ""}
+                  </div>
+                )}
+                <div class="kc-tempo">{tempoDesde(l.created_at)}</div>
+              </div>
+            ))}
+            <div class="kanban-empty" style={items.length ? "display:none" : ""}>Arraste leads aqui</div>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+
+  <!-- ── Propostas ── -->
+  <div class="section-header" style="margin-top:28px">
+    <span class="section-title">Propostas ({propostas.length})</span>
+    <button class="btn btn-primary btn-sm" onclick="abrirNovaProposta()" disabled={propostasErro ? true : undefined}>+ Nova proposta</button>
+  </div>
+  <div class="card">
+    {propostasErro ? (
+      <div class="empty-state"><strong>Propostas indisponíveis</strong>Rode a migration 023_comercial.sql no Supabase para habilitar.</div>
+    ) : (
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Cliente</th><th>Título</th><th>Valor</th><th>Status</th><th>Válida até</th><th>Criada em</th><th>Ações</th></tr></thead>
+          <tbody>
+            {propostas.length ? propostas.map((p: any) => (
+              <tr>
+                <td><strong>{p.cliente_nome}</strong>{p.manut_leads?.nome && <div style="font-size:.72rem;color:#9CA3AF">Lead: {p.manut_leads.nome}</div>}</td>
+                <td>{p.titulo}{p.url_pdf && <a href={p.url_pdf} target="_blank" rel="noopener" style="margin-left:6px;font-size:.75rem">PDF ↗</a>}</td>
+                <td>{p.valor != null ? fmtBRL(Number(p.valor)) : "—"}</td>
+                <td><span class={`badge ${propBadge[p.status] ?? "badge-gray"}`}>{propLabel[p.status] ?? p.status}</span></td>
+                <td>{fmtDate(p.valido_ate)}</td>
+                <td>{fmtDate(p.created_at)}</td>
+                <td>
+                  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <button class="btn btn-secondary btn-sm" onclick={`editarProposta('${p.id}')`}>Editar</button>
+                    <select class="filter-select" style="padding:3px 8px;font-size:0.78rem" onchange={`mudarStatusProposta('${p.id}', this.value); this.selectedIndex=0`}>
+                      <option value="">— status —</option>
+                      {propStatus.filter((s) => s !== p.status).map((s) => <option value={s}>{propLabel[s]}</option>)}
+                    </select>
+                  </div>
+                </td>
+              </tr>
+            )) : <tr><td colspan="7" style="text-align:center;color:#999;padding:32px">Nenhuma proposta cadastrada</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+
+  <!-- ── Modal: definir metas ── -->
+  <div class="modal-overlay" id="modalMeta">
+    <div class="modal" style="max-width:400px">
+      <div class="modal-title">Metas de {mesLabel}</div>
+      <div id="msgMeta"></div>
+      <form id="formMeta">
+        <div class="form-group"><label>Meta de valor convertido (R$)</label><input name="meta_valor" type="number" step="0.01" min="0" value={meta?.meta_valor ?? ""} /></div>
+        <div class="form-group"><label>Meta de leads novos</label><input name="meta_leads" type="number" min="0" step="1" value={meta?.meta_leads ?? ""} /></div>
+        <div class="form-group"><label>Meta de conversões</label><input name="meta_conversoes" type="number" min="0" step="1" value={meta?.meta_conversoes ?? ""} /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalMeta')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar metas</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Modal: editar lead ── -->
+  <div class="modal-overlay" id="modalLead">
+    <div class="modal">
+      <div class="modal-title" id="leadModalNome">Lead</div>
+      <div id="leadContatos" style="margin-bottom:16px"></div>
+      <div id="msgLead"></div>
+      <form id="formLead">
+        <input type="hidden" id="leadId" />
+        <div class="form-row">
+          <div class="form-group"><label>Etapa</label>
+            <select name="etapa" id="leadEtapa">
+              {colunas.map((c) => <option value={c.key}>{c.label}</option>)}
+            </select>
+          </div>
+          <div class="form-group"><label>Responsável</label><input name="responsavel" id="leadResponsavel" placeholder="Quem está cuidando" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Próximo contato</label><input name="proximo_contato" id="leadProximoContato" type="date" /></div>
+          <div class="form-group"><label>Valor (R$)</label><input name="valor" id="leadValor" type="number" step="0.01" min="0" /></div>
+        </div>
+        <div class="form-group"><label>Plano</label><input name="plano" id="leadPlano" /></div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes" id="leadObservacoes"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalLead')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Modal: nova/editar proposta ── -->
+  <div class="modal-overlay" id="modalProposta">
+    <div class="modal">
+      <div class="modal-title" id="propostaModalTitulo">Nova proposta</div>
+      <div id="msgProposta"></div>
+      <form id="formProposta">
+        <input type="hidden" id="propostaId" />
+        <div class="form-group"><label>Lead vinculado (opcional)</label>
+          <select name="lead_id" id="propostaLead">
+            <option value="">— nenhum —</option>
+            {leads.map((l: any) => <option value={l.id} data-nome={l.nome}>{l.nome}{l.nome_loja ? ` (${l.nome_loja})` : ""} — {etapaLabels[l.etapa] ?? l.etapa}</option>)}
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Cliente *</label><input name="cliente_nome" id="propostaCliente" required /></div>
+          <div class="form-group"><label>Valor (R$)</label><input name="valor" id="propostaValor" type="number" step="0.01" min="0" /></div>
+        </div>
+        <div class="form-group"><label>Título *</label><input name="titulo" id="propostaTitulo" required placeholder="Ex.: Proposta de manutenção predial" /></div>
+        <div class="form-row">
+          <div class="form-group"><label>Status</label>
+            <select name="status" id="propostaStatus">
+              {propStatus.map((s) => <option value={s}>{propLabel[s]}</option>)}
+            </select>
+          </div>
+          <div class="form-group"><label>Válida até</label><input name="valido_ate" id="propostaValidoAte" type="date" /></div>
+        </div>
+        <div class="form-group"><label>URL do PDF</label><input name="url_pdf" id="propostaUrlPdf" type="url" placeholder="https://…" /></div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes" id="propostaObservacoes"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalProposta')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="application/json" id="dataLeads" set:html={jsonSafe(leads)}></script>
+  <script type="application/json" id="dataPropostas" set:html={jsonSafe(propostas)}></script>
+  <script type="application/json" id="dataMesRef" set:html={jsonSafe(mesRef)}></script>
+
+  <script>
+    var LEADS = JSON.parse(document.getElementById("dataLeads").textContent || "[]");
+    var PROPOSTAS = JSON.parse(document.getElementById("dataPropostas").textContent || "[]");
+    var MES_REF = JSON.parse(document.getElementById("dataMesRef").textContent || '""');
+
+    function fmtBRL(n) { return Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+    function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+    function abrirModal(id) { document.getElementById(id).classList.add("open"); }
+    function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
+
+    // ── Kanban: drag & drop nativo ──────────────────────────────────────────
+    var dragId = null;
+
+    document.addEventListener("dragstart", function (e) {
+      var card = e.target && e.target.closest ? e.target.closest(".kanban-card") : null;
+      if (!card) return;
+      dragId = card.dataset.id;
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", dragId); } catch (_) {}
+    });
+
+    document.addEventListener("dragend", function (e) {
+      var card = e.target && e.target.closest ? e.target.closest(".kanban-card") : null;
+      if (card) card.classList.remove("dragging");
+      document.querySelectorAll(".kanban-body.dragover").forEach(function (b) { b.classList.remove("dragover"); });
+      setTimeout(function () { dragId = null; }, 80);
+    });
+
+    document.querySelectorAll(".kanban-body").forEach(function (body) {
+      body.addEventListener("dragover", function (e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; body.classList.add("dragover"); });
+      body.addEventListener("dragleave", function () { body.classList.remove("dragover"); });
+      body.addEventListener("drop", async function (e) {
+        e.preventDefault();
+        body.classList.remove("dragover");
+        var id = dragId || e.dataTransfer.getData("text/plain");
+        if (!id) return;
+        var card = document.querySelector('.kanban-card[data-id="' + id + '"]');
+        if (!card || card.parentElement === body) return;
+        var origem = card.parentElement;
+        var etapa = body.dataset.drop;
+        body.appendChild(card);
+        recalcColunas();
+        var ordem = Array.prototype.indexOf.call(body.querySelectorAll(".kanban-card"), card);
+        var res = await fetch("/api/admin/comercial/leads/" + id, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ etapa: etapa, kanban_ordem: ordem }),
+        });
+        if (!res.ok) {
+          origem.appendChild(card);
+          recalcColunas();
+          var d = await res.json().catch(function () { return { error: "HTTP " + res.status }; });
+          alert("Erro ao mover lead: " + (d.error || ""));
+          return;
+        }
+        var ok = await res.json().catch(function () { return {}; });
+        if (ok && ok.aviso) console.warn(ok.aviso);
+        var lead = LEADS.find(function (l) { return l.id === id; });
+        if (lead) lead.etapa = etapa;
+      });
+    });
+
+    function recalcColunas() {
+      document.querySelectorAll(".kanban-col").forEach(function (col) {
+        var cards = col.querySelectorAll(".kanban-card");
+        var soma = 0;
+        cards.forEach(function (c) { soma += Number(c.dataset.valor || 0); });
+        col.querySelector("[data-count]").textContent = cards.length;
+        col.querySelector("[data-sum]").textContent = fmtBRL(soma);
+        var empty = col.querySelector(".kanban-empty");
+        if (empty) empty.style.display = cards.length ? "none" : "";
+      });
+    }
+
+    // ── Modal de edição do lead (clique no card) ────────────────────────────
+    document.addEventListener("click", function (e) {
+      var card = e.target && e.target.closest ? e.target.closest(".kanban-card") : null;
+      if (card && !dragId) abrirLead(card.dataset.id);
+    });
+
+    function abrirLead(id) {
+      var l = LEADS.find(function (x) { return x.id === id; });
+      if (!l) return;
+      document.getElementById("leadId").value = l.id;
+      document.getElementById("leadEtapa").value = l.etapa || "novo";
+      document.getElementById("leadResponsavel").value = l.responsavel || "";
+      document.getElementById("leadProximoContato").value = l.proximo_contato ? String(l.proximo_contato).slice(0, 10) : "";
+      document.getElementById("leadValor").value = l.valor != null ? l.valor : "";
+      document.getElementById("leadPlano").value = l.plano || "";
+      document.getElementById("leadObservacoes").value = l.observacoes || "";
+      document.getElementById("leadModalNome").textContent = l.nome + (l.nome_loja ? " — " + l.nome_loja : "");
+      var linkStyle = 'style="margin-right:14px;color:#C41E3A;text-decoration:none;font-weight:600;font-size:.85rem"';
+      var html = "";
+      if (l.telefone) html += '<a href="tel:' + esc(l.telefone) + '" ' + linkStyle + ">📞 " + esc(l.telefone) + "</a>";
+      if (l.email) html += '<a href="mailto:' + esc(l.email) + '" ' + linkStyle + ">✉ " + esc(l.email) + "</a>";
+      document.getElementById("leadContatos").innerHTML = html || '<span style="color:#999;font-size:.85rem">Sem contatos cadastrados</span>';
+      document.getElementById("msgLead").innerHTML = "";
+      abrirModal("modalLead");
+    }
+
+    document.getElementById("formLead").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var id = document.getElementById("leadId").value;
+      var body = {
+        etapa: document.getElementById("leadEtapa").value,
+        responsavel: document.getElementById("leadResponsavel").value,
+        proximo_contato: document.getElementById("leadProximoContato").value,
+        valor: document.getElementById("leadValor").value,
+        plano: document.getElementById("leadPlano").value,
+        observacoes: document.getElementById("leadObservacoes").value,
+      };
+      var res = await fetch("/api/admin/comercial/leads/" + id, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) {
+        var d = await res.json().catch(function () { return {}; });
+        if (d && d.aviso) alert(d.aviso);
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function () { return { error: "HTTP " + res.status }; });
+        document.getElementById("msgLead").innerHTML = '<div class="alert alert-error">' + esc(err.error || "Erro ao salvar") + "</div>";
+      }
+    });
+
+    // ── Metas ───────────────────────────────────────────────────────────────
+    function abrirModalMeta() { document.getElementById("msgMeta").innerHTML = ""; abrirModal("modalMeta"); }
+
+    document.getElementById("formMeta").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var fd = new FormData(e.target);
+      var body = { referencia: MES_REF };
+      fd.forEach(function (v, k) { body[k] = v; });
+      var res = await fetch("/api/admin/comercial/metas", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else {
+        var d = await res.json().catch(function () { return { error: "HTTP " + res.status }; });
+        document.getElementById("msgMeta").innerHTML = '<div class="alert alert-error">' + esc(d.error || "Erro ao salvar metas") + "</div>";
+      }
+    });
+
+    // ── Propostas ───────────────────────────────────────────────────────────
+    function abrirNovaProposta() {
+      document.getElementById("formProposta").reset();
+      document.getElementById("propostaId").value = "";
+      document.getElementById("propostaModalTitulo").textContent = "Nova proposta";
+      document.getElementById("msgProposta").innerHTML = "";
+      abrirModal("modalProposta");
+    }
+
+    function editarProposta(id) {
+      var p = PROPOSTAS.find(function (x) { return x.id === id; });
+      if (!p) return;
+      document.getElementById("formProposta").reset();
+      document.getElementById("propostaId").value = p.id;
+      document.getElementById("propostaLead").value = p.lead_id || "";
+      document.getElementById("propostaCliente").value = p.cliente_nome || "";
+      document.getElementById("propostaTitulo").value = p.titulo || "";
+      document.getElementById("propostaValor").value = p.valor != null ? p.valor : "";
+      document.getElementById("propostaStatus").value = p.status || "rascunho";
+      document.getElementById("propostaValidoAte").value = p.valido_ate ? String(p.valido_ate).slice(0, 10) : "";
+      document.getElementById("propostaUrlPdf").value = p.url_pdf || "";
+      document.getElementById("propostaObservacoes").value = p.observacoes || "";
+      document.getElementById("propostaModalTitulo").textContent = "Editar proposta";
+      document.getElementById("msgProposta").innerHTML = "";
+      abrirModal("modalProposta");
+    }
+
+    // Ao escolher um lead, preenche o nome do cliente automaticamente
+    document.getElementById("propostaLead").addEventListener("change", function (e) {
+      var opt = e.target.selectedOptions && e.target.selectedOptions[0];
+      if (opt && opt.dataset.nome) document.getElementById("propostaCliente").value = opt.dataset.nome;
+    });
+
+    document.getElementById("formProposta").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var id = document.getElementById("propostaId").value;
+      var fd = new FormData(e.target);
+      var body = {};
+      fd.forEach(function (v, k) { body[k] = v; });
+      var url = id ? "/api/admin/comercial/propostas/" + id : "/api/admin/comercial/propostas";
+      var res = await fetch(url, { method: id ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) window.location.reload();
+      else {
+        var d = await res.json().catch(function () { return { error: "HTTP " + res.status }; });
+        document.getElementById("msgProposta").innerHTML = '<div class="alert alert-error">' + esc(d.error || "Erro ao salvar proposta") + "</div>";
+      }
+    });
+
+    async function mudarStatusProposta(id, status) {
+      if (!status) return;
+      var res = await fetch("/api/admin/comercial/propostas/" + id, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: status }) });
+      if (res.ok) window.location.reload();
+      else {
+        var d = await res.json().catch(function () { return { error: "HTTP " + res.status }; });
+        alert("Erro ao mudar status: " + (d.error || ""));
+      }
+    }
+
+    (window as any).abrirModal = abrirModal;
+    (window as any).fecharModal = fecharModal;
+    (window as any).abrirModalMeta = abrirModalMeta;
+    (window as any).abrirLead = abrirLead;
+    (window as any).abrirNovaProposta = abrirNovaProposta;
+    (window as any).editarProposta = editarProposta;
+    (window as any).mudarStatusProposta = mudarStatusProposta;
+  </script>
+
+  <style>
+    /* ── Meta do mês ── */
+    .metas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px; }
+    .meta-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: .78rem; color: var(--ink-mid); }
+    .meta-top strong { color: var(--ink); font-size: .82rem; white-space: nowrap; }
+    .meta-alvo { color: var(--ink-light); font-weight: 400; }
+    .meta-bar { height: 8px; background: var(--border-light); border-radius: 99px; overflow: hidden; margin-top: 7px; }
+    .meta-fill { height: 100%; border-radius: 99px; background: var(--brand); transition: width .3s; }
+    .meta-fill.ok { background: var(--green); }
+    .meta-pct { font-size: .7rem; color: var(--ink-light); margin-top: 5px; }
+
+    /* ── Kanban ── */
+    .kanban-wrap { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 14px; align-items: flex-start; }
+    .kanban-col {
+      min-width: 262px; width: 262px; flex: none;
+      background: #EBEEF4; border: 1px solid var(--border); border-radius: 10px;
+      display: flex; flex-direction: column; max-height: 72vh;
+    }
+    .kanban-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; border-radius: 9px 9px 0 0;
+      font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: .78rem;
+    }
+    .kanban-title { flex: 1; }
+    .kanban-count { background: rgba(0,0,0,.12); border-radius: 99px; padding: 0 8px; font-size: .72rem; font-weight: 700; }
+    .kanban-sum { font-size: .68rem; font-weight: 600; opacity: .85; white-space: nowrap; }
+    .kanban-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 130px; flex: 1; }
+    .kanban-body.dragover { background: rgba(196,30,58,.06); outline: 2px dashed var(--brand); outline-offset: -4px; border-radius: 0 0 9px 9px; }
+    .kanban-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; cursor: grab; box-shadow: var(--shadow-sm);
+      transition: box-shadow .15s, transform .15s; font-size: .8rem; user-select: none;
+    }
+    .kanban-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+    .kanban-card.dragging { opacity: .45; cursor: grabbing; }
+    .kc-nome { font-weight: 700; font-size: .85rem; color: var(--ink); }
+    .kc-loja { color: var(--ink-mid); font-size: .73rem; margin-top: 1px; }
+    .kc-plano { margin-top: 5px; font-size: .74rem; color: var(--ink-mid); }
+    .kc-resp { font-size: .72rem; color: var(--ink-mid); margin-top: 3px; }
+    .kc-prox { font-size: .72rem; color: var(--ink-mid); margin-top: 3px; }
+    .kc-prox.atrasado { color: var(--red); font-weight: 700; }
+    .kc-tempo { font-size: .67rem; color: var(--ink-light); margin-top: 7px; }
+    .kanban-empty { text-align: center; color: var(--ink-light); font-size: .74rem; padding: 18px 6px; border: 1px dashed #CBD2DC; border-radius: 8px; }
+  </style>
+</Admin>

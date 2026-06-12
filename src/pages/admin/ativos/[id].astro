@@ -1,0 +1,558 @@
+---
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const id = Astro.params.id!;
+const db = supabaseAdmin();
+
+const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutencoes }, { data: ocorrencias }, { data: membros }, { data: obras }] = await Promise.all([
+  db.from("ativos").select("*").eq("id", id).maybeSingle(),
+  db.from("ativos_movimentos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }).limit(500),
+  db.from("ativos_termos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
+  db.from("ativos_manutencoes").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
+  db.from("ativos_ocorrencias").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
+  db.from("portal_profiles").select("id, display_name, full_name, email").eq("approval_status", "approved").order("display_name"),
+  db.from("obras").select("id, nome, status").neq("status", "cancelada").order("nome"),
+]);
+
+if (!ativo) return Astro.redirect("/admin/ativos");
+
+const categorias: Record<string, string> = {
+  telefonia: "Telefonia", informatica: "Informática", equipamento_obra: "Equip. de Obra",
+  epi: "EPI", veiculo: "Veículo", mobiliario: "Mobiliário", outros: "Outros",
+};
+const statusLabels: Record<string, string> = {
+  em_estoque: "Em estoque", disponivel: "Disponível", alocado: "Alocado", em_manutencao: "Em manutenção",
+  em_transito: "Em trânsito", extraviado: "Extraviado", roubado: "Roubado", danificado: "Danificado",
+  baixado: "Baixado", descartado: "Descartado",
+};
+const statusBadge: Record<string, string> = {
+  em_estoque: "badge-blue", disponivel: "badge-green", alocado: "badge-purple", em_manutencao: "badge-orange",
+  em_transito: "badge-yellow", extraviado: "badge-red", roubado: "badge-red", danificado: "badge-red",
+  baixado: "badge-gray", descartado: "badge-gray",
+};
+const movIcone: Record<string, string> = {
+  cadastro: "🆕", entrega: "🤝", transferencia: "🏗️", devolucao: "↩️", envio_manutencao: "🔧",
+  retorno_manutencao: "✅", ocorrencia: "⚠️", mudanca_status: "🔄", baixa: "⛔", descarte: "🗑️", edicao: "✏️",
+};
+const camposLabels: Record<string, string> = {
+  imei1: "IMEI 1", imei2: "IMEI 2", linha: "Nº da linha", operadora: "Operadora", pin_puk: "PIN/PUK",
+  processador: "Processador", ram: "Memória RAM", armazenamento: "HD/SSD", so: "Sistema operacional",
+  hostname: "Nome da máquina", mac: "Endereço MAC",
+  placa: "Placa", renavam: "Renavam", chassi: "Chassi", ano: "Ano", km: "Quilometragem",
+};
+function fmtMoney(v: number | null) { if (v == null) return "—"; return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR"); }
+function fmtDateTime(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
+
+const ativoEncerrado = ["baixado", "descartado"].includes(ativo.status);
+const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v);
+---
+<Admin title={`Ativo — ${ativo.descricao}`} current="ativos">
+
+  <div class="toolbar">
+    <a href="/admin/ativos" class="btn btn-secondary btn-sm">← Voltar</a>
+    <span class="toolbar-title" style="display:flex;align-items:center;gap:10px">
+      {ativo.descricao}
+      <span class={`badge ${statusBadge[ativo.status] || "badge-gray"}`}>{statusLabels[ativo.status] || ativo.status}</span>
+    </span>
+    <button class="btn btn-secondary" onclick="abrirModal('modalEditar')">✏️ Editar dados</button>
+  </div>
+
+  <div id="msgAcao"></div>
+
+  <!-- Ações -->
+  {!ativoEncerrado && (
+    <div class="acoes-bar">
+      {ativo.status !== "em_manutencao" && <button class="btn btn-primary" onclick="abrirModal('modalEntregar')">🤝 Entregar a colaborador</button>}
+      {ativo.status !== "em_manutencao" && <button class="btn btn-info" onclick="abrirModal('modalTransferir')">🏗️ Transferir para obra</button>}
+      {ativo.alocado_para_nome && <button class="btn btn-success" onclick="abrirModal('modalDevolver')">↩️ Registrar devolução</button>}
+      {ativo.status !== "em_manutencao"
+        ? <button class="btn btn-warning" onclick="abrirModal('modalManutencao')">🔧 Enviar p/ manutenção</button>
+        : <button class="btn btn-success" onclick="abrirModal('modalRetornoManutencao')">✅ Retorno da manutenção</button>}
+      <button class="btn btn-outline" onclick="abrirModal('modalOcorrencia')">⚠️ Registrar ocorrência</button>
+      <button class="btn btn-outline" onclick="abrirModal('modalStatus')">🔄 Mudar status</button>
+      <button class="btn btn-danger" onclick="abrirModal('modalBaixa')">⛔ Baixa / descarte</button>
+    </div>
+  )}
+
+  <div class="grid-2col">
+    <!-- Coluna esquerda: dados -->
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:14px">Dados do ativo</div>
+        <div class="dl">
+          <div><dt>Categoria</dt><dd>{categorias[ativo.categoria] || ativo.categoria}{ativo.subcategoria ? ` · ${ativo.subcategoria}` : ""}</dd></div>
+          {ativo.codigo_interno && <div><dt>Código interno</dt><dd>{ativo.codigo_interno}</dd></div>}
+          {ativo.numero_patrimonial && <div><dt>Nº patrimonial</dt><dd><strong>{ativo.numero_patrimonial}</strong></dd></div>}
+          {(ativo.marca || ativo.modelo) && <div><dt>Marca / Modelo</dt><dd>{[ativo.marca, ativo.modelo].filter(Boolean).join(" / ")}</dd></div>}
+          {ativo.fabricante && <div><dt>Fabricante</dt><dd>{ativo.fabricante}</dd></div>}
+          {ativo.numero_serie && <div><dt>Nº de série</dt><dd>{ativo.numero_serie}</dd></div>}
+          <div><dt>Aquisição</dt><dd>{fmtDate(ativo.data_aquisicao)} · {fmtMoney(ativo.valor_aquisicao)}{ativo.fornecedor ? ` · ${ativo.fornecedor}` : ""}</dd></div>
+          {(ativo.numero_nota_fiscal || ativo.nota_fiscal_url) && (
+            <div><dt>Nota fiscal</dt><dd>
+              {ativo.numero_nota_fiscal || "—"} {ativo.data_nota_fiscal ? `(${fmtDate(ativo.data_nota_fiscal)})` : ""}
+              {ativo.nota_fiscal_url && <a href={ativo.nota_fiscal_url} target="_blank" style="margin-left:6px">📎 abrir</a>}
+            </dd></div>
+          )}
+          <div><dt>Garantia</dt><dd>{ativo.garantia ? `Sim — até ${fmtDate(ativo.garantia_fim)}` : "Não"}</dd></div>
+          {ativo.manual_url && <div><dt>Manual</dt><dd><a href={ativo.manual_url} target="_blank">📎 abrir manual</a></dd></div>}
+          {ativo.alocado_para_nome && <div><dt>Alocado para</dt><dd><strong>{ativo.alocado_para_tipo === "obra" ? "🏗️" : "👤"} {ativo.alocado_para_nome}</strong></dd></div>}
+          {ativo.observacoes && <div><dt>Observações</dt><dd>{ativo.observacoes}</dd></div>}
+        </div>
+
+        {camposEspecificos.length > 0 && (
+          <>
+            <div class="section-title" style="margin:18px 0 10px">Dados específicos</div>
+            <div class="dl">
+              {camposEspecificos.map(([k, v]) => <div><dt>{camposLabels[k] || k}</dt><dd>{v as string}</dd></div>)}
+            </div>
+          </>
+        )}
+      </div>
+
+      <!-- Termos -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:12px">Termos de responsabilidade ({termos?.length ?? 0})</div>
+        {termos?.length ? (
+          <table>
+            <thead><tr><th>Colaborador</th><th>Emitido</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {termos.map((t: any) => (
+                <tr>
+                  <td>{t.colaborador_nome}</td>
+                  <td>{fmtDateTime(t.created_at)}</td>
+                  <td>
+                    {t.status === "aceito"
+                      ? <span class="badge badge-green" title={`Aceito em ${fmtDateTime(t.aceito_em)} — IP ${t.aceito_ip || "?"}`}>Aceito ✓</span>
+                      : t.status === "pendente"
+                        ? <span class="badge badge-yellow">Aguardando aceite</span>
+                        : <span class="badge badge-gray">Cancelado</span>}
+                  </td>
+                  <td><button class="btn btn-secondary btn-sm" onclick={`verTermo('${t.id}')`}>Ver / imprimir</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div class="empty-state" style="padding:16px"><p>Nenhum termo emitido. O termo é gerado automaticamente na entrega a um colaborador.</p></div>}
+      </div>
+
+      <!-- Manutenções -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:12px">Manutenções ({manutencoes?.length ?? 0})</div>
+        {manutencoes?.length ? (
+          <table>
+            <thead><tr><th>Envio</th><th>Prestador</th><th>Motivo</th><th>Valor</th><th>Retorno</th><th>Status</th></tr></thead>
+            <tbody>
+              {manutencoes.map((m: any) => (
+                <tr>
+                  <td>{fmtDate(m.data_envio)}</td>
+                  <td>{m.prestador || "—"}</td>
+                  <td style="max-width:200px">{m.motivo || "—"}</td>
+                  <td>{fmtMoney(m.valor)}</td>
+                  <td>{fmtDate(m.data_retorno)}</td>
+                  <td><span class={`badge ${m.status === "concluida" ? "badge-green" : m.status === "cancelada" ? "badge-gray" : "badge-orange"}`}>{m.status.replace(/_/g, " ")}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div class="empty-state" style="padding:16px"><p>Nenhuma manutenção registrada.</p></div>}
+      </div>
+
+      <!-- Ocorrências -->
+      <div class="card">
+        <div class="section-title" style="margin-bottom:12px">Ocorrências ({ocorrencias?.length ?? 0})</div>
+        {ocorrencias?.length ? (
+          <table>
+            <thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Responsável</th><th>B.O.</th></tr></thead>
+            <tbody>
+              {ocorrencias.map((o: any) => (
+                <tr>
+                  <td>{fmtDate(o.data_ocorrencia)}</td>
+                  <td><span class="badge badge-red">{o.tipo}</span></td>
+                  <td style="max-width:240px">{o.descricao}</td>
+                  <td>{o.responsavel || "—"}</td>
+                  <td>{o.boletim_ocorrencia_url ? <a href={o.boletim_ocorrencia_url} target="_blank">📎</a> : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div class="empty-state" style="padding:16px"><p>Nenhuma ocorrência registrada.</p></div>}
+      </div>
+    </div>
+
+    <!-- Coluna direita: linha do tempo -->
+    <div class="card">
+      <div class="section-title" style="margin-bottom:14px">Linha do tempo ({movimentos?.length ?? 0})</div>
+      <div class="timeline">
+        {movimentos?.map((m: any) => (
+          <div class="tl-item">
+            <div class="tl-icon">{movIcone[m.tipo] || "•"}</div>
+            <div class="tl-body">
+              <div class="tl-desc">{m.descricao}</div>
+              {m.condicao && <div class="tl-meta">Condição: {m.condicao}</div>}
+              <div class="tl-meta">{fmtDateTime(m.created_at)} · por {m.feito_por}</div>
+            </div>
+          </div>
+        ))}
+        {!movimentos?.length && <div class="empty-state"><p>Sem movimentações.</p></div>}
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Modais de ação ───────── -->
+
+  <div class="modal-overlay" id="modalEntregar">
+    <div class="modal">
+      <div class="modal-title">🤝 Entregar a colaborador</div>
+      <form data-acao="entregar">
+        <div class="form-group"><label>Colaborador *</label>
+          <select name="colaborador_sel" required>
+            <option value="">Selecione...</option>
+            {membros?.map((m: any) => <option value={m.id} data-nome={m.display_name || m.full_name || m.email} data-email={m.email}>{m.display_name || m.full_name || m.email}</option>)}
+            <option value="__outro__">Outro (digitar nome)...</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:none" data-outro><label>Nome do colaborador</label><input name="colaborador_nome_manual" /></div>
+        <div class="form-group"><label>Condição do equipamento na entrega</label><input name="condicao" placeholder="Ex: novo, bom estado, riscos na tampa..." /></div>
+        <div class="form-group"><label>Observação</label><input name="observacao" /></div>
+        <p style="font-size:12px;color:#6B7280;margin-bottom:12px">O termo de responsabilidade será gerado automaticamente e ficará disponível para aceite digital no Portal do Colaborador.</p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Entregar e gerar termo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalTransferir">
+    <div class="modal">
+      <div class="modal-title">🏗️ Transferir para obra</div>
+      <form data-acao="transferir_obra">
+        <div class="form-group"><label>Obra *</label>
+          <select name="obra_sel" required>
+            <option value="">Selecione...</option>
+            {obras?.map((o: any) => <option value={o.id} data-nome={o.nome}>{o.nome}</option>)}
+            <option value="__outra__">Outra (digitar nome)...</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:none" data-outro><label>Nome da obra</label><input name="obra_nome_manual" /></div>
+        <div class="form-group"><label>Condição do equipamento</label><input name="condicao" /></div>
+        <div class="form-group"><label>Observação</label><input name="observacao" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Transferir</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalDevolver">
+    <div class="modal">
+      <div class="modal-title">↩️ Registrar devolução</div>
+      <form data-acao="devolver">
+        <p style="font-size:13px;color:#6B7280;margin-bottom:12px">Devolução de <strong>{ativo.alocado_para_nome}</strong> → estoque.</p>
+        <div class="form-group"><label>Estado do equipamento na devolução</label><input name="condicao" placeholder="Ex: bom estado, tela trincada..." /></div>
+        <div class="form-group"><label>Observações</label><textarea name="observacao"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Confirmar devolução</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalManutencao">
+    <div class="modal">
+      <div class="modal-title">🔧 Enviar para manutenção</div>
+      <form data-acao="enviar_manutencao">
+        <div class="form-group"><label>Prestador</label><input name="prestador" /></div>
+        <div class="form-group"><label>Motivo</label><input name="motivo" /></div>
+        <div class="form-group"><label>Valor estimado (R$)</label><input name="valor" type="number" step="0.01" min="0" /></div>
+        <div class="form-group"><label>Observação</label><input name="observacao" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-warning">Enviar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalRetornoManutencao">
+    <div class="modal">
+      <div class="modal-title">✅ Retorno da manutenção</div>
+      <form data-acao="retornar_manutencao">
+        <input type="hidden" name="manutencao_id" value={manutencoes?.find((m: any) => m.status === "em_andamento")?.id || ""} />
+        <div class="form-group"><label>Data do retorno</label><input name="data_retorno" type="date" /></div>
+        <div class="form-group"><label>Valor final (R$)</label><input name="valor" type="number" step="0.01" min="0" /></div>
+        <div class="form-group"><label>Garantia do serviço</label><input name="garantia_servico" placeholder="Ex: 90 dias" /></div>
+        <div class="form-group"><label>Observação</label><input name="observacao" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-success">Registrar retorno</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalOcorrencia">
+    <div class="modal">
+      <div class="modal-title">⚠️ Registrar ocorrência</div>
+      <form data-acao="ocorrencia">
+        <div class="form-row">
+          <div class="form-group"><label>Tipo *</label>
+            <select name="tipo_ocorrencia" required>
+              {["extravio", "roubo", "furto", "dano", "quebra", "sinistro", "outro"].map(t => <option value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div class="form-group"><label>Data</label><input name="data_ocorrencia" type="date" /></div>
+        </div>
+        <div class="form-group"><label>Descrição *</label><textarea name="descricao" required></textarea></div>
+        <div class="form-group"><label>Responsável envolvido</label><input name="responsavel" /></div>
+        <div class="form-group"><label>Link do boletim de ocorrência (URL)</label><input name="boletim_ocorrencia_url" type="url" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Registrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalStatus">
+    <div class="modal" style="max-width:380px">
+      <div class="modal-title">🔄 Mudar status</div>
+      <form data-acao="mudar_status">
+        <div class="form-group"><label>Novo status</label>
+          <select name="novo_status">
+            {Object.entries(statusLabels).map(([k, v]) => <option value={k} selected={k === ativo.status}>{v}</option>)}
+          </select>
+        </div>
+        <div class="form-group"><label>Observação</label><input name="observacao" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalBaixa">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-title">⛔ Baixa / descarte do ativo</div>
+      <form data-acao="baixar" id="formBaixa">
+        <div class="form-group"><label>Tipo</label>
+          <select name="tipo_baixa">
+            <option value="baixar">Baixa (fim de vida útil, venda, perda total)</option>
+            <option value="descartar">Descarte</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Motivo / observação</label><textarea name="observacao"></textarea></div>
+        <p style="font-size:12px;color:#B91C1C;margin-bottom:12px">O histórico do ativo é mantido para sempre. A baixa apenas encerra o ciclo de vida.</p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Confirmar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal editar -->
+  <div class="modal-overlay" id="modalEditar">
+    <div class="modal" style="max-width:680px">
+      <div class="modal-title">✏️ Editar dados do ativo</div>
+      <div id="msgEditar"></div>
+      <form id="formEditar">
+        <div class="form-row">
+          <div class="form-group"><label>Categoria</label>
+            <select name="categoria">
+              {Object.entries(categorias).map(([k, v]) => <option value={k} selected={k === ativo.categoria}>{v}</option>)}
+            </select>
+          </div>
+          <div class="form-group"><label>Subcategoria</label><input name="subcategoria" value={ativo.subcategoria || ""} /></div>
+        </div>
+        <div class="form-group"><label>Descrição *</label><input name="descricao" required value={ativo.descricao} /></div>
+        <div class="form-row">
+          <div class="form-group"><label>Código interno</label><input name="codigo_interno" value={ativo.codigo_interno || ""} /></div>
+          <div class="form-group"><label>Nº patrimonial</label><input name="numero_patrimonial" value={ativo.numero_patrimonial || ""} /></div>
+          <div class="form-group"><label>Nº de série</label><input name="numero_serie" value={ativo.numero_serie || ""} /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Marca</label><input name="marca" value={ativo.marca || ""} /></div>
+          <div class="form-group"><label>Modelo</label><input name="modelo" value={ativo.modelo || ""} /></div>
+          <div class="form-group"><label>Fabricante</label><input name="fabricante" value={ativo.fabricante || ""} /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Data de aquisição</label><input name="data_aquisicao" type="date" value={ativo.data_aquisicao || ""} /></div>
+          <div class="form-group"><label>Valor (R$)</label><input name="valor_aquisicao" type="number" step="0.01" value={ativo.valor_aquisicao ?? ""} /></div>
+          <div class="form-group"><label>Fornecedor</label><input name="fornecedor" value={ativo.fornecedor || ""} /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Nº da NF</label><input name="numero_nota_fiscal" value={ativo.numero_nota_fiscal || ""} /></div>
+          <div class="form-group"><label>Data da NF</label><input name="data_nota_fiscal" type="date" value={ativo.data_nota_fiscal || ""} /></div>
+          <div class="form-group"><label>Link da NF</label><input name="nota_fiscal_url" type="url" value={ativo.nota_fiscal_url || ""} /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Tem garantia?</label>
+            <select name="garantia"><option value="false" selected={!ativo.garantia}>Não</option><option value="true" selected={ativo.garantia}>Sim</option></select>
+          </div>
+          <div class="form-group"><label>Garantia até</label><input name="garantia_fim" type="date" value={ativo.garantia_fim || ""} /></div>
+          <div class="form-group"><label>Manual (URL)</label><input name="manual_url" type="url" value={ativo.manual_url || ""} /></div>
+        </div>
+        <div class="form-group"><label>Campos específicos (um por linha, formato chave: valor)</label>
+          <textarea name="campos_texto" rows="4" placeholder="imei1: 123456&#10;placa: ABC1D23">{camposEspecificos.map(([k, v]) => `${k}: ${v}`).join("\n")}</textarea>
+        </div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes">{ativo.observacoes || ""}</textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar alterações</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal termo -->
+  <div class="modal-overlay" id="modalTermo">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-title">Termo de responsabilidade</div>
+      <pre id="termoConteudo" class="termo-pre"></pre>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Fechar</button>
+        <button type="button" class="btn btn-primary" onclick="imprimirTermo()">🖨️ Imprimir / PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .acoes-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .grid-2col { display: grid; grid-template-columns: 1.2fr .8fr; gap: 16px; align-items: start; }
+    @media (max-width: 1000px) { .grid-2col { grid-template-columns: 1fr; } }
+    .dl { display: flex; flex-direction: column; gap: 8px; }
+    .dl > div { display: grid; grid-template-columns: 150px 1fr; gap: 10px; font-size: .85rem; }
+    .dl dt { color: var(--ink-light); font-weight: 600; }
+    .dl dd { color: var(--ink); margin: 0; }
+    .timeline { display: flex; flex-direction: column; }
+    .tl-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-light); }
+    .tl-item:last-child { border-bottom: 0; }
+    .tl-icon { width: 32px; height: 32px; border-radius: 50%; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: .9rem; flex: none; }
+    .tl-desc { font-size: .84rem; font-weight: 600; color: var(--ink); }
+    .tl-meta { font-size: .72rem; color: var(--ink-light); margin-top: 2px; }
+    .termo-pre { white-space: pre-wrap; font-family: 'Open Sans', sans-serif; font-size: .82rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; max-height: 50vh; overflow-y: auto; }
+  </style>
+
+  <script define:vars={{ termos }}>
+    window.__termos = termos || [];
+  </script>
+
+  <script>
+    function fecharModais() { document.querySelectorAll(".modal-overlay").forEach(m => m.classList.remove("open")); }
+    function abrirModal(id) { document.getElementById(id)?.classList.add("open"); }
+
+    // selects com opção "Outro"
+    document.querySelectorAll("select[name='colaborador_sel'], select[name='obra_sel']").forEach(sel => {
+      sel.addEventListener("change", () => {
+        const outro = sel.closest("form")?.querySelector("[data-outro]") as HTMLElement;
+        if (outro) outro.style.display = (sel as HTMLSelectElement).value.startsWith("__") ? "" : "none";
+      });
+    });
+
+    // ações de movimentação
+    document.querySelectorAll("form[data-acao]").forEach(form => {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const f = form as HTMLFormElement;
+        const fd = new FormData(f);
+        const body: Record<string, any> = Object.fromEntries(fd.entries());
+        let acao = f.dataset.acao!;
+
+        if (acao === "entregar") {
+          const sel = f.querySelector("select[name='colaborador_sel']") as HTMLSelectElement;
+          const opt = sel.selectedOptions[0];
+          if (sel.value === "__outro__") {
+            body.colaborador_nome = body.colaborador_nome_manual;
+            body.colaborador_id = null;
+          } else {
+            body.colaborador_id = sel.value;
+            body.colaborador_nome = opt?.dataset.nome;
+            body.colaborador_email = opt?.dataset.email;
+          }
+          if (!body.colaborador_nome) { alert("Informe o colaborador"); return; }
+        }
+        if (acao === "transferir_obra") {
+          const sel = f.querySelector("select[name='obra_sel']") as HTMLSelectElement;
+          const opt = sel.selectedOptions[0];
+          if (sel.value === "__outra__") { body.obra_nome = body.obra_nome_manual; body.obra_id = null; }
+          else { body.obra_id = sel.value; body.obra_nome = opt?.dataset.nome; }
+          if (!body.obra_nome) { alert("Informe a obra"); return; }
+        }
+        if (f.id === "formBaixa") acao = body.tipo_baixa;
+        if (body.valor) body.valor = Number(body.valor);
+        body.acao = acao;
+
+        const res = await fetch(`/api/admin/ativos/${location.pathname.split("/").pop()}/movimentar`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+        });
+        const d = await res.json();
+        if (res.ok) { window.location.reload(); }
+        else {
+          fecharModais();
+          document.getElementById("msgAcao")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro na ação"}</div>`;
+        }
+      });
+    });
+
+    // editar
+    document.getElementById("formEditar")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const fd = new FormData(f);
+      const body: Record<string, any> = Object.fromEntries(fd.entries());
+      body.garantia = body.garantia === "true";
+      if (body.valor_aquisicao) body.valor_aquisicao = Number(body.valor_aquisicao);
+      const campos: Record<string, string> = {};
+      String(body.campos_texto || "").split("\n").forEach((linha) => {
+        const i = linha.indexOf(":");
+        if (i > 0) {
+          const k = linha.slice(0, i).trim(); const v = linha.slice(i + 1).trim();
+          if (k && v) campos[k] = v;
+        }
+      });
+      body.campos = campos;
+      delete body.campos_texto;
+
+      const res = await fetch(`/api/admin/ativos/${location.pathname.split("/").pop()}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (res.ok) window.location.reload();
+      else document.getElementById("msgEditar")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
+    });
+
+    // termo
+    function verTermo(id) {
+      const t = (window as any).__termos.find((x: any) => x.id === id);
+      if (!t) return;
+      (document.getElementById("termoConteudo") as HTMLElement).textContent = t.conteudo
+        + (t.status === "aceito" ? `\n\n--------------------------------------------\nACEITO ELETRONICAMENTE em ${new Date(t.aceito_em).toLocaleString("pt-BR")}${t.aceito_ip ? ` — IP ${t.aceito_ip}` : ""}\npor ${t.colaborador_nome}` : "\n\n[ Aguardando aceite eletrônico no Portal do Colaborador ]");
+      abrirModal("modalTermo");
+    }
+    function imprimirTermo() {
+      const conteudo = (document.getElementById("termoConteudo") as HTMLElement).textContent || "";
+      const w = window.open("", "_blank");
+      if (!w) return;
+      w.document.write(`<html><head><title>Termo de Responsabilidade</title><style>body{font-family:Arial,sans-serif;font-size:13px;padding:40px;white-space:pre-wrap;line-height:1.5}</style></head><body>${conteudo.replace(/</g, "&lt;")}</body></html>`);
+      w.document.close();
+      w.print();
+    }
+
+    (window as any).fecharModais = fecharModais;
+    (window as any).abrirModal = abrirModal;
+    (window as any).verTermo = verTermo;
+    (window as any).imprimirTermo = imprimirTermo;
+  </script>
+</Admin>

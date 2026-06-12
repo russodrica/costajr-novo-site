@@ -1,0 +1,160 @@
+---
+export const prerender = false;
+import Portal from "~/layouts/Portal.astro";
+---
+<Portal title="Meus Equipamentos" tipo="colaborador" activePage="meus-equipamentos">
+  <div class="section-header">
+    <h2>Meus Equipamentos</h2>
+  </div>
+  <p style="font-size:13px;color:var(--ink-mid);margin:-8px 0 20px">
+    Equipamentos da empresa sob sua responsabilidade, termos de uso e histórico.
+  </p>
+
+  <div id="termos-pendentes"></div>
+  <div id="loading" class="loading"><div class="spinner"></div> Carregando...</div>
+  <div id="content" style="display:none"></div>
+
+  <!-- Modal termo -->
+  <div class="eq-modal-overlay" id="modalTermo">
+    <div class="eq-modal">
+      <h3 style="font-family:'Montserrat',sans-serif;font-size:15px;margin:0 0 14px">Termo de responsabilidade</h3>
+      <pre id="termoConteudo" class="termo-pre"></pre>
+      <div id="termoAcoes" style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px"></div>
+    </div>
+  </div>
+
+  <style>
+    .eq-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 12px;
+      padding: 18px 22px; margin-bottom: 12px; display: flex; gap: 16px; align-items: flex-start;
+      transition: all .18s;
+    }
+    .eq-card:hover { border-color: var(--brand); }
+    .eq-icon { font-size: 30px; flex-shrink: 0; }
+    .eq-body { flex: 1; min-width: 0; }
+    .eq-body h3 { font-family: 'Montserrat', sans-serif; font-size: 14.5px; font-weight: 800; margin: 0 0 4px; color: var(--ink); }
+    .eq-meta { font-size: 12px; color: var(--ink-mid); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+    .eq-badge { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .eq-badge.ok { background: #DCFCE7; color: #166534; }
+    .eq-badge.pend { background: #FEF3C7; color: #92400E; }
+    .eq-alert {
+      background: #FEF3C7; border: 1px solid #FDE68A; color: #92400E;
+      border-radius: 12px; padding: 16px 20px; margin-bottom: 18px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    .eq-alert strong { font-family: 'Montserrat', sans-serif; }
+    .eq-btn {
+      background: var(--brand); color: #fff; border: 0; border-radius: 8px;
+      padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; transition: .15s;
+      font-family: 'Open Sans', sans-serif;
+    }
+    .eq-btn:hover { opacity: .88; }
+    .eq-btn.sec { background: #F3F4F6; color: #374151; border: 1px solid #D1D5DB; }
+    .termo-pre { white-space: pre-wrap; font-family: 'Open Sans', sans-serif; font-size: 12.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; max-height: 50vh; overflow-y: auto; margin: 0; }
+    .eq-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .eq-modal-overlay.open { display: flex; }
+    .eq-modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 620px; width: 100%; max-height: 90vh; overflow-y: auto; }
+    .eq-hist { font-size: 12px; color: var(--ink-mid); border-left: 2px solid var(--border); padding-left: 12px; margin-top: 10px; }
+    .eq-hist div { margin-bottom: 4px; }
+    .eq-empty { text-align: center; padding: 48px 16px; color: var(--ink-light); }
+    .eq-empty .big { font-size: 40px; margin-bottom: 10px; }
+  </style>
+
+  <script>
+    const token = localStorage.getItem("portal_colab_token");
+    if (!token) { window.location.replace("/portal/login"); throw 0; }
+
+    const catIcone: Record<string, string> = { telefonia: "📱", informatica: "💻", equipamento_obra: "🛠️", epi: "🦺", veiculo: "🚗", mobiliario: "🪑", outros: "📦" };
+    let dados: any = { ativos: [], termos: [], movimentos: [] };
+
+    function esc(s: any) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+    function fmtDT(d: string) { return new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
+
+    async function carregar() {
+      const res = await fetch("/api/portal/meus-equipamentos", { headers: { "x-portal-auth": token! } });
+      document.getElementById("loading")!.style.display = "none";
+      const content = document.getElementById("content")!;
+      content.style.display = "";
+      if (!res.ok) {
+        content.innerHTML = `<div class="eq-empty"><div class="big">⚠️</div><strong>Não foi possível carregar seus equipamentos.</strong></div>`;
+        return;
+      }
+      dados = await res.json();
+
+      // alerta de termos pendentes
+      const pendentes = dados.termos.filter((t: any) => t.status === "pendente");
+      document.getElementById("termos-pendentes")!.innerHTML = pendentes.length
+        ? `<div class="eq-alert">
+             <span style="font-size:22px">✍️</span>
+             <div style="flex:1"><strong>Você tem ${pendentes.length} termo(s) de responsabilidade aguardando aceite.</strong><br>
+             <span style="font-size:12.5px">Leia e aceite para confirmar o recebimento do equipamento.</span></div>
+             <button class="eq-btn" onclick="verTermo('${pendentes[0].id}')">Ler e aceitar</button>
+           </div>`
+        : "";
+
+      if (!dados.ativos.length) {
+        content.innerHTML = `<div class="eq-empty"><div class="big">🎒</div><strong>Nenhum equipamento sob sua responsabilidade.</strong><p style="font-size:13px">Quando a empresa entregar um equipamento para você, ele aparece aqui.</p></div>`;
+        return;
+      }
+
+      content.innerHTML = dados.ativos.map((a: any) => {
+        const termo = dados.termos.find((t: any) => t.ativo_id === a.id);
+        const hist = dados.movimentos.filter((m: any) => m.ativo_id === a.id).slice(0, 4);
+        const specs = Object.entries(a.campos || {}).filter(([, v]) => v).slice(0, 4)
+          .map(([k, v]) => `<span>${esc(k)}: <strong>${esc(v)}</strong></span>`).join("");
+        return `
+          <div class="eq-card">
+            <div class="eq-icon">${catIcone[a.categoria] || "📦"}</div>
+            <div class="eq-body">
+              <h3>${esc(a.descricao)}</h3>
+              <div class="eq-meta">
+                ${a.marca || a.modelo ? `<span>${esc([a.marca, a.modelo].filter(Boolean).join(" · "))}</span>` : ""}
+                ${a.numero_serie ? `<span>S/N: <strong>${esc(a.numero_serie)}</strong></span>` : ""}
+                ${a.numero_patrimonial ? `<span>Patrimônio: <strong>${esc(a.numero_patrimonial)}</strong></span>` : ""}
+                ${specs}
+              </div>
+              ${hist.length ? `<div class="eq-hist">${hist.map((m: any) => `<div>${fmtDT(m.created_at)} — ${esc(m.descricao)}</div>`).join("")}</div>` : ""}
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+              ${termo
+                ? termo.status === "aceito"
+                  ? `<span class="eq-badge ok">Termo aceito ✓</span><button class="eq-btn sec" onclick="verTermo('${termo.id}')">Ver termo</button>`
+                  : `<span class="eq-badge pend">Termo pendente</span><button class="eq-btn" onclick="verTermo('${termo.id}')">Ler e aceitar</button>`
+                : ""}
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    (window as any).verTermo = function (id: string) {
+      const t = dados.termos.find((x: any) => x.id === id);
+      if (!t) return;
+      const pre = document.getElementById("termoConteudo")!;
+      pre.textContent = t.conteudo + (t.status === "aceito"
+        ? `\n\n--------------------------------------------\nACEITO ELETRONICAMENTE em ${fmtDT(t.aceito_em)}`
+        : "");
+      const acoes = document.getElementById("termoAcoes")!;
+      acoes.innerHTML = t.status === "pendente"
+        ? `<button class="eq-btn sec" onclick="fecharTermo()">Fechar</button>
+           <button class="eq-btn" onclick="aceitarTermo('${t.id}')">✓ Li e aceito o termo</button>`
+        : `<button class="eq-btn sec" onclick="fecharTermo()">Fechar</button>`;
+      document.getElementById("modalTermo")!.classList.add("open");
+    };
+    (window as any).fecharTermo = function () { document.getElementById("modalTermo")!.classList.remove("open"); };
+    (window as any).aceitarTermo = async function (id: string) {
+      if (!confirm("Confirma o aceite do termo de responsabilidade? Seu aceite será registrado com data, hora e IP.")) return;
+      const res = await fetch(`/api/portal/termos/${id}/aceitar`, { method: "POST", headers: { "x-portal-auth": token!, "content-type": "application/json" }, body: "{}" });
+      if (res.ok) {
+        (window as any).fecharTermo();
+        document.getElementById("loading")!.style.display = "";
+        document.getElementById("content")!.style.display = "none";
+        carregar();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Erro ao registrar aceite");
+      }
+    };
+
+    carregar();
+  </script>
+</Portal>

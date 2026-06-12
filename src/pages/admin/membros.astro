@@ -8,12 +8,23 @@ if (!token) return Astro.redirect("/admin/login");
 try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 
-const filtroStatus = Astro.url.searchParams.get("status") || "pending";
+const filtroStatus = Astro.url.searchParams.get("status") || "todos";
 const db = supabaseAdmin();
-const { data: membros } = await db.from("portal_profiles")
+let qMembros = db.from("portal_profiles")
   .select("id, email, display_name, full_name, role, approval_status, last_login_at, created_at")
-  .eq("approval_status", filtroStatus)
   .order("created_at", { ascending: false });
+if (filtroStatus !== "todos") qMembros = qMembros.eq("approval_status", filtroStatus);
+const { data: membros, error: membrosErro } = await qMembros;
+
+const contagens: Record<string, number> = { todos: 0, pending: 0, approved: 0, rejected: 0 };
+{
+  const { data: todosStatus } = await db.from("portal_profiles").select("approval_status");
+  for (const r of todosStatus || []) {
+    contagens.todos++;
+    if (r.approval_status in contagens) contagens[r.approval_status]++;
+  }
+}
+const statusLabels: Record<string, string> = { todos: "Todos", pending: "Pendentes", approved: "Aprovados", rejected: "Rejeitados" };
 
 const badgeSt: Record<string, string> = { pending: "badge-yellow", approved: "badge-green", rejected: "badge-red" };
 const badgeRole: Record<string, string> = { admin: "badge-red", coordenador: "badge-blue", financeiro: "badge-green", comercial: "badge-orange", rh: "badge-blue", operacional: "badge-gray", pendente: "badge-gray" };
@@ -24,10 +35,12 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
   <div class="toolbar">
     <span class="toolbar-title">Membros ({membros?.length ?? 0})</span>
     <select class="filter-select" onchange="filtrar(this.value)">
-      {["pending","approved","rejected"].map(s => <option value={s} selected={s===filtroStatus}>{s}</option>)}
+      {["todos","pending","approved","rejected"].map(s => <option value={s} selected={s===filtroStatus}>{statusLabels[s]} ({contagens[s]})</option>)}
     </select>
     <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo membro</button>
   </div>
+
+  {membrosErro && <div class="alert alert-error">Erro ao carregar membros: {membrosErro.message}</div>}
 
   <div class="card">
     <div class="table-wrap">
