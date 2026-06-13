@@ -40,17 +40,23 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const id = params.id!;
     const body = await request.json();
 
-    if (body.regime !== undefined && body.regime && !["clt", "pj", "estagio", "temporario", "socio", "diarista"].includes(body.regime)) return jsonErr(400, "Regime inválido");
-    if (body.status !== undefined && !["ativo", "ferias", "afastado", "desligado"].includes(body.status)) return jsonErr(400, "Status inválido");
+    // valida só quando o valor está presente E não vazio (evita barrar edições legítimas)
+    if (body.regime && !["clt", "pj", "estagio", "temporario", "socio", "diarista"].includes(body.regime)) return jsonErr(400, "Regime inválido");
+    if (body.status && !["ativo", "ferias", "afastado", "desligado"].includes(body.status)) return jsonErr(400, "Status inválido");
 
     const editaveis = [
-      "profile_id", "nome", "email", "telefone", "cpf", "rg", "data_nascimento", "foto_url",
+      "profile_id", "nome", "email", "telefone", "telefone_pessoal", "cpf", "rg", "data_nascimento", "foto_url",
       "cargo", "setor", "regime", "salario", "data_admissao", "data_desligamento", "status",
       "endereco", "cidade", "uf", "contato_emergencia_nome", "contato_emergencia_telefone",
       "pix", "banco", "agencia", "conta", "observacoes",
     ];
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const c of editaveis) if (body[c] !== undefined) patch[c] = body[c] === "" ? null : body[c];
+    // salário sempre numérico (ou null) — evita erro de tipo no banco
+    if ("salario" in patch) {
+      if (patch.salario === null) { /* ok */ }
+      else { const n = Number(String(patch.salario).replace(/\./g, "").replace(",", ".")); patch.salario = isNaN(n) ? null : n; }
+    }
     if (Object.keys(patch).length <= 1) return jsonErr(400, "Nada para atualizar");
     if (patch.nome === null) return jsonErr(400, "Nome não pode ficar vazio");
 
