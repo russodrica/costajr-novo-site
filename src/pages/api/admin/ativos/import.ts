@@ -96,6 +96,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (!headers.includes("categoria") || !headers.includes("descricao")) {
       return jsonErr(400, "Cabeçalho inválido: são obrigatórias as colunas 'Categoria' e 'Descrição'. Baixe o modelo.");
     }
+    const presentes = new Set(headers.filter(Boolean) as string[]); // colunas existentes na planilha
 
     const db = supabaseAdmin();
     // mapa de patrimônio → id (p/ casar linhas sem ID)
@@ -128,36 +129,36 @@ export const POST: APIRoute = async ({ request }) => {
       const garantiaFim = obj.garantia_fim ? dataValida(obj.garantia_fim) : null;
       if (obj.garantia_fim && !garantiaFim) { analise.erros.push({ linha: r + 1, motivo: `Data de garantia inválida: "${obj.garantia_fim}"` }); continue; }
 
-      const base: any = {
-        categoria,
-        descricao: obj.descricao,
-        subcategoria: obj.subcategoria || null,
-        codigo_interno: obj.codigo_interno || null,
-        numero_patrimonial: obj.numero_patrimonial || null,
-        numero_serie: obj.numero_serie || null,
-        marca: obj.marca || null,
-        modelo: obj.modelo || null,
-        fabricante: obj.fabricante || null,
-        valor_aquisicao: valor,
-        data_aquisicao: dataAq,
-        fornecedor: obj.fornecedor || null,
-        numero_nota_fiscal: obj.numero_nota_fiscal || null,
-        garantia: !!garantiaFim,
-        garantia_fim: garantiaFim,
-        campos: obj.campos ? parseCampos(obj.campos) : {},
-        observacoes: obj.observacoes || null,
-      };
+      // Monta apenas com as colunas PRESENTES na planilha (atualização parcial não
+      // apaga campos ausentes). categoria/descricao são sempre obrigatórios.
+      const campo: any = { categoria, descricao: obj.descricao };
+      const setSe = (col: string, key: string, val: any) => { if (presentes.has(col)) campo[key] = val; };
+      setSe("subcategoria", "subcategoria", obj.subcategoria || null);
+      setSe("codigo_interno", "codigo_interno", obj.codigo_interno || null);
+      setSe("numero_patrimonial", "numero_patrimonial", obj.numero_patrimonial || null);
+      setSe("numero_serie", "numero_serie", obj.numero_serie || null);
+      setSe("marca", "marca", obj.marca || null);
+      setSe("modelo", "modelo", obj.modelo || null);
+      setSe("fabricante", "fabricante", obj.fabricante || null);
+      setSe("valor_aquisicao", "valor_aquisicao", valor);
+      setSe("data_aquisicao", "data_aquisicao", dataAq);
+      setSe("fornecedor", "fornecedor", obj.fornecedor || null);
+      setSe("numero_nota_fiscal", "numero_nota_fiscal", obj.numero_nota_fiscal || null);
+      if (presentes.has("garantia_fim")) { campo.garantia = !!garantiaFim; campo.garantia_fim = garantiaFim; }
+      if (presentes.has("campos")) campo.campos = obj.campos ? parseCampos(obj.campos) : {};
+      setSe("observacoes", "observacoes", obj.observacoes || null);
 
       // decide criar vs atualizar
+      const patrim = obj.numero_patrimonial || "";
       let idAlvo = obj.id && idsValidos.has(obj.id) ? obj.id : null;
       if (!idAlvo && obj.id) { analise.erros.push({ linha: r + 1, motivo: `ID informado não existe: ${obj.id}` }); continue; }
-      if (!idAlvo && base.numero_patrimonial) {
-        const achado = idPorPatrimonio.get(String(base.numero_patrimonial).trim().toLowerCase());
+      if (!idAlvo && patrim) {
+        const achado = idPorPatrimonio.get(patrim.trim().toLowerCase());
         if (achado) idAlvo = achado;
       }
 
-      if (idAlvo) { paraAtualizar.push({ id: idAlvo, patch: { ...base, updated_at: new Date().toISOString() } }); analise.atualizar++; }
-      else { paraInserir.push({ ...base, status: "em_estoque", criado_por: admin.email }); analise.criar++; }
+      if (idAlvo) { paraAtualizar.push({ id: idAlvo, patch: { ...campo, updated_at: new Date().toISOString() } }); analise.atualizar++; }
+      else { paraInserir.push({ ...campo, status: "em_estoque", criado_por: admin.email }); analise.criar++; }
     }
 
     // dry-run: só devolve a análise
