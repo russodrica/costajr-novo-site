@@ -167,6 +167,7 @@ const catJson = JSON.stringify((categorias || []).map((c: any) => ({ id: c.id, n
   <div class="card" style="margin-bottom:24px">
     <div class="section-header" style="margin-bottom:10px">
       <span class="section-title">Fluxo de caixa (6 meses)</span>
+      <button class="btn btn-outline btn-sm" onclick="abrirDre()" title="Demonstrativo de Resultado por categoria">📊 DRE / Resultado</button>
       <div class="fluxo-legend">
         <span class="legend-item"><span class="legend-dot" style="background:#22C55E"></span> Entradas (receitas + manutenção)</span>
         <span class="legend-item"><span class="legend-dot" style="background:#EF4444"></span> Saídas (despesas pagas)</span>
@@ -370,6 +371,20 @@ const catJson = JSON.stringify((categorias || []).map((c: any) => ({ id: c.id, n
     </div>
   </div>
 
+  <!-- Modal DRE -->
+  <div class="modal-overlay" id="modalDre">
+    <div class="modal" style="max-width:620px">
+      <div class="modal-title">📊 DRE — Demonstrativo de Resultado</div>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group"><label>De (mês)</label><input type="month" id="dreInicio" /></div>
+        <div class="form-group"><label>Até (mês)</label><input type="month" id="dreFim" /></div>
+        <div class="form-group"><button type="button" class="btn btn-primary" onclick="gerarDre()">Gerar</button></div>
+      </div>
+      <div id="dreResultado" style="margin-top:10px"></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="fecharModal('modalDre')">Fechar</button></div>
+    </div>
+  </div>
+
   <script type="application/json" id="dadosLanc" set:html={lancJson}></script>
   <script type="application/json" id="dadosCat" set:html={catJson}></script>
 
@@ -481,6 +496,44 @@ const catJson = JSON.stringify((categorias || []).map((c: any) => ({ id: c.id, n
         document.getElementById("msgCat").innerHTML = `<div class="alert alert-error">${d.error || `HTTP ${res.status}`}</div>`;
       }
     });
+
+    // ── DRE ──
+    const brl = (v: number) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    function abrirDre() {
+      const hoje = new Date();
+      const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+      const ini = new Date(hoje); ini.setMonth(ini.getMonth() - 5);
+      const mesIni = `${ini.getFullYear()}-${String(ini.getMonth() + 1).padStart(2, "0")}`;
+      (document.getElementById("dreInicio") as HTMLInputElement).value = mesIni;
+      (document.getElementById("dreFim") as HTMLInputElement).value = mesAtual;
+      document.getElementById("modalDre")!.classList.add("open");
+      gerarDre();
+    }
+    async function gerarDre() {
+      const inicio = (document.getElementById("dreInicio") as HTMLInputElement).value;
+      const fim = (document.getElementById("dreFim") as HTMLInputElement).value;
+      const box = document.getElementById("dreResultado")!;
+      if (!inicio || !fim) { box.innerHTML = '<div class="alert alert-error">Informe o período.</div>'; return; }
+      box.innerHTML = '<div class="loading"><div class="spinner"></div> Calculando...</div>';
+      try {
+        const res = await fetch(`/api/admin/fin/dre?inicio=${inicio}&fim=${fim}`);
+        const d = await res.json();
+        if (!res.ok) { box.innerHTML = `<div class="alert alert-error">${d.error || "Erro"}</div>`; return; }
+        const linhas = (arr: any[], cor: string) => arr.length
+          ? arr.map((r: any) => `<tr><td>${r.categoria}</td><td style="text-align:right;color:${cor};font-weight:600">${brl(r.total)}</td></tr>`).join("")
+          : `<tr><td colspan="2" style="color:#999">—</td></tr>`;
+        box.innerHTML = `
+          <table style="width:100%;font-size:13.5px;border-collapse:collapse">
+            <thead><tr><th style="text-align:left;color:#16A34A;padding:6px 0">RECEITAS</th><th style="text-align:right">${brl(d.total_receitas)}</th></tr></thead>
+            <tbody>${linhas(d.receitas, "#16A34A")}</tbody>
+            <thead><tr><th style="text-align:left;color:#B91C1C;padding:12px 0 6px">DESPESAS</th><th style="text-align:right">${brl(d.total_despesas)}</th></tr></thead>
+            <tbody>${linhas(d.despesas, "#B91C1C")}</tbody>
+            <tfoot><tr style="border-top:2px solid #1E2128"><td style="padding-top:10px;font-weight:800">RESULTADO</td><td style="text-align:right;padding-top:10px;font-weight:800;color:${d.resultado >= 0 ? "#16A34A" : "#B91C1C"}">${brl(d.resultado)}</td></tr></tfoot>
+          </table>`;
+      } catch { box.innerHTML = '<div class="alert alert-error">Erro de conexão.</div>'; }
+    }
+    (window as any).abrirDre = abrirDre;
+    (window as any).gerarDre = gerarDre;
 
     (window as any).filtrar = filtrar;
     (window as any).fecharModal = fecharModal;
