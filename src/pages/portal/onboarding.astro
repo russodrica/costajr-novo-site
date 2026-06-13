@@ -42,6 +42,24 @@ import Portal from "~/layouts/Portal.astro";
     .step-link { display:inline-flex; align-items:center; gap:6px; margin-top:12px; font-size:13px; font-weight:700; color:var(--brand); }
     .step-link:hover { text-decoration:underline; }
     .step-obrigatorio { font-size:10.5px; font-weight:700; color:#EF4444; text-transform:uppercase; letter-spacing:.06em; margin-left:8px; }
+    .step-media { margin-top: 14px; display: none; }
+    .step-media.aberta { display: block; }
+    .step-media iframe, .step-media video { width: 100%; max-width: 760px; border: 1px solid var(--border); border-radius: 10px; background: #000; }
+    .step-media iframe.pdf { height: 520px; background: #fff; }
+    .step-media iframe.video, .step-media video { aspect-ratio: 16/9; }
+    .btn-media {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; margin-right: 10px;
+      padding: 8px 16px; border-radius: 8px; border: 1.5px solid var(--brand);
+      background: #fff; color: var(--brand); font-size: 13px; font-weight: 700;
+      cursor: pointer; font-family: 'Open Sans', sans-serif; transition: .15s;
+    }
+    .btn-media:hover { background: var(--brand); color: #fff; }
+    .banner-conclusao {
+      background: linear-gradient(135deg, #14532D, #16A34A); color: #fff;
+      border-radius: 14px; padding: 22px 28px; margin-bottom: 20px;
+      display: flex; align-items: center; gap: 16px; font-size: 14.5px;
+    }
+    .banner-conclusao strong { font-family: 'Montserrat', sans-serif; font-size: 17px; display: block; margin-bottom: 2px; }
   </style>
 
   <script>
@@ -71,7 +89,11 @@ import Portal from "~/layouts/Portal.astro";
       (document.getElementById("progress-bar") as HTMLElement).style.width = `${pct}%`;
       document.getElementById("progresso-label")!.textContent = `${done} de ${steps.length} etapas concluídas (${pct}%)`;
 
-      el.innerHTML = steps.map((s: any) => {
+      const banner = pct === 100
+        ? `<div class="banner-conclusao"><span style="font-size:34px">🎉</span><div><strong>Onboarding concluído!</strong>Parabéns — você completou todas as etapas da integração. Bem-vindo(a) ao time Costa Júnior!</div></div>`
+        : "";
+
+      el.innerHTML = banner + steps.map((s: any) => {
         const isDone = !!progress[s.id];
         const tagMap: Record<string,string> = { texto:"texto", video:"vídeo", pdf:"PDF", tarefa:"tarefa" };
         return `
@@ -84,12 +106,38 @@ import Portal from "~/layouts/Portal.astro";
               </div>
               <h3>${s.titulo}</h3>
               <p>${s.conteudo}</p>
-              ${s.url_recurso ? `<a class="step-link" href="${s.url_recurso}" target="_blank" rel="noopener">
-                Acessar recurso →
-              </a>` : ""}
+              ${botaoMedia(s)}
+              ${s.url_recurso ? `<div class="step-media" id="media-${s.id}"></div>` : ""}
             </div>
           </div>`;
       }).join("");
+    }
+
+    function botaoMedia(s: any) {
+      if (!s.url_recurso) return "";
+      const rotulo = s.tipo === "video" ? "▶ Assistir vídeo" : s.tipo === "pdf" ? "📄 Ler documento" : "🔗 Acessar recurso";
+      return `<button class="btn-media" onclick="abrirMedia('${s.id}')">${rotulo}</button>
+        <a class="step-link" href="${s.url_recurso}" target="_blank" rel="noopener" style="margin-top:12px">abrir em nova aba →</a>`;
+    }
+
+    function abrirMedia(stepId: string) {
+      const s = steps.find(x => x.id === stepId);
+      const box = document.getElementById(`media-${stepId}`);
+      if (!s || !box) return;
+      if (box.classList.contains("aberta")) { box.classList.remove("aberta"); box.innerHTML = ""; return; }
+      const url = s.url_recurso;
+      const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/);
+      if (s.tipo === "video" && yt) {
+        box.innerHTML = `<iframe class="video" src="https://www.youtube.com/embed/${yt[1]}" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+      } else if (s.tipo === "video") {
+        box.innerHTML = `<video controls preload="metadata" src="${url}"></video>`;
+      } else if (s.tipo === "pdf") {
+        box.innerHTML = `<iframe class="pdf" src="${url}#toolbar=1"></iframe>`;
+      } else {
+        window.open(url, "_blank");
+        return;
+      }
+      box.classList.add("aberta");
     }
 
     async function toggleStep(stepId: string) {
@@ -104,6 +152,7 @@ import Portal from "~/layouts/Portal.astro";
     }
 
     (window as any).toggleStep = toggleStep;
+    (window as any).abrirMedia = abrirMedia;
     load();
   </script>
 </Portal>
