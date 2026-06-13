@@ -392,6 +392,16 @@ JunIA) com modal na tela Base de Conhecimento. (3) Publicar comunicado notifica
 colaboradores no sino (todos ou perfil alvo). QA E2E 16/16 em producao
 (scripts/qa-conteudo.mjs).
 
+**Onda Onboarding (12/06/2026, commit 47ea24a):** /portal/onboarding agora abre
+video (YouTube embed ou MP4 nativo) e PDFs EMBUTIDOS na propria etapa (botao
+Assistir/Ler + nova aba), banner de parabens ao atingir 100%. Admin ganhou
+secao "Progresso dos colaboradores" (barra %, obrigatorias pendentes, ultima
+atividade) via /api/admin/portal/onboarding/progresso — conta apenas etapas
+visiveis pros perfis de cada colaborador (access_roles). Conteudo em producao:
+12 etapas (video institucional + 8 politicas PDF + 3 seeds; etapa "Politica de
+Conduta" ordem 2 esta sem URL — avaliar remover por duplicar o Codigo de Etica).
+QA E2E 9/9 (scripts/qa-onboarding.mjs).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
