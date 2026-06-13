@@ -513,6 +513,18 @@ comprovante, fluxo projetado, conciliacao automatica, paginacao da lista (limit
 1000 — meses Vobi grandes podem exceder; hoje a maioria cabe). Rate limiting: nao
 feito (admin confiavel, sem infra Redis).
 
+**RH — blocos + docs na ficha + alertas 30/15/7 (13/06/2026, commit bbca2a8,
+pedido da Adriana):** aba Colaboradores agora em BLOCOS colapsaveis estilo Monday
+(CLT Ativos, PJ Ativos, Outros Ativos + inativos/desligados recolhidos);
+"ativo"=status!=desligado. Ficha do colaborador (modal editar) mostra os
+DOCUMENTOS anexados — busca TODOS via /api/admin/rh/colaboradores/[id] (a query
+da pagina tinha limit 200 e ha 305 docs), com tipo, validade colorida, download
+seguro (URL assinada), anexar e excluir. Alertas de vencimento por e-mail para
+rh@costajr.com.br nos marcos 30/15/7 dias antes + no dia (src/lib/rhVencimentos.ts,
+modo "marcos"). Roda DENTRO do cron diario cashback-renovacao (piggyback — Hobby
+nao deixa 3o cron). Botao "Enviar resumo agora" usa modo "completo". Testar sem
+enviar: /api/cron/rh-vencimentos?dry=1. RH_ALERT_EMAIL no env sobrescreve o destino.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
