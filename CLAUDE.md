@@ -402,6 +402,20 @@ visiveis pros perfis de cada colaborador (access_roles). Conteudo em producao:
 Conduta" ordem 2 esta sem URL — avaliar remover por duplicar o Codigo de Etica).
 QA E2E 9/9 (scripts/qa-onboarding.mjs).
 
+**Onda Gestao de Obras (13/06/2026, commit f75d806):** planejamento por obra
+(Fase C do plano de substituicao da Vobi). Migration 034 RODADA: obras_tarefas
+(cronograma — etapa/responsavel/prioridade/datas/status pendente|em_andamento|
+concluida|cancelada) e obras_anotacoes; ambas com vobi_id (upsert idempotente).
+APIs /api/admin/obras/[id]/tarefas e /anotacoes. Na pagina da obra: secao
+Tarefas (clique cicla status, filtro abertas/todas/concluidas, alerta de
+atrasadas, modal CRUD) + secao Anotacoes (mural). Importadas da Vobi via
+scripts/importar-obras-vobi.mjs: 278 tarefas (198 concluidas/64 pendentes/16
+canceladas, em 40 obras) + 105 anotacoes. ATENCAO: idRefurbish da Vobi casa com
+obras.vobi_id SEM o prefixo "vobi-" (numVobi() normaliza); order da Vobi e
+fracionario (Math.round); /refurbish-step (nomes de etapa) estava 502/503 na
+importacao — etapa ficou null, re-rodar o script quando a infra Vobi
+normalizar preenche os nomes. QA E2E 11/11 (scripts/qa-obras.mjs).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
