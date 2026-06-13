@@ -4,7 +4,7 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 
 export const prerender = false;
 
-const REGIMES = ["clt", "pj", "estagio", "temporario", "socio"];
+const REGIMES = ["clt", "pj", "estagio", "temporario", "socio", "diarista"];
 const STATUS = ["ativo", "ferias", "afastado", "desligado"];
 
 // GET /api/admin/rh/colaboradores?status=&setor=&busca=

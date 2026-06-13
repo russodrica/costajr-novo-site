@@ -4,9 +4,9 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 
 export const prerender = false;
 
-const REGIMES = ["clt", "pj", "estagio", "temporario", "socio"];
+const REGIMES = ["clt", "pj", "estagio", "temporario", "socio", "diarista"];
 const STATUS = ["ativo", "ferias", "afastado", "desligado"];
-const REGIME_ROTULO: Record<string, string> = { clt: "clt", pj: "pj", estagio: "estagio", "estágio": "estagio", temporario: "temporario", "temporário": "temporario", socio: "socio", "sócio": "socio" };
+const REGIME_ROTULO: Record<string, string> = { clt: "clt", pj: "pj", estagio: "estagio", "estágio": "estagio", temporario: "temporario", "temporário": "temporario", socio: "socio", "sócio": "socio", diarista: "diarista" };
 const STATUS_ROTULO: Record<string, string> = { ativo: "ativo", ferias: "ferias", "férias": "ferias", afastado: "afastado", desligado: "desligado" };
 
 const norm = (s: string) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();

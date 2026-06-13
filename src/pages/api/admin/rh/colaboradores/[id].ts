@@ -40,7 +40,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const id = params.id!;
     const body = await request.json();
 
-    if (body.regime !== undefined && body.regime && !["clt", "pj", "estagio", "temporario", "socio"].includes(body.regime)) return jsonErr(400, "Regime inválido");
+    if (body.regime !== undefined && body.regime && !["clt", "pj", "estagio", "temporario", "socio", "diarista"].includes(body.regime)) return jsonErr(400, "Regime inválido");
     if (body.status !== undefined && !["ativo", "ferias", "afastado", "desligado"].includes(body.status)) return jsonErr(400, "Status inválido");
 
     const editaveis = [

@@ -33,8 +33,11 @@ const mesAtual = Number(hoje.slice(5, 7));
 const nomeMes = new Date().toLocaleDateString("pt-BR", { month: "long" });
 
 // ── Estatísticas dos cards ──
-const totalAtivos = colaboradores.filter(c => c.status === "ativo").length;
+// Diaristas são profissionais esporádicos — NÃO entram na contagem de ativos (CLT+PJ).
+const ehDiarista = (c: any) => c.regime === "diarista";
+const totalAtivos = colaboradores.filter(c => c.status !== "desligado" && !ehDiarista(c)).length;
 const totalAfastados = colaboradores.filter(c => c.status === "afastado").length;
+const diaristas = colaboradores.filter(ehDiarista).sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
 const emFeriasHoje = new Set(
   ausencias
     .filter(a => a.tipo === "ferias" && a.status === "aprovada" && a.data_inicio <= hoje && a.data_fim >= hoje)
@@ -47,23 +50,24 @@ const docsVencendo = documentos.filter(d => d.validade && d.validade >= hoje && 
 
 // ── Blocos de colaboradores (estilo Monday): regime × ativo/inativo ──
 // "Ativo" = qualquer status diferente de "desligado". "Inativo" = desligado.
+// Diaristas NÃO entram aqui — têm aba própria (profissionais esporádicos).
 const regimeBloco = (c: any) => (c.regime === "clt" || c.regime === "pj") ? c.regime : "outros";
 const blocosDef = [
   { key: "clt_ativo", titulo: "CLT — Ativos", regime: "clt", ativo: true, aberto: true },
   { key: "pj_ativo", titulo: "PJ — Ativos", regime: "pj", ativo: true, aberto: true },
-  { key: "outros_ativo", titulo: "Diaristas / Temporários / Estágio — Ativos", regime: "outros", ativo: true, aberto: true },
+  { key: "outros_ativo", titulo: "Estágio / Temporário / Sócio — Ativos", regime: "outros", ativo: true, aberto: true },
   { key: "clt_inativo", titulo: "CLT — Inativos (desligados)", regime: "clt", ativo: false, aberto: false },
   { key: "pj_inativo", titulo: "PJ — Inativos (desligados)", regime: "pj", ativo: false, aberto: false },
   { key: "outros_inativo", titulo: "Outros — Inativos (desligados)", regime: "outros", ativo: false, aberto: false },
 ];
 const blocos = blocosDef
-  .map(b => ({ ...b, itens: colaboradores.filter(c => (c.status !== "desligado") === b.ativo && regimeBloco(c) === b.regime) }))
+  .map(b => ({ ...b, itens: colaboradores.filter(c => !ehDiarista(c) && (c.status !== "desligado") === b.ativo && regimeBloco(c) === b.regime) }))
   .filter(b => b.itens.length);
 
 // ── Labels e badges ──
 const stColab: Record<string, string> = { ativo: "Ativo", ferias: "Férias", afastado: "Afastado", desligado: "Desligado" };
 const badgeColab: Record<string, string> = { ativo: "badge-green", ferias: "badge-blue", afastado: "badge-yellow", desligado: "badge-gray" };
-const regimes: Record<string, string> = { clt: "CLT", pj: "PJ", estagio: "Estágio", temporario: "Temporário", socio: "Sócio" };
+const regimes: Record<string, string> = { clt: "CLT", pj: "PJ", estagio: "Estágio", temporario: "Temporário", socio: "Sócio", diarista: "Diarista" };
 const tiposAus: Record<string, string> = { ferias: "Férias", atestado: "Atestado", falta: "Falta", licenca: "Licença", folga: "Folga", outro: "Outro" };
 const badgeTipoAus: Record<string, string> = { ferias: "badge-blue", atestado: "badge-purple", falta: "badge-red", licenca: "badge-orange", folga: "badge-green", outro: "badge-gray" };
 const stAus: Record<string, string> = { solicitada: "Solicitada", aprovada: "Aprovada", rejeitada: "Rejeitada", concluida: "Concluída" };
@@ -133,6 +137,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
   <div class="pills" style="margin-bottom:16px">
     <button class="pill" data-aba="alertas" onclick="mostrarAba('alertas')">🚨 Alertas <span class="count" id="alertasBadge" style="background:#FEE2E2;color:#B91C1C"></span></button>
     <button class="pill active" data-aba="colaboradores" onclick="mostrarAba('colaboradores')">Colaboradores <span class="count">{colaboradores.length}</span></button>
+    <button class="pill" data-aba="diaristas" onclick="mostrarAba('diaristas')">👷 Diaristas <span class="count">{diaristas.length}</span></button>
     <button class="pill" data-aba="ausencias" onclick="mostrarAba('ausencias')">Férias &amp; Ausências <span class="count">{ausencias.length}</span></button>
     <button class="pill" data-aba="documentos" onclick="mostrarAba('documentos')">Documentos <span class="count">{documentos.length}</span></button>
     <button class="pill" data-aba="admissoes" onclick="mostrarAba('admissoes')">Admissões <span class="count">{admissoesAbertas}</span></button>
@@ -191,6 +196,37 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         </div>
       </div>
     ))}
+  </section>
+
+  <!-- ════════ ABA DIARISTAS ════════ -->
+  <section class="tab-section" id="aba-diaristas" style="display:none">
+    <div class="toolbar">
+      <span class="toolbar-title">👷 Diaristas — profissionais esporádicos ({diaristas.length})</span>
+      <button class="btn btn-primary" onclick="abrirModalColab()">+ Novo colaborador</button>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Nome</th><th>Cargo</th><th>Contato</th><th>Início</th><th>Status</th><th>Ações</th></tr></thead>
+          <tbody>
+            {diaristas.length ? diaristas.map(c => (
+              <tr>
+                <td><strong>{c.nome}</strong>{c.email && <div class="sub-info">{c.email}</div>}</td>
+                <td>{c.cargo || "—"}</td>
+                <td>{c.telefone || "—"}</td>
+                <td>{fmtData(c.data_admissao)}</td>
+                <td><span class={`badge ${badgeColab[c.status] || "badge-gray"}`}>{stColab[c.status] || c.status}</span></td>
+                <td>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap">
+                    <button class="btn btn-secondary btn-sm" onclick={`editarColab('${c.id}')`}>Abrir ficha</button>
+                  </div>
+                </td>
+              </tr>
+            )) : <tr><td colspan="6"><div class="empty-state"><strong>Nenhum diarista cadastrado</strong>Diaristas são profissionais esporádicos, separados dos colaboradores fixos.</div></td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </section>
 
   <!-- ════════ ABA AUSÊNCIAS ════════ -->
