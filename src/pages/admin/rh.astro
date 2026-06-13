@@ -45,6 +45,21 @@ const aniversariantes = colaboradores
   .sort((a, b) => Number(String(a.data_nascimento).slice(8, 10)) - Number(String(b.data_nascimento).slice(8, 10)));
 const docsVencendo = documentos.filter(d => d.validade && d.validade >= hoje && d.validade <= em30).length;
 
+// ── Blocos de colaboradores (estilo Monday): regime × ativo/inativo ──
+// "Ativo" = qualquer status diferente de "desligado". "Inativo" = desligado.
+const regimeBloco = (c: any) => (c.regime === "clt" || c.regime === "pj") ? c.regime : "outros";
+const blocosDef = [
+  { key: "clt_ativo", titulo: "CLT — Ativos", regime: "clt", ativo: true, aberto: true },
+  { key: "pj_ativo", titulo: "PJ — Ativos", regime: "pj", ativo: true, aberto: true },
+  { key: "outros_ativo", titulo: "Estágio / Temporário / Sócio — Ativos", regime: "outros", ativo: true, aberto: true },
+  { key: "clt_inativo", titulo: "CLT — Inativos (desligados)", regime: "clt", ativo: false, aberto: false },
+  { key: "pj_inativo", titulo: "PJ — Inativos (desligados)", regime: "pj", ativo: false, aberto: false },
+  { key: "outros_inativo", titulo: "Outros — Inativos (desligados)", regime: "outros", ativo: false, aberto: false },
+];
+const blocos = blocosDef
+  .map(b => ({ ...b, itens: colaboradores.filter(c => (c.status !== "desligado") === b.ativo && regimeBloco(c) === b.regime) }))
+  .filter(b => b.itens.length);
+
 // ── Labels e badges ──
 const stColab: Record<string, string> = { ativo: "Ativo", ferias: "Férias", afastado: "Afastado", desligado: "Desligado" };
 const badgeColab: Record<string, string> = { ativo: "badge-green", ferias: "badge-blue", afastado: "badge-yellow", desligado: "badge-gray" };
@@ -140,32 +155,42 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       <button class="btn btn-outline" onclick="document.getElementById('modalImportColab').classList.add('open')" title="Cadastrar/atualizar vários de uma vez por planilha">⬆️ Importar</button>
       <button class="btn btn-primary" onclick="abrirModalColab()">+ Novo colaborador</button>
     </div>
-    <div class="card">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Nome</th><th>Cargo</th><th>Setor</th><th>Regime</th><th>Admissão</th><th>Status</th><th>Ações</th></tr></thead>
-          <tbody id="tbodyColabs">
-            {colaboradores.length ? colaboradores.map(c => (
-              <tr data-status={c.status} data-busca={buscaColab(c)}>
-                <td><strong>{c.nome}</strong>{c.email && <div class="sub-info">{c.email}</div>}</td>
-                <td>{c.cargo || "—"}{c.salario != null && <div class="sub-info">{fmtBRL(c.salario)}</div>}</td>
-                <td>{c.setor || "—"}</td>
-                <td>{c.regime ? regimes[c.regime] || c.regime : "—"}</td>
-                <td>{fmtData(c.data_admissao)}</td>
-                <td><span class={`badge ${badgeColab[c.status] || "badge-gray"}`}>{stColab[c.status] || c.status}</span></td>
-                <td>
-                  <div style="display:flex;gap:4px;flex-wrap:wrap">
-                    <button class="btn btn-secondary btn-sm" onclick={`editarColab('${c.id}')`}>Editar</button>
-                    {c.status !== "desligado" && <button class="btn btn-danger btn-sm" onclick={`desligarColab('${c.id}','${(c.nome || "").replace(/'/g, "")}')`}>Desligar</button>}
-                  </div>
-                </td>
-              </tr>
-            )) : <tr><td colspan="7"><div class="empty-state"><strong>Nenhum colaborador cadastrado</strong>Clique em “+ Novo colaborador” para começar.</div></td></tr>}
-            <tr id="rowSemResultadoColab" style="display:none"><td colspan="7" style="text-align:center;color:#999;padding:24px">Nenhum colaborador corresponde à busca</td></tr>
-          </tbody>
-        </table>
+    {!colaboradores.length && <div class="card"><div class="empty-state"><strong>Nenhum colaborador cadastrado</strong>Clique em “+ Novo colaborador” para começar.</div></div>}
+
+    {blocos.map(b => (
+      <div class="card bloco-colab" data-bloco={b.key} style="margin-bottom:14px;padding:0;overflow:hidden">
+        <button type="button" class="bloco-head" onclick={`toggleBloco('${b.key}')`} aria-expanded={String(b.aberto)}>
+          <span class="bloco-seta" data-aberto={String(b.aberto)}>▸</span>
+          <span class="bloco-titulo">{b.titulo}</span>
+          <span class="bloco-count">{b.itens.length}</span>
+        </button>
+        <div class="bloco-body" id={`bloco-body-${b.key}`} style={b.aberto ? "" : "display:none"}>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Cargo</th><th>Setor</th><th>Admissão</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody>
+                {b.itens.map(c => (
+                  <tr class="colab-row" data-status={c.status} data-busca={buscaColab(c)}>
+                    <td><strong>{c.nome}</strong>{c.email && <div class="sub-info">{c.email}</div>}</td>
+                    <td>{c.cargo || "—"}{c.salario != null && <div class="sub-info">{fmtBRL(c.salario)}</div>}</td>
+                    <td>{c.setor || "—"}</td>
+                    <td>{fmtData(c.data_admissao)}</td>
+                    <td><span class={`badge ${badgeColab[c.status] || "badge-gray"}`}>{stColab[c.status] || c.status}</span></td>
+                    <td>
+                      <div style="display:flex;gap:4px;flex-wrap:wrap">
+                        <button class="btn btn-secondary btn-sm" onclick={`editarColab('${c.id}')`}>Abrir ficha</button>
+                        {c.status !== "desligado" && <button class="btn btn-danger btn-sm" onclick={`desligarColab('${c.id}','${(c.nome || "").replace(/'/g, "")}')`}>Desligar</button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr class="bloco-sem-res" style="display:none"><td colspan="6" style="text-align:center;color:#999;padding:16px">Nenhum corresponde à busca neste bloco</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </div>
+    ))}
   </section>
 
   <!-- ════════ ABA AUSÊNCIAS ════════ -->
@@ -407,6 +432,15 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           <button type="submit" class="btn btn-primary">Salvar</button>
         </div>
       </form>
+
+      <!-- Documentos anexados do colaborador (só na edição) -->
+      <div id="fichaDocsWrap" style="display:none;border-top:1px solid #E5E7EB;margin-top:18px;padding-top:14px">
+        <div class="section-header" style="margin-bottom:10px">
+          <span class="section-title" style="font-size:15px">📎 Documentos anexados <span id="fichaDocsCount" style="color:#9CA3AF;font-weight:600"></span></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnAnexarDocFicha">+ Anexar documento</button>
+        </div>
+        <div id="fichaDocsLista"><div class="loading"><div class="spinner"></div> Carregando documentos...</div></div>
+      </div>
     </div>
   </div>
 
@@ -679,20 +713,42 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     function fecharModal(id: string) { document.getElementById(id)?.classList.remove("open"); }
 
     // ── Colaboradores: busca + filtro client-side ──
+    function toggleBloco(key: string) {
+      const body = document.getElementById("bloco-body-" + key);
+      const seta = document.querySelector(`.bloco-colab[data-bloco="${key}"] .bloco-seta`) as any;
+      if (!body) return;
+      const aberto = body.style.display !== "none";
+      body.style.display = aberto ? "none" : "";
+      if (seta) seta.dataset.aberto = String(!aberto);
+    }
+    (window as any).toggleBloco = toggleBloco;
+
     function filtrarColabs() {
       const busca = ((document.getElementById("buscaColab") as any)?.value || "").toLowerCase().trim();
       const status = (document.getElementById("filtroStatusColab") as any)?.value || "todos";
-      let visiveis = 0;
-      document.querySelectorAll("#tbodyColabs tr[data-status]").forEach((tr) => {
-        const el = tr as any;
-        const okStatus = status === "todos" || el.dataset.status === status;
-        const okBusca = !busca || (el.dataset.busca || "").includes(busca);
-        const mostra = okStatus && okBusca;
-        el.style.display = mostra ? "" : "none";
-        if (mostra) visiveis++;
+      const buscando = !!busca || status !== "todos";
+      document.querySelectorAll(".bloco-colab").forEach((bloco) => {
+        let visiveis = 0;
+        bloco.querySelectorAll("tr.colab-row").forEach((tr) => {
+          const el = tr as any;
+          const okStatus = status === "todos" || el.dataset.status === status;
+          const okBusca = !busca || (el.dataset.busca || "").includes(busca);
+          const mostra = okStatus && okBusca;
+          el.style.display = mostra ? "" : "none";
+          if (mostra) visiveis++;
+        });
+        const semRes = bloco.querySelector(".bloco-sem-res") as any;
+        if (semRes) semRes.style.display = (buscando && visiveis === 0) ? "" : "none";
+        // ao buscar/filtrar, abre os blocos que têm resultado e esconde os vazios
+        const body = bloco.querySelector(".bloco-body") as any;
+        const seta = bloco.querySelector(".bloco-seta") as any;
+        if (buscando) {
+          (bloco as any).style.display = visiveis ? "" : "none";
+          if (body && visiveis) { body.style.display = ""; if (seta) seta.dataset.aberto = "true"; }
+        } else {
+          (bloco as any).style.display = "";
+        }
       });
-      const semRes = document.getElementById("rowSemResultadoColab") as any;
-      if (semRes) semRes.style.display = visiveis === 0 && document.querySelectorAll("#tbodyColabs tr[data-status]").length > 0 ? "" : "none";
     }
 
     // ── Colaboradores: novo / editar / desligar ──
@@ -704,6 +760,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       (document.getElementById("colabId") as any).value = "";
       (document.getElementById("tituloModalColab") as any).textContent = "Novo colaborador";
       (document.getElementById("msgColab") as any).innerHTML = "";
+      (document.getElementById("fichaDocsWrap") as any).style.display = "none";
       document.getElementById("modalColab")?.classList.add("open");
     }
 
@@ -718,8 +775,61 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       }
       (document.getElementById("tituloModalColab") as any).textContent = "Editar colaborador";
       (document.getElementById("msgColab") as any).innerHTML = "";
+      (document.getElementById("fichaDocsWrap") as any).style.display = "";
+      carregarFichaDocs(id, c.nome || "");
       document.getElementById("modalColab")?.classList.add("open");
     }
+
+    // ── Documentos do colaborador na ficha (busca todos, não só os 200 da página) ──
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    const em30Str = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const escD = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const tiposDocMap: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Documento" };
+
+    async function carregarFichaDocs(colabId: string, nome: string) {
+      const wrap = document.getElementById("fichaDocsLista")!;
+      wrap.innerHTML = '<div class="loading"><div class="spinner"></div> Carregando documentos...</div>';
+      (document.getElementById("btnAnexarDocFicha") as any).onclick = () => abrirModalDocPara(colabId, nome);
+      try {
+        const res = await fetch(`/api/admin/rh/colaboradores/${colabId}`);
+        if (!res.ok) { wrap.innerHTML = '<p style="color:#999;font-size:13px">Erro ao carregar documentos.</p>'; return; }
+        const d = await res.json();
+        const docs = d.documentos || [];
+        document.getElementById("fichaDocsCount")!.textContent = docs.length ? `(${docs.length})` : "";
+        if (!docs.length) { wrap.innerHTML = '<p style="color:#999;font-size:13px">Nenhum documento anexado. Clique em "Anexar documento".</p>'; return; }
+        wrap.innerHTML = `<div class="table-wrap"><table style="font-size:13px"><thead><tr><th>Documento</th><th>Tipo</th><th>Validade</th><th></th></tr></thead><tbody>${
+          docs.map((doc: any) => {
+            const venc = doc.validade && doc.validade < hojeStr;
+            const vencendo = doc.validade && doc.validade >= hojeStr && doc.validade <= em30Str;
+            const corV = venc ? "#B91C1C" : vencendo ? "#D97706" : "#374151";
+            const temArq = doc.storage_path || doc.url;
+            const link = temArq
+              ? `<a href="/api/admin/rh/documentos/${doc.id}/arquivo" target="_blank" rel="noopener" title="Abre por link seguro temporário">📎 ${escD(doc.titulo)}</a>`
+              : escD(doc.titulo);
+            const valTxt = doc.validade
+              ? `${doc.validade.split("-").reverse().join("/")}${venc ? ' <span class="badge badge-red">Vencido</span>' : vencendo ? ' <span class="badge badge-orange">Vence em breve</span>' : ""}`
+              : "—";
+            return `<tr>
+              <td>${link}</td>
+              <td><span class="badge badge-gray">${tiposDocMap[doc.tipo] || doc.tipo}</span></td>
+              <td style="color:${corV};font-weight:600">${valTxt}</td>
+              <td><button type="button" class="btn btn-danger btn-sm" onclick="excluirDocFicha('${doc.id}','${colabId}','${escD(nome).replace(/'/g, "")}')">🗑</button></td>
+            </tr>`;
+          }).join("")
+        }</tbody></table></div>`;
+      } catch { wrap.innerHTML = '<p style="color:#999;font-size:13px">Erro de conexão.</p>'; }
+    }
+    function abrirModalDocPara(colabId: string, nome: string) {
+      abrirModalDoc();
+      const sel = document.querySelector('#formDoc select[name="colaborador_id"]') as HTMLSelectElement | null;
+      if (sel) sel.value = colabId;
+    }
+    async function excluirDocFicha(docId: string, colabId: string, nome: string) {
+      if (!confirm("Excluir este documento?")) return;
+      const res = await fetch(`/api/admin/rh/documentos/${docId}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      if (res.ok) carregarFichaDocs(colabId, nome); else alert("Erro ao excluir documento");
+    }
+    (window as any).excluirDocFicha = excluirDocFicha;
 
     async function desligarColab(id: string, nome: string) {
       if (!confirm(`Desligar o colaborador "${nome}"?\n\nO status mudará para "Desligado" e a data de desligamento será registrada como hoje.`)) return;
@@ -950,6 +1060,12 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
   <style>
     .sub-info { font-size: 0.75rem; color: #9CA3AF; margin-top: 2px; }
+    .bloco-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 13px 18px; background: #FAFBFC; border: 0; border-bottom: 1px solid var(--border, #E5E7EB); cursor: pointer; font-family: inherit; text-align: left; }
+    .bloco-head:hover { background: #F0F1F5; }
+    .bloco-seta { font-size: 14px; color: #6B7280; transition: transform .15s; }
+    .bloco-seta[data-aberto="true"] { transform: rotate(90deg); }
+    .bloco-titulo { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 14px; color: var(--ink, #2D2F36); flex: 1; }
+    .bloco-count { background: var(--brand, #C41E3A); color: #fff; border-radius: 99px; font-size: 12px; font-weight: 700; padding: 2px 10px; min-width: 26px; text-align: center; }
     .validade-vencida { color: #B91C1C; font-weight: 700; }
     .validade-proxima { color: #B45309; font-weight: 700; }
     .lista-aniversariantes { list-style: none; margin: 0; padding: 0; }

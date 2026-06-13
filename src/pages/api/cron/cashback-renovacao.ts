@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { gerarCupomRenovacao } from "~/lib/manut/clientes";
 import { enviarEmailCupomRenovacao } from "~/lib/mailer";
+import { enviarDigestVencimentosRh } from "~/lib/rhVencimentos";
 
 export const prerender = false;
 
@@ -79,7 +80,16 @@ export const GET: APIRoute = async ({ request, url }) => {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados }), {
+  // ── Piggyback: alertas de vencimento de documentos de RH (30/15/7 dias + no dia) ──
+  // Roda junto deste cron diário para não consumir um novo slot de cron na Vercel.
+  let rhDigest: any = { total: 0, enviados: 0 };
+  try {
+    rhDigest = await enviarDigestVencimentosRh(db, { modo: "marcos" });
+  } catch (e: any) {
+    console.warn("[cron][rh-vencimentos] falhou:", e?.message);
+  }
+
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest }), {
     headers: { "content-type": "application/json" },
   });
 };
