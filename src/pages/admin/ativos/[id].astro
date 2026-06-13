@@ -98,12 +98,18 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
           {ativo.fabricante && <div><dt>Fabricante</dt><dd>{ativo.fabricante}</dd></div>}
           {ativo.numero_serie && <div><dt>Nº de série</dt><dd>{ativo.numero_serie}</dd></div>}
           <div><dt>Aquisição</dt><dd>{fmtDate(ativo.data_aquisicao)} · {fmtMoney(ativo.valor_aquisicao)}{ativo.fornecedor ? ` · ${ativo.fornecedor}` : ""}</dd></div>
-          {(ativo.numero_nota_fiscal || ativo.nota_fiscal_url) && (
-            <div><dt>Nota fiscal</dt><dd>
-              {ativo.numero_nota_fiscal || "—"} {ativo.data_nota_fiscal ? `(${fmtDate(ativo.data_nota_fiscal)})` : ""}
-              {ativo.nota_fiscal_url && <a href={ativo.nota_fiscal_url} target="_blank" style="margin-left:6px">📎 abrir</a>}
-            </dd></div>
-          )}
+          <div><dt>Nota fiscal</dt><dd>
+            {ativo.numero_nota_fiscal || (ativo.nota_fiscal_path ? "" : "—")} {ativo.data_nota_fiscal ? `(${fmtDate(ativo.data_nota_fiscal)})` : ""}
+            {ativo.nota_fiscal_path
+              ? <a href={`/api/admin/ativos/${id}/nota-fiscal/arquivo`} target="_blank" rel="noopener" style="margin-left:6px" title="Arquivo no cofre privado — abre por link temporário">🔒 ver NF (PDF)</a>
+              : ativo.nota_fiscal_url && <a href={ativo.nota_fiscal_url} target="_blank" style="margin-left:6px">📎 abrir link</a>}
+            {!ativoEncerrado && (
+              <span style="margin-left:8px">
+                <button class="btn btn-secondary btn-sm" id="btnNf" onclick="anexarNf()">{ativo.nota_fiscal_path ? "Trocar PDF" : "📎 Anexar PDF"}</button>
+                {ativo.nota_fiscal_path && <button class="btn btn-outline btn-sm" onclick="removerNf()" style="margin-left:4px">Remover</button>}
+              </span>
+            )}
+          </dd></div>
           <div><dt>Garantia</dt><dd>{ativo.garantia ? `Sim — até ${fmtDate(ativo.garantia_fim)}` : "Não"}</dd></div>
           {ativo.manual_url && <div><dt>Manual</dt><dd><a href={ativo.manual_url} target="_blank">📎 abrir manual</a></dd></div>}
           {ativo.alocado_para_nome && <div><dt>Alocado para</dt><dd><strong>{ativo.alocado_para_tipo === "obra" ? "🏗️" : "👤"} {ativo.alocado_para_nome}</strong></dd></div>}
@@ -772,6 +778,40 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       const res = await fetch(`/api/admin/ativos/${ativoId}/fotos?url=${encodeURIComponent(url)}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) window.location.reload(); else alert("Erro ao remover foto");
     }
+
+    // nota fiscal (cofre privado)
+    function anexarNf() {
+      const picker = document.createElement("input");
+      picker.type = "file"; picker.accept = "application/pdf,image/*";
+      picker.onchange = async () => {
+        const file = picker.files && picker.files[0];
+        if (!file) return;
+        if (file.size > 15 * 1024 * 1024) { alert("Arquivo muito grande (máx. 15MB)."); return; }
+        const btn = document.getElementById("btnNf") as HTMLButtonElement | null;
+        const txt = btn?.textContent; if (btn) { btn.disabled = true; btn.textContent = "Enviando..."; }
+        try {
+          const arquivo_base64 = await new Promise<string>((resolve) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result).split(",")[1]);
+            r.readAsDataURL(file);
+          });
+          const res = await fetch(`/api/admin/ativos/${ativoId}/nota-fiscal`, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ arquivo_base64, content_type: file.type }),
+          });
+          if (res.ok) window.location.reload();
+          else alert((await res.json().catch(() => ({}))).error || "Erro ao anexar a NF");
+        } finally { if (btn) { btn.disabled = false; if (txt) btn.textContent = txt; } }
+      };
+      picker.click();
+    }
+    async function removerNf() {
+      if (!confirm("Remover a nota fiscal do cofre? Esta ação não pode ser desfeita.")) return;
+      const res = await fetch(`/api/admin/ativos/${ativoId}/nota-fiscal`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      if (res.ok) window.location.reload(); else alert("Erro ao remover a NF");
+    }
+    (window as any).anexarNf = anexarNf;
+    (window as any).removerNf = removerNf;
 
     (window as any).fecharModais = fecharModais;
     (window as any).abrirModal = abrirModal;
