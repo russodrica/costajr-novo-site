@@ -493,6 +493,26 @@ organograma; escala/turnos; foto do colaborador (upload+exibicao). RLS policies
 NAO feitas (service-role only, igual ativos). Cripto em repouso: Supabase ja faz
 no nivel de infra.
 
+**Onda Financeiro (13/06/2026, commits 6692b0d/4b8dc9a):** modulo mais pesado
+(25.437 lancamentos + 262 categorias da Vobi). Baseline 12/12. Auditado por
+workflow (6 dimensoes, 68 achados). CORRECAO-COROA: o fluxo de caixa era agregado
+em JS sobre .limit(5000)/limit(1000) — frageil/errado com 25k linhas. Migration
+038 (RODADA) criou RPCs fin_resumo_caixa (fluxo por mes + cards + atrasados, tudo
+SUM/GROUP BY no Postgres) e fin_dre (DRE por categoria). resumo.ts e
+financeiro.astro agora chamam a RPC — corretos sobre TODOS os dados e rapidos
+(a_pagar mes ~230k, atrasados_pagar ~792k reais). DRE: /api/admin/fin/dre + modal
+'DRE / Resultado'. Validacao: valor numerico>=0 no POST e PATCH; status validado.
+QA scripts/qa-financeiro.mjs. IMPORTANTE: aplicar RPC via SQL editor exige reload
+(monaco demora ~25s p/ carregar) e injecao por base64 (Translate corrompe texto);
+CREATE FUNCTION nao dispara o dialogo de confirmacao destrutiva. Verificar a RPC
+via PostgREST /rest/v1/rpc/<funcao>.
+ADIADO p/ proximas fases da substituicao da Vobi (Fases A-D ja documentadas):
+contas bancarias (saldo por conta), centro de custo (obra_id ja existe parcial),
+recorrencia automatica (coluna existe, falta gerar lancamentos futuros), anexo de
+comprovante, fluxo projetado, conciliacao automatica, paginacao da lista (limit
+1000 — meses Vobi grandes podem exceder; hoje a maioria cabe). Rate limiting: nao
+feito (admin confiavel, sem infra Redis).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
