@@ -136,6 +136,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <option value="afastado">Afastados</option>
         <option value="desligado">Desligados</option>
       </select>
+      <button class="btn btn-outline" id="btnExportColab" onclick="exportarColabs()" title="Baixar a lista em CSV">⬇️ Exportar</button>
+      <button class="btn btn-outline" onclick="document.getElementById('modalImportColab').classList.add('open')" title="Cadastrar/atualizar vários de uma vez por planilha">⬆️ Importar</button>
       <button class="btn btn-primary" onclick="abrirModalColab()">+ Novo colaborador</button>
     </div>
     <div class="card">
@@ -319,6 +321,25 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     <div id="alertas-cards" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:16px"></div>
     <div id="alertas-conteudo"><div class="card"><div class="loading"><div class="spinner"></div> Carregando alertas...</div></div></div>
   </section>
+
+  <!-- ════════ MODAL IMPORTAR COLABORADORES ════════ -->
+  <div class="modal-overlay" id="modalImportColab">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-title">⬆️ Importar colaboradores em massa</div>
+      <ol style="font-size:13px;color:var(--ink-mid);line-height:1.7;padding-left:20px;margin:0 0 14px">
+        <li><a href="/api/admin/rh/colaboradores/export?modelo=1" style="font-weight:700;color:var(--brand)">Baixe o modelo</a> (ou exporte a base para editar e reimportar).</li>
+        <li>Preencha no Excel — uma linha por colaborador. <strong>ID</strong> vazio cria; preenchido (do export) atualiza. Sem ID, o CPF identifica para atualizar.</li>
+        <li>Salve como <strong>CSV</strong> e selecione abaixo.</li>
+      </ol>
+      <div class="form-group"><input type="file" id="impColabFile" accept=".csv,text/csv" /></div>
+      <div id="impColabResultado"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModal('modalImportColab')">Fechar</button>
+        <button type="button" class="btn btn-outline" id="btnAnalisarColab" onclick="analisarImportColab()">Analisar</button>
+        <button type="button" class="btn btn-primary" id="btnConfirmarImportColab" style="display:none" onclick="confirmarImportColab()">Confirmar importação</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ════════ MODAL COLABORADOR (novo/editar) ════════ -->
   <div class="modal-overlay" id="modalColab">
@@ -595,6 +616,56 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       } finally { btn.disabled = false; btn.textContent = "📧 Enviar resumo por e-mail"; }
     }
     (window as any).enviarResumoEmail = enviarResumoEmail;
+
+    // ── Export / Import de colaboradores ──
+    function exportarColabs() {
+      const p = new URLSearchParams();
+      const st = (document.getElementById("filtroStatusColab") as HTMLSelectElement)?.value;
+      if (st && st !== "todos") p.set("status", st);
+      window.location.href = "/api/admin/rh/colaboradores/export?" + p.toString();
+    }
+    let csvColabCache = "";
+    function renderImpColab(d: any, dry: boolean) {
+      const el = document.getElementById("impColabResultado")!;
+      const erros = d.erros || [];
+      el.innerHTML = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 12px">
+          <span style="padding:6px 12px;border-radius:8px;font-size:13px;font-weight:700;background:#ECFDF5;color:#047857">➕ Criar: ${d.criar ?? d.criados ?? 0}</span>
+          <span style="padding:6px 12px;border-radius:8px;font-size:13px;font-weight:700;background:#EFF6FF;color:#1D4ED8">✏️ Atualizar: ${d.atualizar ?? d.atualizados ?? 0}</span>
+          <span style="padding:6px 12px;border-radius:8px;font-size:13px;font-weight:700;background:${erros.length ? "#FEF2F2" : "#F3F4F6"};color:${erros.length ? "#B91C1C" : "#6B7280"}">⚠️ Erros: ${erros.length}</span>
+        </div>
+        ${erros.length ? `<div style="max-height:150px;overflow-y:auto;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;font-size:12.5px">${erros.map((e: any) => `<div style="color:#991B1B">Linha ${e.linha}: ${e.motivo}</div>`).join("")}</div>` : ""}
+        ${dry ? '<p style="font-size:12.5px;color:var(--ink-light);margin-top:10px">Revise e clique em <strong>Confirmar</strong>. Linhas com erro são puladas.</p>' : '<p style="font-size:13px;color:#047857;font-weight:700;margin-top:10px">✓ Importação concluída!</p>'}`;
+    }
+    async function analisarImportColab() {
+      const f = (document.getElementById("impColabFile") as HTMLInputElement).files?.[0];
+      if (!f) { alert("Selecione um arquivo CSV."); return; }
+      csvColabCache = await f.text();
+      const btn = document.getElementById("btnAnalisarColab") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Analisando...";
+      try {
+        const res = await fetch("/api/admin/rh/colaboradores/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ csv: csvColabCache, confirmar: false }) });
+        const d = await res.json();
+        if (!res.ok) { document.getElementById("impColabResultado")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro"}</div>`; return; }
+        renderImpColab(d, true);
+        (document.getElementById("btnConfirmarImportColab") as HTMLElement).style.display = (d.criar || d.atualizar) ? "" : "none";
+      } finally { btn.disabled = false; btn.textContent = "Analisar"; }
+    }
+    async function confirmarImportColab() {
+      if (!csvColabCache) return;
+      const btn = document.getElementById("btnConfirmarImportColab") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Importando...";
+      try {
+        const res = await fetch("/api/admin/rh/colaboradores/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ csv: csvColabCache, confirmar: true }) });
+        const d = await res.json();
+        if (!res.ok) { document.getElementById("impColabResultado")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro"}</div>`; return; }
+        renderImpColab(d, false);
+        setTimeout(() => window.location.reload(), 1500);
+      } finally { btn.disabled = false; btn.textContent = "Confirmar importação"; }
+    }
+    (window as any).exportarColabs = exportarColabs;
+    (window as any).analisarImportColab = analisarImportColab;
+    (window as any).confirmarImportColab = confirmarImportColab;
 
     // badge da aba (carrega só o resumo no load da página)
     fetch("/api/admin/rh/alertas").then(r => r.ok ? r.json() : null).then(d => {
