@@ -525,6 +525,22 @@ modo "marcos"). Roda DENTRO do cron diario cashback-renovacao (piggyback — Hob
 nao deixa 3o cron). Botao "Enviar resumo agora" usa modo "completo". Testar sem
 enviar: /api/cron/rh-vencimentos?dry=1. RH_ALERT_EMAIL no env sobrescreve o destino.
 
+**RH — correcao de regime/status pelos GRUPOS do Monday (13/06/2026, commit
+f19353d):** os 96 colaboradores vinham todos CLT (a heuristica de regime por
+tamanho de documento falhava — PJ tem CPF, nao CNPJ; 0 CNPJ no board) e o
+ativo/inativo saia da coluna status (impreciso). A FONTE DE VERDADE do board RH
+(6629107099) sao os GRUPOS: "Ativos Gestao - CLT", "Ativos Operacao - CLT",
+"Ativos - PJ", "Diaristas", "PJ_INATIVOS 2025/2026", "CLT_INATIVOS 2025/2026".
+scripts/corrigir-rh-grupos.mjs (RODADO) faz PATCH por monday_id: regime
+(pj/clt/temporario-p/-diarista) e status (desligado p/ grupos INATIVOS;
+ferias/afastado pela coluna status nos ativos). Resultado: 30 PJ, 53 CLT, 13
+diaristas; 24 ativos / 72 inativos. A pagina /admin/rh e SSR, entao vale ao
+recarregar. APOS qualquer re-import do Monday (importar-rh-monday.mjs), rodar
+corrigir-rh-grupos.mjs — o grupo NAO vinha no export antigo; o ids dos grupos
+estao embutidos no script (atualizar se a Adriana mover gente de grupo no Monday).
+OBS: ha nomes duplicados no proprio board Monday (ROMISON, DANIEL, BEATRIZ em 2
+grupos com ids diferentes) — viram 2 linhas; dedupe so se a Adriana pedir.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
