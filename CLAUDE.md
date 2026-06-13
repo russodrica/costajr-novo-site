@@ -459,6 +459,40 @@ NOTA: havia colisao de numero 035 (035_ativos_storage + 035_orcamentos); resolvi
 em 13/06/2026 renomeando orcamentos para 036_orcamentos.sql. 035_ativos_storage ja
 foi RODADA em producao com o nome 035; 036_orcamentos ainda NAO foi rodada.
 
+**Onda Nota Fiscal + D4Sign (13/06/2026):** cofre privado da NF (bucket
+'ativos-docs' PRIVADO criado via Storage API, coluna ativos.nota_fiscal_path
+migration 037 RODADA; POST/DELETE /api/admin/ativos/[id]/nota-fiscal + GET
+.../arquivo com URL assinada 10min; QA 11/11). D4Sign: token de PRODUCAO liberado
+pela Adriana (D4SIGN_TOKEN=live_3ff2e282..., D4SIGN_CRYPT_KEY=live_crypt_Hjr90...
+gravados no .env LOCAL; FALTA a Adriana colar as 2 vars na Vercel — eu nao devo
+digitar API keys em sistemas externos). Token validado contra API real (12 cofres:
+EMPREITEIROS, PJ-TECNICOS, FICHA EPI, DOCS CLT, CONTRATO_CLIENTES...). Adicionado
+seletor de cofre no envio de termo (/api/admin/d4sign/cofres). Modelos de
+contrato (empreiteiros/PJ): a Adriana ja tem e vai passar o caminho.
+
+**Onda RH (13/06/2026, commits b5f439c/d1d2fca):** modulo ja solido (QA baseline
+13/13). Auditado por workflow multi-agente (6 dimensoes, 69 achados). Implementado:
+(VALIDACAO) enums validados (ausencia tipo/status, colaborador regime/status, doc
+tipo) → 400 claro; ausencia dias SEMPRE no servidor; data_desligamento auto ao
+desligar. (LGPD) busca por CPF nao usa substring (so match exato p/ CPF completo,
+evita enumeracao). (BUG) admissao digital faz rollback se falhar ao mover docs.
+(ALERTAS — alto valor) aba 'Alertas' no RH: docs VENCIDOS, vencendo 60d com
+criticidade (ASO/CNH/NR vermelho), colaboradores ativos SEM ASO, ferias em
+andamento; API /api/admin/rh/alertas; filtro ?vencidos=1; export CSV de
+vencimentos; cron /api/cron/rh-vencimentos (e-mail, dual-auth CRON_SECRET ou
+admin) + botao 'Enviar resumo agora' — cron NAO registrado no vercel.json (Hobby
+limita a 2 crons; ja ha 2; confirmar plano antes de adicionar 3o). (MASSA)
+export/import de colaboradores por planilha (mesma pauta dos ativos; upsert por
+ID ou CPF; atualizacao parcial nao apaga colunas ausentes). QA: scripts/qa-rh.mjs
+(19/19) e qa-rh-import.mjs.
+ADIADO p/ decisao da Adriana (sobre-cautela ou feature grande): mascaramento de
+salario/CPF/banco na visao do admin (ele e o controlador autorizado); saldo de
+ferias/periodo aquisitivo (CLT, precisa migration+regra); autoatendimento do
+colaborador (ver seus docs/holerite no portal); avaliacao de desempenho;
+organograma; escala/turnos; foto do colaborador (upload+exibicao). RLS policies
+NAO feitas (service-role only, igual ativos). Cripto em repouso: Supabase ja faz
+no nivel de infra.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
