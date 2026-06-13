@@ -14,9 +14,9 @@ export const GET: APIRoute = async ({ request, params }) => {
     const [{ data: ativo, error }, { data: movimentos }, { data: termos }, { data: manutencoes }, { data: ocorrencias }] = await Promise.all([
       db.from("ativos").select("*").eq("id", id).maybeSingle(),
       db.from("ativos_movimentos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }).limit(500),
-      db.from("ativos_termos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
-      db.from("ativos_manutencoes").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
-      db.from("ativos_ocorrencias").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
+      db.from("ativos_termos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }).limit(200),
+      db.from("ativos_manutencoes").select("*").eq("ativo_id", id).order("created_at", { ascending: false }).limit(200),
+      db.from("ativos_ocorrencias").select("*").eq("ativo_id", id).order("created_at", { ascending: false }).limit(200),
     ]);
     if (error) return jsonErr(500, error.message);
     if (!ativo) return jsonErr(404, "Ativo não encontrado");
@@ -40,6 +40,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       "fornecedor", "observacoes", "nota_fiscal_url", "numero_nota_fiscal", "data_nota_fiscal",
       "garantia", "garantia_fim", "manual_url", "fotos", "anexos", "campos",
     ];
+    if (body.categoria !== undefined && !["telefonia", "informatica", "equipamento_obra", "epi", "veiculo", "mobiliario", "outros"].includes(body.categoria)) {
+      return jsonErr(400, "Categoria inválida");
+    }
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const c of editaveis) if (body[c] !== undefined) patch[c] = body[c] === "" ? null : body[c];
     if (Object.keys(patch).length <= 1) return jsonErr(400, "Nada para atualizar");

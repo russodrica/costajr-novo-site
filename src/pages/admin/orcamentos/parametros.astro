@@ -1,0 +1,149 @@
+---
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: params, error } = await db.from("orc_parametros_bdi").select("*").order("ordem");
+
+const gruposLabel: Record<string, string> = {
+  imposto: "Impostos", resultado: "Resultado (margem por faixa de valor)",
+  financeiro: "Contingência e custo financeiro", indireto: "Custos indiretos",
+  risco: "Grau de risco", alcada: "Alçadas de desconto",
+};
+const porGrupo: Record<string, any[]> = {};
+for (const p of params || []) (porGrupo[p.grupo || "outros"] ||= []).push(p);
+const ordemGrupos = ["imposto", "resultado", "financeiro", "indireto", "risco", "alcada"];
+---
+<Admin title="Parâmetros de BDI" current="orcamentos">
+
+  {error && <div class="alert alert-error">Erro ao carregar parâmetros: {error.message}. Rode a migration <code>035_orcamentos.sql</code>.</div>}
+
+  <div class="toolbar">
+    <a href="/admin/orcamentos" class="btn btn-secondary btn-sm">‹ Voltar à base</a>
+    <span class="toolbar-title">Composição de custo / BDI</span>
+    <button class="btn btn-primary" onclick="salvarTudo()">Salvar alterações</button>
+  </div>
+  <div id="msg"></div>
+
+  <div class="alert" style="background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE">
+    O <strong>BDI</strong> é a soma dos componentes abaixo. O preço de venda = custo × (1 + BDI). Para o
+    <strong>Resultado</strong> e o <strong>Grau de Risco</strong>, escolhe-se UMA faixa por orçamento.
+    Estes são os valores-padrão (de <code>COMPOSIÇÃO_CUSTO.xlsx</code>); o montador (Fase 2) parte daqui.
+  </div>
+
+  <div class="grid2">
+    <div>
+      {ordemGrupos.filter(g => porGrupo[g]?.length).map(g => (
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-title" style="margin-bottom:12px">{gruposLabel[g] || g}</div>
+          <table class="params">
+            <tbody>
+              {porGrupo[g].map((p: any) => (
+                <tr data-chave={p.chave} data-grupo={g}>
+                  <td>
+                    <div style="font-weight:600">{p.rotulo}</div>
+                    {p.observacao && <div style="font-size:11.5px;color:#9CA3AF">{p.observacao}</div>}
+                  </td>
+                  <td style="width:120px;text-align:right">
+                    {p.valor == null
+                      ? <span style="color:#9CA3AF;font-size:12px">{p.observacao || "—"}</span>
+                      : <div class="pct"><input type="number" step="0.1" class="val" value={(Number(p.valor) * 100).toFixed(2)} /><span>%</span></div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+
+    <div>
+      <div class="card calc">
+        <div class="section-title" style="margin-bottom:12px">Simulador de BDI</div>
+        <div class="form-group"><label>Dentro de SP capital? (ISS)</label>
+          <select id="cIss"><option value="0">Sim — sem ISS</option><option value="1" selected>Não — aplica ISS</option></select>
+        </div>
+        <div class="form-group"><label>Faixa de resultado</label>
+          <select id="cResultado">
+            <option value="resultado_ate10">Até R$ 10 mil</option>
+            <option value="resultado_10a50">R$ 10 a 50 mil</option>
+            <option value="resultado_50a100">R$ 50 a 100 mil</option>
+            <option value="resultado_acima100" selected>Acima de R$ 100 mil</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Grau de risco</label>
+          <select id="cRisco">
+            <option value="risco_1" selected>1 — Sem risco</option>
+            <option value="risco_2">2 — Complexidade técnica</option>
+            <option value="risco_3">3 — Sem interesse / incertezas</option>
+          </select>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:14px 0" />
+        <div class="calc-row"><span>BDI total</span><strong id="outBdi">—</strong></div>
+        <div class="calc-row"><span>Multiplicador (V3)</span><strong id="outV3">—</strong></div>
+        <div class="calc-row big"><span>Custo R$ 1.000 →</span><strong id="outEx">—</strong></div>
+        <p style="font-size:11.5px;color:#9CA3AF;margin-top:10px">Reflete os valores acima em tempo real (mesmo antes de salvar).</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const msg = document.getElementById("msg");
+    function lerParams() {
+      const m = {};
+      document.querySelectorAll("tr[data-chave]").forEach((tr) => {
+        const inp = tr.querySelector(".val");
+        m[tr.getAttribute("data-chave")] = inp ? Number(inp.value) / 100 : null;
+      });
+      return m;
+    }
+    function recalc() {
+      const m = lerParams();
+      const iss = document.getElementById("cIss").value === "1" ? (m.iss || 0) : 0;
+      const resultado = m[document.getElementById("cResultado").value] || 0;
+      const risco = m[document.getElementById("cRisco").value] || 0;
+      const bdi = (m.imposto || 0) + iss + resultado + (m.contingencia || 0) + (m.custo_financeiro || 0) + (m.indireto || 0) + risco;
+      const v3 = 1 + bdi;
+      document.getElementById("outBdi").textContent = (bdi * 100).toFixed(2) + "%";
+      document.getElementById("outV3").textContent = v3.toFixed(4);
+      document.getElementById("outEx").textContent = (1000 * v3).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    }
+    document.querySelectorAll(".val, #cIss, #cResultado, #cRisco").forEach((el) => el.addEventListener("input", recalc));
+
+    async function salvarTudo() {
+      const itens = [];
+      document.querySelectorAll("tr[data-chave]").forEach((tr) => {
+        const inp = tr.querySelector(".val");
+        if (inp) itens.push({ chave: tr.getAttribute("data-chave"), valor: Number(inp.value) / 100 });
+      });
+      const res = await fetch("/api/admin/orcamentos/parametros", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ itens }) });
+      const d = await res.json();
+      msg.innerHTML = res.ok
+        ? `<div class="alert alert-success">Parâmetros salvos (${d.atualizados?.length || 0} atualizados).</div>`
+        : `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
+      if (res.ok) setTimeout(() => (msg.innerHTML = ""), 4000);
+    }
+    window.salvarTudo = salvarTudo;
+    recalc();
+  </script>
+
+  <style>
+    .grid2 { display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; }
+    @media (max-width:900px){ .grid2 { grid-template-columns:1fr; } }
+    table.params { width:100%; border-collapse:collapse; }
+    table.params td { padding:8px 4px; border-bottom:1px solid var(--border-light); vertical-align:middle; }
+    .pct { display:flex; align-items:center; gap:4px; justify-content:flex-end; }
+    .pct input { width:78px; padding:6px 8px; border:1px solid #D1D5DB; border-radius:7px; text-align:right; font-size:13px; }
+    .pct span { color:var(--ink-mid); font-size:13px; }
+    .calc { position:sticky; top:72px; }
+    .calc-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:14px; }
+    .calc-row.big { font-size:16px; border-top:1px solid var(--border); margin-top:6px; padding-top:12px; }
+    .calc-row strong { color:var(--brand); font-family:'Montserrat',sans-serif; }
+  </style>
+</Admin>

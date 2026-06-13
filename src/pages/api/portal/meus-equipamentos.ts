@@ -4,6 +4,17 @@ import { requireAdmin, jsonOk, jsonErr } from "~/lib/auth";
 
 export const prerender = false;
 
+// Campos sensíveis que NÃO devem aparecer para o colaborador no portal (LGPD — minimização):
+// segredos operacionais e dados de registro que o portador não precisa no dia a dia.
+// O admin continua vendo tudo na ficha do ativo.
+const CAMPOS_OCULTOS_PORTAL = new Set(["pin_puk", "renavam", "chassi", "mac"]);
+function camposSeguros(campos: Record<string, unknown> | null | undefined) {
+  if (!campos || typeof campos !== "object") return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(campos)) if (!CAMPOS_OCULTOS_PORTAL.has(k)) out[k] = v;
+  return out;
+}
+
 // GET /api/portal/meus-equipamentos
 // Equipamentos sob responsabilidade do colaborador logado + termos (pendentes e aceitos)
 export const GET: APIRoute = async ({ request }) => {
@@ -37,7 +48,8 @@ export const GET: APIRoute = async ({ request }) => {
       movimentos = data || [];
     }
 
-    return jsonOk({ ativos: ativos || [], termos: termos || [], movimentos });
+    const ativosSeguros = (ativos || []).map((a) => ({ ...a, campos: camposSeguros(a.campos) }));
+    return jsonOk({ ativos: ativosSeguros, termos: termos || [], movimentos });
   } catch {
     return jsonErr(401, "Não autenticado.");
   }

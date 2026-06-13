@@ -13,7 +13,8 @@ export const GET: APIRoute = async ({ request, params }) => {
       .from("ativos_manutencao_planos")
       .select("*")
       .eq("ativo_id", params.id!)
-      .order("proxima_em");
+      .order("proxima_em")
+      .limit(200);
     if (error) return jsonErr(500, error.message);
     return jsonOk(data || []);
   } catch (e: any) {
@@ -25,16 +26,26 @@ export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
     const { titulo, periodicidade_dias, proxima_em, observacoes } = await request.json();
+    const tituloLimpo = String(titulo || "").trim();
     const dias = Number(periodicidade_dias);
-    if (!titulo || !dias || dias < 1) return jsonErr(400, "Informe o título e a periodicidade (em dias)");
+    if (!tituloLimpo || !dias || dias < 1) return jsonErr(400, "Informe o título e a periodicidade (em dias)");
+    if (dias > 3650) return jsonErr(400, "Periodicidade muito longa (máx. 3650 dias / 10 anos)");
+
+    const db = supabaseAdmin();
+    const { data: ativo } = await db.from("ativos").select("id").eq("id", params.id!).maybeSingle();
+    if (!ativo) return jsonErr(404, "Ativo não encontrado");
 
     let proxima = proxima_em;
-    if (!proxima) {
+    if (proxima) {
+      const dt = new Date(proxima);
+      if (isNaN(dt.getTime())) return jsonErr(400, "Data da próxima execução inválida");
+      proxima = dt.toISOString().slice(0, 10);
+    } else {
       const d = new Date(); d.setDate(d.getDate() + dias);
       proxima = d.toISOString().slice(0, 10);
     }
-    const { data, error } = await supabaseAdmin().from("ativos_manutencao_planos").insert({
-      ativo_id: params.id!, titulo, periodicidade_dias: dias, proxima_em: proxima,
+    const { data, error } = await db.from("ativos_manutencao_planos").insert({
+      ativo_id: params.id!, titulo: tituloLimpo, periodicidade_dias: dias, proxima_em: proxima,
       observacoes: observacoes || null, criado_por: admin.email,
     }).select().single();
     if (error) return jsonErr(400, error.message);

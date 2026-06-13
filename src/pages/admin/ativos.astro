@@ -12,10 +12,16 @@ const db = supabaseAdmin();
 const filtroCategoria = Astro.url.searchParams.get("categoria") || "todas";
 const filtroStatus = Astro.url.searchParams.get("status") || "todos";
 const busca = Astro.url.searchParams.get("busca") || "";
+const filtroGarantia = Astro.url.searchParams.get("garantia") || ""; // "vencendo" = garantia ativa nos próximos 60 dias
 
 let q = db.from("ativos").select("*").order("created_at", { ascending: false }).limit(1000);
 if (filtroCategoria !== "todas") q = q.eq("categoria", filtroCategoria);
 if (filtroStatus !== "todos") q = q.eq("status", filtroStatus);
+if (filtroGarantia === "vencendo") {
+  const h = new Date().toISOString().slice(0, 10);
+  const fim = new Date(); fim.setDate(fim.getDate() + 60);
+  q = q.eq("garantia", true).gte("garantia_fim", h).lte("garantia_fim", fim.toISOString().slice(0, 10));
+}
 if (busca) {
   const b = busca.replace(/[%,()]/g, " ").trim();
   q = q.or(`descricao.ilike.%${b}%,marca.ilike.%${b}%,modelo.ilike.%${b}%,numero_serie.ilike.%${b}%,numero_patrimonial.ilike.%${b}%,codigo_interno.ilike.%${b}%,alocado_para_nome.ilike.%${b}%`);
@@ -69,7 +75,10 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
     <div class="stat-card"><div class="stat-value" style="color:#D97706">{porStatus.em_manutencao ?? 0}</div><div class="stat-label">Em manutenção</div></div>
     <div class="stat-card"><div class="stat-value" style="color:#B91C1C">{(porStatus.extraviado ?? 0) + (porStatus.roubado ?? 0) + (porStatus.danificado ?? 0)}</div><div class="stat-label">Extraviado/roubado/danificado</div></div>
     <div class="stat-card"><div class="stat-value" style="color:#16A34A;font-size:1.35rem">{fmtMoney(valorTotal)}</div><div class="stat-label">Valor do patrimônio</div></div>
-    <div class="stat-card"><div class="stat-value" style={garantiaVencendo ? "color:#D97706" : ""}>{garantiaVencendo}</div><div class="stat-label">Garantias vencendo (60d)</div></div>
+    <a class="stat-card" href="/admin/ativos?garantia=vencendo" style="text-decoration:none;cursor:pointer" title="Ver os ativos com garantia vencendo nos próximos 60 dias">
+      <div class="stat-value" style={garantiaVencendo ? "color:#D97706" : ""}>{garantiaVencendo}</div>
+      <div class="stat-label">Garantias vencendo (60d) {garantiaVencendo ? "→" : ""}</div>
+    </a>
     <div class="stat-card"><div class="stat-value" style={preventivasVencidas ? "color:#B91C1C" : "color:#16A34A"}>{preventivasVencidas ?? 0}</div><div class="stat-label">Preventivas vencidas</div></div>
   </div>
 
@@ -85,8 +94,16 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
       <option value="todos" selected={filtroStatus === "todos"}>Todos status</option>
       {Object.entries(statusLabels).map(([k, v]) => <option value={k} selected={k === filtroStatus}>{v}</option>)}
     </select>
+    <button class="btn btn-outline" id="btnExport" title="Baixar a lista atual em CSV (abre no Excel)">⬇️ Exportar</button>
     <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo ativo</button>
   </div>
+
+  {filtroGarantia === "vencendo" && (
+    <div class="alert" style="background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <span>Mostrando apenas ativos com <strong>garantia vencendo nos próximos 60 dias</strong>.</span>
+      <a href="/admin/ativos" class="btn btn-secondary btn-sm">✕ Limpar filtro</a>
+    </div>
+  )}
 
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
@@ -228,6 +245,18 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
     document.getElementById("fCategoria")?.addEventListener("change", filtrarRecarrega);
     document.getElementById("fStatus")?.addEventListener("change", filtrarRecarrega);
     document.getElementById("busca")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") filtrarRecarrega(); });
+
+    // Exportar CSV respeitando os filtros atuais
+    document.getElementById("btnExport")?.addEventListener("click", () => {
+      const p = new URLSearchParams();
+      const cat = (document.getElementById("fCategoria") as HTMLSelectElement).value;
+      const st = (document.getElementById("fStatus") as HTMLSelectElement).value;
+      const bq = (document.getElementById("busca") as HTMLInputElement).value;
+      if (cat && cat !== "todas") p.set("categoria", cat);
+      if (st && st !== "todos") p.set("status", st);
+      if (bq) p.set("busca", bq);
+      window.location.href = "/api/admin/ativos/export?" + p.toString();
+    });
 
     function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
     function abrirModalNovo() { document.getElementById("modalNovo").classList.add("open"); atualizarCamposCategoria(); }

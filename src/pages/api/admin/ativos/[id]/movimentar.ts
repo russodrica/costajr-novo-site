@@ -4,6 +4,9 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 
 export const prerender = false;
 
+const STATUS_VALIDOS = ["em_estoque", "disponivel", "alocado", "em_manutencao", "em_transito", "extraviado", "roubado", "danificado", "baixado", "descartado"];
+const TIPOS_OCORRENCIA = ["extravio", "roubo", "furto", "dano", "quebra", "sinistro", "outro"];
+
 /**
  * POST /api/admin/ativos/[id]/movimentar
  * Única porta de entrada para mudanças de situação do ativo.
@@ -139,13 +142,18 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
             ...(garantia_servico ? { garantia_servico } : {}),
           }).eq("id", manutencao_id);
         }
-        // volta para onde estava alocado antes? Regra simples: volta pro estoque
+        // Se o ativo ainda tinha alocação (não foi devolvido antes de ir p/ manutenção),
+        // restaura para quem o usava; senão volta pro estoque.
+        const tinhaAlocacao = !!ativo.alocado_para_nome;
+        const statusRetorno = tinhaAlocacao ? "alocado" : "em_estoque";
         const mov = await aplicar(
-          { status: "em_estoque", alocado_para_tipo: null, alocado_para_id: null, alocado_para_nome: null },
+          tinhaAlocacao ? { status: "alocado" } : { status: "em_estoque", alocado_para_tipo: null, alocado_para_id: null, alocado_para_nome: null },
           {
             tipo: "retorno_manutencao",
-            descricao: `Retornou da manutenção${observacao ? ` — ${observacao}` : ""}`,
-            status_novo: "em_estoque",
+            descricao: tinhaAlocacao
+              ? `Retornou da manutenção para ${ativo.alocado_para_nome}${observacao ? ` — ${observacao}` : ""}`
+              : `Retornou da manutenção ao estoque${observacao ? ` — ${observacao}` : ""}`,
+            status_novo: statusRetorno,
             dados: { manutencao_id: manutencao_id || null },
           }
         );
@@ -155,6 +163,8 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
       case "ocorrencia": {
         const { tipo_ocorrencia, data_ocorrencia, descricao, responsavel, boletim_ocorrencia_url, novo_status } = body;
         if (!tipo_ocorrencia || !descricao) return jsonErr(400, "Tipo e descrição da ocorrência são obrigatórios");
+        if (!TIPOS_OCORRENCIA.includes(tipo_ocorrencia)) return jsonErr(400, "Tipo de ocorrência inválido");
+        if (novo_status && !STATUS_VALIDOS.includes(novo_status)) return jsonErr(400, "Status inválido");
         const { data: oc, error: eO } = await db.from("ativos_ocorrencias").insert({
           ativo_id: id, tipo: tipo_ocorrencia,
           data_ocorrencia: data_ocorrencia || agora.slice(0, 10),
@@ -181,6 +191,7 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
       case "mudar_status": {
         const { novo_status, observacao } = body;
         if (!novo_status) return jsonErr(400, "Informe o novo status");
+        if (!STATUS_VALIDOS.includes(novo_status)) return jsonErr(400, "Status inválido");
         const mov = await aplicar(
           { status: novo_status },
           {

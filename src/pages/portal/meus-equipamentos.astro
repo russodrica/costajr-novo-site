@@ -146,6 +146,7 @@ import Portal from "~/layouts/Portal.astro";
       const res = await fetch(`/api/portal/termos/${id}/aceitar`, { method: "POST", headers: { "x-portal-auth": token!, "content-type": "application/json" }, body: "{}" });
       if (res.ok) {
         (window as any).fecharTermo();
+        alert("Termo aceito com sucesso! Registramos a data, a hora e o seu IP. ✅");
         document.getElementById("loading")!.style.display = "";
         document.getElementById("content")!.style.display = "none";
         carregar();

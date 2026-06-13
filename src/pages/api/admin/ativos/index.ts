@@ -4,6 +4,8 @@ import { supabaseAdmin } from "../../../../lib/supabase";
 
 export const prerender = false;
 
+const CATEGORIAS_VALIDAS = ["telefonia", "informatica", "equipamento_obra", "epi", "veiculo", "mobiliario", "outros"];
+
 // GET /api/admin/ativos?categoria=&status=&busca=&alocado_tipo=&alocado_id=
 export const GET: APIRoute = async ({ request, url }) => {
   try {
@@ -41,14 +43,16 @@ export const POST: APIRoute = async ({ request }) => {
     const body = await request.json();
     const { categoria, descricao } = body;
     if (!categoria || !descricao) return jsonErr(400, "Categoria e descrição são obrigatórios");
+    if (!CATEGORIAS_VALIDAS.includes(categoria)) return jsonErr(400, "Categoria inválida");
 
+    // status NÃO é aceito do cliente: todo ativo novo nasce em estoque
     const campos = [
       "codigo_interno", "numero_patrimonial", "categoria", "subcategoria", "descricao",
       "marca", "modelo", "fabricante", "numero_serie", "data_aquisicao", "valor_aquisicao",
       "fornecedor", "observacoes", "nota_fiscal_url", "numero_nota_fiscal", "data_nota_fiscal",
-      "garantia", "garantia_fim", "manual_url", "fotos", "anexos", "campos", "status",
+      "garantia", "garantia_fim", "manual_url", "fotos", "anexos", "campos",
     ];
-    const row: Record<string, unknown> = { criado_por: admin.email };
+    const row: Record<string, unknown> = { criado_por: admin.email, status: "em_estoque" };
     for (const c of campos) if (body[c] !== undefined && body[c] !== "") row[c] = body[c];
 
     const db = supabaseAdmin();

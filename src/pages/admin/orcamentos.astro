@@ -1,0 +1,293 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+// Facetas e contagens (colunas leves) — base inteira p/ montar filtros e KPIs.
+const { data: leves, error: erroBase } = await db
+  .from("orc_servicos")
+  .select("disciplina, grupo, status_auditoria, ativo")
+  .limit(5000);
+
+const disciplinas = ["Civil", "Elétrica", "Hidráulica", "Ar Condicionado"];
+const porDisciplina: Record<string, number> = {};
+const gruposPorDisc: Record<string, Set<string>> = {};
+let total = 0, pendencias = 0, inativos = 0;
+for (const r of leves || []) {
+  total++;
+  porDisciplina[r.disciplina] = (porDisciplina[r.disciplina] || 0) + 1;
+  if (r.status_auditoria && r.status_auditoria !== "OK") pendencias++;
+  if (r.ativo === false) inativos++;
+  if (r.grupo) (gruposPorDisc[r.disciplina] ||= new Set()).add(r.grupo);
+}
+const gruposJson: Record<string, string[]> = {};
+for (const d of Object.keys(gruposPorDisc)) gruposJson[d] = [...gruposPorDisc[d]].sort((a, b) => a.localeCompare(b, "pt"));
+const todosGrupos = [...new Set(Object.values(gruposJson).flat())].sort((a, b) => a.localeCompare(b, "pt"));
+---
+<Admin title="Orçamentos — Base de Serviços" current="orcamentos">
+
+  {erroBase && (
+    <div class="alert alert-error">
+      Não consegui carregar a base de serviços: {erroBase.message}.<br />
+      Se o módulo é novo, rode a migration <code>035_orcamentos.sql</code> no Supabase e depois
+      o import <code>node scripts/importar-base-orcamento.mjs</code>.
+    </div>
+  )}
+
+  <div class="card-grid">
+    <div class="stat-card"><div class="stat-value">{total.toLocaleString("pt-BR")}</div><div class="stat-label">Serviços na base</div></div>
+    <div class="stat-card"><div class="stat-value">{(porDisciplina["Civil"] || 0)}</div><div class="stat-label">Civil</div></div>
+    <div class="stat-card"><div class="stat-value">{(porDisciplina["Elétrica"] || 0)}</div><div class="stat-label">Elétrica</div></div>
+    <div class="stat-card"><div class="stat-value">{(porDisciplina["Hidráulica"] || 0)}</div><div class="stat-label">Hidráulica</div></div>
+    <div class="stat-card"><div class="stat-value">{(porDisciplina["Ar Condicionado"] || 0)}</div><div class="stat-label">Ar Condicionado</div></div>
+    <a href="/admin/orcamentos?status=pendentes" class="stat-card" style="border-color:#FCD34D">
+      <div class="stat-value" style="color:#B45309">{pendencias}</div><div class="stat-label">Pendências de auditoria</div>
+    </a>
+  </div>
+
+  <div class="alert" style="background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE">
+    🧮 <strong>Fase 1 — Base oficial de serviços.</strong> Aqui você administra os preços de custo (sem BDI).
+    O <strong>montador de propostas</strong> (escolher itens, quantidades, BDI e gerar a planilha/proposta) chega na Fase 2.
+    Os preços de venda usam os <a href="/admin/orcamentos/parametros" style="color:#1E40AF;font-weight:700">Parâmetros de BDI</a>.
+  </div>
+
+  <div class="toolbar">
+    <span class="toolbar-title">Catálogo de serviços</span>
+    <input id="busca" class="search-input" placeholder="Buscar por código ou descrição…" />
+    <select id="fDisciplina" class="filter-select">
+      <option value="todas">Todas as disciplinas</option>
+      {disciplinas.map(d => <option value={d}>{d}</option>)}
+    </select>
+    <select id="fGrupo" class="filter-select"><option value="todos">Todos os grupos</option>{todosGrupos.map(g => <option value={g}>{g}</option>)}</select>
+    <select id="fStatus" class="filter-select">
+      <option value="todos">Status: todos</option>
+      <option value="pendentes">Só pendências de auditoria</option>
+    </select>
+    <select id="fAtivo" class="filter-select">
+      <option value="ativos">Ativos</option>
+      <option value="todos">Ativos + inativos</option>
+      <option value="inativos">Só inativos</option>
+    </select>
+    <a href="/admin/orcamentos/parametros" class="btn btn-secondary">⚙️ Parâmetros BDI</a>
+    <button class="btn btn-primary" onclick="abrirNovo()">+ Novo serviço</button>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Código</th><th>Disciplina</th><th>Grupo</th><th>Descrição</th><th>Unid.</th>
+          <th style="text-align:right">Custo Mat.</th><th style="text-align:right">Custo M.O.</th><th style="text-align:right">Custo Total</th>
+          <th>Auditoria</th><th></th>
+        </tr></thead>
+        <tbody id="tbody">
+          <tr><td colspan="10"><div class="loading"><div class="spinner"></div> Carregando serviços…</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pager" id="pager"></div>
+  </div>
+
+  <!-- Modal serviço -->
+  <div class="modal-overlay" id="modalServ">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-title" id="tituloServ">Novo serviço</div>
+      <div id="msgServ"></div>
+      <form id="formServ">
+        <input type="hidden" name="modo" value="novo" />
+        <input type="hidden" name="codigo_orig" />
+        <div class="form-row">
+          <div class="form-group"><label>Código *</label><input name="codigo" required placeholder="Ex: CI200" /></div>
+          <div class="form-group"><label>Disciplina *</label>
+            <select name="disciplina" required>{disciplinas.map(d => <option value={d}>{d}</option>)}</select>
+          </div>
+          <div class="form-group"><label>Unidade</label><input name="unidade" placeholder="m², un, vb…" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Macrogrupo</label><input name="macrogrupo" /></div>
+          <div class="form-group"><label>Grupo (subcategoria)</label><input name="grupo" /></div>
+        </div>
+        <div class="form-group"><label>Descrição *</label><textarea name="descricao" required></textarea></div>
+        <div class="form-row">
+          <div class="form-group"><label>Custo Material (R$) — sem BDI</label><input name="custo_material" type="number" step="0.0001" min="0" /></div>
+          <div class="form-group"><label>Custo Mão de Obra (R$) — sem BDI</label><input name="custo_mao_obra" type="number" step="0.0001" min="0" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Código SINAPI</label><input name="sinapi_codigo" /></div>
+          <div class="form-group"><label>Preço SINAPI (R$)</label><input name="sinapi_preco" type="number" step="0.01" min="0" /></div>
+          <div class="form-group"><label>Status auditoria</label><input name="status_auditoria" placeholder="OK" /></div>
+        </div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalServ')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script define:vars={{ gruposJson }}>
+    const fmt = (v) => v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    let page = 1, pageSize = 50, totalItens = 0, carregando = false;
+
+    function paramsAtuais() {
+      const p = new URLSearchParams();
+      const busca = document.getElementById("busca").value.trim();
+      if (busca) p.set("busca", busca);
+      p.set("disciplina", document.getElementById("fDisciplina").value);
+      p.set("grupo", document.getElementById("fGrupo").value);
+      p.set("status", document.getElementById("fStatus").value);
+      p.set("ativo", document.getElementById("fAtivo").value);
+      p.set("page", String(page));
+      p.set("pageSize", String(pageSize));
+      return p;
+    }
+
+    async function carregar() {
+      if (carregando) return;
+      carregando = true;
+      const tbody = document.getElementById("tbody");
+      try {
+        const res = await fetch(`/api/admin/orcamentos/servicos?${paramsAtuais()}`);
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Erro");
+        totalItens = d.total;
+        if (!d.itens.length) {
+          tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><strong>Nenhum serviço encontrado</strong><p>Ajuste os filtros ou cadastre um novo.</p></div></td></tr>`;
+        } else {
+          tbody.innerHTML = d.itens.map((s) => {
+            const flag = s.status_auditoria && s.status_auditoria !== "OK"
+              ? `<span class="badge badge-yellow" title="${esc(s.status_auditoria)}">⚠ ${esc(String(s.status_auditoria).split(" ")[0])}</span>` : `<span class="badge badge-green">OK</span>`;
+            const inativo = s.ativo === false ? ` <span class="badge badge-gray">inativo</span>` : "";
+            return `<tr>
+              <td><strong>${esc(s.codigo)}</strong>${inativo}</td>
+              <td>${esc(s.disciplina)}</td>
+              <td style="max-width:160px;font-size:12px;color:#6B7280">${esc(s.grupo || "—")}</td>
+              <td style="max-width:380px">${esc(s.descricao)}</td>
+              <td>${esc(s.unidade || "—")}</td>
+              <td style="text-align:right">${fmt(s.custo_material)}</td>
+              <td style="text-align:right">${fmt(s.custo_mao_obra)}</td>
+              <td style="text-align:right"><strong>${fmt(s.custo_total)}</strong></td>
+              <td>${flag}</td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-secondary btn-sm" onclick='editar(${JSON.stringify(JSON.stringify(s))})'>Editar</button>
+                ${s.ativo === false
+                  ? `<button class="btn btn-success btn-sm" onclick="reativar('${esc(s.codigo)}')">Reativar</button>`
+                  : `<button class="btn btn-danger btn-sm" onclick="desativar('${esc(s.codigo)}')">Desativar</button>`}
+              </td>
+            </tr>`;
+          }).join("");
+        }
+        renderPager();
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="10"><div class="alert alert-error">${esc(e.message)}</div></td></tr>`;
+      } finally {
+        carregando = false;
+      }
+    }
+
+    function renderPager() {
+      const pages = Math.max(1, Math.ceil(totalItens / pageSize));
+      const ini = totalItens ? (page - 1) * pageSize + 1 : 0;
+      const fim = Math.min(page * pageSize, totalItens);
+      document.getElementById("pager").innerHTML = `
+        <span class="pager-info">${ini}–${fim} de ${totalItens.toLocaleString("pt-BR")}</span>
+        <div class="pager-btns">
+          <button class="btn btn-secondary btn-sm" ${page <= 1 ? "disabled" : ""} onclick="irPara(${page - 1})">‹ Anterior</button>
+          <span class="pager-info">Pág. ${page}/${pages}</span>
+          <button class="btn btn-secondary btn-sm" ${page >= pages ? "disabled" : ""} onclick="irPara(${page + 1})">Próxima ›</button>
+        </div>`;
+    }
+    function irPara(p) { page = p; carregar(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+
+    // Filtros
+    function recarregar() { page = 1; carregar(); }
+    function atualizarGrupos() {
+      const disc = document.getElementById("fDisciplina").value;
+      const sel = document.getElementById("fGrupo");
+      const atual = sel.value;
+      const lista = disc === "todas" ? [...new Set(Object.values(gruposJson).flat())].sort((a, b) => a.localeCompare(b, "pt")) : (gruposJson[disc] || []);
+      sel.innerHTML = `<option value="todos">Todos os grupos</option>` + lista.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
+      sel.value = lista.includes(atual) ? atual : "todos";
+    }
+
+    let deb;
+    document.getElementById("busca").addEventListener("input", () => { clearTimeout(deb); deb = setTimeout(recarregar, 300); });
+    document.getElementById("fDisciplina").addEventListener("change", () => { atualizarGrupos(); recarregar(); });
+    document.getElementById("fGrupo").addEventListener("change", recarregar);
+    document.getElementById("fStatus").addEventListener("change", recarregar);
+    document.getElementById("fAtivo").addEventListener("change", recarregar);
+
+    // Pré-seleciona "pendentes" se veio via querystring
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("status") === "pendentes") document.getElementById("fStatus").value = "pendentes";
+
+    // Modal
+    function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
+    function abrirNovo() {
+      const f = document.getElementById("formServ"); f.reset();
+      f.modo.value = "novo"; f.codigo_orig.value = "";
+      f.codigo.readOnly = false;
+      document.getElementById("tituloServ").textContent = "Novo serviço";
+      document.getElementById("msgServ").innerHTML = "";
+      document.getElementById("modalServ").classList.add("open");
+    }
+    function editar(json) {
+      const s = JSON.parse(json);
+      const f = document.getElementById("formServ"); f.reset();
+      f.modo.value = "editar"; f.codigo_orig.value = s.codigo;
+      for (const [k, v] of Object.entries(s)) {
+        const inp = f.querySelector(`[name="${k}"]`);
+        if (inp && v != null) inp.value = String(v);
+      }
+      f.codigo.readOnly = true;
+      document.getElementById("tituloServ").textContent = `Editar ${s.codigo}`;
+      document.getElementById("msgServ").innerHTML = "";
+      document.getElementById("modalServ").classList.add("open");
+    }
+
+    document.getElementById("formServ").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const fd = Object.fromEntries(new FormData(f).entries());
+      const modo = fd.modo, codigoOrig = fd.codigo_orig;
+      delete fd.modo; delete fd.codigo_orig;
+      for (const n of ["custo_material", "custo_mao_obra", "sinapi_preco"]) if (fd[n] !== "") fd[n] = Number(fd[n]);
+      const url = modo === "editar"
+        ? `/api/admin/orcamentos/servicos/${encodeURIComponent(codigoOrig)}`
+        : `/api/admin/orcamentos/servicos`;
+      const res = await fetch(url, { method: modo === "editar" ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(fd) });
+      const d = await res.json();
+      if (res.ok) { fecharModal("modalServ"); carregar(); }
+      else document.getElementById("msgServ").innerHTML = `<div class="alert alert-error">${esc(d.error || "Erro ao salvar")}</div>`;
+    });
+
+    async function desativar(codigo) {
+      if (!confirm(`Desativar o serviço ${codigo}? Ele some dos orçamentos novos, mas o histórico é preservado.`)) return;
+      const res = await fetch(`/api/admin/orcamentos/servicos/${encodeURIComponent(codigo)}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      if (res.ok) carregar(); else alert("Erro ao desativar.");
+    }
+    async function reativar(codigo) {
+      const res = await fetch(`/api/admin/orcamentos/servicos/${encodeURIComponent(codigo)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ativo: true }) });
+      if (res.ok) carregar(); else alert("Erro ao reativar.");
+    }
+
+    Object.assign(window, { irPara, abrirNovo, editar, desativar, reativar, fecharModal });
+    atualizarGrupos();
+    carregar();
+  </script>
+
+  <style>
+    .pager { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; border-top:1px solid var(--border); flex-wrap:wrap; }
+    .pager-btns { display:flex; align-items:center; gap:10px; }
+    .pager-info { font-size:12.5px; color:var(--ink-mid); }
+    #formServ textarea { min-height:60px; }
+  </style>
+</Admin>
