@@ -545,6 +545,23 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     </div>
   </div>
 
+  <!-- Modal D4Sign: escolher cofre -->
+  <div class="modal-overlay" id="modalD4Sign">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-title">✍️ Enviar para assinatura (D4Sign)</div>
+      <p style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">O colaborador vai receber o termo por e-mail para assinar com validade jurídica. Escolha em qual cofre da D4Sign o documento ficará guardado:</p>
+      <div class="form-group">
+        <label>Cofre</label>
+        <select id="d4CofreSel"></select>
+      </div>
+      <div id="d4Msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnD4Confirmar" onclick="confirmarD4Sign()">Enviar para assinatura</button>
+      </div>
+    </div>
+  </div>
+
   <style>
     .acoes-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
     .grid-2col { display: grid; grid-template-columns: 1.2fr .8fr; gap: 16px; align-items: start; }
@@ -711,13 +728,42 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       w.print();
     }
 
+    let termoD4SignId: string | null = null;
     async function enviarD4Sign(termoId) {
-      if (!confirm("Enviar este termo para assinatura via D4Sign? O colaborador receberá o documento por e-mail.")) return;
-      const res = await fetch(`/api/admin/termos/${termoId}/enviar-d4sign`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-      const d = await res.json();
-      if (res.ok) { alert("Termo enviado para assinatura!"); window.location.reload(); }
-      else alert(d.error || "Erro ao enviar para a D4Sign");
+      termoD4SignId = termoId;
+      const sel = document.getElementById("d4CofreSel") as HTMLSelectElement;
+      const msg = document.getElementById("d4Msg")!;
+      msg.innerHTML = ""; sel.innerHTML = '<option>Carregando cofres...</option>'; sel.disabled = true;
+      abrirModal("modalD4Sign");
+      try {
+        const res = await fetch("/api/admin/d4sign/cofres");
+        const d = await res.json();
+        if (!res.ok) { msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao listar cofres. Verifique se o token da D4Sign foi configurado em produção."}</div>`; sel.innerHTML = ""; return; }
+        sel.innerHTML = (d || []).map((c: any) => `<option value="${c.uuid}">${c.nome}</option>`).join("");
+        sel.disabled = false;
+        // lembra o último cofre escolhido
+        const ultimo = localStorage.getItem("d4_cofre_ultimo");
+        if (ultimo && (d || []).some((c: any) => c.uuid === ultimo)) sel.value = ultimo;
+      } catch {
+        msg.innerHTML = '<div class="alert alert-error">Erro de conexão com a D4Sign.</div>'; sel.innerHTML = "";
+      }
     }
+    async function confirmarD4Sign() {
+      if (!termoD4SignId) return;
+      const sel = document.getElementById("d4CofreSel") as HTMLSelectElement;
+      const cofre = sel.value;
+      if (!cofre) { alert("Selecione um cofre."); return; }
+      localStorage.setItem("d4_cofre_ultimo", cofre);
+      const btn = document.getElementById("btnD4Confirmar") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Enviando...";
+      try {
+        const res = await fetch(`/api/admin/termos/${termoD4SignId}/enviar-d4sign`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cofre_uuid: cofre }) });
+        const d = await res.json();
+        if (res.ok) { alert("Termo enviado para assinatura! O colaborador vai receber por e-mail."); window.location.reload(); }
+        else document.getElementById("d4Msg")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao enviar para a D4Sign"}</div>`;
+      } finally { btn.disabled = false; btn.textContent = "Enviar para assinatura"; }
+    }
+    (window as any).confirmarD4Sign = confirmarD4Sign;
 
     // planos de preventiva
     document.getElementById("formPlano")?.addEventListener("submit", async (e) => {
