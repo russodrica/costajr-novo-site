@@ -1,5 +1,6 @@
 -- ============================================================================
--- 035 — Plataforma Inteligente de Orçamentos (Fase 1)
+-- 036 — Plataforma Inteligente de Orçamentos (Fase 1)
+--   (numerado 036 porque 035 já foi usado por 035_ativos_storage.sql)
 --   Base de serviços oficial + parâmetros de BDI + cadastros (Etapa 3) +
 --   estrutura de orçamentos (usada na Fase 2 — montador de propostas).
 --

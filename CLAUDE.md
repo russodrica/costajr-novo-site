@@ -350,7 +350,7 @@ da `COMPOSIÇÃO_CUSTO.xlsx`. Template de proposta = PPTX de 11 slides na mesma 
 unicos para os 19 grupos divergentes.
 
 **Fase 1 ENTREGUE em 13/06/2026 (decisao da Adriana: comecar; usar SO SINAPI, sem SICRO):**
-- Migration `db/migrations/035_orcamentos.sql` — tabelas `orc_servicos`,
+- Migration `db/migrations/036_orcamentos.sql` — tabelas `orc_servicos`,
   `orc_parametros_bdi` (parametros de BDI ja semeados via INSERT), `orc_equipamentos`,
   `orc_equipes`, `orc_insumos`, `orc_orcamentos` + `orc_orcamento_itens`. RLS ligado
   (so service role). **PRECISA SER RODADA no SQL Editor do Supabase (1x).** Ainda NAO rodada.
@@ -363,7 +363,7 @@ unicos para os 19 grupos divergentes.
 - Import idempotente `scripts/importar-base-orcamento.mjs` (upsert por codigo via PostgREST
   resolution=merge-duplicates) a partir de `scripts/seed/orc_servicos.json` (gerado do
   BASE_MESTRE pelo finalize_seed.py). QA E2E `scripts/qa-orcamentos.mjs` (override BASE por
-  env QA_BASE). **Fluxo p/ ativar:** (1) Adriana roda migration 035 no SQL Editor →
+  env QA_BASE). **Fluxo p/ ativar:** (1) Adriana roda migration 036 no SQL Editor →
   (2) `node scripts/importar-base-orcamento.mjs` → (3) deploy → (4) `node scripts/qa-orcamentos.mjs`.
 - MODELO DE PRECO (importante): `custo_material`/`custo_mao_obra` sao CUSTO sem BDI; preco de
   venda = custo*(1+BDI). O "Com BDI" das abas de disciplina da planilha original era rotulo
@@ -455,8 +455,9 @@ operacoes em massa (devolucao em lote), NF em bucket privado. RLS policies NAO
 implementadas de proposito: acesso e 100% via service-role no backend apos auth
 JWT (anon key nao toca essas tabelas), entao policies seriam inocuas — decisao
 arquitetural registrada. QA E2E em scripts/qa-ativos.mjs.
-NOTA: migration 035 existe em DUAS versoes (035_ativos_storage e 035_orcamentos
-de trabalho anterior) — ambas idempotentes, numero e so referencia.
+NOTA: havia colisao de numero 035 (035_ativos_storage + 035_orcamentos); resolvido
+em 13/06/2026 renomeando orcamentos para 036_orcamentos.sql. 035_ativos_storage ja
+foi RODADA em producao com o nome 035; 036_orcamentos ainda NAO foi rodada.
 
 ## Convencoes desta pasta para o Claude Code
 

@@ -35,7 +35,7 @@ const todosGrupos = [...new Set(Object.values(gruposJson).flat())].sort((a, b) =
   {erroBase && (
     <div class="alert alert-error">
       Não consegui carregar a base de serviços: {erroBase.message}.<br />
-      Se o módulo é novo, rode a migration <code>035_orcamentos.sql</code> no Supabase e depois
+      Se o módulo é novo, rode a migration <code>036_orcamentos.sql</code> no Supabase e depois
       o import <code>node scripts/importar-base-orcamento.mjs</code>.
     </div>
   )}
@@ -177,7 +177,7 @@ const todosGrupos = [...new Set(Object.values(gruposJson).flat())].sort((a, b) =
               <td style="text-align:right"><strong>${fmt(s.custo_total)}</strong></td>
               <td>${flag}</td>
               <td style="white-space:nowrap">
-                <button class="btn btn-secondary btn-sm" onclick='editar(${JSON.stringify(JSON.stringify(s))})'>Editar</button>
+                <button class="btn btn-secondary btn-sm" data-edit="${esc(JSON.stringify(s))}">Editar</button>
                 ${s.ativo === false
                   ? `<button class="btn btn-success btn-sm" onclick="reativar('${esc(s.codigo)}')">Reativar</button>`
                   : `<button class="btn btn-danger btn-sm" onclick="desativar('${esc(s.codigo)}')">Desativar</button>`}
@@ -278,6 +278,13 @@ const todosGrupos = [...new Set(Object.values(gruposJson).flat())].sort((a, b) =
       const res = await fetch(`/api/admin/orcamentos/servicos/${encodeURIComponent(codigo)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ativo: true }) });
       if (res.ok) carregar(); else alert("Erro ao reativar.");
     }
+
+    // Delegação no tbody (persiste entre recargas): edita sem embutir JSON no onclick,
+    // o que quebraria em descrições com apóstrofo (ex.: "Caixa d'água") e seria vetor de XSS.
+    document.getElementById("tbody").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-edit]");
+      if (b) editar(b.getAttribute("data-edit"));
+    });
 
     Object.assign(window, { irPara, abrirNovo, editar, desativar, reativar, fecharModal });
     atualizarGrupos();

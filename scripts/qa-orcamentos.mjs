@@ -1,5 +1,5 @@
 // QA E2E do módulo Orçamentos (Fase 1) — base de serviços + parâmetros BDI.
-// Requer migration 035 aplicada e o módulo deployado. BASE override por env QA_BASE.
+// Requer migration 036 aplicada e o módulo deployado. BASE override por env QA_BASE.
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
@@ -24,7 +24,7 @@ const check = (nome, ok, det = "") => { results.push(ok); console.log(`${ok ? "�
 const SENHA = "QaOrc#2026";
 const adminEmail = `qa.orc.admin.${Date.now()}@costajr.com.br`;
 const codigoTeste = `QA${Date.now().toString().slice(-7)}`;
-let adminId, paramOrig;
+let adminId, paramChave;
 
 try {
   const [adm] = await sb("portal_profiles", { method: "POST", body: JSON.stringify({ id: randomUUID(), email: adminEmail, full_name: "QA Orc Admin", role: "admin", roles: ["admin"], approval_status: "approved", senha_hash: hash(SENHA) }) });
@@ -81,15 +81,16 @@ try {
   const csrf = await fetch(`${BASE}/api/admin/orcamentos/servicos`, { method: "POST", headers: { cookie }, body: "{}" });
   check("CSRF bloqueia POST sem JSON", csrf.status === 403 || csrf.status === 400);
 
-  // ── Parâmetros BDI ──
+  // ── Parâmetros BDI (usa chave descartável p/ NÃO mutar o BDI real de produção) ──
   const pr = await fetch(`${BASE}/api/admin/orcamentos/parametros`, { headers: H });
   const prd = await pr.json();
   check("Listar parâmetros BDI", pr.ok && prd.length >= 15);
-  paramOrig = prd.find(p => p.chave === "indireto");
-  const pu = await fetch(`${BASE}/api/admin/orcamentos/parametros`, { method: "PATCH", headers: H, body: JSON.stringify({ itens: [{ chave: "indireto", valor: 0.16 }] }) });
+  paramChave = `qa_${Date.now()}`;
+  await sb("orc_parametros_bdi", { method: "POST", body: JSON.stringify({ chave: paramChave, rotulo: "QA Teste", valor: 0.10, grupo: "alcada", ordem: 999 }) });
+  const pu = await fetch(`${BASE}/api/admin/orcamentos/parametros`, { method: "PATCH", headers: H, body: JSON.stringify({ itens: [{ chave: paramChave, valor: 0.16 }] }) });
   check("Atualizar parâmetro BDI", pu.ok);
   const prd2 = await (await fetch(`${BASE}/api/admin/orcamentos/parametros`, { headers: H })).json();
-  check("Valor persistido", Number(prd2.find(p => p.chave === "indireto").valor) === 0.16);
+  check("Valor persistido", Number(prd2.find(p => p.chave === paramChave)?.valor) === 0.16);
 
   // ── Auth: sem cookie → 401 ──
   const noauth = await fetch(`${BASE}/api/admin/orcamentos/servicos`);
@@ -100,7 +101,7 @@ try {
 } finally {
   // Limpeza
   try { await sb(`orc_servicos?codigo=eq.${codigoTeste}`, { method: "DELETE" }); } catch {}
-  if (paramOrig) { try { await sb(`orc_parametros_bdi?chave=eq.indireto`, { method: "PATCH", body: JSON.stringify({ valor: paramOrig.valor }) }); } catch {} }
+  if (paramChave) { try { await sb(`orc_parametros_bdi?chave=eq.${paramChave}`, { method: "DELETE" }); } catch {} }
   if (adminId) { try { await sb(`portal_profiles?id=eq.${adminId}`, { method: "DELETE" }); } catch {} }
 }
 
