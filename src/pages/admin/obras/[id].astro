@@ -163,6 +163,64 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
     </div>
   </div>
 
+  <!-- ───── Tarefas / Cronograma ───── -->
+  <div class="toolbar" style="margin-bottom:12px">
+    <span class="section-title" style="flex:1">🗓️ Tarefas / Cronograma <span id="tarefas-resumo" style="font-size:.8rem;color:#9CA3AF;font-weight:600"></span></span>
+    <select id="filtroTarefas" onchange="renderTarefas()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px">
+      <option value="abertas" selected>Abertas</option>
+      <option value="todas">Todas</option>
+      <option value="concluida">Concluídas</option>
+    </select>
+    <button class="btn btn-primary" onclick="abrirModalTarefa()">+ Nova tarefa</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:34px"></th><th>Tarefa</th><th>Etapa</th><th>Responsável</th><th>Início</th><th>Fim</th><th>Prior.</th><th></th></tr></thead>
+        <tbody id="tbody-tarefas"><tr><td colspan="8" style="text-align:center;color:#999;padding:22px">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal tarefa -->
+  <div class="modal-overlay" id="modalTarefa">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-title" id="tituloModalTarefa">Nova tarefa</div>
+      <form id="formTarefa">
+        <input type="hidden" id="t-id" />
+        <div class="form-group"><label>Título *</label><input type="text" id="t-titulo" required placeholder="ex: Concretagem da laje térreo" /></div>
+        <div class="form-row">
+          <div class="form-group"><label>Etapa</label><input type="text" id="t-etapa" list="etapas-conhecidas" placeholder="ex: Estrutura" /><datalist id="etapas-conhecidas"></datalist></div>
+          <div class="form-group"><label>Responsável</label><input type="text" id="t-resp" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Início</label><input type="date" id="t-inicio" /></div>
+          <div class="form-group"><label>Fim previsto</label><input type="date" id="t-fim" /></div>
+          <div class="form-group"><label>Prioridade</label>
+            <select id="t-prior"><option value="">—</option><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option></select>
+          </div>
+        </div>
+        <div class="form-group"><label>Descrição</label><textarea id="t-desc" rows="2"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModalTarefa()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ───── Anotações ───── -->
+  <div class="toolbar" style="margin-bottom:12px">
+    <span class="section-title" style="flex:1">📝 Anotações <span id="anot-resumo" style="font-size:.8rem;color:#9CA3AF;font-weight:600"></span></span>
+  </div>
+  <div class="card" style="margin-bottom:24px">
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <textarea id="novaAnotacao" rows="2" placeholder="Escreva uma anotação sobre a obra..." style="flex:1;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13.5px;font-family:'Open Sans',sans-serif;resize:vertical"></textarea>
+      <button class="btn btn-primary" onclick="salvarAnotacao()" id="btnAnot" style="align-self:flex-end">Anotar</button>
+    </div>
+    <div id="lista-anotacoes"><p style="color:#999;font-size:13px;text-align:center;padding:8px">Carregando...</p></div>
+  </div>
+
   <!-- ───── #7 RDO — Diário de obra ───── -->
   <div class="toolbar" style="margin-bottom:12px">
     <span class="section-title" style="flex:1">📋 RDO — Diário de Obra ({rdos?.length ?? 0})</span>
@@ -335,5 +393,151 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
     (window as any).fecharModal = fecharModal;
     (window as any).abrirModalRdo = abrirModalRdo;
     (window as any).editarRdo = editarRdo;
+
+    // ───── Tarefas / Cronograma ─────
+    const obraId = (window as any).__obraId;
+    let tarefas: any[] = [];
+    const STATUS_ICONE: Record<string, string> = { pendente: "○", em_andamento: "◐", concluida: "✓", cancelada: "✕" };
+    const PRIOR_BADGE: Record<string, string> = { alta: "badge-red", media: "badge-yellow", baixa: "badge-gray" };
+    const escT = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const fmtD = (d: string | null) => d ? d.split("-").reverse().join("/") : "—";
+
+    async function carregarTarefas() {
+      const res = await fetch(`/api/admin/obras/${obraId}/tarefas`);
+      tarefas = res.ok ? await res.json() : [];
+      const etapas = [...new Set(tarefas.map(t => t.etapa).filter(Boolean))];
+      document.getElementById("etapas-conhecidas")!.innerHTML = etapas.map(e => `<option value="${escT(e)}"/>`).join("");
+      renderTarefas();
+    }
+
+    function renderTarefas() {
+      const filtro = (document.getElementById("filtroTarefas") as HTMLSelectElement).value;
+      const visiveis = tarefas.filter(t =>
+        filtro === "todas" ? true : filtro === "concluida" ? t.status === "concluida" : (t.status === "pendente" || t.status === "em_andamento"));
+      const concluidas = tarefas.filter(t => t.status === "concluida").length;
+      const atrasadas = tarefas.filter(t => (t.status === "pendente" || t.status === "em_andamento") && t.data_fim && t.data_fim < (window as any).__hoje).length;
+      document.getElementById("tarefas-resumo")!.textContent =
+        tarefas.length ? `${concluidas}/${tarefas.length} concluídas${atrasadas ? ` · ${atrasadas} atrasada(s)` : ""}` : "";
+
+      const tb = document.getElementById("tbody-tarefas")!;
+      if (!visiveis.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:22px">Nenhuma tarefa aqui. Clique em "+ Nova tarefa".</td></tr>'; return; }
+
+      tb.innerHTML = visiveis.map(t => {
+        const atrasada = (t.status === "pendente" || t.status === "em_andamento") && t.data_fim && t.data_fim < (window as any).__hoje;
+        return `<tr style="${t.status === "concluida" ? "opacity:.55" : ""}">
+          <td><button title="Alternar status" onclick="ciclarStatus('${t.id}')" style="width:26px;height:26px;border-radius:50%;border:1.5px solid ${t.status === "concluida" ? "#22C55E" : "var(--border)"};background:${t.status === "concluida" ? "#22C55E" : "#fff"};color:${t.status === "concluida" ? "#fff" : "var(--ink-mid)"};cursor:pointer;font-size:13px">${STATUS_ICONE[t.status] || "○"}</button></td>
+          <td><strong style="font-size:.86rem;${t.status === "concluida" ? "text-decoration:line-through" : ""}">${escT(t.titulo)}</strong>${t.descricao ? `<span style="display:block;font-size:11.5px;color:#888;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escT(t.descricao)}</span>` : ""}</td>
+          <td style="font-size:.8rem">${escT(t.etapa) || "—"}</td>
+          <td style="font-size:.8rem">${escT(t.responsavel) || "—"}</td>
+          <td style="font-size:.8rem">${fmtD(t.data_inicio)}</td>
+          <td style="font-size:.8rem;${atrasada ? "color:#DC2626;font-weight:700" : ""}">${fmtD(t.data_fim)}${atrasada ? " ⚠" : ""}</td>
+          <td>${t.prioridade ? `<span class="badge ${PRIOR_BADGE[t.prioridade]}">${t.prioridade}</span>` : "—"}</td>
+          <td><div style="display:flex;gap:4px">
+            <button class="btn btn-secondary btn-sm" onclick="editarTarefa('${t.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="excluirTarefa('${t.id}')">🗑</button>
+          </div></td>
+        </tr>`;
+      }).join("");
+    }
+
+    const ORDEM_STATUS = ["pendente", "em_andamento", "concluida"];
+    async function ciclarStatus(id: string) {
+      const t = tarefas.find(x => x.id === id);
+      if (!t) return;
+      const prox = ORDEM_STATUS[(ORDEM_STATUS.indexOf(t.status) + 1) % ORDEM_STATUS.length] || "pendente";
+      t.status = prox; renderTarefas();
+      await fetch(`/api/admin/obras/${obraId}/tarefas?tarefa=${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: prox }) });
+    }
+
+    function abrirModalTarefa() {
+      (document.getElementById("t-id") as HTMLInputElement).value = "";
+      (document.getElementById("formTarefa") as HTMLFormElement).reset();
+      document.getElementById("tituloModalTarefa")!.textContent = "Nova tarefa";
+      document.getElementById("modalTarefa")!.classList.add("open");
+    }
+    function fecharModalTarefa() { document.getElementById("modalTarefa")!.classList.remove("open"); }
+    function editarTarefa(id: string) {
+      const t = tarefas.find(x => x.id === id);
+      if (!t) return;
+      (document.getElementById("t-id") as HTMLInputElement).value = t.id;
+      (document.getElementById("t-titulo") as HTMLInputElement).value = t.titulo || "";
+      (document.getElementById("t-etapa") as HTMLInputElement).value = t.etapa || "";
+      (document.getElementById("t-resp") as HTMLInputElement).value = t.responsavel || "";
+      (document.getElementById("t-inicio") as HTMLInputElement).value = t.data_inicio || "";
+      (document.getElementById("t-fim") as HTMLInputElement).value = t.data_fim || "";
+      (document.getElementById("t-prior") as HTMLSelectElement).value = t.prioridade || "";
+      (document.getElementById("t-desc") as HTMLTextAreaElement).value = t.descricao || "";
+      document.getElementById("tituloModalTarefa")!.textContent = "Editar tarefa";
+      document.getElementById("modalTarefa")!.classList.add("open");
+    }
+
+    document.getElementById("formTarefa")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = (document.getElementById("t-id") as HTMLInputElement).value;
+      const body = {
+        titulo: (document.getElementById("t-titulo") as HTMLInputElement).value.trim(),
+        etapa: (document.getElementById("t-etapa") as HTMLInputElement).value.trim() || null,
+        responsavel: (document.getElementById("t-resp") as HTMLInputElement).value.trim() || null,
+        data_inicio: (document.getElementById("t-inicio") as HTMLInputElement).value || null,
+        data_fim: (document.getElementById("t-fim") as HTMLInputElement).value || null,
+        prioridade: (document.getElementById("t-prior") as HTMLSelectElement).value || null,
+        descricao: (document.getElementById("t-desc") as HTMLTextAreaElement).value.trim() || null,
+      };
+      const url = id ? `/api/admin/obras/${obraId}/tarefas?tarefa=${id}` : `/api/admin/obras/${obraId}/tarefas`;
+      const res = await fetch(url, { method: id ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) { fecharModalTarefa(); carregarTarefas(); } else { alert((await res.json().catch(() => ({}))).error || "Erro ao salvar tarefa"); }
+    });
+
+    async function excluirTarefa(id: string) {
+      if (!confirm("Excluir esta tarefa?")) return;
+      const res = await fetch(`/api/admin/obras/${obraId}/tarefas?tarefa=${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      if (res.ok) carregarTarefas(); else alert("Erro ao excluir");
+    }
+
+    // ───── Anotações ─────
+    async function carregarAnotacoes() {
+      const res = await fetch(`/api/admin/obras/${obraId}/anotacoes`);
+      const anots = res.ok ? await res.json() : [];
+      document.getElementById("anot-resumo")!.textContent = anots.length ? `(${anots.length})` : "";
+      const el = document.getElementById("lista-anotacoes")!;
+      if (!anots.length) { el.innerHTML = '<p style="color:#999;font-size:13px;text-align:center;padding:8px">Nenhuma anotação ainda.</p>'; return; }
+      el.innerHTML = anots.map((a: any) => `
+        <div style="border-bottom:1px solid var(--border-light,#F3F4F6);padding:10px 2px;display:flex;gap:10px;justify-content:space-between;align-items:flex-start">
+          <div style="flex:1">
+            <p style="margin:0;font-size:.85rem;white-space:pre-wrap">${escT(a.texto)}</p>
+            <span style="font-size:.7rem;color:#9CA3AF">${(a.criado_por || "—").split("@")[0]} · ${new Date(a.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="excluirAnotacao('${a.id}')">🗑</button>
+        </div>`).join("");
+    }
+
+    async function salvarAnotacao() {
+      const ta = document.getElementById("novaAnotacao") as HTMLTextAreaElement;
+      const texto = ta.value.trim();
+      if (!texto) return;
+      const btn = document.getElementById("btnAnot") as HTMLButtonElement;
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/obras/${obraId}/anotacoes`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ texto }) });
+      btn.disabled = false;
+      if (res.ok) { ta.value = ""; carregarAnotacoes(); } else alert("Erro ao salvar anotação");
+    }
+
+    async function excluirAnotacao(id: string) {
+      if (!confirm("Excluir esta anotação?")) return;
+      const res = await fetch(`/api/admin/obras/${obraId}/anotacoes?anotacao=${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      if (res.ok) carregarAnotacoes(); else alert("Erro ao excluir");
+    }
+
+    (window as any).renderTarefas = renderTarefas;
+    (window as any).ciclarStatus = ciclarStatus;
+    (window as any).abrirModalTarefa = abrirModalTarefa;
+    (window as any).fecharModalTarefa = fecharModalTarefa;
+    (window as any).editarTarefa = editarTarefa;
+    (window as any).excluirTarefa = excluirTarefa;
+    (window as any).salvarAnotacao = salvarAnotacao;
+    (window as any).excluirAnotacao = excluirAnotacao;
+
+    carregarTarefas();
+    carregarAnotacoes();
   </script>
 </Admin>
