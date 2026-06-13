@@ -6,6 +6,11 @@ const SITE = import.meta.env.SITE_BASE_URL || "https://costajr.com.br";
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
+// Envio genérico (para alertas internos, digests etc.)
+export async function enviarEmailSimples(payload: { to: string; subject: string; html: string }) {
+  return sendOrThrow(payload);
+}
+
 async function sendOrThrow(payload: { to: string; subject: string; html: string }) {
   if (!resend) throw new Error("RESEND_API_KEY ausente — configure no .env / Vercel");
   const { data, error } = await resend.emails.send({

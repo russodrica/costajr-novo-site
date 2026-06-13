@@ -4,6 +4,9 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 
 export const prerender = false;
 
+const TIPOS = ["ferias", "atestado", "falta", "licenca", "folga", "outro"];
+const STATUS = ["solicitada", "aprovada", "rejeitada", "concluida"];
+
 // Calcula dias corridos entre duas datas (inclusivo)
 function calcularDias(inicio: string, fim: string): number | null {
   const i = new Date(`${inicio}T00:00:00Z`).getTime();
@@ -44,10 +47,11 @@ export const POST: APIRoute = async ({ request }) => {
     if (!colaborador_id || !tipo || !data_inicio || !data_fim) {
       return jsonErr(400, "Colaborador, tipo, data de início e data de fim são obrigatórios");
     }
+    if (!TIPOS.includes(tipo)) return jsonErr(400, "Tipo de ausência inválido");
+    if (body.status && !STATUS.includes(body.status)) return jsonErr(400, "Status inválido");
 
-    const dias = body.dias !== undefined && body.dias !== "" && body.dias !== null
-      ? Number(body.dias)
-      : calcularDias(data_inicio, data_fim);
+    // dias é SEMPRE calculado no servidor (não confia no cliente)
+    const dias = calcularDias(data_inicio, data_fim);
     if (dias === null) return jsonErr(400, "Período inválido: data de fim anterior à data de início");
 
     const row: Record<string, unknown> = { colaborador_id, tipo, data_inicio, data_fim, dias };

@@ -83,7 +83,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
           criado_por: admin.email,
         }));
         const { error: errDocs } = await db.from("rh_documentos").insert(rows);
-        if (errDocs) return jsonErr(400, `Colaborador criado, mas falhou ao mover documentos: ${errDocs.message}`);
+        if (errDocs) {
+          // rollback: desfaz a criação do colaborador para não deixar registro órfão
+          await db.from("rh_colaboradores").delete().eq("id", colab.id);
+          return jsonErr(400, `Falha ao mover os documentos — a admissão NÃO foi concluída (nenhum colaborador foi criado). Tente novamente. Detalhe: ${errDocs.message}`);
+        }
       }
 
       // 3) marca a admissão como concluída

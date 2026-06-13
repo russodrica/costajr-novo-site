@@ -32,6 +32,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const id = params.id!;
     const body = await request.json();
 
+    if (body.regime !== undefined && body.regime && !["clt", "pj", "estagio", "temporario", "socio"].includes(body.regime)) return jsonErr(400, "Regime inválido");
+    if (body.status !== undefined && !["ativo", "ferias", "afastado", "desligado"].includes(body.status)) return jsonErr(400, "Status inválido");
+
     const editaveis = [
       "profile_id", "nome", "email", "telefone", "cpf", "rg", "data_nascimento", "foto_url",
       "cargo", "setor", "regime", "salario", "data_admissao", "data_desligamento", "status",
@@ -42,6 +45,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     for (const c of editaveis) if (body[c] !== undefined) patch[c] = body[c] === "" ? null : body[c];
     if (Object.keys(patch).length <= 1) return jsonErr(400, "Nada para atualizar");
     if (patch.nome === null) return jsonErr(400, "Nome não pode ficar vazio");
+
+    // Ao desligar, registra a data de desligamento automaticamente (se não informada)
+    if (patch.status === "desligado" && !body.data_desligamento) {
+      patch.data_desligamento = new Date().toISOString().slice(0, 10);
+    }
 
     const db = supabaseAdmin();
     const { data, error } = await db.from("rh_colaboradores").update(patch).eq("id", id).select().single();

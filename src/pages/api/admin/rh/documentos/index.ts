@@ -4,7 +4,9 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 
 export const prerender = false;
 
-// GET /api/admin/rh/documentos?colaborador_id=&tipo=&vencendo=30
+const TIPOS_DOC = ["contrato", "aso", "ficha_epi", "advertencia", "atestado", "certificado", "cnh", "outro"];
+
+// GET /api/admin/rh/documentos?colaborador_id=&tipo=&vencendo=30&vencidos=1
 export const GET: APIRoute = async ({ request, url }) => {
   try {
     await requireAdminCookie(request);
@@ -14,13 +16,17 @@ export const GET: APIRoute = async ({ request, url }) => {
     const colaboradorId = url.searchParams.get("colaborador_id");
     const tipo = url.searchParams.get("tipo");
     const vencendo = url.searchParams.get("vencendo");
+    const vencidos = url.searchParams.get("vencidos");
 
     if (colaboradorId) q = q.eq("colaborador_id", colaboradorId);
     if (tipo && tipo !== "todos") q = q.eq("tipo", tipo);
-    if (vencendo) {
+    const hoje = new Date().toISOString().slice(0, 10);
+    if (vencidos === "1") {
+      // documentos já vencidos (validade < hoje)
+      q = q.not("validade", "is", null).lt("validade", hoje).order("validade", { ascending: true });
+    } else if (vencendo) {
       const dias = parseInt(vencendo, 10);
       if (!isNaN(dias) && dias > 0) {
-        const hoje = new Date().toISOString().slice(0, 10);
         const limite = new Date(Date.now() + dias * 86400000).toISOString().slice(0, 10);
         q = q.gte("validade", hoje).lte("validade", limite).order("validade", { ascending: true });
       }
@@ -40,6 +46,7 @@ export const POST: APIRoute = async ({ request }) => {
     const admin = await requireAdminCookie(request);
     const body = await request.json();
     if (!body.colaborador_id || !body.titulo) return jsonErr(400, "Colaborador e título são obrigatórios");
+    if (body.tipo && !TIPOS_DOC.includes(body.tipo)) return jsonErr(400, "Tipo de documento inválido");
 
     const campos = ["colaborador_id", "titulo", "tipo", "url", "validade", "observacoes"];
     const row: Record<string, unknown> = { criado_por: admin.email };

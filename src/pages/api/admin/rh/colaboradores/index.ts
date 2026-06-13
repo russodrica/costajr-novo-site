@@ -4,6 +4,9 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 
 export const prerender = false;
 
+const REGIMES = ["clt", "pj", "estagio", "temporario", "socio"];
+const STATUS = ["ativo", "ferias", "afastado", "desligado"];
+
 // GET /api/admin/rh/colaboradores?status=&setor=&busca=
 export const GET: APIRoute = async ({ request, url }) => {
   try {
@@ -19,7 +22,14 @@ export const GET: APIRoute = async ({ request, url }) => {
     if (setor) q = q.eq("setor", setor);
     if (busca) {
       const b = busca.replace(/[%,()]/g, " ").trim();
-      q = q.or(`nome.ilike.%${b}%,email.ilike.%${b}%,cargo.ilike.%${b}%,cpf.ilike.%${b}%`);
+      // CPF NÃO entra na busca por substring (LGPD — evita enumeração de CPF).
+      // Se o termo for um CPF completo (com 11 dígitos), faz match exato.
+      const soDigitos = b.replace(/\D/g, "");
+      if (soDigitos.length === 11) {
+        q = q.or(`nome.ilike.%${b}%,email.ilike.%${b}%,cargo.ilike.%${b}%,cpf.eq.${b}`);
+      } else {
+        q = q.or(`nome.ilike.%${b}%,email.ilike.%${b}%,cargo.ilike.%${b}%`);
+      }
     }
 
     const { data, error } = await q;
@@ -36,6 +46,8 @@ export const POST: APIRoute = async ({ request }) => {
     const admin = await requireAdminCookie(request);
     const body = await request.json();
     if (!body.nome) return jsonErr(400, "Nome é obrigatório");
+    if (body.regime && !REGIMES.includes(body.regime)) return jsonErr(400, "Regime inválido");
+    if (body.status && !STATUS.includes(body.status)) return jsonErr(400, "Status inválido");
 
     const campos = [
       "profile_id", "nome", "email", "telefone", "cpf", "rg", "data_nascimento", "foto_url",

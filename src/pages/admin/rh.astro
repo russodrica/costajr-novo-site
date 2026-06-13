@@ -116,6 +116,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
   <!-- ── Abas ── -->
   <div class="pills" style="margin-bottom:16px">
+    <button class="pill" data-aba="alertas" onclick="mostrarAba('alertas')">🚨 Alertas <span class="count" id="alertasBadge" style="background:#FEE2E2;color:#B91C1C"></span></button>
     <button class="pill active" data-aba="colaboradores" onclick="mostrarAba('colaboradores')">Colaboradores <span class="count">{colaboradores.length}</span></button>
     <button class="pill" data-aba="ausencias" onclick="mostrarAba('ausencias')">Férias &amp; Ausências <span class="count">{ausencias.length}</span></button>
     <button class="pill" data-aba="documentos" onclick="mostrarAba('documentos')">Documentos <span class="count">{documentos.length}</span></button>
@@ -304,6 +305,19 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <div class="empty-state"><strong>Nenhum aniversariante este mês</strong>Cadastre as datas de nascimento na ficha dos colaboradores.</div>
       )}
     </div>
+  </section>
+
+  <!-- ════════ ABA ALERTAS ════════ -->
+  <section class="tab-section" id="aba-alertas" style="display:none">
+    <div class="toolbar">
+      <span class="toolbar-title">🚨 Alertas de RH — vencimentos e compliance</span>
+      <span style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="enviarResumoEmail()" id="btnEmailVenc" style="display:none">📧 Enviar resumo por e-mail</button>
+        <button class="btn btn-outline btn-sm" onclick="window.location.href='/api/admin/rh/documentos/export-vencimentos'" id="btnExportVenc" style="display:none">⬇️ Exportar vencimentos</button>
+      </span>
+    </div>
+    <div id="alertas-cards" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:16px"></div>
+    <div id="alertas-conteudo"><div class="card"><div class="loading"><div class="spinner"></div> Carregando alertas...</div></div></div>
   </section>
 
   <!-- ════════ MODAL COLABORADOR (novo/editar) ════════ -->
@@ -506,7 +520,89 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       const sec = document.getElementById("aba-" + aba);
       if (sec) sec.style.display = "";
       document.querySelectorAll(".pill[data-aba]").forEach((p) => p.classList.toggle("active", (p as any).dataset.aba === aba));
+      if (aba === "alertas" && !(window as any).__alertasCarregados) carregarAlertas();
     }
+
+    // ── Alertas de RH (vencimentos + compliance) ──
+    const escA = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    function diasTxt(d: number) { return d < 0 ? `vencido há ${Math.abs(d)} dia(s)` : d === 0 ? "vence HOJE" : `vence em ${d} dia(s)`; }
+    function corDoc(d: any) { return d.dias < 0 ? "#B91C1C" : d.dias <= 7 ? "#DC2626" : d.dias <= 30 ? "#D97706" : "#6B7280"; }
+
+    async function carregarAlertas() {
+      (window as any).__alertasCarregados = true;
+      const box = document.getElementById("alertas-conteudo")!;
+      const cards = document.getElementById("alertas-cards")!;
+      try {
+        const res = await fetch("/api/admin/rh/alertas");
+        if (!res.ok) { box.innerHTML = '<div class="card"><div class="alert alert-error">Erro ao carregar alertas.</div></div>'; return; }
+        const d = await res.json();
+        const r = d.resumo || {};
+        cards.innerHTML = `
+          <div class="stat-card" style="border-left:3px solid #B91C1C"><div class="stat-value" style="color:#B91C1C">${r.vencidos || 0}</div><div class="stat-label">Documentos vencidos</div></div>
+          <div class="stat-card" style="border-left:3px solid #DC2626"><div class="stat-value" style="color:#DC2626">${r.criticos_vencidos || 0}</div><div class="stat-label">Críticos vencidos (ASO/CNH)</div></div>
+          <div class="stat-card" style="border-left:3px solid #D97706"><div class="stat-value" style="color:#D97706">${r.vencendo_30 || 0}</div><div class="stat-label">Vencendo em 30 dias</div></div>
+          <div class="stat-card" style="border-left:3px solid #C41E3A"><div class="stat-value" style="color:#C41E3A">${r.sem_aso || 0}</div><div class="stat-label">Ativos sem ASO</div></div>`;
+        const temVenc = (r.vencidos || r.vencendo_30);
+        document.getElementById("btnExportVenc")!.style.display = temVenc ? "" : "none";
+        document.getElementById("btnEmailVenc")!.style.display = temVenc ? "" : "none";
+
+        const tabelaDocs = (titulo: string, lista: any[], vazio: string) => {
+          if (!lista.length) return `<div class="card" style="margin-bottom:14px"><div class="section-title" style="margin-bottom:8px">${titulo}</div><p style="color:var(--ink-light);font-size:13px">${vazio}</p></div>`;
+          return `<div class="card" style="margin-bottom:14px">
+            <div class="section-title" style="margin-bottom:10px">${titulo} (${lista.length})</div>
+            <div class="table-wrap"><table><thead><tr><th>Documento</th><th>Colaborador</th><th>Validade</th><th>Situação</th></tr></thead><tbody>
+            ${lista.map(x => `<tr>
+              <td>${x.critico ? "🔴 " : ""}<strong>${escA(x.titulo)}</strong> <span style="font-size:11px;color:#9CA3AF">${escA(x.tipo)}</span></td>
+              <td>${escA(x.colaborador)}</td>
+              <td>${x.validade.split("-").reverse().join("/")}</td>
+              <td style="color:${corDoc(x)};font-weight:700">${diasTxt(x.dias)}</td>
+            </tr>`).join("")}
+            </tbody></table></div></div>`;
+        };
+
+        let html = tabelaDocs("⛔ Documentos VENCIDOS", d.vencidos || [], "Nenhum documento vencido. 🎉");
+        html += tabelaDocs("⏳ Vencendo (próximos 60 dias)", d.vencendo || [], "Nada vencendo nos próximos 60 dias.");
+        if ((d.sem_aso || []).length) {
+          html += `<div class="card" style="margin-bottom:14px">
+            <div class="section-title" style="margin-bottom:10px">🦺 Colaboradores ativos SEM ASO (${d.sem_aso.length})</div>
+            <p style="font-size:12.5px;color:var(--ink-light);margin:0 0 10px">Sem ASO válido, o colaborador não pode trabalhar no canteiro.</p>
+            <div class="table-wrap"><table><thead><tr><th>Nome</th><th>Cargo</th><th>Setor</th></tr></thead><tbody>
+            ${d.sem_aso.map((c: any) => `<tr><td><strong>${escA(c.nome)}</strong></td><td>${escA(c.cargo) || "—"}</td><td>${escA(c.setor) || "—"}</td></tr>`).join("")}
+            </tbody></table></div></div>`;
+        }
+        if ((d.ausencias_periodo || []).length) {
+          html += `<div class="card">
+            <div class="section-title" style="margin-bottom:10px">🏖️ Ausências/férias em andamento ou próximas (${d.ausencias_periodo.length})</div>
+            <div class="table-wrap"><table><thead><tr><th>Colaborador</th><th>Tipo</th><th>Início</th><th>Fim</th><th>Status</th></tr></thead><tbody>
+            ${d.ausencias_periodo.map((a: any) => `<tr><td><strong>${escA(a.colaborador)}</strong></td><td>${escA(a.tipo)}</td><td>${a.data_inicio.split("-").reverse().join("/")}</td><td>${a.data_fim.split("-").reverse().join("/")}</td><td>${escA(a.status)}</td></tr>`).join("")}
+            </tbody></table></div></div>`;
+        }
+        box.innerHTML = html;
+      } catch {
+        box.innerHTML = '<div class="card"><div class="alert alert-error">Erro de conexão ao carregar alertas.</div></div>';
+      }
+    }
+
+    async function enviarResumoEmail() {
+      if (!confirm("Enviar o resumo de documentos vencidos/vencendo por e-mail para o RH e administradores?")) return;
+      const btn = document.getElementById("btnEmailVenc") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Enviando...";
+      try {
+        const res = await fetch("/api/cron/rh-vencimentos");
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) alert(`Resumo enviado para ${d.enviados || 0} destinatário(s).${d.aviso ? " (" + d.aviso + ")" : ""}`);
+        else alert("Erro ao enviar o resumo.");
+      } finally { btn.disabled = false; btn.textContent = "📧 Enviar resumo por e-mail"; }
+    }
+    (window as any).enviarResumoEmail = enviarResumoEmail;
+
+    // badge da aba (carrega só o resumo no load da página)
+    fetch("/api/admin/rh/alertas").then(r => r.ok ? r.json() : null).then(d => {
+      if (!d) return;
+      const total = (d.resumo?.vencidos || 0) + (d.resumo?.vencendo_30 || 0) + (d.resumo?.sem_aso || 0);
+      const b = document.getElementById("alertasBadge");
+      if (b && total) b.textContent = String(total);
+    }).catch(() => {});
 
     // ── Modais ──
     function fecharModal(id: string) { document.getElementById(id)?.classList.remove("open"); }
