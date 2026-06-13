@@ -347,8 +347,28 @@ custo financeiro(1,5%) + indireto(15,5%) + grau de risco(0-50%). Parametros vem
 da `COMPOSIÇÃO_CUSTO.xlsx`. Template de proposta = PPTX de 11 slides na mesma pasta.
 
 **PENDENTE (bloqueia base v2):** equipe revisar aba AUDITORIA e definir precos
-unicos para os 19 grupos divergentes. Proximas fases: banco Supabase + CRUD,
-montador de orcamento, SINAPI, IA de leitura de PDF, geracao de documentos.
+unicos para os 19 grupos divergentes.
+
+**Fase 1 ENTREGUE em 13/06/2026 (decisao da Adriana: comecar; usar SO SINAPI, sem SICRO):**
+- Migration `db/migrations/035_orcamentos.sql` — tabelas `orc_servicos`,
+  `orc_parametros_bdi` (parametros de BDI ja semeados via INSERT), `orc_equipamentos`,
+  `orc_equipes`, `orc_insumos`, `orc_orcamentos` + `orc_orcamento_itens`. RLS ligado
+  (so service role). **PRECISA SER RODADA no SQL Editor do Supabase (1x).** Ainda NAO rodada.
+- Tela `/admin/orcamentos` (menu Empresa → Orcamentos 🧮): catalogo dos 1.837 servicos
+  com busca, filtros (disciplina/grupo/auditoria/ativo), paginacao server-side, CRUD via
+  modal, KPIs + atalho p/ pendencias de auditoria. Subpagina `/admin/orcamentos/parametros`:
+  editor de BDI + simulador do multiplicador V3 em tempo real.
+- APIs `/api/admin/orcamentos/servicos` (GET paginado+filtros, POST), `/servicos/[codigo]`
+  (PATCH, DELETE soft por padrao / hard=1), `/parametros` (GET, PATCH em lote).
+- Import idempotente `scripts/importar-base-orcamento.mjs` (upsert por codigo via PostgREST
+  resolution=merge-duplicates) a partir de `scripts/seed/orc_servicos.json` (gerado do
+  BASE_MESTRE pelo finalize_seed.py). QA E2E `scripts/qa-orcamentos.mjs` (override BASE por
+  env QA_BASE). **Fluxo p/ ativar:** (1) Adriana roda migration 035 no SQL Editor →
+  (2) `node scripts/importar-base-orcamento.mjs` → (3) deploy → (4) `node scripts/qa-orcamentos.mjs`.
+- MODELO DE PRECO (importante): `custo_material`/`custo_mao_obra` sao CUSTO sem BDI; preco de
+  venda = custo*(1+BDI). O "Com BDI" das abas de disciplina da planilha original era rotulo
+  enganoso — o BDI real e o multiplicador V3 da aba DEFINITIVA. Rotulo corrigido na BASE_MESTRE.
+- Lint (`tsc --noEmit`) e `astro build` limpos. Proxima: Fase 2 (montador de orcamento).
 
 ## Atualizacao 12/06/2026 (parte 3) — Ondas Manus: Membros, Comercial e JunIA
 
@@ -415,6 +435,28 @@ obras.vobi_id SEM o prefixo "vobi-" (numVobi() normaliza); order da Vobi e
 fracionario (Math.round); /refurbish-step (nomes de etapa) estava 502/503 na
 importacao — etapa ficou null, re-rodar o script quando a infra Vobi
 normalizar preenche os nomes. QA E2E 11/11 (scripts/qa-obras.mjs).
+
+**Onda Gestao de Ativos (13/06/2026, commit 438ddbd):** modulo ja era solido
+(QA baseline 19/19). Auditado por workflow multi-agente (6 dimensoes, 41 achados
+verificados adversarialmente). Implementado: (SEGURANCA/LGPD) portal do
+colaborador esconde segredos operacionais via CAMPOS_OCULTOS_PORTAL =
+{pin_puk,renavam,chassi,mac} (admin ve tudo); cadastro forca status em_estoque.
+(VALIDACAO) enums de status/categoria/ocorrencia validados na API → 400 claro em
+vez de 500 do banco; planos com trim/max 10 anos/valida ativo existe.
+(BUGS) retorno de manutencao volta para quem tinha o ativo (nao forca estoque);
+location.pathname com filter(Boolean); limites nas queries GET.
+(GAPS MANUS) exportar inventario CSV /api/admin/ativos/export (respeita filtros);
+card 'Garantias vencendo' clicavel → ?garantia=vencendo; fotos do ativo
+(upload+galeria, bucket 'ativos' migration 035 RODADA, /api/admin/ativos/[id]/fotos).
+(UX) confirm em baixa/descarte, loading/anti-duplo-clique, limpar msg ao abrir
+modal, edicao com campos estruturados por categoria (nao textarea crua).
+ADIADO p/ decisao da Adriana: inventario fisico (scan QR), depreciacao contabil,
+operacoes em massa (devolucao em lote), NF em bucket privado. RLS policies NAO
+implementadas de proposito: acesso e 100% via service-role no backend apos auth
+JWT (anon key nao toca essas tabelas), entao policies seriam inocuas — decisao
+arquitetural registrada. QA E2E em scripts/qa-ativos.mjs.
+NOTA: migration 035 existe em DUAS versoes (035_ativos_storage e 035_orcamentos
+de trabalho anterior) — ambas idempotentes, numero e so referencia.
 
 ## Convencoes desta pasta para o Claude Code
 

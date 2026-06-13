@@ -1,6 +1,9 @@
 -- ============================================================================
 -- 035 — Bucket de Storage para fotos e anexos de ativos
 --        (fotos do equipamento, condição na entrega/devolução, anexos)
+-- OBS: em produção (13/06/2026) o bucket foi criado via Storage API (service
+--      role), pois o SQL Editor não confirmou o INSERT. Esta migration é
+--      idempotente e serve de referência/replay em outros ambientes.
 -- ============================================================================
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

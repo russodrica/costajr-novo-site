@@ -43,7 +43,13 @@ try {
 
   // 2. Validação: categoria inválida rejeitada
   const c2 = await fetch(`${BASE}/api/admin/ativos`, { method: "POST", headers: HA, body: JSON.stringify({ categoria: "xpto", descricao: "inválido" }) });
-  check("Rejeita categoria inválida", c2.status >= 400);
+  check("Rejeita categoria inválida", c2.status === 400);
+
+  // 2b. status enviado no cadastro é ignorado (nasce em_estoque)
+  const cStatus = await fetch(`${BASE}/api/admin/ativos`, { method: "POST", headers: HA, body: JSON.stringify({ categoria: "outros", descricao: "QA status forcado", status: "extraviado" }) });
+  const cStatusD = await cStatus.json();
+  check("Cadastro força status em_estoque", cStatus.ok && cStatusD.status === "em_estoque", `status=${cStatusD.status}`);
+  if (cStatusD.id) { await sb(`ativos_movimentos?ativo_id=eq.${cStatusD.id}`, { method: "DELETE" }); await sb(`ativos?id=eq.${cStatusD.id}`, { method: "DELETE" }); }
 
   // 3. Entregar a colaborador → gera termo
   const m1 = await fetch(`${BASE}/api/admin/ativos/${ativoId}/movimentar`, { method: "POST", headers: HA, body: JSON.stringify({ acao: "entregar", colaborador_id: colabId, colaborador_nome: "QA Ativo Colab", colaborador_email: colabEmail, condicao: "novo" }) });
@@ -84,6 +90,33 @@ try {
   // 8. Editar dados (gera movimento de edição)
   const ed = await fetch(`${BASE}/api/admin/ativos/${ativoId}`, { method: "PATCH", headers: HA, body: JSON.stringify({ observacoes: "editado pelo QA" }) });
   check("Editar ativo", ed.ok);
+
+  // 8b. Validação de enum no movimentar: status inválido → 400
+  const stInv = await fetch(`${BASE}/api/admin/ativos/${ativoId}/movimentar`, { method: "POST", headers: HA, body: JSON.stringify({ acao: "mudar_status", novo_status: "xpto" }) });
+  check("Rejeita status inválido no movimentar (400)", stInv.status === 400);
+
+  // 8c. Retorno de manutenção restaura alocação anterior
+  // (ativo está alocado ao colaborador neste ponto) → enviar p/ manutenção → retornar → volta alocado
+  await fetch(`${BASE}/api/admin/ativos/${ativoId}/movimentar`, { method: "POST", headers: HA, body: JSON.stringify({ acao: "enviar_manutencao", prestador: "QA Tec" }) });
+  await fetch(`${BASE}/api/admin/ativos/${ativoId}/movimentar`, { method: "POST", headers: HA, body: JSON.stringify({ acao: "retornar_manutencao" }) });
+  const aMan = await sb(`ativos?id=eq.${ativoId}&select=status,alocado_para_id`);
+  check("Retorno de manutenção volta para o colaborador", aMan[0].status === "alocado" && aMan[0].alocado_para_id === colabId, `status=${aMan[0].status}`);
+
+  // 8d. Exportar CSV
+  const exp = await fetch(`${BASE}/api/admin/ativos/export`, { headers: { cookie } });
+  const ct = exp.headers.get("content-type") || "";
+  const csvTxt = await exp.text();
+  check("Exportar inventário CSV", exp.ok && ct.includes("csv") && csvTxt.includes("Categoria"), ct);
+
+  // 8e. Upload de foto → entra na lista fotos[]
+  const pngB64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const ft = await fetch(`${BASE}/api/admin/ativos/${ativoId}/fotos`, { method: "POST", headers: HA, body: JSON.stringify({ imagem_base64: pngB64, content_type: "image/png" }) });
+  const ftd = await ft.json();
+  check("Upload de foto do ativo", ft.ok && Array.isArray(ftd.fotos) && ftd.fotos.length === 1, `fotos=${ftd.fotos?.length}`);
+  if (ft.ok && ftd.url) {
+    const fdel = await fetch(`${BASE}/api/admin/ativos/${ativoId}/fotos?url=${encodeURIComponent(ftd.url)}`, { method: "DELETE", headers: HA });
+    check("Remover foto do ativo", fdel.ok && (await fdel.json()).fotos.length === 0);
+  }
 
   // 9. Plano preventivo: criar → executar
   const p1 = await fetch(`${BASE}/api/admin/ativos/${ativoId}/planos`, { method: "POST", headers: HA, body: JSON.stringify({ titulo: "QA Revisão", periodicidade_dias: 90 }) });
