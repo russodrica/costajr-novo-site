@@ -95,6 +95,7 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
       {Object.entries(statusLabels).map(([k, v]) => <option value={k} selected={k === filtroStatus}>{v}</option>)}
     </select>
     <button class="btn btn-outline" id="btnExport" title="Baixar a lista atual em CSV (abre no Excel)">⬇️ Exportar</button>
+    <button class="btn btn-outline" onclick="document.getElementById('modalImport').classList.add('open')" title="Cadastrar/atualizar vários ativos de uma vez por planilha">⬆️ Importar em massa</button>
     <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo ativo</button>
   </div>
 
@@ -229,9 +230,34 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
     </div>
   </div>
 
+  <!-- Modal importar em massa -->
+  <div class="modal-overlay" id="modalImport">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-title">⬆️ Importar ativos em massa</div>
+      <ol style="font-size:13px;color:var(--ink-mid);line-height:1.7;padding-left:20px;margin:0 0 14px">
+        <li><a href="/api/admin/ativos/export?modelo=1" style="font-weight:700;color:var(--brand)">Baixe o modelo</a> (ou exporte a base atual para editar e reimportar).</li>
+        <li>Preencha no Excel — uma linha por equipamento. Deixe a coluna <strong>ID</strong> vazia para criar; preencha (do export) para atualizar.</li>
+        <li>Salve como <strong>CSV</strong> e selecione o arquivo abaixo.</li>
+      </ol>
+      <div class="form-group">
+        <input type="file" id="impFile" accept=".csv,text/csv" />
+      </div>
+      <div id="impResultado"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModal('modalImport')">Fechar</button>
+        <button type="button" class="btn btn-outline" id="btnAnalisar" onclick="analisarImport()">Analisar</button>
+        <button type="button" class="btn btn-primary" id="btnConfirmarImport" style="display:none" onclick="confirmarImport()">Confirmar importação</button>
+      </div>
+    </div>
+  </div>
+
   <style>
     .row-link { cursor: pointer; }
     .cat-head { font-size: .8rem; font-weight: 700; color: var(--ink-mid); margin: 6px 0 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+    .imp-resumo { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 12px; }
+    .imp-chip { padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; }
+    .imp-erros { max-height: 160px; overflow-y: auto; font-size: 12.5px; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 8px 12px; }
+    .imp-erros div { color: #991B1B; padding: 2px 0; }
   </style>
 
   <script>
@@ -291,6 +317,53 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
       if (res.ok) { window.location.href = `/admin/ativos/${d.id}`; }
       else { msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao cadastrar"}</div>`; }
     });
+
+    // ── Importação em massa ──
+    let csvCache = "";
+    async function lerArquivoCsv(): Promise<string> {
+      const f = (document.getElementById("impFile") as HTMLInputElement).files?.[0];
+      if (!f) { alert("Selecione um arquivo CSV."); return ""; }
+      return await f.text();
+    }
+    function renderResumo(d: any, dryRun: boolean) {
+      const el = document.getElementById("impResultado")!;
+      const erros = (d.erros || []);
+      el.innerHTML = `
+        <div class="imp-resumo">
+          <span class="imp-chip" style="background:#ECFDF5;color:#047857">➕ Criar: ${d.criar ?? d.criados ?? 0}</span>
+          <span class="imp-chip" style="background:#EFF6FF;color:#1D4ED8">✏️ Atualizar: ${d.atualizar ?? d.atualizados ?? 0}</span>
+          <span class="imp-chip" style="background:${erros.length ? "#FEF2F2" : "#F3F4F6"};color:${erros.length ? "#B91C1C" : "#6B7280"}">⚠️ Erros: ${erros.length}</span>
+        </div>
+        ${erros.length ? `<div class="imp-erros">${erros.map((e: any) => `<div>Linha ${e.linha}: ${e.motivo}</div>`).join("")}</div>` : ""}
+        ${dryRun ? '<p style="font-size:12.5px;color:var(--ink-light);margin-top:10px">Revise acima e clique em <strong>Confirmar importação</strong>. As linhas com erro serão puladas.</p>' : '<p style="font-size:13px;color:#047857;font-weight:700;margin-top:10px">✓ Importação concluída!</p>'}`;
+    }
+    async function analisarImport() {
+      csvCache = await lerArquivoCsv();
+      if (!csvCache) return;
+      const btn = document.getElementById("btnAnalisar") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Analisando...";
+      try {
+        const res = await fetch("/api/admin/ativos/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ csv: csvCache, confirmar: false }) });
+        const d = await res.json();
+        if (!res.ok) { document.getElementById("impResultado")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao analisar"}</div>`; return; }
+        renderResumo(d, true);
+        (document.getElementById("btnConfirmarImport") as HTMLElement).style.display = (d.criar || d.atualizar) ? "" : "none";
+      } finally { btn.disabled = false; btn.textContent = "Analisar"; }
+    }
+    async function confirmarImport() {
+      if (!csvCache) return;
+      const btn = document.getElementById("btnConfirmarImport") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Importando...";
+      try {
+        const res = await fetch("/api/admin/ativos/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ csv: csvCache, confirmar: true }) });
+        const d = await res.json();
+        if (!res.ok) { document.getElementById("impResultado")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao importar"}</div>`; return; }
+        renderResumo(d, false);
+        setTimeout(() => window.location.reload(), 1500);
+      } finally { btn.disabled = false; btn.textContent = "Confirmar importação"; }
+    }
+    (window as any).analisarImport = analisarImport;
+    (window as any).confirmarImport = confirmarImport;
 
     (window as any).fecharModal = fecharModal;
     (window as any).abrirModalNovo = abrirModalNovo;
