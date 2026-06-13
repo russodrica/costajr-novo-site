@@ -25,6 +25,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       return jsonErr(400, "Tipo inválido");
     if (patch.status !== undefined && !["previsto", "pago", "atrasado", "cancelado"].includes(String(patch.status)))
       return jsonErr(400, "Status inválido");
+    if (patch.valor !== undefined && patch.valor !== null) {
+      const vn = Number(patch.valor);
+      if (isNaN(vn) || vn < 0) return jsonErr(400, "Valor deve ser um número maior ou igual a zero");
+    }
 
     // marcar pago sem data explícita: usa a data de hoje
     if (patch.status === "pago" && !patch.data_pagamento && body.data_pagamento === undefined)

@@ -46,16 +46,13 @@ if (filtroCategoria !== "todas") qLanc = qLanc.eq("categoria_id", filtroCategori
 const [
   { data: lancamentos, error: lancErro },
   { data: categorias, error: catErro },
-  { data: lancPeriodo, error: periodoErro },
-  { data: manutPeriodo, error: manutPeriodoErro },
+  { data: resumoRpc, error: resumoErro },
   { data: manutMes, error: manutMesErro },
 ] = await Promise.all([
   qLanc,
   db.from("fin_categorias").select("*").order("tipo", { ascending: true }).order("nome", { ascending: true }),
-  db.from("fin_lancamentos").select("tipo, valor, status, data_vencimento, data_pagamento")
-    .or(`data_vencimento.gte.${inicioGraficoStr},data_pagamento.gte.${inicioGraficoStr}`).limit(5000),
-  db.from("manut_pagamentos").select("valor, data_pagamento").eq("status", "pago")
-    .gte("data_pagamento", inicioGraficoStr).limit(5000),
+  // Agregação NO BANCO (corrige somatórios que antes truncavam em .limit(5000))
+  db.rpc("fin_resumo_caixa", { p_meses: 6 }),
   db.from("manut_pagamentos").select("id, referencia, valor, status, data_vencimento, data_pagamento")
     .gte("data_vencimento", mesInicio).lt("data_vencimento", mesFim)
     .order("data_vencimento", { ascending: true }).limit(500),
@@ -64,60 +61,41 @@ const [
 const erros = [
   lancErro && `Lançamentos: ${lancErro.message}`,
   catErro && `Categorias: ${catErro.message}`,
-  periodoErro && `Fluxo de caixa: ${periodoErro.message}`,
-  manutPeriodoErro && `Recebimentos de manutenção (período): ${manutPeriodoErro.message}`,
+  resumoErro && `Fluxo de caixa: ${resumoErro.message}`,
   manutMesErro && `Recebimentos de manutenção (mês): ${manutMesErro.message}`,
 ].filter(Boolean) as string[];
 
-// ── Agregações do mês corrente (cards) ──
-let aReceber = 0, aPagar = 0, atrasadosQtd = 0, atrasadosValor = 0;
-let recebidoMes = 0, pagoMes = 0, recPrevMes = 0, despPrevMes = 0;
-for (const l of lancPeriodo || []) {
-  const v = Number(l.valor) || 0;
-  const venc = String(l.data_vencimento || "");
-  const mesVenc = venc.slice(0, 7);
-  const mesPag = String(l.data_pagamento || "").slice(0, 7);
-  if (mesVenc === mesAtual && (l.status === "previsto" || l.status === "atrasado")) {
-    if (l.tipo === "receita") aReceber += v; else aPagar += v;
-  }
-  if (l.status === "atrasado" || (l.status === "previsto" && venc && venc < hojeStr)) {
-    atrasadosQtd++; atrasadosValor += v;
-  }
-  if (l.status === "pago" && mesPag === mesAtual) {
-    if (l.tipo === "receita") recebidoMes += v; else pagoMes += v;
-  }
-  if (mesVenc === mesAtual && l.status !== "cancelado") {
-    if (l.tipo === "receita") recPrevMes += v; else despPrevMes += v;
-  }
-}
-let manutRecebidoMes = 0;
-for (const p of manutPeriodo || []) {
-  if (p.data_pagamento && chaveMes(new Date(p.data_pagamento)) === mesAtual) manutRecebidoMes += Number(p.valor) || 0;
-}
+// ── Cards do mês corrente (vindos da agregação no banco) ──
+const cards = (resumoRpc as any)?.cards || {};
+const porMesRpc: Record<string, any> = (resumoRpc as any)?.por_mes || {};
+const mesCorr = porMesRpc[mesAtual] || {};
+const aReceber = Number(cards.a_receber) || 0;
+const aPagar = Number(cards.a_pagar) || 0;
+const atrasadosQtd = (Number(cards.atrasados_receber_qtd) || 0) + (Number(cards.atrasados_pagar_qtd) || 0);
+const atrasadosValor = (Number(cards.atrasados_receber) || 0) + (Number(cards.atrasados_pagar) || 0);
+const recebidoMes = Number(mesCorr.receitas_recebidas) || 0;
+const pagoMes = Number(mesCorr.despesas_pagas) || 0;
+const recPrevMes = Number(mesCorr.receitas_previstas) || 0;
+const despPrevMes = Number(mesCorr.despesas_previstas) || 0;
+const manutRecebidoMes = Number(mesCorr.manut_recebido) || 0;
 const recebidoTotalMes = recebidoMes + manutRecebidoMes;
 const saldoMes = recPrevMes - despPrevMes;
 
-// ── Fluxo de caixa (6 meses): entradas = fin receitas pagas + manut recebido; saídas = fin despesas pagas ──
+// ── Fluxo de caixa (6 meses): entradas = receitas pagas + manut recebido; saídas = despesas pagas ──
 const mesesLista: { chave: string; rotulo: string }[] = [];
 for (let i = 0; i < 6; i++) {
   const d = new Date(inicioGrafico);
   d.setMonth(d.getMonth() + i);
   mesesLista.push({ chave: chaveMes(d), rotulo: d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "") });
 }
-const entradaPorMes = Object.fromEntries(mesesLista.map(m => [m.chave, 0]));
-const saidaPorMes = Object.fromEntries(mesesLista.map(m => [m.chave, 0]));
-for (const l of lancPeriodo || []) {
-  if (l.status !== "pago" || !l.data_pagamento) continue;
-  const k = String(l.data_pagamento).slice(0, 7);
-  if (!(k in entradaPorMes)) continue;
-  const v = Number(l.valor) || 0;
-  if (l.tipo === "receita") entradaPorMes[k] += v; else saidaPorMes[k] += v;
-}
-for (const p of manutPeriodo || []) {
-  if (!p.data_pagamento) continue;
-  const k = chaveMes(new Date(p.data_pagamento));
-  if (k in entradaPorMes) entradaPorMes[k] += Number(p.valor) || 0;
-}
+const entradaPorMes = Object.fromEntries(mesesLista.map(m => {
+  const r = porMesRpc[m.chave] || {};
+  return [m.chave, (Number(r.receitas_recebidas) || 0) + (Number(r.manut_recebido) || 0)];
+}));
+const saidaPorMes = Object.fromEntries(mesesLista.map(m => {
+  const r = porMesRpc[m.chave] || {};
+  return [m.chave, Number(r.despesas_pagas) || 0];
+}));
 const maxFluxo = Math.max(1, ...Object.values(entradaPorMes), ...Object.values(saidaPorMes));
 
 // ── Helpers de exibição ──

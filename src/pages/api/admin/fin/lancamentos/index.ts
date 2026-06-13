@@ -57,6 +57,9 @@ export const POST: APIRoute = async ({ request }) => {
     if (!tipo || !descricao || valor === undefined || valor === null || valor === "" || !data_vencimento)
       return jsonErr(400, "Tipo, descrição, valor e data de vencimento são obrigatórios");
     if (!["receita", "despesa"].includes(tipo)) return jsonErr(400, "Tipo inválido");
+    const valorNum = Number(valor);
+    if (isNaN(valorNum) || valorNum < 0) return jsonErr(400, "Valor deve ser um número maior ou igual a zero");
+    if (body.status && !["previsto", "pago", "atrasado", "cancelado"].includes(body.status)) return jsonErr(400, "Status inválido");
 
     const campos = [
       "tipo", "descricao", "categoria_id", "valor", "data_vencimento", "data_pagamento",
