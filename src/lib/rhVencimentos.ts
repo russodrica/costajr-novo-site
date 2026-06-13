@@ -4,7 +4,7 @@ import { enviarEmailSimples } from "./mailer";
 // Marcos: 30, 15 e 7 dias antes + no dia do vencimento. Enviado para o RH.
 
 const SITE = import.meta.env.SITE_BASE_URL || "https://costajr.com.br";
-export const RH_ALERT_EMAIL = import.meta.env.RH_ALERT_EMAIL || "rh@costajr.com.br";
+export const RH_ALERT_EMAIL = import.meta.env.RH_ALERT_EMAIL || "rh@costajr.com.br, adriana@costajr.com.br";
 const CRITICOS = new Set(["aso", "cnh"]);
 const MARCOS = [30, 15, 7, 0]; // dias antes do vencimento (0 = vence hoje)
 
@@ -85,7 +85,7 @@ export async function enviarDigestVencimentosRh(db: any, opts: { modo?: "marcos"
     </div>`;
 
   let enviados = 0, falhas = 0;
-  for (const to of para.split(",").map((s) => s.trim()).filter(Boolean)) {
+  for (const to of String(para).split(",").map((s: string) => s.trim()).filter(Boolean)) {
     try { await enviarEmailSimples({ to, subject: `🚨 RH: ${selecionados.length} documento(s) a vencer/vencido(s)`, html }); enviados++; }
     catch { falhas++; }
   }

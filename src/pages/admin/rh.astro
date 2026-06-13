@@ -832,6 +832,46 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     const tiposDocMap: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Documento" };
     const perfisMap: Record<string, string> = { admin: "Administrador", coordenador: "Coordenador", financeiro: "Financeiro", comercial: "Comercial", rh: "RH / DP", operacional: "Operacional" };
 
+    // ── Slots fixos de anexo (espelham as colunas do Monday) ──
+    const normD = (s: string) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+    const brData = (iso: string) => (iso ? iso.split("-").reverse().join("/") : "");
+    const SLOTS_DOC = [
+      { key: "contrato", label: "Contrato / Termo", tipo: "contrato", prefixo: "Contrato/Termo", validade: false },
+      { key: "rg_hab", label: "RG / Habilitação", tipo: "cnh", prefixo: "RG/Habilitação", validade: false },
+      { key: "ficha_registro", label: "Ficha de Registro", tipo: "outro", prefixo: "Ficha de Registro", validade: false },
+      { key: "teste", label: "Teste de Personalidade", tipo: "outro", prefixo: "Teste de Personalidade", validade: false },
+      { key: "aso", label: "ASO", tipo: "aso", prefixo: "ASO", validade: true },
+      { key: "ficha_epi", label: "Ficha de EPI", tipo: "ficha_epi", prefixo: "Ficha EPI", validade: true },
+      { key: "os", label: "Ordem de Serviço", tipo: "outro", prefixo: "Ordem de Serviço", validade: false },
+      { key: "nr35", label: "NR-35 · Altura", tipo: "certificado", prefixo: "NR35", validade: true },
+      { key: "nr10", label: "NR-10 · Eletricidade", tipo: "certificado", prefixo: "NR10", validade: true },
+      { key: "nr06", label: "NR-06 · EPI", tipo: "certificado", prefixo: "NR06", validade: true },
+      { key: "nr01", label: "NR-01 · GRO", tipo: "certificado", prefixo: "NR01", validade: true },
+    ];
+    const SLOT_LABEL: Record<string, string> = Object.fromEntries(SLOTS_DOC.map((s) => [s.key, s.label]));
+    function slotDoDoc(doc: any): string {
+      const t = doc.titulo || "";
+      const idx = t.indexOf(" — ");
+      const np = normD(idx >= 0 ? t.slice(0, idx) : t);
+      if (np.includes("contrato") || np.includes("termo")) return "contrato";
+      if (np.startsWith("rg") || np.includes("habilita")) return "rg_hab";
+      if (np.includes("registro")) return "ficha_registro";
+      if (np.includes("personalidade") || np.startsWith("teste")) return "teste";
+      if (np.startsWith("aso")) return "aso";
+      if (np.includes("epi")) return "ficha_epi";
+      if (np.includes("nr35") || np.includes("nr 35")) return "nr35";
+      if (np.includes("nr10") || np.includes("nr 10")) return "nr10";
+      if (np.includes("nr06") || np.includes("nr 06") || np.includes("nr 6")) return "nr06";
+      if (np.includes("nr01") || np.includes("nr 01") || np.includes("nr 1")) return "nr01";
+      if (np.includes("ordem") || np === "os") return "os";
+      const porTipo: Record<string, string> = { contrato: "contrato", aso: "aso", ficha_epi: "ficha_epi", cnh: "rg_hab" };
+      return porTipo[doc.tipo] || "outros";
+    }
+    function nomeCurtoDoc(titulo: string): string {
+      const idx = titulo.indexOf(" — ");
+      return escD(idx >= 0 ? titulo.slice(idx + 3) : titulo);
+    }
+
     async function carregarFicha(colabId: string, nome: string) {
       const wrap = document.getElementById("fichaDocsLista")!;
       const acessoBox = document.getElementById("fichaAcessoLista")!;
@@ -844,34 +884,82 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         const d = await res.json();
         renderAcesso(colabId, nome, d.membro, d.colaborador?.email);
         const docs = d.documentos || [];
-        document.getElementById("fichaDocsCount")!.textContent = docs.length ? `(${docs.length})` : "";
-        if (!docs.length) { wrap.innerHTML = '<p style="color:#999;font-size:13px">Nenhum documento anexado. Clique em "Anexar documento".</p>'; return; }
-        wrap.innerHTML = `<div class="table-wrap"><table style="font-size:13px"><thead><tr><th>Documento</th><th>Tipo</th><th>Validade</th><th></th></tr></thead><tbody>${
-          docs.map((doc: any) => {
-            const venc = doc.validade && doc.validade < hojeStr;
-            const vencendo = doc.validade && doc.validade >= hojeStr && doc.validade <= em30Str;
-            const corV = venc ? "#B91C1C" : vencendo ? "#D97706" : "#374151";
-            const temArq = doc.storage_path || doc.url;
-            const link = temArq
-              ? `<a href="/api/admin/rh/documentos/${doc.id}/arquivo" target="_blank" rel="noopener" title="Abre por link seguro temporário">📎 ${escD(doc.titulo)}</a>`
-              : escD(doc.titulo);
-            const valTxt = doc.validade
-              ? `${doc.validade.split("-").reverse().join("/")}${venc ? ' <span class="badge badge-red">Vencido</span>' : vencendo ? ' <span class="badge badge-orange">Vence em breve</span>' : ""}`
-              : "—";
-            return `<tr>
-              <td>${link}</td>
-              <td><span class="badge badge-gray">${tiposDocMap[doc.tipo] || doc.tipo}</span></td>
-              <td style="color:${corV};font-weight:600">${valTxt}</td>
-              <td><button type="button" class="btn btn-danger btn-sm" onclick="excluirDocFicha('${doc.id}','${colabId}','${escD(nome).replace(/'/g, "")}')">🗑</button></td>
-            </tr>`;
-          }).join("")
-        }</tbody></table></div>`;
+        const nomeJs = escD(nome).replace(/['"]/g, "");
+        // separa: ativos por slot, catch-all "outros", e vencidos (histórico)
+        const porSlot: Record<string, any[]> = {};
+        const vencidos: { doc: any; slot: string }[] = [];
+        const outros: any[] = [];
+        for (const doc of docs) {
+          const venc = doc.validade && doc.validade < hojeStr;
+          const slot = slotDoDoc(doc);
+          if (venc) { vencidos.push({ doc, slot }); continue; }
+          if (slot === "outros") { outros.push(doc); continue; }
+          (porSlot[slot] = porSlot[slot] || []).push(doc);
+        }
+        const slotsPreenchidos = SLOTS_DOC.filter((s) => (porSlot[s.key] || []).length).length;
+        document.getElementById("fichaDocsCount")!.textContent = `(${slotsPreenchidos}/${SLOTS_DOC.length} tipos${vencidos.length ? ` · ${vencidos.length} vencido${vencidos.length > 1 ? "s" : ""}` : ""})`;
+
+        const linhaDoc = (doc: any, contexto: string, tag?: string) => {
+          const vencendo = doc.validade && doc.validade >= hojeStr && doc.validade <= em30Str;
+          const temArq = doc.storage_path || doc.url;
+          const link = temArq
+            ? `<a href="/api/admin/rh/documentos/${doc.id}/arquivo" target="_blank" rel="noopener" title="Abrir (link seguro temporário)">📎 ${nomeCurtoDoc(doc.titulo)}</a>`
+            : nomeCurtoDoc(doc.titulo);
+          const corVal = contexto === "venc" ? "#B91C1C" : vencendo ? "#D97706" : "#6B7280";
+          const val = doc.validade
+            ? ` <span style="font-size:11px;color:${corVal};font-weight:700;white-space:nowrap">${contexto === "venc" ? "venceu" : "val."} ${brData(doc.validade)}</span>`
+            : "";
+          return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+            ${tag ? `<span style="font-size:10px;background:#F3F4F6;border-radius:4px;padding:1px 6px;color:#6B7280;font-weight:700;flex-shrink:0">${tag}</span>` : ""}
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px">${link}${val}</span>
+            <button type="button" title="Excluir" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0" onclick="excluirDocFicha('${doc.id}','${colabId}','${nomeJs}')">🗑</button>
+          </div>`;
+        };
+
+        let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:10px">';
+        for (const s of SLOTS_DOC) {
+          const lista = porSlot[s.key] || [];
+          const temHist = vencidos.some((v) => v.slot === s.key);
+          const preenchido = lista.length > 0;
+          const cor = preenchido ? "#16A34A" : temHist ? "#D97706" : "#DC2626";
+          const fundo = preenchido ? "#F0FDF4" : temHist ? "#FFFBEB" : "#FEF2F2";
+          const borda = preenchido ? "#BBF7D0" : temHist ? "#FDE68A" : "#FECACA";
+          const corpo = preenchido
+            ? lista.map((doc: any) => linhaDoc(doc, "ok")).join("")
+            : `<div style="font-size:12px;color:${cor};font-weight:600">${temHist ? "⚠ Vencido — anexe o atual" : "○ Não anexado"}</div>`;
+          html += `<div style="border:1px solid ${borda};background:${fundo};border-radius:8px;padding:9px 10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px">
+              <span style="font-size:12.5px;font-weight:700;color:#374151">${s.label}${s.validade ? ' <span style="font-size:9.5px;color:#9CA3AF;font-weight:600">⏱ validade</span>' : ""}</span>
+              <button type="button" title="Anexar ${s.label}" style="background:#fff;border:1px solid ${borda};border-radius:6px;width:22px;height:22px;line-height:1;cursor:pointer;color:#374151;font-size:14px;flex-shrink:0" onclick="abrirModalDocPara('${colabId}','${nomeJs}','${s.prefixo}','${s.tipo}')">+</button>
+            </div>${corpo}
+          </div>`;
+        }
+        html += "</div>";
+        if (outros.length) {
+          html += `<div style="margin-top:12px"><div style="font-size:12.5px;font-weight:700;color:#6B7280;margin-bottom:4px">Outros documentos</div>${outros.map((doc: any) => linhaDoc(doc, "ok")).join("")}</div>`;
+        }
+        if (vencidos.length) {
+          html += `<details style="margin-top:14px;border-top:1px dashed #E5E7EB;padding-top:10px">
+            <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#B45309">📁 Documentos vencidos (histórico) — ${vencidos.length}</summary>
+            <div style="margin-top:8px">${vencidos
+              .sort((a, b) => (a.doc.validade < b.doc.validade ? 1 : -1))
+              .map((v) => linhaDoc(v.doc, "venc", SLOT_LABEL[v.slot] || "Outro"))
+              .join("")}</div>
+          </details>`;
+        }
+        wrap.innerHTML = html;
       } catch { wrap.innerHTML = '<p style="color:#999;font-size:13px">Erro de conexão.</p>'; }
     }
-    function abrirModalDocPara(colabId: string, nome: string) {
+    function abrirModalDocPara(colabId: string, nome: string, prefixo?: string, tipoEnum?: string) {
       abrirModalDoc();
-      const sel = document.querySelector('#formDoc select[name="colaborador_id"]') as HTMLSelectElement | null;
+      const f = document.getElementById("formDoc") as HTMLFormElement;
+      const sel = f.querySelector('select[name="colaborador_id"]') as HTMLSelectElement | null;
       if (sel) sel.value = colabId;
+      if (tipoEnum) { const tp = f.querySelector('select[name="tipo"]') as HTMLSelectElement | null; if (tp) tp.value = tipoEnum; }
+      if (prefixo) {
+        const ti = f.querySelector('input[name="titulo"]') as HTMLInputElement | null;
+        if (ti) { ti.value = prefixo + " — "; setTimeout(() => { ti.focus(); ti.setSelectionRange(ti.value.length, ti.value.length); }, 60); }
+      }
     }
     async function excluirDocFicha(docId: string, colabId: string, nome: string) {
       if (!confirm("Excluir este documento?")) return;
