@@ -19,7 +19,15 @@ export const GET: APIRoute = async ({ request, params }) => {
     if (error) return jsonErr(500, error.message);
     if (!colaborador) return jsonErr(404, "Colaborador não encontrado");
 
-    return jsonOk({ colaborador, ausencias: ausencias || [], documentos: documentos || [] });
+    // membro vinculado (acesso ao portal), se houver
+    let membro: any = null;
+    if (colaborador.profile_id) {
+      const { data: m } = await db.from("portal_profiles")
+        .select("id, email, role, roles, approval_status").eq("id", colaborador.profile_id).maybeSingle();
+      if (m) membro = m;
+    }
+
+    return jsonOk({ colaborador, ausencias: ausencias || [], documentos: documentos || [], membro });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }

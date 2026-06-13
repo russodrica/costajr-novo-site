@@ -433,6 +433,12 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         </div>
       </form>
 
+      <!-- Acesso ao portal (vínculo com Membros) — só na edição -->
+      <div id="fichaAcessoWrap" style="display:none;border-top:1px solid #E5E7EB;margin-top:18px;padding-top:14px">
+        <div class="section-title" style="font-size:15px;margin-bottom:10px">🔑 Acesso ao portal (Membro)</div>
+        <div id="fichaAcessoLista"><div class="loading"><div class="spinner"></div> Verificando...</div></div>
+      </div>
+
       <!-- Documentos anexados do colaborador (só na edição) -->
       <div id="fichaDocsWrap" style="display:none;border-top:1px solid #E5E7EB;margin-top:18px;padding-top:14px">
         <div class="section-header" style="margin-bottom:10px">
@@ -760,6 +766,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       (document.getElementById("colabId") as any).value = "";
       (document.getElementById("tituloModalColab") as any).textContent = "Novo colaborador";
       (document.getElementById("msgColab") as any).innerHTML = "";
+      (document.getElementById("fichaAcessoWrap") as any).style.display = "none";
       (document.getElementById("fichaDocsWrap") as any).style.display = "none";
       document.getElementById("modalColab")?.classList.add("open");
     }
@@ -775,25 +782,30 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       }
       (document.getElementById("tituloModalColab") as any).textContent = "Editar colaborador";
       (document.getElementById("msgColab") as any).innerHTML = "";
+      (document.getElementById("fichaAcessoWrap") as any).style.display = "";
       (document.getElementById("fichaDocsWrap") as any).style.display = "";
-      carregarFichaDocs(id, c.nome || "");
+      carregarFicha(id, c.nome || "");
       document.getElementById("modalColab")?.classList.add("open");
     }
 
-    // ── Documentos do colaborador na ficha (busca todos, não só os 200 da página) ──
+    // ── Ficha do colaborador: acesso ao portal + documentos (busca tudo via API) ──
     const hojeStr = new Date().toISOString().slice(0, 10);
     const em30Str = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
     const escD = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const tiposDocMap: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Documento" };
+    const perfisMap: Record<string, string> = { admin: "Administrador", coordenador: "Coordenador", financeiro: "Financeiro", comercial: "Comercial", rh: "RH / DP", operacional: "Operacional" };
 
-    async function carregarFichaDocs(colabId: string, nome: string) {
+    async function carregarFicha(colabId: string, nome: string) {
       const wrap = document.getElementById("fichaDocsLista")!;
+      const acessoBox = document.getElementById("fichaAcessoLista")!;
       wrap.innerHTML = '<div class="loading"><div class="spinner"></div> Carregando documentos...</div>';
+      acessoBox.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
       (document.getElementById("btnAnexarDocFicha") as any).onclick = () => abrirModalDocPara(colabId, nome);
       try {
         const res = await fetch(`/api/admin/rh/colaboradores/${colabId}`);
-        if (!res.ok) { wrap.innerHTML = '<p style="color:#999;font-size:13px">Erro ao carregar documentos.</p>'; return; }
+        if (!res.ok) { wrap.innerHTML = '<p style="color:#999;font-size:13px">Erro ao carregar.</p>'; return; }
         const d = await res.json();
+        renderAcesso(colabId, nome, d.membro, d.colaborador?.email);
         const docs = d.documentos || [];
         document.getElementById("fichaDocsCount")!.textContent = docs.length ? `(${docs.length})` : "";
         if (!docs.length) { wrap.innerHTML = '<p style="color:#999;font-size:13px">Nenhum documento anexado. Clique em "Anexar documento".</p>'; return; }
@@ -827,9 +839,67 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     async function excluirDocFicha(docId: string, colabId: string, nome: string) {
       if (!confirm("Excluir este documento?")) return;
       const res = await fetch(`/api/admin/rh/documentos/${docId}`, { method: "DELETE", headers: { "content-type": "application/json" } });
-      if (res.ok) carregarFichaDocs(colabId, nome); else alert("Erro ao excluir documento");
+      if (res.ok) carregarFicha(colabId, nome); else alert("Erro ao excluir documento");
     }
     (window as any).excluirDocFicha = excluirDocFicha;
+
+    // ── Acesso ao portal (vínculo RH ↔ Membros) ──
+    function renderAcesso(colabId: string, nome: string, membro: any, email: string) {
+      const box = document.getElementById("fichaAcessoLista")!;
+      const opcoes = Object.entries(perfisMap).map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+      if (membro) {
+        const perfilAtual = (membro.roles && membro.roles.length ? membro.roles[0] : membro.role) || "operacional";
+        box.innerHTML = `
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:12px 14px">
+            <div style="font-size:13.5px;color:#166534;margin-bottom:8px">✅ Tem acesso ao portal — <strong>${escD(membro.email)}</strong></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <label style="font-size:12.5px;color:var(--ink-mid)">Perfil:</label>
+              <select id="acessoPerfil" style="max-width:200px">${opcoes}</select>
+              <button type="button" class="btn btn-primary btn-sm" onclick="salvarPerfilAcesso('${membro.id}','${colabId}','${escD(nome).replace(/'/g, "")}')">Salvar perfil</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="removerAcesso('${colabId}','${escD(nome).replace(/'/g, "")}')">Remover acesso</button>
+            </div>
+          </div>`;
+        const sel = document.getElementById("acessoPerfil") as HTMLSelectElement; if (sel) sel.value = perfilAtual;
+      } else {
+        const semEmail = !email;
+        box.innerHTML = `
+          <div style="background:#FFF8F0;border:1px solid #FED7AA;border-radius:8px;padding:12px 14px">
+            <div style="font-size:13px;color:#9A3412;margin-bottom:8px">Este colaborador ainda não acessa o portal.${semEmail ? " <strong>Cadastre um e-mail primeiro</strong> (salve a ficha com o e-mail)." : ""}</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <label style="font-size:12.5px;color:var(--ink-mid)">Perfil:</label>
+              <select id="acessoPerfil" ${semEmail ? "disabled" : ""} style="max-width:200px">${opcoes}</select>
+              <button type="button" class="btn btn-primary btn-sm" ${semEmail ? "disabled" : ""} onclick="darAcesso('${colabId}','${escD(nome).replace(/'/g, "")}')">🔑 Dar acesso ao portal</button>
+            </div>
+            <p style="font-size:11.5px;color:var(--ink-light);margin:8px 0 0">A senha é gerada e enviada por e-mail; o colaborador troca no primeiro acesso.</p>
+          </div>`;
+      }
+    }
+    async function darAcesso(colabId: string, nome: string) {
+      const role = (document.getElementById("acessoPerfil") as HTMLSelectElement)?.value;
+      if (!role) return;
+      if (!confirm(`Dar acesso ao portal para "${nome}" com o perfil "${perfisMap[role]}"?\n\nUma senha temporária será enviada por e-mail.`)) return;
+      const res = await fetch(`/api/admin/rh/colaboradores/${colabId}/acesso`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role }) });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (d.novo && d.email_enviado === false) alert(`Acesso criado! Não foi possível enviar o e-mail — senha temporária: ${d.senha_inicial}`);
+        else if (d.novo) alert("Acesso criado e senha enviada por e-mail! ✅");
+        else alert("Colaborador vinculado a um membro já existente. ✅");
+        carregarFicha(colabId, nome);
+      } else alert(d.error || "Erro ao dar acesso");
+    }
+    async function salvarPerfilAcesso(membroId: string, colabId: string, nome: string) {
+      const role = (document.getElementById("acessoPerfil") as HTMLSelectElement)?.value;
+      const res = await fetch(`/api/admin/membros/${membroId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ role, roles: [role] }) });
+      if (res.ok) { alert("Perfil atualizado! ✅"); carregarFicha(colabId, nome); } else alert("Erro ao atualizar perfil");
+    }
+    async function removerAcesso(colabId: string, nome: string) {
+      if (!confirm("Remover o acesso ao portal deste colaborador? (o login deixa de funcionar pelo vínculo; o cadastro de membro não é apagado)")) return;
+      const res = await fetch(`/api/admin/rh/colaboradores/${colabId}/acesso`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      if (res.ok) carregarFicha(colabId, nome); else alert("Erro ao remover acesso");
+    }
+    (window as any).darAcesso = darAcesso;
+    (window as any).salvarPerfilAcesso = salvarPerfilAcesso;
+    (window as any).removerAcesso = removerAcesso;
 
     async function desligarColab(id: string, nome: string) {
       if (!confirm(`Desligar o colaborador "${nome}"?\n\nO status mudará para "Desligado" e a data de desligamento será registrada como hoje.`)) return;
