@@ -1,0 +1,139 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const hoje = new Date().toISOString().slice(0, 10);
+const em30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+const [{ data: colabs }, { data: docs }, { data: epis }, { data: aval }, { data: clima }] = await Promise.all([
+  db.from("rh_colaboradores").select("status, regime, setor, data_admissao, data_desligamento, data_nascimento").limit(5000),
+  db.from("rh_documentos").select("validade, rh_colaboradores(status, regime)").not("validade", "is", null).lte("validade", em30).limit(3000),
+  db.from("epi_entregas").select("data_validade, status").eq("status", "ativo").not("data_validade", "is", null).lte("data_validade", em30).limit(3000),
+  db.from("rh_avaliacoes").select("nota_geral, ano, trimestre").eq("tipo", "gestor").limit(3000),
+  db.from("rh_clima_respostas").select("enps, pesquisa_id").limit(20000),
+]);
+
+const todos = colabs || [];
+const ehDiarista = (c: any) => c.regime === "diarista";
+const ativos = todos.filter((c) => c.status !== "desligado");
+const ativosNaoDiar = ativos.filter((c) => !ehDiarista(c));
+// por regime
+const porRegime: Record<string, number> = {};
+for (const c of ativos) porRegime[c.regime || "—"] = (porRegime[c.regime || "—"] || 0) + 1;
+// por setor
+const porSetor: Record<string, number> = {};
+for (const c of ativosNaoDiar) porSetor[c.setor || "Sem setor"] = (porSetor[c.setor || "Sem setor"] || 0) + 1;
+// por status
+const porStatus: Record<string, number> = {};
+for (const c of todos) porStatus[c.status || "—"] = (porStatus[c.status || "—"] || 0) + 1;
+
+// rotatividade — últimos 12 meses (admissões x desligamentos por mês)
+const meses: { label: string; ym: string }[] = [];
+{ const d = new Date(); d.setUTCDate(1); for (let i = 11; i >= 0; i--) { const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - i, 1)); meses.push({ label: m.toLocaleDateString("pt-BR", { month: "short" }), ym: m.toISOString().slice(0, 7) }); } }
+const admMes: Record<string, number> = {}, desMes: Record<string, number> = {};
+for (const c of todos) { if (c.data_admissao) admMes[String(c.data_admissao).slice(0, 7)] = (admMes[String(c.data_admissao).slice(0, 7)] || 0) + 1; if (c.data_desligamento) desMes[String(c.data_desligamento).slice(0, 7)] = (desMes[String(c.data_desligamento).slice(0, 7)] || 0) + 1; }
+const admissoes12 = meses.reduce((s, m) => s + (admMes[m.ym] || 0), 0);
+const deslig12 = meses.reduce((s, m) => s + (desMes[m.ym] || 0), 0);
+const turnover = ativosNaoDiar.length ? Math.round(((admissoes12 + deslig12) / 2 / ativosNaoDiar.length) * 100) : 0;
+
+// idade média e tempo de casa
+const idade = (n: string) => { const d = new Date(n); return (Date.now() - d.getTime()) / (365.25 * 86400000); };
+const idades = ativosNaoDiar.filter((c) => c.data_nascimento).map((c) => idade(c.data_nascimento));
+const idadeMedia = idades.length ? Math.round(idades.reduce((s, n) => s + n, 0) / idades.length) : 0;
+const tempos = ativosNaoDiar.filter((c) => c.data_admissao).map((c) => idade(c.data_admissao));
+const tempoMedio = tempos.length ? (tempos.reduce((s, n) => s + n, 0) / tempos.length).toFixed(1) : "0";
+
+// documentos / EPIs
+const elig = (c: any) => c && c.status !== "desligado" && c.regime !== "diarista";
+const docsRel = (docs || []).filter((d: any) => elig(Array.isArray(d.rh_colaboradores) ? d.rh_colaboradores[0] : d.rh_colaboradores));
+const docsVencidos = docsRel.filter((d: any) => d.validade < hoje).length;
+const docsVencendo = docsRel.filter((d: any) => d.validade >= hoje).length;
+const episVencendo = (epis || []).length;
+
+// aniversariantes do mês
+const mesAtual = new Date().getMonth() + 1;
+const aniv = ativos.filter((c) => c.data_nascimento && Number(String(c.data_nascimento).slice(5, 7)) === mesAtual).length;
+
+// avaliação — média do período mais recente
+let avalMedia = "—", avalPeriodo = "";
+if ((aval || []).length) {
+  const recente = (aval || []).slice().sort((a: any, b: any) => (b.ano - a.ano) || (b.trimestre - a.trimestre))[0];
+  const doPeriodo = (aval || []).filter((a: any) => a.ano === recente.ano && a.trimestre === recente.trimestre && a.nota_geral);
+  if (doPeriodo.length) { avalMedia = (doPeriodo.reduce((s: number, a: any) => s + Number(a.nota_geral), 0) / doPeriodo.length).toFixed(2); avalPeriodo = `T${recente.trimestre}/${recente.ano}`; }
+}
+// eNPS — última pesquisa com respostas
+let enps = "—";
+if ((clima || []).length) {
+  const byP: Record<string, number[]> = {}; for (const r of clima || []) if (r.enps != null) (byP[r.pesquisa_id] = byP[r.pesquisa_id] || []).push(r.enps);
+  const maior = Object.values(byP).sort((a, b) => b.length - a.length)[0] || [];
+  if (maior.length) { const pr = maior.filter((n) => n >= 9).length, de = maior.filter((n) => n <= 6).length; enps = String(Math.round(((pr - de) / maior.length) * 100)); }
+}
+
+const regLabel: Record<string, string> = { clt: "CLT", pj: "PJ", diarista: "Diarista", estagio: "Estágio", temporario: "Temporário", socio: "Sócio" };
+const maxSetor = Math.max(1, ...Object.values(porSetor));
+const maxRot = Math.max(1, ...meses.map((m) => Math.max(admMes[m.ym] || 0, desMes[m.ym] || 0)));
+const maxReg = Math.max(1, ...Object.values(porRegime));
+// Gráficos pré-renderizados como HTML (set:html) — evita o parser de JSX do Astro
+const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const barrasHtml = meses.map((m) => {
+  const adm = admMes[m.ym] || 0, des = desMes[m.ym] || 0;
+  const admH = Math.round((adm / maxRot) * 100), desH = Math.round((des / maxRot) * 100);
+  return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;justify-content:flex-end">`
+    + `<div style="display:flex;gap:2px;align-items:flex-end;height:110px">`
+    + `<div title="Admissões: ${adm}" style="width:9px;min-height:2px;background:#16A34A;border-radius:3px 3px 0 0;height:${admH}%"></div>`
+    + `<div title="Desligamentos: ${des}" style="width:9px;min-height:2px;background:#B91C1C;border-radius:3px 3px 0 0;height:${desH}%"></div>`
+    + `</div><span style="font-size:9.5px;color:#9CA3AF">${esc(m.label)}</span></div>`;
+}).join("");
+const regHtml = Object.entries(porRegime).sort((a, b) => b[1] - a[1]).map(([r, n]) => {
+  const pct = Math.round((n / maxReg) * 100);
+  return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">`
+    + `<span style="width:90px;font-size:13px">${esc(regLabel[r] || r)}</span>`
+    + `<div style="flex:1;background:#F3F4F6;border-radius:6px;height:14px"><div style="background:var(--brand);height:14px;border-radius:6px;width:${pct}%"></div></div>`
+    + `<strong style="width:30px;text-align:right">${n}</strong></div>`;
+}).join("");
+const setHtml = Object.entries(porSetor).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([s, n]) => {
+  const pct = Math.round((n / maxSetor) * 100);
+  return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">`
+    + `<span style="width:90px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s)}</span>`
+    + `<div style="flex:1;background:#F3F4F6;border-radius:6px;height:12px"><div style="background:#2563EB;height:12px;border-radius:6px;width:${pct}%"></div></div>`
+    + `<strong style="width:30px;text-align:right;font-size:12.5px">${n}</strong></div>`;
+}).join("");
+const docsVencendoTot = docsVencendo + episVencendo;
+---
+<Admin title="People Analytics — RH" current="rh-analytics">
+  <div class="toolbar"><span class="toolbar-title">📈 People Analytics — RH</span></div>
+
+  <div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(155px,1fr))">
+    <div class="stat-card" style="border-left:3px solid #16A34A"><div class="stat-value" style="color:#16A34A">{ativosNaoDiar.length}</div><div class="stat-label">Colaboradores ativos</div></div>
+    <div class="stat-card" style="border-left:3px solid #2563EB"><div class="stat-value" style="color:#2563EB">{turnover}%</div><div class="stat-label">Turnover (12m)</div></div>
+    <div class="stat-card" style="border-left:3px solid #6B7280"><div class="stat-value">{tempoMedio}</div><div class="stat-label">Anos de casa (média)</div></div>
+    <div class="stat-card" style="border-left:3px solid #6B7280"><div class="stat-value">{idadeMedia}</div><div class="stat-label">Idade média</div></div>
+    <div class="stat-card" style="border-left:3px solid #B91C1C"><div class="stat-value" style="color:#B91C1C">{docsVencidos}</div><div class="stat-label">Docs vencidos</div></div>
+    <div class="stat-card" style="border-left:3px solid #D97706"><div class="stat-value" style="color:#D97706">{docsVencendo + episVencendo}</div><div class="stat-label">Docs/EPIs vencendo 30d</div></div>
+    <div class="stat-card" style="border-left:3px solid #C41E3A"><div class="stat-value" style="color:#C41E3A">{avalMedia}</div><div class="stat-label">Nota desempenho {avalPeriodo}</div></div>
+    <div class="stat-card" style="border-left:3px solid #C026D3"><div class="stat-value" style="color:#C026D3">{enps}</div><div class="stat-label">eNPS (clima)</div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px">
+    <div class="card">
+      <div class="section-title" style="margin-bottom:12px">Rotatividade — últimos 12 meses</div>
+      <div style="display:flex;align-items:flex-end;gap:6px;height:140px"><Fragment set:html={barrasHtml} /></div>
+      <div style="display:flex;gap:14px;font-size:12px;color:#6B7280;margin-top:8px"><span>🟩 Admissões ({admissoes12})</span><span>🟥 Desligamentos ({deslig12})</span></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" style="margin-bottom:12px">Por regime (ativos)</div>
+      <Fragment set:html={regHtml} />
+      <div class="section-title" style="margin:16px 0 12px">Por setor (CLT/PJ)</div>
+      <Fragment set:html={setHtml} />
+    </div>
+  </div>
+
+  <p style="font-size:12px;color:#9CA3AF;margin-top:12px">Números calculados em tempo real a partir do cadastro. Diaristas não entram na contagem de ativos (esporádicos). 🎂 {aniv} aniversariante(s) este mês.</p>
+</Admin>

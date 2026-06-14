@@ -2,8 +2,12 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { enviarEmailSimples } from "../../../../../lib/mailer";
 
 export const prerender = false;
+
+const DESLIG_EMAIL = import.meta.env.RH_ALERT_EMAIL || "rh@costajr.com.br, adriana@costajr.com.br";
+const SITE_DESL = import.meta.env.SITE_BASE_URL || "https://costajr.com.br";
 
 // POST /api/admin/rh/desligamentos/finalizar
 //   { colaborador_id, data_desligamento, tipo, motivo, entrevista, checklist }
@@ -71,6 +75,29 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "rh_colaboradores", registro_id: colaborador_id, descricao: `Desligou "${colab.nome}" (devolução conferida, ${ativos.length} ativo(s) + ${epiPend.length} EPI(s))`, dados: { desligamento_id: desl.id } });
+
+    // ── Automação: e-mail com o checklist de cancelamentos (do board RH/DP) ──
+    try {
+      const tarefas = [
+        "TI — cancelar acessos (e-mail, ControlID, sistemas)",
+        "Banco — cancelar conta salário",
+        "Alelo — cancelar cartões (VA/VR)",
+        "VT — excluir da plataforma de vale-transporte",
+        "Totalpass — excluir o funcionário",
+      ];
+      if (colab.regime === "clt") tarefas.unshift("Agendar/conferir exame demissional (ASO)");
+      const html = `<div style="font-family:Arial,sans-serif;color:#2D2F36;max-width:640px">
+        <h2 style="color:#C41E3A;margin-bottom:4px">🚪 Desligamento concluído — ${colab.nome}</h2>
+        <p style="color:#5B5F6B">Regime: <strong>${(colab.regime || "—").toUpperCase()}</strong> · Data: ${body.data_desligamento || hoje}. O acesso ao portal já foi revogado. Providencie os cancelamentos abaixo:</p>
+        <ul style="font-size:14px;line-height:1.9">${tarefas.map((t) => `<li>${t}</li>`).join("")}</ul>
+        <p style="margin-top:16px"><a href="${SITE_DESL}/admin/rh" style="background:#C41E3A;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700">Abrir o RH</a></p>
+        <p style="color:#9CA3AF;font-size:12px;margin-top:24px">Aviso automático — Costa Júnior Engenharia.</p>
+      </div>`;
+      for (const to of String(DESLIG_EMAIL).split(",").map((s) => s.trim()).filter(Boolean)) {
+        await enviarEmailSimples({ to, subject: `🚪 Desligamento: ${colab.nome} — cancelamentos a fazer`, html }).catch(() => {});
+      }
+    } catch { /* o e-mail nunca derruba o desligamento */ }
+
     return jsonOk({ ok: true, desligamento_id: desl.id });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
