@@ -4,29 +4,38 @@
 // É best-effort: nunca lança — só retorna { ok }. Não bloqueia a ação que chamou.
 // ════════════════════════════════════════════════════════════════════════
 
-const TOKEN = import.meta.env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || "";
-const CHAT_PADRAO = import.meta.env.TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "";
+function envVar(name: string): string {
+  return (import.meta.env as any)[name] || (process.env as any)[name] || "";
+}
+const TOKEN_PADRAO = envVar("TELEGRAM_BOT_TOKEN");
+const CHAT_PADRAO = envVar("TELEGRAM_CHAT_ID");
 
-// Um grupo por ÁREA: cada área tem seu próprio chat_id na env TELEGRAM_CHAT_<AREA>.
-// Ex.: TELEGRAM_CHAT_ATIVOS, TELEGRAM_CHAT_RH, TELEGRAM_CHAT_FINANCEIRO...
-// Sem a env da área, cai no grupo padrão (TELEGRAM_CHAT_ID = grupo de Ativos hoje).
-function chatDaArea(area?: string): string {
-  if (!area) return CHAT_PADRAO;
-  const key = "TELEGRAM_CHAT_" + area.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-  return (import.meta.env as any)[key] || (process.env as any)[key] || CHAT_PADRAO;
+// UM BOT POR ÁREA/CANAL: cada canal tem seu próprio bot (token) e seu grupo (chat).
+//  - "ATIVOS"  -> bot @cjr_ativo_bot, grupo de Ativos   (default = TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID)
+//  - "ADM"     -> bot @cjr_adm_bot,   grupo Administrativo (Jurídico/RH/demais)
+// Envs por canal: TELEGRAM_BOT_TOKEN_<CANAL> + TELEGRAM_CHAT_<CANAL>. Sem elas, cai no padrão.
+function canalConfig(canal?: string): { token: string; chat: string } {
+  if (!canal) return { token: TOKEN_PADRAO, chat: CHAT_PADRAO };
+  const c = canal.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  return {
+    token: envVar("TELEGRAM_BOT_TOKEN_" + c) || TOKEN_PADRAO,
+    chat: envVar("TELEGRAM_CHAT_" + c) || CHAT_PADRAO,
+  };
 }
 
 export function telegramConfigurado(): boolean {
-  return !!TOKEN && !!CHAT_PADRAO;
+  return !!TOKEN_PADRAO && !!CHAT_PADRAO;
 }
 
 type EnvioResp = { ok: boolean; motivo?: string; resposta?: any };
 
-/** Envia mensagem (HTML). opts.area escolhe o grupo da área; opts.chatId sobrescreve tudo. */
-export async function enviarTelegram(texto: string, opts: { chatId?: string | number; area?: string } = {}): Promise<EnvioResp> {
-  if (!TOKEN) return { ok: false, motivo: "TELEGRAM_BOT_TOKEN ausente" };
-  const chat = opts.chatId ?? chatDaArea(opts.area);
-  if (!chat) return { ok: false, motivo: "TELEGRAM_CHAT_ID ausente" };
+/** Envia mensagem (HTML). opts.canal escolhe o bot+grupo da área ("ATIVOS"|"ADM"...); opts.chatId sobrescreve o destino. */
+export async function enviarTelegram(texto: string, opts: { chatId?: string | number; canal?: string; area?: string } = {}): Promise<EnvioResp> {
+  const cfg = canalConfig(opts.canal || opts.area);
+  const TOKEN = cfg.token;
+  if (!TOKEN) return { ok: false, motivo: "token do Telegram ausente" };
+  const chat = opts.chatId ?? cfg.chat;
+  if (!chat) return { ok: false, motivo: "chat_id do Telegram ausente" };
   try {
     const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: "POST",
