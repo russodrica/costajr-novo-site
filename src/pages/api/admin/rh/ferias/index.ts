@@ -31,6 +31,24 @@ export const GET: APIRoute = async ({ request, url }) => {
       return jsonOk(out);
     }
 
+    // HISTÓRICO: períodos já concluídos (qualquer colaborador, inclusive desligado).
+    // Mantido fora do painel principal — só aparece quando pedido explicitamente.
+    if (url.searchParams.get("historico") === "1") {
+      const { data: concl } = await db.from("rh_ferias_periodos")
+        .select("*, rh_colaboradores(nome, regime, status)")
+        .eq("status", "concluido").order("fim_aquisitivo", { ascending: false }).limit(3000);
+      const ids = (concl || []).map((p: any) => p.id);
+      let parcelas: any[] = [];
+      if (ids.length) { const { data } = await db.from("rh_ferias_parcelas").select("*").in("periodo_id", ids).order("data_inicio", { ascending: true }); parcelas = data || []; }
+      const out = (concl || []).map((p: any) => ({
+        id: p.id, colaborador: p.rh_colaboradores?.nome || "—",
+        inicio_aquisitivo: p.inicio_aquisitivo, fim_aquisitivo: p.fim_aquisitivo,
+        limite_concessivo: p.limite_concessivo, dias_direito: p.dias_direito, dias_abono: p.dias_abono || 0,
+        parcelas: parcelas.filter((x) => x.periodo_id === p.id),
+      }));
+      return jsonOk(out);
+    }
+
     // visão geral: períodos não concluídos de CLT ativos
     const { data: periodos } = await db.from("rh_ferias_periodos")
       .select("*, rh_colaboradores(nome, regime, status)")

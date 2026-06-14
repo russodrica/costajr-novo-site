@@ -437,6 +437,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           <option value="todos">Todos</option>
           <option value="programado">Programados</option>
         </select>
+        <button class="btn btn-outline btn-sm" onclick="abrirHistoricoFerias()" title="Períodos de férias já concluídos (mantidos fora do painel)">📜 Histórico</button>
         <button class="btn btn-outline btn-sm" onclick="semearFerias()" id="btnSemearFerias" title="Cria o período atual de cada CLT/PJ ativo a partir da data de admissão">⚙️ Gerar períodos</button>
       </span>
     </div>
@@ -464,6 +465,17 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <button type="button" class="btn btn-secondary" onclick="fecharModal('modalFerias')">Cancelar</button>
         <button type="button" class="btn btn-primary" onclick="salvarParcelas()">Salvar programação</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ════════ MODAL HISTÓRICO DE FÉRIAS ════════ -->
+  <div class="modal-overlay" id="modalFeriasHist">
+    <div class="modal" style="max-width:680px;position:relative">
+      <button type="button" aria-label="Fechar" onclick="fecharModal('modalFeriasHist')" style="position:absolute;top:14px;right:16px;border:none;background:none;font-size:1.7rem;line-height:1;cursor:pointer;color:#9CA3AF;padding:0">×</button>
+      <div class="modal-title" style="padding-right:32px">📜 Histórico de férias (concluídas)</div>
+      <p style="font-size:12.5px;color:#6B7280;margin:0 0 12px">Períodos já gozados na íntegra. Mantidos como registro — fora do painel principal.</p>
+      <div id="feriasHistConteudo"><div class="loading"><div class="spinner"></div> Carregando…</div></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="fecharModal('modalFeriasHist')">Fechar</button></div>
     </div>
   </div>
 
@@ -942,6 +954,28 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       const res = await fetch(`/api/admin/rh/ferias/parcela/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
       if (res.ok) carregarFerias(); else { const d = await res.json().catch(() => ({} as any)); alert("Erro: " + (d.error || res.status)); }
     }
+    async function abrirHistoricoFerias() {
+      const box = document.getElementById("feriasHistConteudo")!;
+      box.innerHTML = '<div class="loading"><div class="spinner"></div> Carregando…</div>';
+      document.getElementById("modalFeriasHist")!.classList.add("open");
+      try {
+        const res = await fetch("/api/admin/rh/ferias?historico=1");
+        const lista = await res.json();
+        if (!res.ok) { box.innerHTML = '<div class="alert alert-error">Erro ao carregar.</div>'; return; }
+        if (!lista.length) { box.innerHTML = '<div style="text-align:center;color:#6B7280;padding:20px">Nenhum período concluído no histórico ainda.</div>'; return; }
+        box.innerHTML = lista.map((p: any) => {
+          const parc = (p.parcelas || []).map((pc: any) => `<span style="display:inline-block;background:#F1F5F9;border-radius:6px;padding:2px 8px;font-size:12px;margin:2px 4px 2px 0">${pc.dias}d ${brData(pc.data_inicio)}→${brData(pc.data_fim)}${pc.status === "confirmada" ? " ✅" : ""}</span>`).join("");
+          const abono = p.dias_abono ? ` · 💰 vendeu ${p.dias_abono}d` : "";
+          return `<div style="border:1px solid #ECEFF3;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+            <strong style="font-size:14px">${escD(p.colaborador)}</strong>
+            <span style="background:#DCFCE7;color:#166534;border-radius:20px;padding:1px 9px;font-size:11px;font-weight:700;margin-left:8px">Concluído</span>
+            <div style="font-size:12px;color:#6B7280;margin:3px 0 6px">Aquisitivo ${brData(p.inicio_aquisitivo)}–${brData(p.fim_aquisitivo)}${abono}</div>
+            <div>${parc || '<span style="font-size:12px;color:#9CA3AF">—</span>'}</div>
+          </div>`;
+        }).join("");
+      } catch { box.innerHTML = '<div class="alert alert-error">Erro de conexão.</div>'; }
+    }
+    (window as any).abrirHistoricoFerias = abrirHistoricoFerias;
     async function semearFerias() {
       if (!confirm("Gerar o período de férias atual para cada CLT/PJ ativo (a partir da data de admissão)? Não duplica períodos já existentes.")) return;
       const btn = document.getElementById("btnSemearFerias") as HTMLButtonElement;

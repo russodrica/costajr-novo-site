@@ -907,6 +907,13 @@ completo quando programado+abono>=direito. API parcelas valida abono (set valido
 < direito, soma+abono<=direito). Nota: CLT limita abono a 1/3 (10 dias) — as 4
 opcoes ficam a criterio do RH. E2E ok.
 
+**Historico de ferias preservado, fora do painel principal (commit a-seguir):** ao
+concluir (30 dias confirmados), o periodo vira status=concluido — MANTIDO no banco,
+nunca apagado (parcela/[id].ts ja fazia isso). O painel principal ja filtra
+.neq(status,concluido). Novo: GET /api/admin/rh/ferias?historico=1 retorna os
+concluidos (com parcelas+abono) e botao "📜 Historico" na aba Ferias abre modal
+modalFeriasHist (so leitura). E2E: historico inclui concluido / painel principal nao.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
