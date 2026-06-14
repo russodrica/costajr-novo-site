@@ -80,6 +80,8 @@ export const POST: APIRoute = async ({ request }) => {
 
     await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "rh_colaboradores", registro_id: colaborador_id, descricao: `Desligou "${colab.nome}" (devolução conferida, ${ativos.length} ativo(s) + ${epiPend.length} EPI(s))`, dados: { desligamento_id: desl.id } });
 
+    enviarTelegram(`👋 <b>Desligamento concluído</b>\n${escTg(colab.nome)}${tipo ? ` · ${escTg(tipo)}` : ""}\n${ativos.length} ativo(s) + ${epiPend.length} EPI(s) devolvidos.`, { canal: "ADM" }).catch(() => { /* best-effort */ });
+
     // ── Automação: e-mail com o checklist de cancelamentos (do board RH/DP) ──
     try {
       const tarefas = [

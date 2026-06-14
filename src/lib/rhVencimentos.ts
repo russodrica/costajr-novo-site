@@ -1,4 +1,5 @@
 import { enviarEmailSimples } from "./mailer";
+import { enviarTelegram, escTg } from "./telegram";
 
 // Alertas de vencimento de documentos de RH (ASO, CNH, Ficha EPI, NRs...).
 // Marcos: 30, 15 e 7 dias antes + no dia do vencimento. Enviado para o RH.
@@ -93,6 +94,7 @@ export async function enviarDigestVencimentosRh(db: any, opts: { modo?: "marcos"
     try { await enviarEmailSimples({ to, subject: `🚨 RH: ${selecionados.length} documento(s) a vencer/vencido(s)`, html }); enviados++; }
     catch { falhas++; }
   }
+  enviarTelegram(`🚨 <b>RH — documentos a vencer</b>\n${selecionados.length} documento(s) vencendo ou vencidos.\nVeja em ${SITE}/admin/rh`, { canal: "ADM" }).catch(() => {});
   return { total: selecionados.length, enviados, falhas };
 }
 
@@ -135,5 +137,8 @@ export async function enviarAniversariantesDoMes(db: any, opts: { para?: string;
   for (const to of String(para).split(",").map((s: string) => s.trim()).filter(Boolean)) {
     try { await enviarEmailSimples({ to, subject: `🎉 Aniversariantes de ${MESES[mes - 1]} (${aniv.length})`, html }); enviados++; } catch { /* ignore */ }
   }
+  const tgAniv = `🎂 <b>Aniversariantes de ${MESES[mes - 1]}</b>\n` +
+    aniv.map((c: any) => `${String(c.data_nascimento).slice(8, 10)}/${String(mes).padStart(2, "0")} — ${escTg(c.nome)}`).join("\n");
+  enviarTelegram(tgAniv, { canal: "ADM" }).catch(() => {});
   return { total: aniv.length, enviados };
 }

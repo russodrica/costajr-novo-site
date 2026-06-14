@@ -90,6 +90,11 @@ export const POST: APIRoute = async ({ request }) => {
       }).catch(() => {});
     } catch { /* email nunca derruba a inscrição */ }
 
+    try {
+      const { enviarTelegram, escTg } = await import("~/lib/telegram");
+      await enviarTelegram(`🧑‍💼 <b>Nova candidatura</b>\n${escTg(nome)}${vagaTitulo ? ` — ${escTg(vagaTitulo)}` : " (Banco de Talentos)"}${email ? `\n${escTg(email)}` : ""}${telefone ? ` · ${escTg(telefone)}` : ""}`, { canal: "ADM" });
+    } catch { /* best-effort */ }
+
     return jsonOk({ id: cand.id, ok: true }, 201);
   } catch (e: any) {
     return jsonErr(500, e.message);

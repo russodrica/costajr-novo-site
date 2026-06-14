@@ -1,4 +1,5 @@
 import { enviarEmailSimples } from "./mailer";
+import { enviarTelegram } from "./telegram";
 
 // ════════════════════════════════════════════════════════════════════════
 // Ficha de EPI — catálogo fixo + alertas de vencimento.
@@ -76,6 +77,7 @@ export async function enviarAlertasEpi(db: any, opts: { para?: string; dry?: boo
   for (const to of String(para).split(",").map((s: string) => s.trim()).filter(Boolean)) {
     try { await enviarEmailSimples({ to, subject: `🦺 EPIs a vencer: ${itens.length} item(ns)`, html }); enviados++; } catch { /* ignore */ }
   }
+  enviarTelegram(`🦺 <b>EPIs a vencer</b>\n${itens.length} item(ns) próximos do vencimento.\nVeja em costajr.com.br/admin/rh`, { canal: "ADM" }).catch(() => {});
   if (enviados > 0) {
     for (const i of itens) await db.from("epi_entregas").update({ aviso_15: true }).eq("id", i.id);
   }

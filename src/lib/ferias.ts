@@ -1,4 +1,5 @@
 import { enviarEmailSimples } from "./mailer";
+import { enviarTelegram } from "./telegram";
 
 // ════════════════════════════════════════════════════════════════════════
 // Programação de Férias (CLT).
@@ -204,6 +205,7 @@ export async function enviarLembretesFerias(db: any, opts: { dry?: boolean; para
     try { await enviarEmailSimples({ to, subject: `🏖 Férias: ${eventos.length} pendência(s)`, html }); enviados++; }
     catch { falhas++; }
   }
+  enviarTelegram(`🏖 <b>Férias — pendências</b>\n${eventos.length} pendência(s) de programação/parcelas.\nVeja em ${SITE}/admin/rh?aba=ferias`, { canal: "ADM" }).catch(() => {});
 
   // grava flags só se pelo menos um e-mail saiu
   if (enviados > 0) {
