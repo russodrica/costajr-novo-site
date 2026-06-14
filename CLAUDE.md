@@ -701,6 +701,44 @@ de entrevista de desligamento). Nao consegui abrir o Miro (rede ao site caiu nes
 sessao). Modelo real de EPI da empresa: "CONTORLE DE EPI_COSTA JUNIOR.xlsx" e fichas
 .docx em RH DP/1_Documentos/1_Seguranca do Trabalho/03.NR.../.
 
+## Atualizacao 13/06/2026 (parte 6) — Fluxo Contratacao/Demissao + EPI custom + QA + Solides
+
+**EPI fora da lista (commit 3b355db):** botao "+ Adicionar EPI (fora da lista)"
+na aba EPIs — linha com nome editavel + remover. Backend ja aceitava (epi e texto;
+index GET anexa itens fora do catalogo).
+
+**Fluxo de Contratacao & Demissao (board Miro "Fluxo: RH e DP"; migration 045
+RODADA: rh_vagas, rh_candidatos, rh_desligamentos; commits 6f32b5c/c477e32):**
+- /admin/recrutamento (menu Empresa, key recrutamento): vagas + KANBAN de
+  candidatos pelo funil triagem>teste(PB)>entrev.comportamental>entrev.tecnica>
+  proposta>admissao>contratado/reprovado. Mover ◀▶, reprovar, CONTRATAR cria o
+  colaborador a partir do candidato (vincula + vaga vira preenchida). APIs
+  /api/admin/rh/{vagas,candidatos[+/contratar]}.
+- Desligamento: botao "Desligar" abre modal com tipo/motivo + ENTREVISTA de
+  desligamento (do FORMULARIO DE DESLIGAMENTO.xlsx) + CHECKLIST de saida (EPI/
+  ferramentas devolvidos, ASO demissional, docs, acesso revogado). PATCH status=
+  desligado (revoga acesso) + POST rh_desligamentos (jsonb). API /api/admin/rh/
+  desligamentos. Tudo logado + lixeira nos deletes.
+- ADIADO do board (proximas fases, ja no benchmark): onboarding journey
+  e-learning, avaliacao de desempenho trimestral, pesquisa de clima/eNPS,
+  cargos & salarios.
+
+**QA do RH:** 43 handlers de botao (rh+recrutamento) TODOS com funcao definida
+(zero botao morto, checagem estatica). 5 automacoes no cron diario: vencimento
+docs, ferias, EPI 15d, aniversariantes (dia 1), expurgo lixeira. Fluxos de dados
+E2E-verificados no banco (contratacao->demissao, ferias, EPI, lixeira, revoke).
+LIVE click-test NAO rodou: o site costajr.com.br ficou INACESSIVEL desta rede a
+sessao toda (curl e browser deram 000/timeout intermitente; api.supabase.com e
+miro.com funcionavam). Build sempre limpo.
+
+**Benchmark Solides (docs/benchmark-solides-rh.md):** comparacao do RH vs Solides
++ top recomendacoes priorizadas. Ja em paridade: cadastro/docs/ATS/admissao/
+onboarding/ferias/EPI/desligamento/auditoria. Gaps p/ construir (ordem): (1)
+Avaliacao de Desempenho trimestral, (2) Pesquisa de Clima/eNPS, (3) People
+Analytics RH (dados ja existem), (4) pagina publica de vagas + banco de talentos,
+(5) perfil comportamental DISC. NAO construir (integrar): ponto eletronico
+(Portaria 671, risco legal) e folha/DP (contabilidade).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
