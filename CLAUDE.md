@@ -767,11 +767,18 @@ Mar/Jun/Set/Dez, consolida em Excel), DESLIGAMENTO (emails automaticos: TI cance
 acessos, banco cancela conta, CLT agenda exame demissional, Alelo/VT/Totalpass
 cancelamento), entrevista de desligamento, arquivamento.
 
-**PENDENTE (melhorias aprovadas, proximas — ordem sugerida):** (1) Avaliacao de
-Desempenho trimestral (board + Fluxos), (2) Pesquisa de Clima/eNPS, (3) People
-Analytics RH, (4) pagina publica de vagas + banco de talentos, (5) Perfil
-comportamental DISC/Eneagrama (Adriana passou os modelos F3_Teste DISC.xlsx e
-F4_Teste Eneagrama.xlsx — planilhas de terceiros a digitalizar como questionario).
+**Avaliacao de Desempenho trimestral (migration 046 RODADA; commit b74344b):**
+FEITO. /admin/avaliacoes (menu Empresa): ciclo Mar/Jun/Set/Dez, 10 competencias
+(1-5) + nota geral automatica + pontos fortes/desenvolver + PDI; KPIs e lista de
+ativos avaliado/pendente. rh_avaliacoes (upsert por colaborador+ano+trimestre+
+tipo). src/lib/avaliacoes.ts (COMPETENCIAS, notaGeral, enviarLembreteAvaliacoes —
+cron dia 1 de Mar/Jun/Set/Dez). Verificado E2E.
+
+**PENDENTE (melhorias aprovadas, proximas — ordem):** (2) Pesquisa de Clima/eNPS,
+(3) People Analytics RH, (4) pagina publica de vagas + banco de talentos, (5)
+Perfil comportamental DISC/Eneagrama (Adriana passou os modelos F3_Teste DISC.xlsx
+e F4_Teste Eneagrama.xlsx — planilhas de terceiros a digitalizar como questionario);
+(6) automacoes de e-mail do desligamento (TI/banco/Alelo/VT/Totalpass, do board).
 Contratos: a Adriana vai passar os modelos padrao; RH gera so contrato de proposta,
 encerramento PJ, termo de posse de equipamentos e termo de encerramento de posse
 (liberado so com devolucao em perfeito estado).
