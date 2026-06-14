@@ -62,6 +62,14 @@ const catIcone: Record<string, string> = {
 };
 function fmtMoney(v: number | null) { if (v == null) return "—"; return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR"); }
+
+// Agrupa a lista por categoria (na ordem do mapa) p/ separar por grupo de tipos.
+const ordemCat = Object.keys(categorias);
+const ativosPorCat = ordemCat
+  .map((cat) => ({ cat, label: categorias[cat], icone: catIcone[cat] || "📦", itens: (ativos || []).filter((a: any) => a.categoria === cat) }))
+  .filter((g) => g.itens.length);
+const semCat = (ativos || []).filter((a: any) => !ordemCat.includes(a.categoria));
+if (semCat.length) ativosPorCat.push({ cat: "_sem", label: "Sem categoria", icone: "📦", itens: semCat });
 ---
 <Admin title="Ativos Patrimoniais" current="ativos">
 
@@ -111,28 +119,33 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
       <table>
         <thead><tr><th></th><th>Descrição</th><th>Categoria</th><th>Patrimônio / Série</th><th>Com quem / onde</th><th>Valor</th><th>Status</th><th>Aquisição</th></tr></thead>
         <tbody>
-          {ativos?.length ? ativos.map((a: any) => (
-            <tr class="row-link" onclick={`window.location.href='/admin/ativos/${a.id}'`}>
-              <td style="font-size:1.1rem">{catIcone[a.categoria] || "📦"}</td>
-              <td>
-                <strong>{a.descricao}</strong>
-                {(a.marca || a.modelo) && <div style="font-size:11.5px;color:#9CA3AF">{[a.marca, a.modelo].filter(Boolean).join(" · ")}</div>}
-              </td>
-              <td>{categorias[a.categoria] || a.categoria}</td>
-              <td style="font-size:12.5px">
-                {a.numero_patrimonial && <div>Pat. <strong>{a.numero_patrimonial}</strong></div>}
-                {a.numero_serie && <div style="color:#6B7280">S/N {a.numero_serie}</div>}
-                {!a.numero_patrimonial && !a.numero_serie && "—"}
-              </td>
-              <td>
-                {a.alocado_para_nome
-                  ? <span>{a.alocado_para_tipo === "obra" ? "🏗️ " : "👤 "}{a.alocado_para_nome}</span>
-                  : <span style="color:#9CA3AF">—</span>}
-              </td>
-              <td>{fmtMoney(a.valor_aquisicao)}</td>
-              <td><span class={`badge ${statusBadge[a.status] || "badge-gray"}`}>{statusLabels[a.status] || a.status}</span></td>
-              <td>{fmtDate(a.data_aquisicao)}</td>
-            </tr>
+          {ativosPorCat.length ? ativosPorCat.map((g) => (
+            <Fragment>
+              <tr class="cat-sep"><td colspan="8">{g.icone} {g.label} <span class="cat-count">{g.itens.length}</span></td></tr>
+              {g.itens.map((a: any) => (
+                <tr class="row-link" onclick={`window.location.href='/admin/ativos/${a.id}'`}>
+                  <td style="font-size:1.1rem">{catIcone[a.categoria] || "📦"}</td>
+                  <td>
+                    <strong>{a.descricao}</strong>
+                    {(a.marca || a.modelo) && <div style="font-size:11.5px;color:#9CA3AF">{[a.marca, a.modelo].filter(Boolean).join(" · ")}</div>}
+                  </td>
+                  <td>{categorias[a.categoria] || a.categoria}</td>
+                  <td style="font-size:12.5px">
+                    {a.numero_patrimonial && <div>Pat. <strong>{a.numero_patrimonial}</strong></div>}
+                    {a.numero_serie && <div style="color:#6B7280">S/N {a.numero_serie}</div>}
+                    {!a.numero_patrimonial && !a.numero_serie && "—"}
+                  </td>
+                  <td>
+                    {a.alocado_para_nome
+                      ? <span>{a.alocado_para_tipo === "obra" ? "🏗️ " : "👤 "}{a.alocado_para_nome}</span>
+                      : <span style="color:#9CA3AF">—</span>}
+                  </td>
+                  <td>{fmtMoney(a.valor_aquisicao)}</td>
+                  <td><span class={`badge ${statusBadge[a.status] || "badge-gray"}`}>{statusLabels[a.status] || a.status}</span></td>
+                  <td>{fmtDate(a.data_aquisicao)}</td>
+                </tr>
+              ))}
+            </Fragment>
           )) : <tr><td colspan="8"><div class="empty-state"><strong>Nenhum ativo encontrado</strong><p>Cadastre o primeiro ativo no botão "+ Novo ativo".</p></div></td></tr>}
         </tbody>
       </table>
@@ -253,6 +266,13 @@ function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (
 
   <style>
     .row-link { cursor: pointer; }
+    /* Divisória de grupo (categoria) na lista de ativos */
+    .cat-sep td {
+      background: #F1F5F9; color: #334155; font-weight: 800; font-size: 0.92rem;
+      letter-spacing: .01em; padding: 9px 14px; border-top: 2px solid #E2E8F0; position: sticky; top: 0;
+    }
+    .cat-sep:hover td { background: #F1F5F9; }
+    .cat-count { display: inline-block; background: #fff; color: #64748B; border: 1px solid #E2E8F0; border-radius: 999px; padding: 0 9px; font-size: 0.78rem; font-weight: 700; margin-left: 6px; }
     .cat-head { font-size: .8rem; font-weight: 700; color: var(--ink-mid); margin: 6px 0 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
     .imp-resumo { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 12px; }
     .imp-chip { padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; }
