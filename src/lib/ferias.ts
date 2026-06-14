@@ -66,6 +66,34 @@ export function resumoPeriodo(dias_direito: number, parcelas: Parcela[]) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// Auto-avanço: garante que todo CLT/PJ ativo tenha o período aquisitivo do
+// CICLO VIGENTE (o que precisa ser programado neste ano). Quando o colaborador
+// completa mais um ano (novo período aquisitivo nasce), este cria o período do
+// novo ciclo automaticamente — sem precisar clicar em "Gerar períodos".
+// Idempotente: pula quem já tem o período do ciclo atual. Chamado pelo cron.
+// ════════════════════════════════════════════════════════════════════════
+export async function garantirPeriodoAtual(db: any): Promise<{ criados: number }> {
+  const { data: colabs } = await db.from("rh_colaboradores")
+    .select("id, data_admissao, regime, status").in("regime", ["clt", "pj"]).neq("status", "desligado").limit(3000);
+  const { data: existentes } = await db.from("rh_ferias_periodos").select("colaborador_id, inicio_aquisitivo").limit(8000);
+  const jaTem = new Set((existentes || []).map((e: any) => `${e.colaborador_id}|${e.inicio_aquisitivo}`));
+  const novos: any[] = [];
+  for (const c of colabs || []) {
+    if (!c.data_admissao) continue;
+    const ciclo = Math.max(0, ciclosVencidos(c.data_admissao) - 1); // período vigente a programar
+    const per = calcularPeriodo(c.data_admissao, ciclo);
+    if (jaTem.has(`${c.id}|${per.inicio_aquisitivo}`)) continue;
+    novos.push({ colaborador_id: c.id, ...per, status: "aberto" });
+  }
+  let criados = 0;
+  for (let i = 0; i < novos.length; i += 200) {
+    const { data } = await db.from("rh_ferias_periodos").insert(novos.slice(i, i + 200)).select("id");
+    criados += data?.length || 0;
+  }
+  return { criados };
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // Lembretes por e-mail (chamado pelo cron diário). Junta todos os eventos
 // do dia em UM digest e só grava as flags se o e-mail for enviado.
 // ════════════════════════════════════════════════════════════════════════

@@ -3,7 +3,7 @@ import { supabaseAdmin } from "~/lib/supabase";
 import { gerarCupomRenovacao } from "~/lib/manut/clientes";
 import { enviarEmailCupomRenovacao } from "~/lib/mailer";
 import { enviarDigestVencimentosRh, enviarAniversariantesDoMes } from "~/lib/rhVencimentos";
-import { enviarLembretesFerias } from "~/lib/ferias";
+import { enviarLembretesFerias, garantirPeriodoAtual } from "~/lib/ferias";
 import { expurgarLixeira } from "~/lib/auditoria";
 import { enviarAlertasEpi } from "~/lib/epi";
 import { enviarLembreteAvaliacoes } from "~/lib/avaliacoes";
@@ -91,6 +91,14 @@ export const GET: APIRoute = async ({ request, url }) => {
     rhDigest = await enviarDigestVencimentosRh(db, { modo: "marcos" });
   } catch (e: any) {
     console.warn("[cron][rh-vencimentos] falhou:", e?.message);
+  }
+
+  // ── Piggyback: auto-avanço do período aquisitivo (cria o do ciclo vigente) ──
+  try {
+    const adv = await garantirPeriodoAtual(db);
+    if (adv.criados) console.log(`[cron][ferias] ${adv.criados} período(s) do ciclo atual criado(s)`);
+  } catch (e: any) {
+    console.warn("[cron][ferias-avanco] falhou:", e?.message);
   }
 
   // ── Piggyback: lembretes de programação de férias (6/3/1 mês, semanal, 30/15/7, dar OK) ──
