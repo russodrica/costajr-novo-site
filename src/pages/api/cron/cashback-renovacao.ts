@@ -3,6 +3,7 @@ import { supabaseAdmin } from "~/lib/supabase";
 import { gerarCupomRenovacao } from "~/lib/manut/clientes";
 import { enviarEmailCupomRenovacao } from "~/lib/mailer";
 import { enviarDigestVencimentosRh } from "~/lib/rhVencimentos";
+import { enviarLembretesFerias } from "~/lib/ferias";
 
 export const prerender = false;
 
@@ -89,7 +90,15 @@ export const GET: APIRoute = async ({ request, url }) => {
     console.warn("[cron][rh-vencimentos] falhou:", e?.message);
   }
 
-  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest }), {
+  // ── Piggyback: lembretes de programação de férias (6/3/1 mês, semanal, 30/15/7, dar OK) ──
+  let feriasDigest: any = { eventos: 0, enviados: 0 };
+  try {
+    feriasDigest = await enviarLembretesFerias(db);
+  } catch (e: any) {
+    console.warn("[cron][ferias] falhou:", e?.message);
+  }
+
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest }), {
     headers: { "content-type": "application/json" },
   });
 };

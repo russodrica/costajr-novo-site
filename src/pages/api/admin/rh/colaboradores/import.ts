@@ -15,6 +15,7 @@ function mapHeader(h: string): string | null {
   const n = norm(h);
   const m: Record<string, string> = {
     "id": "id", "nome": "nome", "e mail": "email", "email": "email", "telefone": "telefone",
+    "telefone empresa": "telefone", "telefone pessoal": "telefone_pessoal", "contato pessoal": "telefone_pessoal",
     "cpf": "cpf", "rg": "rg", "data nascimento": "data_nascimento", "cargo": "cargo", "setor": "setor",
     "regime": "regime", "salario": "salario", "data admissao": "data_admissao", "status": "status",
     "cidade": "cidade", "uf": "uf", "pix": "pix", "banco": "banco", "agencia": "agencia", "conta": "conta",
@@ -109,6 +110,7 @@ export const POST: APIRoute = async ({ request }) => {
       const set = (col: string, key: string, val: any) => { if (presentes.has(col)) campo[key] = val; };
       set("email", "email", obj.email || null);
       set("telefone", "telefone", obj.telefone || null);
+      set("telefone_pessoal", "telefone_pessoal", obj.telefone_pessoal || null);
       set("cpf", "cpf", obj.cpf || null);
       set("rg", "rg", obj.rg || null);
       set("data_nascimento", "data_nascimento", dataNasc);

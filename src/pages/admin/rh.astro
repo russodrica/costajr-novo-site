@@ -136,9 +136,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
   <!-- ── Abas ── -->
   <div class="pills" style="margin-bottom:16px">
     <button class="pill" data-aba="alertas" onclick="mostrarAba('alertas')">🚨 Alertas <span class="count" id="alertasBadge" style="background:#FEE2E2;color:#B91C1C"></span></button>
+    <button class="pill" data-aba="ferias" onclick="mostrarAba('ferias')">🏖 Férias <span class="count" id="feriasBadge" style="background:#FEE2E2;color:#B91C1C"></span></button>
     <button class="pill active" data-aba="colaboradores" onclick="mostrarAba('colaboradores')">Colaboradores <span class="count">{colaboradores.length}</span></button>
     <button class="pill" data-aba="diaristas" onclick="mostrarAba('diaristas')">👷 Diaristas <span class="count">{diaristas.length}</span></button>
-    <button class="pill" data-aba="ausencias" onclick="mostrarAba('ausencias')">Férias &amp; Ausências <span class="count">{ausencias.length}</span></button>
+    <button class="pill" data-aba="ausencias" onclick="mostrarAba('ausencias')">Ausências <span class="count">{ausencias.length}</span></button>
     <button class="pill" data-aba="documentos" onclick="mostrarAba('documentos')">Documentos <span class="count">{documentos.length}</span></button>
     <button class="pill" data-aba="admissoes" onclick="mostrarAba('admissoes')">Admissões <span class="count">{admissoesAbertas}</span></button>
     <button class="pill" data-aba="aniversariantes" onclick="mostrarAba('aniversariantes')">Aniversariantes <span class="count">{aniversariantes.length}</span></button>
@@ -383,6 +384,39 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     <div id="alertas-conteudo"><div class="card"><div class="loading"><div class="spinner"></div> Carregando alertas...</div></div></div>
   </section>
 
+  <!-- ════════ ABA FÉRIAS (programação CLT) ════════ -->
+  <section class="tab-section" id="aba-ferias" style="display:none">
+    <div class="toolbar">
+      <span class="toolbar-title">🏖 Programação de Férias — CLT</span>
+      <span style="display:flex;gap:8px">
+        <select id="feriasFiltro" class="input-sm" onchange="renderFerias()" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px">
+          <option value="pendentes">Pendentes / a vencer</option>
+          <option value="todos">Todos</option>
+          <option value="programado">Programados</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="semearFerias()" id="btnSemearFerias" title="Cria o período atual de cada CLT ativo a partir da data de admissão">⚙️ Gerar períodos</button>
+      </span>
+    </div>
+    <div id="ferias-cards" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:16px"></div>
+    <div id="ferias-conteudo"><div class="card"><div class="loading"><div class="spinner"></div> Carregando férias...</div></div></div>
+    <p style="font-size:12px;color:#9CA3AF;margin-top:10px">🟢 verde = 30 dias programados · 🔴 vermelho = falta programar. Lembretes automáticos para rh@ e adriana@ a 6/3/1 mês do vencimento, semanal se não programado, 30/15/7 dias antes de cada parcela e confirmação ao término.</p>
+  </section>
+
+  <!-- ════════ MODAL PROGRAMAR FÉRIAS ════════ -->
+  <div class="modal-overlay" id="modalFerias">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-title" id="tituloModalFerias">Programar férias</div>
+      <div id="msgFerias"></div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:8px" id="feriasResumoTopo"></div>
+      <div id="feriasParcelasEdit"></div>
+      <button type="button" class="btn btn-outline btn-sm" id="btnAddParcela" onclick="addLinhaParcela()" style="margin-top:8px">+ Adicionar parcela</button>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModal('modalFerias')">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="salvarParcelas()">Salvar programação</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ════════ MODAL IMPORTAR COLABORADORES ════════ -->
   <div class="modal-overlay" id="modalImportColab">
     <div class="modal" style="max-width:640px">
@@ -414,6 +448,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <div class="form-row">
           <div class="form-group"><label>E-mail <span style="color:#C41E3A">*</span></label><input name="email" type="email" /></div>
           <div class="form-group"><label>Telefone (empresa) <span style="color:#C41E3A">*</span></label><input name="telefone" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Telefone (pessoal) <span style="color:#C41E3A">*</span></label><input name="telefone_pessoal" /></div>
+          <div class="form-group"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>CPF <span style="color:#C41E3A">*</span></label><input name="cpf" placeholder="000.000.000-00" /></div>
@@ -619,7 +657,149 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (sec) sec.style.display = "";
       document.querySelectorAll(".pill[data-aba]").forEach((p) => p.classList.toggle("active", (p as any).dataset.aba === aba));
       if (aba === "alertas" && !(window as any).__alertasCarregados) carregarAlertas();
+      if (aba === "ferias" && !(window as any).__feriasCarregados) carregarFerias();
     }
+    // abre a aba indicada por ?aba= (links de e-mail)
+    (function () {
+      const a = new URLSearchParams(location.search).get("aba");
+      if (a && document.getElementById("aba-" + a)) setTimeout(() => mostrarAba(a), 0);
+    })();
+
+    // ── Férias (programação CLT) ──
+    let feriasDados: any[] = [];
+    let feriasModalPer: any = null;
+    async function carregarFerias() {
+      (window as any).__feriasCarregados = true;
+      try {
+        const res = await fetch("/api/admin/rh/ferias");
+        if (!res.ok) { document.getElementById("ferias-conteudo")!.innerHTML = '<div class="card"><div class="alert alert-error">Erro ao carregar.</div></div>'; return; }
+        feriasDados = await res.json();
+        renderFerias();
+      } catch { document.getElementById("ferias-conteudo")!.innerHTML = '<div class="card"><div class="alert alert-error">Erro de conexão.</div></div>'; }
+    }
+    function statusFerias(p: any) {
+      if (p.status === "vencido") return { txt: "Vencido", cor: "#B91C1C", fundo: "#FEE2E2" };
+      if (p.resumo.completo) return { txt: `Programado (${p.resumo.somaProgramada}/${p.dias_direito})`, cor: "#166534", fundo: "#DCFCE7" };
+      return { txt: `Falta programar (${p.resumo.somaProgramada}/${p.dias_direito})`, cor: "#B91C1C", fundo: "#FEE2E2" };
+    }
+    function renderFerias() {
+      const filtro = (document.getElementById("feriasFiltro") as HTMLSelectElement).value;
+      const total = feriasDados.length;
+      const programados = feriasDados.filter((p) => p.resumo.completo && p.status !== "vencido").length;
+      const faltando = feriasDados.filter((p) => !p.resumo.completo && p.status !== "vencido").length;
+      const vencidos = feriasDados.filter((p) => p.status === "vencido").length;
+      document.getElementById("feriasBadge")!.textContent = String(faltando + vencidos || "");
+      document.getElementById("ferias-cards")!.innerHTML = `
+        <div class="stat-card" style="border-left:3px solid #6B7280"><div class="stat-value">${total}</div><div class="stat-label">Períodos CLT</div></div>
+        <div class="stat-card" style="border-left:3px solid #16A34A"><div class="stat-value" style="color:#16A34A">${programados}</div><div class="stat-label">Programados</div></div>
+        <div class="stat-card" style="border-left:3px solid #DC2626"><div class="stat-value" style="color:#DC2626">${faltando}</div><div class="stat-label">Falta programar</div></div>
+        <div class="stat-card" style="border-left:3px solid #B91C1C"><div class="stat-value" style="color:#B91C1C">${vencidos}</div><div class="stat-label">Vencidos</div></div>`;
+
+      let lista = feriasDados.slice();
+      if (filtro === "pendentes") lista = lista.filter((p) => !p.resumo.completo || p.status === "vencido");
+      else if (filtro === "programado") lista = lista.filter((p) => p.resumo.completo);
+      lista.sort((a, b) => (a.limite_concessivo < b.limite_concessivo ? -1 : 1));
+
+      const box = document.getElementById("ferias-conteudo")!;
+      if (!feriasDados.length) { box.innerHTML = '<div class="card" style="text-align:center;padding:30px"><p style="color:#6B7280">Nenhum período de férias ainda. Clique em <strong>⚙️ Gerar períodos</strong> para criar a partir das admissões dos CLT ativos.</p></div>'; return; }
+      if (!lista.length) { box.innerHTML = '<div class="card" style="text-align:center;padding:24px;color:#6B7280">Nada neste filtro. ✅</div>'; return; }
+
+      box.innerHTML = lista.map((p) => {
+        const st = statusFerias(p);
+        const parcelasHtml = (p.parcelas || []).length
+          ? p.parcelas.map((pc: any) => {
+              const conf = pc.status === "confirmada";
+              return `<span style="display:inline-flex;align-items:center;gap:5px;background:${conf ? "#DCFCE7" : "#EFF6FF"};border:1px solid ${conf ? "#BBF7D0" : "#BFDBFE"};border-radius:6px;padding:3px 8px;font-size:12px;margin:2px 4px 2px 0">
+                  <strong>${pc.dias}d</strong> ${brData(pc.data_inicio)}→${brData(pc.data_fim)} ${conf ? "✅" : "⏳"}
+                  ${conf ? "" : `<button type="button" title="Confirmar (dar OK)" style="background:none;border:none;cursor:pointer;color:#166534;font-size:13px;padding:0" onclick="confirmarParcela('${pc.id}')">✔</button>
+                  <button type="button" title="Remover" style="background:none;border:none;cursor:pointer;color:#DC2626;font-size:12px;padding:0" onclick="removerParcela('${pc.id}')">✕</button>`}
+                </span>`;
+            }).join("")
+          : '<span style="font-size:12px;color:#B91C1C">Nenhuma parcela programada</span>';
+        return `<div class="card" style="margin-bottom:10px;padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <div>
+              <strong style="font-size:14.5px">${escD(p.colaborador)}</strong>
+              <span style="background:${st.fundo};color:${st.cor};border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;margin-left:8px">${st.txt}</span>
+              <div style="font-size:12px;color:#6B7280;margin-top:3px">Aquisitivo ${brData(p.inicio_aquisitivo)}–${brData(p.fim_aquisitivo)} · vencimento p/ tirar até <strong>${brData(p.limite_concessivo)}</strong></div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="programarFerias('${p.id}')">📅 Programar</button>
+          </div>
+          <div style="margin-top:8px">${parcelasHtml}</div>
+        </div>`;
+      }).join("");
+    }
+
+    function programarFerias(periodoId: string) {
+      const p = feriasDados.find((x) => x.id === periodoId);
+      if (!p) return;
+      feriasModalPer = p;
+      (document.getElementById("msgFerias") as any).innerHTML = "";
+      const confirmadas = (p.parcelas || []).filter((x: any) => x.status === "confirmada");
+      const programadas = (p.parcelas || []).filter((x: any) => x.status !== "confirmada");
+      const jaConf = confirmadas.reduce((s: number, x: any) => s + x.dias, 0);
+      document.getElementById("tituloModalFerias")!.textContent = `Programar férias — ${p.colaborador}`;
+      document.getElementById("feriasResumoTopo")!.innerHTML = `Direito: <strong>${p.dias_direito} dias</strong>${jaConf ? ` · já confirmados: <strong>${jaConf}</strong>` : ""} · até <strong>3 parcelas</strong> (mín. 5 dias cada). ${confirmadas.length ? `<br><span style="color:#166534">${confirmadas.map((c: any) => `✅ ${c.dias}d ${brData(c.data_inicio)}`).join(" · ")}</span>` : ""}`;
+      const edit = document.getElementById("feriasParcelasEdit")!;
+      edit.innerHTML = "";
+      if (programadas.length) programadas.forEach((x: any) => addLinhaParcela(x.data_inicio, x.dias));
+      else addLinhaParcela("", 10);
+      document.getElementById("modalFerias")!.classList.add("open");
+    }
+    function addLinhaParcela(dataInicio = "", dias: number | string = 10) {
+      const edit = document.getElementById("feriasParcelasEdit")!;
+      if (edit.querySelectorAll(".parcela-linha").length >= 3) return;
+      const div = document.createElement("div");
+      div.className = "parcela-linha";
+      div.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:8px";
+      div.innerHTML = `
+        <input type="date" class="pl-inicio" value="${dataInicio}" style="flex:1;padding:7px 9px;border:1px solid #E5E7EB;border-radius:8px" />
+        <input type="number" class="pl-dias" value="${dias}" min="5" max="30" style="width:80px;padding:7px 9px;border:1px solid #E5E7EB;border-radius:8px" /> <span style="font-size:12px;color:#6B7280">dias</span>
+        <button type="button" title="Remover linha" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px" onclick="this.parentElement.remove()">✕</button>`;
+      edit.appendChild(div);
+    }
+    async function salvarParcelas() {
+      if (!feriasModalPer) return;
+      const linhas = Array.from(document.querySelectorAll("#feriasParcelasEdit .parcela-linha"));
+      const parcelas = linhas.map((l) => ({
+        data_inicio: (l.querySelector(".pl-inicio") as HTMLInputElement).value,
+        dias: parseInt((l.querySelector(".pl-dias") as HTMLInputElement).value, 10),
+      })).filter((p) => p.data_inicio && p.dias);
+      const msg = document.getElementById("msgFerias") as any;
+      const res = await fetch(`/api/admin/rh/ferias/${feriasModalPer.id}/parcelas`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parcelas }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { fecharModal("modalFerias"); carregarFerias(); }
+      else msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
+    }
+    async function confirmarParcela(id: string) {
+      if (!confirm("Confirmar que estas férias foram gozadas? Ao completar 30 dias confirmados, o período vai para o histórico e o próximo é liberado.")) return;
+      const res = await fetch(`/api/admin/rh/ferias/parcela/${id}`, { method: "POST", headers: { "content-type": "application/json" } });
+      if (res.ok) carregarFerias(); else alert("Erro ao confirmar.");
+    }
+    async function removerParcela(id: string) {
+      if (!confirm("Remover esta parcela programada?")) return;
+      const res = await fetch(`/api/admin/rh/ferias/parcela/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      if (res.ok) carregarFerias(); else { const d = await res.json().catch(() => ({} as any)); alert("Erro: " + (d.error || res.status)); }
+    }
+    async function semearFerias() {
+      if (!confirm("Gerar o período de férias atual para cada CLT ativo (a partir da data de admissão)? Não duplica períodos já existentes.")) return;
+      const btn = document.getElementById("btnSemearFerias") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Gerando…";
+      const res = await fetch("/api/admin/rh/ferias", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ seed: true }) });
+      const d = await res.json().catch(() => ({}));
+      btn.disabled = false; btn.textContent = "⚙️ Gerar períodos";
+      if (res.ok) { alert(`Períodos criados: ${d.criados || 0}. Já existiam: ${d.ja_existiam || 0}. Sem admissão (pulados): ${d.sem_admissao || 0}.`); carregarFerias(); }
+      else alert("Erro: " + (d.error || res.status));
+    }
+    (window as any).renderFerias = renderFerias;
+    (window as any).programarFerias = programarFerias;
+    (window as any).addLinhaParcela = addLinhaParcela;
+    (window as any).salvarParcelas = salvarParcelas;
+    (window as any).confirmarParcela = confirmarParcela;
+    (window as any).removerParcela = removerParcela;
+    (window as any).semearFerias = semearFerias;
 
     // ── Alertas de RH (vencimentos + compliance) ──
     const escA = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -795,7 +975,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     }
 
     // ── Colaboradores: novo / editar / desligar ──
-    const camposColab = ["nome","email","telefone","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
+    const camposColab = ["nome","email","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
 
     function abrirModalColab() {
       const form = document.getElementById("formColab") as any;
@@ -1040,7 +1220,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
     // campos obrigatórios da ficha (exceto diaristas, que são esporádicos)
     const OBRIGATORIOS: [string, string][] = [
-      ["nome", "Nome"], ["email", "E-mail"], ["telefone", "Telefone (empresa)"],
+      ["nome", "Nome"], ["email", "E-mail"], ["telefone", "Telefone (empresa)"], ["telefone_pessoal", "Telefone (pessoal)"],
       ["cpf", "CPF"], ["rg", "RG"], ["data_nascimento", "Nascimento"], ["cargo", "Cargo"],
       ["data_admissao", "Admissão"], ["endereco", "Endereço"],
       ["contato_emergencia_nome", "Contato de emergência (nome)"],
