@@ -6,6 +6,14 @@ import { registrarAcao } from "../../../../../lib/auditoria";
 export const prerender = false;
 
 export const ETAPAS = ["triagem", "teste", "entrevista_comportamental", "entrevista_tecnica", "proposta", "admissao", "contratado", "reprovado"];
+export const CAND_CAMPOS = ["vaga_id", "nome", "email", "telefone", "etapa", "origem", "observacoes",
+  "data_nascimento", "experiencia", "formacao", "conhecimento_tecnologico", "possui_habilitacao", "possui_veiculo",
+  "disp_imediata", "disp_viagem", "disp_presencial", "personalidade", "restricao", "teste_disc", "teste_eneagrama", "curriculo_url"];
+export const CAND_BOOL = ["possui_habilitacao", "possui_veiculo", "disp_imediata", "disp_viagem", "disp_presencial"];
+// converte "true"/"false"/"" dos selects para boolean/null
+export function coagirBooleans(obj: Record<string, any>) {
+  for (const b of CAND_BOOL) if (b in obj) obj[b] = obj[b] === true || obj[b] === "true" ? true : (obj[b] === false || obj[b] === "false" ? false : null);
+}
 
 // GET /api/admin/rh/candidatos?vaga_id=  → candidatos (pipeline)
 export const GET: APIRoute = async ({ request, url }) => {
@@ -31,7 +39,8 @@ export const POST: APIRoute = async ({ request }) => {
     if (!body.nome) return jsonErr(400, "Nome é obrigatório.");
     if (body.etapa && !ETAPAS.includes(body.etapa)) return jsonErr(400, "Etapa inválida.");
     const row: any = { criado_por: admin.email };
-    for (const c of ["vaga_id", "nome", "email", "telefone", "etapa", "origem", "observacoes"]) if (body[c] !== undefined && body[c] !== "") row[c] = body[c];
+    for (const c of CAND_CAMPOS) if (body[c] !== undefined && body[c] !== "") row[c] = body[c];
+    coagirBooleans(row);
     const db = supabaseAdmin();
     const { data, error } = await db.from("rh_candidatos").insert(row).select().single();
     if (error) return jsonErr(400, error.message);

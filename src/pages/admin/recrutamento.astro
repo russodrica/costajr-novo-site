@@ -65,6 +65,34 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
           <div class="form-group"><label>Vaga</label><select name="vaga_id" id="candVaga"><option value="">—</option></select></div>
           <div class="form-group"><label>Origem</label><input name="origem" placeholder="Indicação, Gupy…" /></div>
         </div>
+        <div class="form-row">
+          <div class="form-group"><label>Data de nascimento</label><input name="data_nascimento" type="date" /></div>
+          <div class="form-group"><label>Tempo de experiência na área</label><input name="experiencia" placeholder="Ex.: Acima de 5 anos" /></div>
+        </div>
+        <div class="form-group"><label>Formação</label><input name="formacao" placeholder="Ex.: Superior completo — Engenharia/Arquitetura" /></div>
+        <div class="form-group"><label>Conhecimento tecnológico</label><input name="conhecimento_tecnologico" placeholder="Ex.: Excel, Word, SketchUp, AutoCAD" /></div>
+        <div class="form-row">
+          <div class="form-group"><label>Possui habilitação</label><select name="possui_habilitacao"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+          <div class="form-group"><label>Possui veículo</label><select name="possui_veiculo"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+          <div class="form-group"><label>Disp. imediata</label><select name="disp_imediata"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Disp. de viagem</label><select name="disp_viagem"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+          <div class="form-group"><label>Disp. presencial</label><select name="disp_presencial"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Como classifica a personalidade</label><input name="personalidade" placeholder="Ex.: Colaborativo" /></div>
+          <div class="form-group"><label>Possui alguma restrição?</label><input name="restricao" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Teste DISC</label>
+            <select name="teste_disc"><option value="">—</option><option>Dominância (D)</option><option>Influência (I)</option><option>Estabilidade (S)</option><option>Conformidade (C)</option></select>
+          </div>
+          <div class="form-group"><label>Teste Eneagrama</label>
+            <select name="teste_eneagrama"><option value="">—</option><option>Tipo 1 — Perfeccionista</option><option>Tipo 2 — Prestativo</option><option>Tipo 3 — Realizador</option><option>Tipo 4 — Individualista</option><option>Tipo 5 — Investigador</option><option>Tipo 6 — Questionador</option><option>Tipo 7 — Entusiasta</option><option>Tipo 8 — Desafiador</option><option>Tipo 9 — Pacificador</option></select>
+          </div>
+        </div>
+        <div class="form-group"><label>Currículo / documentos (link)</label><input name="curriculo_url" type="url" placeholder="https://… (OneDrive/Drive)" /></div>
         <div class="form-group"><label>Etapa</label>
           <select name="etapa" id="candEtapa"></select>
         </div>
@@ -176,7 +204,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
     });
 
     function abrirCandidato() { const f=document.getElementById("formCand"); f.reset(); f.elements.id.value=""; document.getElementById("tituloCand").textContent="Novo candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
-    function editarCand(id) { const c=CAND.find(x=>x.id===id); if(!c) return; const f=document.getElementById("formCand"); f.reset(); for(const k of ["id","nome","email","telefone","vaga_id","origem","etapa","entrevista_comportamental_em","entrevista_tecnica_em","teste_resultado","observacoes"]) if(f.elements[k]) f.elements[k].value=c[k]??""; document.getElementById("tituloCand").textContent="Editar candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
+    function editarCand(id) { const c=CAND.find(x=>x.id===id); if(!c) return; const f=document.getElementById("formCand"); f.reset(); const campos=["id","nome","email","telefone","vaga_id","origem","etapa","entrevista_comportamental_em","entrevista_tecnica_em","teste_resultado","observacoes","data_nascimento","experiencia","formacao","conhecimento_tecnologico","possui_habilitacao","possui_veiculo","disp_imediata","disp_viagem","disp_presencial","personalidade","restricao","teste_disc","teste_eneagrama","curriculo_url"]; for(const k of campos){ if(!f.elements[k]) continue; const v=c[k]; f.elements[k].value = (v===null||v===undefined)?"":String(v); } document.getElementById("tituloCand").textContent="Editar candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
     document.getElementById("formCand").addEventListener("submit", async e => {
       e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const id=body.id; delete body.id;
       const res=await fetch(id?`/api/admin/rh/candidatos/${id}`:"/api/admin/rh/candidatos",{method:id?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});

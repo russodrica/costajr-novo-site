@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
-import { ETAPAS } from "./index";
+import { ETAPAS, CAND_CAMPOS, coagirBooleans } from "./index";
 
 export const prerender = false;
 
@@ -14,7 +14,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const body = await request.json();
     if (body.etapa && !ETAPAS.includes(body.etapa)) return jsonErr(400, "Etapa inválida.");
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    for (const c of ["vaga_id", "nome", "email", "telefone", "etapa", "origem", "teste_resultado", "entrevista_comportamental_em", "entrevista_tecnica_em", "feedback", "motivo_reprovacao", "observacoes"]) if (body[c] !== undefined) patch[c] = body[c] === "" ? null : body[c];
+    for (const c of [...CAND_CAMPOS, "feedback", "motivo_reprovacao", "entrevista_comportamental_em", "entrevista_tecnica_em", "teste_resultado"]) if (body[c] !== undefined) patch[c] = body[c] === "" ? null : body[c];
+    coagirBooleans(patch);
     const db = supabaseAdmin();
     const { data, error } = await db.from("rh_candidatos").update(patch).eq("id", id).select().single();
     if (error) return jsonErr(400, error.message);
