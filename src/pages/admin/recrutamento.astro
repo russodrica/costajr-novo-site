@@ -174,14 +174,16 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       const sel = document.getElementById("filtroVaga"), cs = document.getElementById("candVaga");
       const opts = `<option value="">—</option>` + VAGAS.map(v => `<option value="${v.id}">${esc(v.titulo)}</option>`).join("");
       cs.innerHTML = opts;
-      sel.innerHTML = `<option value="">Todas as vagas</option>` + VAGAS.map(v => `<option value="${v.id}">${esc(v.titulo)}</option>`).join("");
+      sel.innerHTML = `<option value="">Todas as vagas</option><option value="__talentos__">🌟 Banco de Talentos (sem vaga)</option>` + VAGAS.map(v => `<option value="${v.id}">${esc(v.titulo)}</option>`).join("");
       document.getElementById("candEtapa").innerHTML = ETAPAS.map(e => `<option value="${e.k}">${e.t}</option>`).join("");
     }
 
     async function carregarKanban() {
       const vaga = document.getElementById("filtroVaga").value;
-      const r = await fetch("/api/admin/rh/candidatos" + (vaga ? `?vaga_id=${vaga}` : ""), { headers: { "content-type": "application/json" } });
+      const talentos = vaga === "__talentos__";
+      const r = await fetch("/api/admin/rh/candidatos" + (vaga && !talentos ? `?vaga_id=${vaga}` : ""), { headers: { "content-type": "application/json" } });
       CAND = await r.json();
+      if (talentos) CAND = CAND.filter(c => !c.vaga_id);
       const box = document.getElementById("kanban");
       box.innerHTML = `<div style="display:flex;gap:12px;min-width:max-content">${ETAPAS.map(e => {
         const itens = CAND.filter(c => c.etapa === e.k);

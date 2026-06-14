@@ -1,0 +1,198 @@
+---
+import Base from "~/layouts/Base.astro";
+import { supabaseAdmin } from "~/lib/supabase";
+
+// Vagas abertas (dado público — só campos seguros)
+let vagas: any[] = [];
+try {
+  const db = supabaseAdmin();
+  const { data } = await db
+    .from("rh_vagas")
+    .select("id, titulo, setor, descricao, perfil_desejado, modo_trabalho, tipo_contratacao, habilitacao, data_prevista")
+    .in("status", ["aberta", "em_andamento"])
+    .order("created_at", { ascending: false })
+    .limit(100);
+  vagas = data || [];
+} catch { vagas = []; }
+
+const temVagas = vagas.length > 0;
+---
+<Base
+  title="Trabalhe conosco — Vagas | Costa Júnior Engenharia"
+  description="Faça parte da Costa Júnior Engenharia. Veja as vagas abertas e candidate-se, ou cadastre-se no nosso Banco de Talentos."
+>
+  <section class="page-hero">
+    <div class="container page-hero-content">
+      <span class="hero-eyebrow">Carreiras</span>
+      <h1>Trabalhe <span class="hl">conosco</span>.</h1>
+      <p class="page-hero-sub">
+        A Costa Júnior executa obras e manutenção para clientes-âncora em todo o Brasil. Veja as vagas abertas e candidate-se — ou entre para o nosso Banco de Talentos.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      {temVagas ? (
+        <div class="vagas-grid">
+          {vagas.map((v) => (
+            <div class="vaga-card">
+              <h3 class="vaga-titulo">{v.titulo}</h3>
+              <div class="vaga-tags">
+                {v.setor && <span class="vaga-tag">🏢 {v.setor}</span>}
+                {v.modo_trabalho && <span class="vaga-tag">📍 {v.modo_trabalho}</span>}
+                {v.tipo_contratacao && <span class="vaga-tag">📄 {v.tipo_contratacao}</span>}
+                {v.habilitacao && v.habilitacao !== "Indiferente" && <span class="vaga-tag">🚗 CNH {v.habilitacao}</span>}
+              </div>
+              {v.descricao && <p class="vaga-desc">{v.descricao}</p>}
+              {v.perfil_desejado && <p class="vaga-perfil"><strong>Perfil:</strong> {v.perfil_desejado}</p>}
+              <button class="btn btn-primary vaga-btn" data-vaga={v.id} data-titulo={v.titulo}>Candidatar-se</button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style="text-align:center;max-width:560px;margin:0 auto;padding:40px 0">
+          <h2 style="font-size:1.5rem;margin-bottom:10px">Nenhuma vaga aberta no momento</h2>
+          <p style="color:var(--mid,#5B5F6B)">Mas seguimos crescendo! Cadastre-se no nosso Banco de Talentos e avisaremos quando surgir uma oportunidade para o seu perfil.</p>
+        </div>
+      )}
+
+      <div class="talentos-cta">
+        <div>
+          <h2>Não encontrou a vaga ideal?</h2>
+          <p>Cadastre-se no <strong>Banco de Talentos</strong>. Guardamos seu currículo e entramos em contato quando surgir uma oportunidade.</p>
+        </div>
+        <button class="btn btn-outline" id="btnTalentos">Entrar no Banco de Talentos</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Modal de candidatura -->
+  <div class="cand-overlay" id="candOverlay">
+    <div class="cand-modal">
+      <button class="cand-close" id="candClose" aria-label="Fechar">×</button>
+      <h2 id="candTitulo">Candidatar-se</h2>
+      <p class="cand-sub" id="candSub"></p>
+      <form id="candForm">
+        <input type="hidden" name="vaga_id" id="candVagaId" />
+        <div class="cand-row">
+          <label>Nome completo *<input type="text" name="nome" required /></label>
+        </div>
+        <div class="cand-row two">
+          <label>E-mail<input type="email" name="email" /></label>
+          <label>Telefone / WhatsApp<input type="tel" name="telefone" /></label>
+        </div>
+        <div class="cand-row two">
+          <label>Data de nascimento<input type="date" name="data_nascimento" /></label>
+          <label>Possui CNH?
+            <select name="possui_habilitacao"><option value="">—</option><option value="sim">Sim</option><option value="nao">Não</option></select>
+          </label>
+        </div>
+        <div class="cand-row two">
+          <label>Possui veículo próprio?
+            <select name="possui_veiculo"><option value="">—</option><option value="sim">Sim</option><option value="nao">Não</option></select>
+          </label>
+          <label>Disponibilidade imediata?
+            <select name="disp_imediata"><option value="">—</option><option value="sim">Sim</option><option value="nao">Não</option></select>
+          </label>
+        </div>
+        <div class="cand-row two">
+          <label>Disponível para viagens?
+            <select name="disp_viagem"><option value="">—</option><option value="sim">Sim</option><option value="nao">Não</option></select>
+          </label>
+          <label>Disponível presencial?
+            <select name="disp_presencial"><option value="">—</option><option value="sim">Sim</option><option value="nao">Não</option></select>
+          </label>
+        </div>
+        <div class="cand-row"><label>Formação<input type="text" name="formacao" placeholder="Ex.: Técnico em Edificações, Engenharia Civil…" /></label></div>
+        <div class="cand-row"><label>Experiência profissional<textarea name="experiencia" rows="3" placeholder="Resumo das suas experiências"></textarea></label></div>
+        <div class="cand-row"><label>Conhecimentos técnicos<textarea name="conhecimento_tecnologico" rows="2" placeholder="Ferramentas, softwares, NRs, certificações…"></textarea></label></div>
+        <div class="cand-row"><label>Currículo (PDF, DOC ou imagem — até 10 MB)<input type="file" name="arquivo" accept=".pdf,.doc,.docx,image/*" /></label></div>
+        <label class="cand-lgpd"><input type="checkbox" id="candLgpd" required /> <span>Concordo com o tratamento dos meus dados conforme a <a href="/privacidade" target="_blank">Política de Privacidade</a>.</span></label>
+        <div id="candMsg" class="cand-msg" hidden></div>
+        <button type="submit" class="btn btn-primary cand-submit" id="candSubmit">Enviar candidatura</button>
+      </form>
+      <div class="cand-ok" id="candOk" hidden>
+        <div style="font-size:3rem">✅</div>
+        <h2>Candidatura enviada!</h2>
+        <p>Recebemos seus dados. Nossa equipe de RH analisará seu perfil e entrará em contato. Boa sorte! 🍀</p>
+        <button class="btn btn-outline" id="candFechar2">Fechar</button>
+      </div>
+    </div>
+  </div>
+</Base>
+
+<script is:inline>
+  (function () {
+    const overlay = document.getElementById("candOverlay");
+    const form = document.getElementById("candForm");
+    const okBox = document.getElementById("candOk");
+    const msg = document.getElementById("candMsg");
+    function abrir(vagaId, titulo) {
+      form.reset();
+      document.getElementById("candVagaId").value = vagaId || "";
+      document.getElementById("candTitulo").textContent = vagaId ? "Candidatar-se" : "Banco de Talentos";
+      document.getElementById("candSub").textContent = vagaId ? (titulo || "") : "Candidatura espontânea — guardaremos seu currículo.";
+      msg.hidden = true; msg.textContent = ""; form.hidden = false; okBox.hidden = true;
+      overlay.classList.add("open");
+    }
+    function fechar() { overlay.classList.remove("open"); }
+    document.querySelectorAll(".vaga-btn").forEach((b) => b.addEventListener("click", () => abrir(b.dataset.vaga, b.dataset.titulo)));
+    document.getElementById("btnTalentos").addEventListener("click", () => abrir("", ""));
+    document.getElementById("candClose").addEventListener("click", fechar);
+    document.getElementById("candFechar2").addEventListener("click", fechar);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) fechar(); });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!document.getElementById("candLgpd").checked) { msg.hidden = false; msg.textContent = "Marque o aceite da Política de Privacidade."; return; }
+      const btn = document.getElementById("candSubmit");
+      btn.disabled = true; btn.textContent = "Enviando…"; msg.hidden = true;
+      try {
+        const fd = new FormData(form);
+        const res = await fetch("/api/vagas/candidatar", { method: "POST", body: fd });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { form.hidden = true; okBox.hidden = false; }
+        else { msg.hidden = false; msg.textContent = d.error || "Não foi possível enviar. Tente novamente."; }
+      } catch { msg.hidden = false; msg.textContent = "Erro de conexão. Tente novamente."; }
+      btn.disabled = false; btn.textContent = "Enviar candidatura";
+    });
+  })();
+</script>
+
+<style>
+  .vagas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 22px; margin-bottom: 48px; }
+  .vaga-card { background: #fff; border: 1px solid #ECECF1; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; box-shadow: 0 4px 18px rgba(16,24,40,.05); transition: transform .15s, box-shadow .15s; }
+  .vaga-card:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(16,24,40,.10); }
+  .vaga-titulo { font-size: 1.2rem; margin: 0 0 12px; color: var(--ink, #2D2F36); }
+  .vaga-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+  .vaga-tag { background: #FBE9EC; color: #C41E3A; font-size: .78rem; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+  .vaga-desc { font-size: .92rem; color: var(--mid, #5B5F6B); line-height: 1.55; margin: 0 0 10px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .vaga-perfil { font-size: .85rem; color: var(--mid, #5B5F6B); margin: 0 0 18px; }
+  .vaga-btn { margin-top: auto; }
+  .talentos-cta { background: linear-gradient(120deg, #2D2F36, #1a1b20); color: #fff; border-radius: 18px; padding: 32px 36px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .talentos-cta h2 { margin: 0 0 6px; font-size: 1.4rem; }
+  .talentos-cta p { margin: 0; color: #D6D7DC; max-width: 520px; }
+  .talentos-cta .btn-outline { border-color: #fff; color: #fff; white-space: nowrap; }
+  .talentos-cta .btn-outline:hover { background: #fff; color: #2D2F36; }
+
+  .cand-overlay { position: fixed; inset: 0; background: rgba(16,18,24,.6); display: none; align-items: flex-start; justify-content: center; padding: 30px 16px; z-index: 9999; overflow-y: auto; }
+  .cand-overlay.open { display: flex; }
+  .cand-modal { background: #fff; border-radius: 18px; max-width: 560px; width: 100%; padding: 30px 28px; position: relative; box-shadow: 0 24px 60px rgba(0,0,0,.3); }
+  .cand-close { position: absolute; top: 14px; right: 16px; border: 0; background: none; font-size: 1.8rem; line-height: 1; cursor: pointer; color: #9CA3AF; }
+  .cand-modal h2 { margin: 0 0 4px; color: var(--brand, #C41E3A); font-size: 1.4rem; }
+  .cand-sub { color: var(--mid, #5B5F6B); font-size: .92rem; margin: 0 0 18px; }
+  .cand-row { margin-bottom: 14px; }
+  .cand-row.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .cand-row label { display: block; font-size: .85rem; font-weight: 600; color: var(--ink, #2D2F36); }
+  .cand-row input, .cand-row select, .cand-row textarea { width: 100%; margin-top: 5px; padding: 9px 11px; border: 1px solid #D1D5DB; border-radius: 9px; font-size: .92rem; font-family: inherit; font-weight: 400; }
+  .cand-row textarea { resize: vertical; }
+  .cand-lgpd { display: flex; gap: 8px; align-items: flex-start; font-size: .82rem; color: var(--mid, #5B5F6B); margin: 6px 0 4px; }
+  .cand-lgpd input { margin-top: 3px; }
+  .cand-msg { background: #FEF2F2; color: #B91C1C; border-radius: 8px; padding: 9px 12px; font-size: .88rem; margin: 8px 0; }
+  .cand-submit { width: 100%; margin-top: 14px; }
+  .cand-ok { text-align: center; padding: 20px 6px; }
+  .cand-ok h2 { color: #16A34A; }
+  .cand-ok p { color: var(--mid, #5B5F6B); margin: 8px 0 20px; }
+  @media (max-width: 520px) { .cand-row.two { grid-template-columns: 1fr; } }
+</style>
