@@ -24,13 +24,13 @@ type Doc = { id: string; titulo: string; tipo: string; validade: string; dias: n
 async function coletar(db: any): Promise<Doc[]> {
   const limite = new Date(Date.now() + 32 * 86400000).toISOString().slice(0, 10);
   const { data } = await db.from("rh_documentos")
-    .select("id, titulo, tipo, validade, rh_colaboradores(nome, status, regime, status_juridico)")
+    .select("id, titulo, tipo, validade, rh_colaboradores(nome, status, regime)")
     .not("validade", "is", null).lte("validade", limite)
     .order("validade", { ascending: true }).limit(3000);
   // Não alerta documentos de DESLIGADOS (inativos), DIARISTAS (esporádicos) nem
-  // de colaboradores com status jurídico CONGELADO (litígio/acordo — alertas pausados).
+  // de colaboradores CONGELADOS (jurídico — litígio/acordo — alertas pausados).
   return (data || [])
-    .filter((d: any) => { const c = d.rh_colaboradores; return c && c.status !== "desligado" && c.regime !== "diarista" && c.status_juridico !== "congelado"; })
+    .filter((d: any) => { const c = d.rh_colaboradores; return c && c.status !== "desligado" && c.status !== "congelado" && c.regime !== "diarista"; })
     .map((d: any) => ({
       id: d.id, titulo: d.titulo, tipo: d.tipo, validade: d.validade,
       dias: diasAte(d.validade), colaborador: d.rh_colaboradores?.nome || "—",

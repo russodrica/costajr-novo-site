@@ -1004,6 +1004,20 @@ Ferias/Afastado/Desligado) e status_juridico (Normal/Em processo/Congelado) sao
 campos INDEPENDENTES; uma pessoa pode ser Ativa E Congelada. (As migrations 055/
 056/057 contam a saga; o estado final = separado, igual a 055.)
 
+## Atualizacao 14/06/2026 (parte 8) — DECISAO FINAL: congelado é STATUS unico
+
+A Adriana decidiu (definitivo): UM unico campo Status, com '🔒 Congelado (jurídico)'
+na lista — pois congelar e raro e nao compensa 2 campos. **Migration 058 RODADA**
+reabilita congelado na constraint. Status = ativo|ferias|afastado|congelado|
+desligado (stColab). Campo 'Status juridico' REMOVIDO de vez; banner + toggle no
+#colabStatus; pausa de alertas em **status==='congelado'** (ferias/vencimentos/
+epi/avaliacoes). E2E: PATCH congelado 200, excluido das ferias. A coluna
+status_juridico (055) ficou VESTIGIAL (sem nenhuma referencia no codigo apos esta
+parte; NAO dropada de proposito — flexibilidade + evitar op destrutiva). HISTORICO
+DA SAGA (nao refazer): 055 criou campo separado -> 056 juntou no status -> 057
+separou de novo -> 058 juntou DE VEZ (estado atual). Resumo p/ futuras sessoes:
+**congelado e um valor do campo status; nao existe campo status_juridico na UI.**
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
