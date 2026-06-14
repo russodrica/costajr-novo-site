@@ -783,6 +783,25 @@ Contratos: a Adriana vai passar os modelos padrao; RH gera so contrato de propos
 encerramento PJ, termo de posse de equipamentos e termo de encerramento de posse
 (liberado so com devolucao em perfeito estado).
 
+## Atualizacao 14/06/2026 — Quadro do candidato (espelha PowerApps) + ref do app
+
+**App de referencia da CJR:** PowerApps "Gestao de pessoas" (link em apps.
+powerapps.com/.../616adb88-...). Telas: Vagas (kanban Aberta/Em andamento, card
+com cargo/tipo/Data/Data prevista, + Nova vaga, Calendario), Candidatos (lista de
+cards + Marcados + filtro por vaga), Colaboradores. O nosso /admin/recrutamento
+cobre Vagas+Candidatos (kanban por etapa) e o /admin/rh cobre Colaboradores.
+
+**Quadro do candidato completo (migration 047 RODADA; commit c948e29):** o modal
+de candidato no Recrutamento agora espelha o formulario do PowerApps. rh_candidatos
+ganhou: data_nascimento, experiencia, formacao, conhecimento_tecnologico,
+possui_habilitacao/veiculo, disp_imediata/viagem/presencial, personalidade,
+restricao, teste_disc (D/I/S/C), teste_eneagrama (Tipo 1-9), curriculo_url.
+API candidatos com CAND_CAMPOS + coagirBooleans (selects "true"/"false"->bool).
+Verificado E2E. NOTA: teste_disc/eneagrama hoje sao dropdown do RESULTADO; o
+questionario completo (digitalizar F3/F4) continua na fila de melhorias.
+PENDENTE de alinhar com o PowerApp se a Adriana quiser: card da vaga com "tipo"
+e "data prevista"; "Subir documentos" como upload real (hoje e link curriculo_url).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
