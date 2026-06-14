@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -11,7 +12,7 @@ const TIPOS_OK: Record<string, string> = {
 // POST { arquivo_base64, content_type } → sobe a NF ao bucket PRIVADO ativos-docs
 export const POST: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const id = params.id!;
     const { arquivo_base64, content_type } = await request.json();
     const ext = TIPOS_OK[content_type];
@@ -33,6 +34,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 
     const { error } = await db.from("ativos").update({ nota_fiscal_path: path, updated_at: new Date().toISOString() }).eq("id", id);
     if (error) return jsonErr(400, error.message);
+    await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "nota_fiscal", registro_id: id, descricao: `Anexou nota fiscal do ativo ${id}`, dados: { nota_fiscal_path: path } });
     return jsonOk({ ok: true, nota_fiscal_path: path });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
@@ -42,14 +44,16 @@ export const POST: APIRoute = async ({ request, params }) => {
 // DELETE → remove a NF do cofre
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const id = params.id!;
     const db = supabaseAdmin();
     const { data: ativo } = await db.from("ativos").select("id, nota_fiscal_path").eq("id", id).maybeSingle();
     if (!ativo) return jsonErr(404, "Ativo não encontrado");
-    if (ativo.nota_fiscal_path) await db.storage.from("ativos-docs").remove([ativo.nota_fiscal_path]).catch(() => {});
+    const pathAnterior = ativo.nota_fiscal_path;
+    if (pathAnterior) await db.storage.from("ativos-docs").remove([pathAnterior]).catch(() => {});
     const { error } = await db.from("ativos").update({ nota_fiscal_path: null, updated_at: new Date().toISOString() }).eq("id", id);
     if (error) return jsonErr(400, error.message);
+    await registrarAcao(db, { req: request, admin }, { acao: "excluir", entidade: "nota_fiscal", registro_id: id, descricao: `Removeu a nota fiscal do ativo ${id}`, dados: { nota_fiscal_path: pathAnterior } });
     return jsonOk({ ok: true });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

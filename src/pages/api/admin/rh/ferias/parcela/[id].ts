@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../lib/supabase";
 import { addMonths, addDays } from "../../../../../../lib/ferias";
+import { excluirComLixeira, registrarAcao } from "../../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -18,6 +19,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     if (parcela.status === "confirmada") return jsonOk({ ok: true, ja_confirmada: true });
 
     await db.from("rh_ferias_parcelas").update({ status: "confirmada", confirmada_em: new Date().toISOString(), confirmada_por: admin.email }).eq("id", parcelaId);
+    await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "rh_ferias_parcelas", registro_id: parcelaId, descricao: `Confirmou gozo de parcela de férias ${parcelaId} (${parcela.dias} dias)`, dados: { status: "confirmada" } });
 
     const { data: periodo } = await db.from("rh_ferias_periodos").select("*").eq("id", parcela.periodo_id).maybeSingle();
     const { data: irmas } = await db.from("rh_ferias_parcelas").select("dias, status").eq("periodo_id", parcela.periodo_id);
@@ -50,14 +52,18 @@ export const POST: APIRoute = async ({ request, params }) => {
 // DELETE /api/admin/rh/ferias/parcela/[id] — remove uma parcela ainda não confirmada.
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const parcelaId = params.id!;
     const db = supabaseAdmin();
     const { data: parcela } = await db.from("rh_ferias_parcelas").select("*").eq("id", parcelaId).maybeSingle();
     if (!parcela) return jsonErr(404, "Parcela não encontrada");
     if (parcela.status === "confirmada") return jsonErr(400, "Não é possível remover uma parcela já confirmada.");
 
-    await db.from("rh_ferias_parcelas").delete().eq("id", parcelaId);
+    const r = await excluirComLixeira(db, { req: request, admin }, {
+      tabela: "rh_ferias_parcelas", id: parcelaId, idCol: "id", entidade: "rh_ferias_parcelas",
+      descricao: `Excluiu parcela de férias ${parcelaId} (${parcela.dias} dias)`,
+    });
+    if (!r.ok) return jsonErr(400, r.error || "Falha ao excluir");
 
     // recalcula status do período
     const { data: periodo } = await db.from("rh_ferias_periodos").select("*").eq("id", parcela.periodo_id).maybeSingle();

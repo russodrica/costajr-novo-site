@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -8,7 +9,7 @@ export const prerender = false;
 // Ação rápida "marcar pago": enviar { status: "pago", data_pagamento: "YYYY-MM-DD" }
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const id = params.id!;
     const body = await request.json();
 
@@ -37,6 +38,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const db = supabaseAdmin();
     const { data, error } = await db.from("fin_lancamentos").update(patch).eq("id", id).select().single();
     if (error) return jsonErr(400, error.message);
+    await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "fin_lancamentos", registro_id: id, descricao: `Editou lançamento "${data.descricao ?? id}"`, dados: patch });
     return jsonOk(data);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
@@ -46,7 +48,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 // DELETE /api/admin/fin/lancamentos/[id] — soft delete: marca como cancelado
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const id = params.id!;
     const db = supabaseAdmin();
     const { data, error } = await db.from("fin_lancamentos")
@@ -55,6 +57,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
       .select()
       .single();
     if (error) return jsonErr(400, error.message);
+    await registrarAcao(db, { req: request, admin }, { acao: "excluir", entidade: "fin_lancamentos", registro_id: id, descricao: `Cancelou (soft delete) lançamento "${data.descricao ?? id}"` });
     return jsonOk(data);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

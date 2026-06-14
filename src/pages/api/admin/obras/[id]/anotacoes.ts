@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { excluirComLixeira } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -36,15 +37,24 @@ export const POST: APIRoute = async ({ request, params }) => {
   } catch (e: any) { return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message); }
 };
 
-// DELETE ?anotacao=ID
+// DELETE ?anotacao=ID — exclui anotação (vai para a lixeira por 30 dias)
 export const DELETE: APIRoute = async ({ request, params, url }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const anotId = url.searchParams.get("anotacao");
     if (!anotId) return jsonErr(400, "Informe ?anotacao=ID.");
     const db = supabaseAdmin();
-    const { error } = await db.from("obras_anotacoes").delete().eq("id", anotId).eq("obra_id", params.id!);
-    if (error) return jsonErr(500, error.message);
+    // mantém o escopo por obra: só exclui se a anotação pertencer a esta obra
+    const { data: anot } = await db
+      .from("obras_anotacoes").select("id, texto")
+      .eq("id", anotId).eq("obra_id", params.id!).maybeSingle();
+    if (!anot) return jsonErr(404, "Anotação não encontrada nesta obra.");
+    const resumo = (anot.texto || "").slice(0, 60);
+    const r = await excluirComLixeira(db, { req: request, admin }, {
+      tabela: "obras_anotacoes", id: anotId, idCol: "id", entidade: "obras_anotacoes",
+      descricao: resumo ? `Excluiu anotação "${resumo}"` : `Excluiu anotação ${anotId}`,
+    });
+    if (!r.ok) return jsonErr(400, r.error || "Falha ao excluir");
     return jsonOk({ ok: true });
   } catch (e: any) { return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message); }
 };

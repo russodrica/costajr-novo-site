@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdmin, jsonOk, jsonErr, hashSenha, gerarSenhaInicial } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { excluirComLixeira } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -89,11 +90,16 @@ export const PUT: APIRoute = async ({ request, params }) => {
 
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdmin(request);
+    const admin = await requireAdmin(request);
     const { id } = params;
     if (!id) return jsonErr(400, "id obrigatório");
-    const { error } = await supabaseAdmin().from("manut_clientes").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    const db = supabaseAdmin();
+    const { data: cliente } = await db.from("manut_clientes").select("nome").eq("id", id).maybeSingle();
+    const r = await excluirComLixeira(db, { req: request, admin }, {
+      tabela: "manut_clientes", id, idCol: "id", entidade: "manut_clientes",
+      descricao: cliente ? `Excluiu cliente "${cliente.nome}"` : `Excluiu cliente ${id}`,
+    });
+    if (!r.ok) return jsonErr(400, r.error || "Falha ao excluir");
     return jsonOk({ ok: true });
   } catch (e: any) {
     return jsonErr(e.message === "Não autorizado" ? 401 : 500, e.message);

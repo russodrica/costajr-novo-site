@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -51,7 +52,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 // PATCH ?tarefa=ID — atualiza campos da tarefa
 export const PATCH: APIRoute = async ({ request, params, url }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const tarefaId = url.searchParams.get("tarefa");
     if (!tarefaId) return jsonErr(400, "Informe ?tarefa=ID.");
     const b = await request.json();
@@ -66,19 +67,29 @@ export const PATCH: APIRoute = async ({ request, params, url }) => {
     const { data, error } = await db.from("obras_tarefas").update(campos)
       .eq("id", tarefaId).eq("obra_id", params.id!).select().single();
     if (error) return jsonErr(500, error.message);
+    await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "obras_tarefas", registro_id: tarefaId, descricao: `Editou tarefa "${data.titulo}"`, dados: campos });
     return jsonOk(data);
   } catch (e: any) { return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message); }
 };
 
-// DELETE ?tarefa=ID
+// DELETE ?tarefa=ID — exclui tarefa (vai para a lixeira por 30 dias)
 export const DELETE: APIRoute = async ({ request, params, url }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const tarefaId = url.searchParams.get("tarefa");
     if (!tarefaId) return jsonErr(400, "Informe ?tarefa=ID.");
     const db = supabaseAdmin();
-    const { error } = await db.from("obras_tarefas").delete().eq("id", tarefaId).eq("obra_id", params.id!);
-    if (error) return jsonErr(500, error.message);
+    // Confirma que a tarefa pertence a esta obra (preserva o escopo do .eq("obra_id"))
+    // e pega o título para uma descrição legível na lixeira/log.
+    const { data: tarefa } = await db
+      .from("obras_tarefas").select("titulo")
+      .eq("id", tarefaId).eq("obra_id", params.id!).maybeSingle();
+    if (!tarefa) return jsonErr(404, "Tarefa não encontrada nesta obra.");
+    const r = await excluirComLixeira(db, { req: request, admin }, {
+      tabela: "obras_tarefas", id: tarefaId, idCol: "id", entidade: "obras_tarefas",
+      descricao: `Excluiu tarefa "${tarefa.titulo}"`,
+    });
+    if (!r.ok) return jsonErr(400, r.error || "Falha ao excluir");
     return jsonOk({ ok: true });
   } catch (e: any) { return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message); }
 };

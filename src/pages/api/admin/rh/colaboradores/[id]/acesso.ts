@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, hashSenha, gerarSenhaInicial, jsonOk, jsonErr } from "../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../lib/supabase";
 import { enviarSenhaTemporaria } from "../../../../../../lib/mailer";
+import { registrarAcao } from "../../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -13,7 +14,7 @@ const ROLES = ["admin", "coordenador", "financeiro", "comercial", "rh", "operaci
 // body: { role }  (perfil: admin, coordenador, financeiro, comercial, rh, operacional)
 export const POST: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const { role } = await request.json();
     if (!role || !ROLES.includes(role)) return jsonErr(400, "Perfil inválido.");
 
@@ -36,6 +37,11 @@ export const POST: APIRoute = async ({ request, params }) => {
       // garante o perfil escolhido
       const roles = Array.isArray(jaMembro.roles) && jaMembro.roles.length ? Array.from(new Set([...jaMembro.roles, role])) : [role];
       await db.from("portal_profiles").update({ role, roles }).eq("id", jaMembro.id);
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar", entidade: "acesso_portal", registro_id: colab.id,
+        descricao: `Vinculou acesso ao portal de "${colab.nome || email}" (perfil ${role})`,
+        dados: { colaborador_id: colab.id, membro_id: jaMembro.id, role, novo: false },
+      });
       return jsonOk({ vinculado: true, membro_id: jaMembro.id, novo: false });
     }
 
@@ -55,6 +61,12 @@ export const POST: APIRoute = async ({ request, params }) => {
     try { await enviarSenhaTemporaria(email, nome, senha, "/portal/login"); }
     catch { emailEnviado = false; }
 
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar", entidade: "acesso_portal", registro_id: colab.id,
+      descricao: `Criou acesso ao portal para "${nome}" (perfil ${role})`,
+      dados: { colaborador_id: colab.id, membro_id: membro.id, role, novo: true },
+    });
+
     return jsonOk({ novo: true, membro_id: membro.id, email, senha_inicial: senha, email_enviado: emailEnviado }, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
@@ -64,9 +76,16 @@ export const POST: APIRoute = async ({ request, params }) => {
 // DELETE /api/admin/rh/colaboradores/[id]/acesso — remove o vínculo (não apaga o membro)
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const id = params.id!;
     const db = supabaseAdmin();
-    await db.from("rh_colaboradores").update({ profile_id: null, updated_at: new Date().toISOString() }).eq("id", params.id!);
+    const { data: colab } = await db.from("rh_colaboradores").select("nome, profile_id").eq("id", id).maybeSingle();
+    await db.from("rh_colaboradores").update({ profile_id: null, updated_at: new Date().toISOString() }).eq("id", id);
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "excluir", entidade: "acesso_portal", registro_id: id,
+      descricao: colab?.nome ? `Removeu o acesso ao portal de "${colab.nome}"` : `Removeu o acesso ao portal do colaborador ${id}`,
+      dados: { colaborador_id: id, profile_id: colab?.profile_id ?? null },
+    });
     return jsonOk({ ok: true });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
