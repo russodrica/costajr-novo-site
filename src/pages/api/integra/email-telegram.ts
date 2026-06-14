@@ -16,7 +16,12 @@ export const POST: APIRoute = async ({ request, url }) => {
     const chave = request.headers.get("x-integra-secret") || url.searchParams.get("key") || "";
     if (chave !== SECRET) return new Response(JSON.stringify({ ok: false, error: "não autorizado" }), { status: 401, headers: { "content-type": "application/json" } });
 
-    const body = await request.json().catch(() => ({}));
+    // Lê o corpo de forma tolerante: se o JSON quebrar (ex.: aspas no assunto
+    // vindas do Power Automate), usa o texto cru como assunto — nunca falha calado.
+    const raw = await request.text().catch(() => "");
+    let body: any = {};
+    try { body = raw ? JSON.parse(raw) : {}; }
+    catch { body = { assunto: raw.replace(/^\{|\}$/g, "").slice(0, 300) }; }
     const assunto = String(body.assunto || body.subject || "(sem assunto)").slice(0, 300);
     const de = String(body.de || body.from || "").slice(0, 200);
     const resumo = String(body.resumo || body.preview || body.body || "").slice(0, 500);
