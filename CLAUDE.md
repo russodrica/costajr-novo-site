@@ -799,8 +799,22 @@ restricao, teste_disc (D/I/S/C), teste_eneagrama (Tipo 1-9), curriculo_url.
 API candidatos com CAND_CAMPOS + coagirBooleans (selects "true"/"false"->bool).
 Verificado E2E. NOTA: teste_disc/eneagrama hoje sao dropdown do RESULTADO; o
 questionario completo (digitalizar F3/F4) continua na fila de melhorias.
-PENDENTE de alinhar com o PowerApp se a Adriana quiser: card da vaga com "tipo"
-e "data prevista"; "Subir documentos" como upload real (hoje e link curriculo_url).
+CARD/FORM DA VAGA ALINHADO (migration 048 RODADA; commit 477efe3): rh_vagas +
+data_abertura, data_prevista, demanda, perfil_desejado, habilitacao,
+modo_trabalho, tipo_contratacao; card mostra perfil/area/contratacao/Data/Prevista.
+PENDENTE de alinhar: "Subir documentos" do candidato como upload real (hoje e link
+curriculo_url); tela Colaboradores do app (ja coberta pelo /admin/rh).
+
+**Pesquisa de Clima / eNPS FEITA (migration 049 RODADA; commit 20ab44b):** melhoria
+#2 da fila. /admin/clima (cria campanha -> LINK PUBLICO; dashboard eNPS + 6
+dimensoes + comentarios; encerrar/reabrir). /clima/[token] publico ANONIMO (sem
+login; sem colaborador_id). src/lib/clima.ts. Verificado E2E.
+
+**FILA RESTANTE (ordem):** (3) People Analytics RH (turnover/headcount/vencidos —
+dados ja existem), (4) pagina publica de vagas + banco de talentos, (5) Perfil
+comportamental DISC/Eneagrama (questionario completo dos modelos F3/F4; hoje so o
+RESULTADO e dropdown no candidato), (6) automacoes de e-mail do desligamento
+(TI/banco/Alelo/VT/Totalpass, do board), (7) upload real de documentos do candidato.
 
 ## Convencoes desta pasta para o Claude Code
 
