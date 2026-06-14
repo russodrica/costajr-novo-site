@@ -1,6 +1,6 @@
 // Service worker do CJR Manutenção (PWA)
 // Estratégia: network-first para HTML/API, cache-first para estáticos
-const CACHE_VERSION = "cjr-v1";
+const CACHE_VERSION = "cjr-v2";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
