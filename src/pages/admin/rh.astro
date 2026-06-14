@@ -631,17 +631,17 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           </div>
         </div>
         <div class="form-group"><label>Comentários</label><textarea name="comentarios"></textarea></div>
-        <div class="section-title" style="font-size:13.5px;margin:6px 0 8px">✅ Checklist de saída</div>
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink-mid)">
-          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_epi" /> EPIs devolvidos</label>
-          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_ferr" /> Ferramentas/equipamentos devolvidos</label>
-          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_aso" /> Exame demissional (ASO)</label>
+        <div class="section-title" style="font-size:13.5px;margin:6px 0 8px">📦 Devolução de itens em posse <span style="font-weight:500;color:#9CA3AF;font-size:11.5px">(cruzado com Ativos e EPIs/uniformes)</span></div>
+        <div id="deslPosse"><div class="loading"><div class="spinner"></div> Verificando posse…</div></div>
+        <div id="deslRegime" style="margin-top:10px"></div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink-mid);margin-top:10px">
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_docs" /> Documentos de rescisão entregues</label>
-          <label style="display:flex;gap:8px;align-items:center;color:#16A34A"><input type="checkbox" checked disabled /> Acesso ao portal revogado (automático)</label>
+          <label style="display:flex;gap:8px;align-items:center;color:#16A34A"><input type="checkbox" checked disabled /> Acesso ao portal revogado (automático ao concluir)</label>
         </div>
+        <p style="font-size:12px;color:#B45309;margin-top:8px">⚠ O desligamento só é concluído quando <strong>todos os itens forem devolvidos em perfeito estado</strong> e os passos do regime estiverem cumpridos.</p>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharModal('modalDesligamento')">Cancelar</button>
-          <button type="button" class="btn btn-danger" onclick="confirmarDesligamento()">Confirmar desligamento</button>
+          <button type="button" class="btn btn-danger" onclick="confirmarDesligamento()">Concluir desligamento</button>
         </div>
       </form>
     </div>
@@ -1486,28 +1486,63 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).salvarPerfilAcesso = salvarPerfilAcesso;
     (window as any).removerAcesso = removerAcesso;
 
-    function desligarColab(id: string, nome: string) {
+    async function desligarColab(id: string, nome: string) {
+      const c = (colabPorId as any)[id] || {};
       (document.getElementById("deslColabId") as HTMLInputElement).value = id;
-      document.getElementById("deslNome")!.textContent = nome;
+      document.getElementById("deslNome")!.textContent = nome + (c.regime ? ` · ${String(c.regime).toUpperCase()}` : "");
       (document.getElementById("formDesligamento") as HTMLFormElement).reset();
       (document.querySelector('#formDesligamento [name="data_desligamento"]') as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
       document.getElementById("msgDesl")!.innerHTML = "";
+      document.getElementById("deslRegime")!.innerHTML = regimeStepsHtml(c.regime || "");
+      const posseBox = document.getElementById("deslPosse")!;
+      posseBox.innerHTML = '<div class="loading"><div class="spinner"></div> Verificando posse…</div>';
       document.getElementById("modalDesligamento")!.classList.add("open");
+      try {
+        const r = await fetch(`/api/admin/rh/desligamentos/posse?colaborador_id=${id}`);
+        const d = await r.json();
+        const itens = d.itens || [];
+        posseBox.innerHTML = itens.length
+          ? itens.map((it: any) => `<div data-it-tipo="${escD(it.tipo)}" data-it-id="${escD(it.id)}" style="display:flex;align-items:center;gap:10px;border:1px solid #ECEFF3;border-radius:8px;padding:8px 10px;margin-bottom:6px;flex-wrap:wrap">
+              <span style="flex:1;min-width:140px;font-size:13px"><strong>${escD(it.nome)}</strong> <span style="color:#9CA3AF;font-size:11px">${escD(it.categoria || it.tipo)}</span></span>
+              <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" class="it-dev" /> Devolvido</label>
+              <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" class="it-ok" /> Perfeito estado</label>
+            </div>`).join("")
+          : '<p style="font-size:13px;color:#16A34A">✅ Nada pendente em posse (Ativos/EPIs).</p>';
+      } catch { posseBox.innerHTML = '<div class="alert alert-error">Erro ao verificar posse.</div>'; }
+    }
+    function regimeStepsHtml(regime: string) {
+      const cb = (id: string, t: string) => `<label style="display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--ink-mid)"><input type="checkbox" id="${id}" /> ${t}</label>`;
+      if (regime === "clt") return `<div class="section-title" style="font-size:13.5px;margin-bottom:6px">CLT — passos obrigatórios</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${cb("ck_aso", "Exame demissional (ASO)")}
+          ${cb("ck_emoc", "Exame emocional")}
+          ${cb("ck_termo", "Termo de encerramento assinado")}
+          <div class="form-group" style="margin:4px 0 0"><label>Aviso prévio</label><select id="ck_aviso"><option value="">— selecione —</option><option value="cumprido">Cumprido</option><option value="dispensado">Dispensado</option></select></div>
+        </div>`;
+      if (regime === "pj") return `<div class="section-title" style="font-size:13.5px;margin-bottom:6px">PJ — passos obrigatórios</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${cb("ck_contrato", "Contrato de encerramento da prestação de serviço assinado")}</div>`;
+      return "";
     }
     async function confirmarDesligamento() {
       const id = (document.getElementById("deslColabId") as HTMLInputElement).value;
-      const f = document.getElementById("formDesligamento") as HTMLFormElement;
-      const fd = new FormData(f);
+      const c = (colabPorId as any)[id] || {};
+      const fd = new FormData(document.getElementById("formDesligamento") as HTMLFormElement);
       const data = (fd.get("data_desligamento") as string) || new Date().toISOString().slice(0, 10);
       const msg = document.getElementById("msgDesl")!;
-      // 1) status do colaborador → desligado (revoga acesso ao portal)
-      const r1 = await fetch(`/api/admin/rh/colaboradores/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "desligado", data_desligamento: data }) });
-      if (!r1.ok) { const d = await r1.json().catch(() => ({})); msg.innerHTML = `<div class="alert alert-error">${(d as any).error || "Erro ao desligar"}</div>`; return; }
-      // 2) registro do desligamento (entrevista + checklist)
+      const qs = (s: string) => document.querySelector(s) as HTMLInputElement | null;
+      const itens = Array.from(document.querySelectorAll("#deslPosse [data-it-id]")).map((el) => ({
+        tipo: (el as any).dataset.itTipo, id: (el as any).dataset.itId,
+        devolvido: (el.querySelector(".it-dev") as HTMLInputElement).checked,
+        estado_ok: (el.querySelector(".it-ok") as HTMLInputElement).checked,
+      }));
+      const checklist: any = { itens, documentos: fd.get("ck_docs") === "on" };
+      if (c.regime === "clt") { checklist.exame_demissional = !!qs("#ck_aso")?.checked; checklist.exame_emocional = !!qs("#ck_emoc")?.checked; checklist.aviso_previo = qs("#ck_aviso")?.value || ""; checklist.termo_encerramento = !!qs("#ck_termo")?.checked; }
+      if (c.regime === "pj") { checklist.contrato_encerramento = !!qs("#ck_contrato")?.checked; }
       const entrevista = { motivo_principal: fd.get("motivo_principal"), ambiente: fd.get("ambiente"), relacao_gestao: fd.get("relacao_gestao"), recomendaria: fd.get("recomendaria"), comentarios: fd.get("comentarios") };
-      const checklist = { epi_devolvido: fd.get("ck_epi") === "on", ferramentas_devolvidas: fd.get("ck_ferr") === "on", exame_demissional: fd.get("ck_aso") === "on", documentos_entregues: fd.get("ck_docs") === "on", acessos_revogados: true };
-      await fetch("/api/admin/rh/desligamentos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ colaborador_id: id, data_desligamento: data, tipo: fd.get("tipo"), motivo: fd.get("motivo"), entrevista, checklist, status: "concluido" }) });
-      window.location.reload();
+      const res = await fetch("/api/admin/rh/desligamentos/finalizar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ colaborador_id: id, data_desligamento: data, tipo: fd.get("tipo"), motivo: fd.get("motivo"), entrevista, checklist }) });
+      if (res.ok) { window.location.reload(); return; }
+      const d = await res.json().catch(() => ({}));
+      msg.innerHTML = `<div class="alert alert-error" style="white-space:pre-line">${(d as any).error || "Erro ao concluir"}</div>`;
     }
     (window as any).confirmarDesligamento = confirmarDesligamento;
 

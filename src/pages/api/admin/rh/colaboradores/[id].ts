@@ -61,12 +61,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (Object.keys(patch).length <= 1) return jsonErr(400, "Nada para atualizar");
     if (patch.nome === null) return jsonErr(400, "Nome não pode ficar vazio");
 
-    // Ao desligar, registra a data de desligamento automaticamente (se não informada)
-    if (patch.status === "desligado" && !body.data_desligamento) {
-      patch.data_desligamento = new Date().toISOString().slice(0, 10);
-    }
-
     const db = supabaseAdmin();
+    // GATE: não permite mudar status PARA "desligado" por aqui — o desligamento
+    // só pode ocorrer pelo fluxo travado (devolução de Ativos/EPIs + passos do
+    // regime), via /api/admin/rh/desligamentos/finalizar.
+    if (patch.status === "desligado") {
+      const { data: atual } = await db.from("rh_colaboradores").select("status").eq("id", id).maybeSingle();
+      if (atual && atual.status !== "desligado") {
+        return jsonErr(400, "Use o botão Desligar — o desligamento só conclui após conferir a devolução de Ativos/EPIs e os passos do regime.");
+      }
+    }
     const { data, error } = await db.from("rh_colaboradores").update(patch).eq("id", id).select().single();
     if (error) return jsonErr(400, error.message);
 
