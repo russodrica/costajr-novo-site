@@ -84,7 +84,7 @@ export async function enviarLembretesFerias(db: any, opts: { dry?: boolean; para
 
   const lista = (periodos || []).filter((p: any) => {
     const c = p.rh_colaboradores;
-    return c && c.regime === "clt" && c.status !== "desligado";
+    return c && (c.regime === "clt" || c.regime === "pj") && c.status !== "desligado";
   });
   if (!lista.length) return { eventos: 0, enviados: 0 };
 

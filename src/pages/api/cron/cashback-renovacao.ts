@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { gerarCupomRenovacao } from "~/lib/manut/clientes";
 import { enviarEmailCupomRenovacao } from "~/lib/mailer";
-import { enviarDigestVencimentosRh } from "~/lib/rhVencimentos";
+import { enviarDigestVencimentosRh, enviarAniversariantesDoMes } from "~/lib/rhVencimentos";
 import { enviarLembretesFerias } from "~/lib/ferias";
 import { expurgarLixeira } from "~/lib/auditoria";
 
@@ -107,7 +107,17 @@ export const GET: APIRoute = async ({ request, url }) => {
     console.warn("[cron][lixeira] falhou:", e?.message);
   }
 
-  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira }), {
+  // ── Piggyback: aniversariantes do mês — só no dia 1 ──
+  let aniversariantes: any = { total: 0, enviados: 0 };
+  if (new Date().getUTCDate() === 1) {
+    try {
+      aniversariantes = await enviarAniversariantesDoMes(db);
+    } catch (e: any) {
+      console.warn("[cron][aniversariantes] falhou:", e?.message);
+    }
+  }
+
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira, aniversariantes }), {
     headers: { "content-type": "application/json" },
   });
 };

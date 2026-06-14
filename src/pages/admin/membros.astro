@@ -30,6 +30,13 @@ const badgeSt: Record<string, string> = { pending: "badge-yellow", approved: "ba
 const badgeRole: Record<string, string> = { admin: "badge-red", coordenador: "badge-blue", financeiro: "badge-green", comercial: "badge-orange", rh: "badge-blue", operacional: "badge-gray", pendente: "badge-gray" };
 function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleDateString("pt-BR"); }
 const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"];
+
+// Membros vinculados a um colaborador (RH) = "Colaboradores"; os demais = "Terceiros".
+const { data: vinculos } = await db.from("rh_colaboradores").select("profile_id").not("profile_id", "is", null);
+const idsColaborador = new Set((vinculos || []).map((v: any) => v.profile_id));
+const ehColaborador = (m: any) => idsColaborador.has(m.id);
+const nColab = (membros || []).filter(ehColaborador).length;
+const nTerceiro = (membros || []).length - nColab;
 ---
 <Admin title="Membros Portal" current="membros">
   <div class="toolbar">
@@ -40,6 +47,12 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
     <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo membro</button>
   </div>
 
+  <div class="pills" style="margin-bottom:14px">
+    <button class="pill active" data-tipo="todos" onclick="filtrarTipo('todos', this)">Todos <span class="count">{membros?.length ?? 0}</span></button>
+    <button class="pill" data-tipo="colaborador" onclick="filtrarTipo('colaborador', this)">🧑‍💼 Colaboradores <span class="count">{nColab}</span></button>
+    <button class="pill" data-tipo="terceiro" onclick="filtrarTipo('terceiro', this)">🤝 Terceiros <span class="count">{nTerceiro}</span></button>
+  </div>
+
   {membrosErro && <div class="alert alert-error">Erro ao carregar membros: {membrosErro.message}</div>}
 
   <div class="card">
@@ -48,7 +61,7 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
         <thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>Status</th><th>Último acesso</th><th>Cadastro</th><th>Ações</th></tr></thead>
         <tbody>
           {membros?.length ? membros.map((m: any) => (
-            <tr data-membro-id={m.id} data-nome={m.display_name || m.full_name || ""} data-email={m.email || ""} data-roles={(m.roles?.length ? m.roles : [m.role]).join(",")}>
+            <tr data-membro-id={m.id} data-tipo={ehColaborador(m) ? "colaborador" : "terceiro"} data-nome={m.display_name || m.full_name || ""} data-email={m.email || ""} data-roles={(m.roles?.length ? m.roles : [m.role]).join(",")}>
               <td>
                 <div style="display:flex;align-items:center;gap:10px">
                   <span class="avatar-mini" onclick={`trocarAvatar('${m.id}')`} title="Clique para trocar a foto">
@@ -179,6 +192,12 @@ const roles = ["admin","coordenador","financeiro","comercial","rh","operacional"
       const url = new URL(window.location.href);
       url.searchParams.set("status", s);
       window.location.href = url.toString();
+    }
+    function filtrarTipo(tipo, btn) {
+      document.querySelectorAll(".pill[data-tipo]").forEach((p) => p.classList.toggle("active", p === btn));
+      document.querySelectorAll("tr[data-membro-id]").forEach((tr) => {
+        tr.style.display = (tipo === "todos" || tr.dataset.tipo === tipo) ? "" : "none";
+      });
     }
     function fecharModal(id) { document.getElementById(id).classList.remove("open"); }
     function abrirModalNovo() { document.getElementById("modalNovo").classList.add("open"); }

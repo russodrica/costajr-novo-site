@@ -35,7 +35,7 @@ export const GET: APIRoute = async ({ request, url }) => {
     const { data: periodos } = await db.from("rh_ferias_periodos")
       .select("*, rh_colaboradores(nome, regime, status)")
       .neq("status", "concluido").limit(3000);
-    const lista = (periodos || []).filter((p: any) => p.rh_colaboradores && p.rh_colaboradores.regime === "clt" && p.rh_colaboradores.status !== "desligado");
+    const lista = (periodos || []).filter((p: any) => p.rh_colaboradores && (p.rh_colaboradores.regime === "clt" || p.rh_colaboradores.regime === "pj") && p.rh_colaboradores.status !== "desligado");
     const ids = lista.map((p: any) => p.id);
     let parcelas: any[] = [];
     if (ids.length) {
@@ -68,7 +68,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (body.seed) {
       const { data: colabs } = await db.from("rh_colaboradores")
-        .select("id, nome, data_admissao, regime, status").eq("regime", "clt").neq("status", "desligado").limit(2000);
+        .select("id, nome, data_admissao, regime, status").in("regime", ["clt", "pj"]).neq("status", "desligado").limit(2000);
       const { data: existentes } = await db.from("rh_ferias_periodos").select("colaborador_id, inicio_aquisitivo").limit(5000);
       const jaTem = new Set((existentes || []).map((e: any) => `${e.colaborador_id}|${e.inicio_aquisitivo}`));
       const novos: any[] = [];

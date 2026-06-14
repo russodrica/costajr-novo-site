@@ -43,8 +43,9 @@ const emFeriasHoje = new Set(
     .filter(a => a.tipo === "ferias" && a.status === "aprovada" && a.data_inicio <= hoje && a.data_fim >= hoje)
     .map(a => a.colaborador_id)
 ).size;
+// Todos os colaboradores ATIVOS (qualquer regime, inclusive diaristas) — para festejar.
 const aniversariantes = colaboradores
-  .filter(c => c.status !== "desligado" && !ehDiarista(c) && c.data_nascimento && Number(String(c.data_nascimento).slice(5, 7)) === mesAtual)
+  .filter(c => c.status !== "desligado" && c.data_nascimento && Number(String(c.data_nascimento).slice(5, 7)) === mesAtual)
   .sort((a, b) => Number(String(a.data_nascimento).slice(8, 10)) - Number(String(b.data_nascimento).slice(8, 10)));
 const docsVencendo = documentos.filter(d => d.validade && d.validade >= hoje && d.validade <= em30).length;
 
@@ -427,14 +428,14 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
   <!-- ════════ ABA FÉRIAS (programação CLT) ════════ -->
   <section class="tab-section" id="aba-ferias" style="display:none">
     <div class="toolbar">
-      <span class="toolbar-title">🏖 Programação de Férias — CLT</span>
+      <span class="toolbar-title">🏖 Programação de Férias — CLT / PJ</span>
       <span style="display:flex;gap:8px">
         <select id="feriasFiltro" class="input-sm" onchange="renderFerias()" style="padding:6px 10px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px">
           <option value="pendentes">Pendentes / a vencer</option>
           <option value="todos">Todos</option>
           <option value="programado">Programados</option>
         </select>
-        <button class="btn btn-outline btn-sm" onclick="semearFerias()" id="btnSemearFerias" title="Cria o período atual de cada CLT ativo a partir da data de admissão">⚙️ Gerar períodos</button>
+        <button class="btn btn-outline btn-sm" onclick="semearFerias()" id="btnSemearFerias" title="Cria o período atual de cada CLT/PJ ativo a partir da data de admissão">⚙️ Gerar períodos</button>
       </span>
     </div>
     <div id="ferias-cards" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:16px"></div>
@@ -742,7 +743,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       const vencidos = feriasDados.filter((p) => p.status === "vencido").length;
       document.getElementById("feriasBadge")!.textContent = String(faltando + vencidos || "");
       document.getElementById("ferias-cards")!.innerHTML = `
-        <div class="stat-card" style="border-left:3px solid #6B7280"><div class="stat-value">${total}</div><div class="stat-label">Períodos CLT</div></div>
+        <div class="stat-card" style="border-left:3px solid #6B7280"><div class="stat-value">${total}</div><div class="stat-label">Períodos CLT/PJ</div></div>
         <div class="stat-card" style="border-left:3px solid #16A34A"><div class="stat-value" style="color:#16A34A">${programados}</div><div class="stat-label">Programados</div></div>
         <div class="stat-card" style="border-left:3px solid #DC2626"><div class="stat-value" style="color:#DC2626">${faltando}</div><div class="stat-label">Falta programar</div></div>
         <div class="stat-card" style="border-left:3px solid #B91C1C"><div class="stat-value" style="color:#B91C1C">${vencidos}</div><div class="stat-label">Vencidos</div></div>`;
@@ -753,7 +754,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       lista.sort((a, b) => (a.limite_concessivo < b.limite_concessivo ? -1 : 1));
 
       const box = document.getElementById("ferias-conteudo")!;
-      if (!feriasDados.length) { box.innerHTML = '<div class="card" style="text-align:center;padding:30px"><p style="color:#6B7280">Nenhum período de férias ainda. Clique em <strong>⚙️ Gerar períodos</strong> para criar a partir das admissões dos CLT ativos.</p></div>'; return; }
+      if (!feriasDados.length) { box.innerHTML = '<div class="card" style="text-align:center;padding:30px"><p style="color:#6B7280">Nenhum período de férias ainda. Clique em <strong>⚙️ Gerar períodos</strong> para criar a partir das admissões dos CLT/PJ ativos.</p></div>'; return; }
       if (!lista.length) { box.innerHTML = '<div class="card" style="text-align:center;padding:24px;color:#6B7280">Nada neste filtro. ✅</div>'; return; }
 
       box.innerHTML = lista.map((p) => {
@@ -836,7 +837,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (res.ok) carregarFerias(); else { const d = await res.json().catch(() => ({} as any)); alert("Erro: " + (d.error || res.status)); }
     }
     async function semearFerias() {
-      if (!confirm("Gerar o período de férias atual para cada CLT ativo (a partir da data de admissão)? Não duplica períodos já existentes.")) return;
+      if (!confirm("Gerar o período de férias atual para cada CLT/PJ ativo (a partir da data de admissão)? Não duplica períodos já existentes.")) return;
       const btn = document.getElementById("btnSemearFerias") as HTMLButtonElement;
       btn.disabled = true; btn.textContent = "Gerando…";
       const res = await fetch("/api/admin/rh/ferias", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ seed: true }) });
@@ -1096,6 +1097,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       { key: "nr10", label: "NR-10 · Eletricidade", tipo: "certificado", prefixo: "NR10", validade: true },
       { key: "nr06", label: "NR-06 · EPI", tipo: "certificado", prefixo: "NR06", validade: true },
       { key: "nr01", label: "NR-01 · GRO", tipo: "certificado", prefixo: "NR01", validade: true },
+      { key: "advertencia", label: "Advertência", tipo: "advertencia", prefixo: "Advertência", validade: false },
+      { key: "suspensao", label: "Suspensão", tipo: "outro", prefixo: "Suspensão", validade: false },
     ];
     const SLOT_LABEL: Record<string, string> = Object.fromEntries(SLOTS_DOC.map((s) => [s.key, s.label]));
     const SLOT_DEF: Record<string, any> = Object.fromEntries(SLOTS_DOC.map((s) => [s.key, s]));
@@ -1104,6 +1107,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       { titulo: "🪪 Documentos pessoais", keys: ["contrato", "rg_hab", "ficha_registro", "teste"] },
       { titulo: "🛠️ Documentos técnicos", keys: ["aso", "ficha_epi", "os"] },
       { titulo: "🦺 Treinamentos (NRs)", keys: ["nr01", "nr06", "nr10", "nr35"] },
+      { titulo: "⚠️ Disciplinares", keys: ["advertencia", "suspensao"] },
     ];
     function slotDoDoc(doc: any): string {
       const t = doc.titulo || "";
@@ -1120,7 +1124,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (np.includes("nr06") || np.includes("nr 06") || np.includes("nr 6")) return "nr06";
       if (np.includes("nr01") || np.includes("nr 01") || np.includes("nr 1")) return "nr01";
       if (np.includes("ordem") || np === "os") return "os";
-      const porTipo: Record<string, string> = { contrato: "contrato", aso: "aso", ficha_epi: "ficha_epi", cnh: "rg_hab" };
+      if (np.includes("suspens")) return "suspensao";
+      if (np.includes("advert")) return "advertencia";
+      const porTipo: Record<string, string> = { contrato: "contrato", aso: "aso", ficha_epi: "ficha_epi", cnh: "rg_hab", advertencia: "advertencia" };
       return porTipo[doc.tipo] || "outros";
     }
     function nomeCurtoDoc(titulo: string): string {

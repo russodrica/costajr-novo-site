@@ -95,3 +95,45 @@ export async function enviarDigestVencimentosRh(db: any, opts: { modo?: "marcos"
   }
   return { total: selecionados.length, enviados, falhas };
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// Aniversariantes do mês — enviado no dia 1 (pelo cron) para o RH festejar.
+// Inclui TODOS os ativos (qualquer regime), pela data de nascimento.
+// ════════════════════════════════════════════════════════════════════════
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+export async function enviarAniversariantesDoMes(db: any, opts: { para?: string; dry?: boolean; mes?: number } = {}) {
+  const para = opts.para || RH_ALERT_EMAIL;
+  const mes = opts.mes || new Date().getUTCMonth() + 1;
+  const { data } = await db.from("rh_colaboradores")
+    .select("nome, data_nascimento, cargo, setor")
+    .neq("status", "desligado").not("data_nascimento", "is", null).limit(3000);
+  const aniv = (data || [])
+    .filter((c: any) => Number(String(c.data_nascimento).slice(5, 7)) === mes)
+    .sort((a: any, b: any) => Number(String(a.data_nascimento).slice(8, 10)) - Number(String(b.data_nascimento).slice(8, 10)));
+  if (!aniv.length) return { total: 0, enviados: 0 };
+  if (opts.dry) return { total: aniv.length, dry: true, destino: para };
+
+  const linhas = aniv.map((c: any) => {
+    const dia = String(c.data_nascimento).slice(8, 10);
+    return `<tr>
+      <td style="padding:7px 10px;border-bottom:1px solid #eee;font-weight:700;color:#C41E3A;white-space:nowrap">${dia}/${String(mes).padStart(2, "0")}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #eee"><strong>${c.nome}</strong></td>
+      <td style="padding:7px 10px;border-bottom:1px solid #eee;color:#6B7280">${c.cargo || "—"}</td>
+    </tr>`;
+  }).join("");
+  const html = `<div style="font-family:Arial,sans-serif;color:#2D2F36;max-width:680px">
+    <h2 style="color:#C41E3A;margin-bottom:4px">🎉 Aniversariantes de ${MESES[mes - 1]}</h2>
+    <p style="color:#5B5F6B">${aniv.length} colaborador(es) fazem aniversário neste mês — vamos festejar!</p>
+    <table style="border-collapse:collapse;width:100%;font-size:14px">
+      <thead><tr style="background:#F4F6F9"><th style="text-align:left;padding:8px 10px">Dia</th><th style="text-align:left;padding:8px 10px">Colaborador</th><th style="text-align:left;padding:8px 10px">Cargo</th></tr></thead>
+      <tbody>${linhas}</tbody></table>
+    <p style="color:#9CA3AF;font-size:12px;margin-top:24px">Aviso automático — Costa Júnior Engenharia. Enviado no dia 1 de cada mês.</p>
+  </div>`;
+
+  let enviados = 0;
+  for (const to of String(para).split(",").map((s: string) => s.trim()).filter(Boolean)) {
+    try { await enviarEmailSimples({ to, subject: `🎉 Aniversariantes de ${MESES[mes - 1]} (${aniv.length})`, html }); enviados++; } catch { /* ignore */ }
+  }
+  return { total: aniv.length, enviados };
+}

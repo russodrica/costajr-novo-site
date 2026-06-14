@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../lib/supabase";
-import { addDays, MAX_PARCELAS, MIN_DIAS_PARCELA } from "../../../../../../lib/ferias";
+import { addDays, fmtBR, MAX_PARCELAS, MIN_DIAS_PARCELA } from "../../../../../../lib/ferias";
 import { registrarAcao } from "../../../../../../lib/auditoria";
 
 export const prerender = false;
@@ -48,6 +48,22 @@ export const POST: APIRoute = async ({ request, params }) => {
     const ord = [...novas].sort((a, b) => (a.data_inicio < b.data_inicio ? -1 : 1));
     for (let i = 1; i < ord.length; i++) if (ord[i].data_inicio <= ord[i - 1].data_fim)
       return jsonErr(400, "As parcelas não podem se sobrepor.");
+
+    // NÃO permite dois colaboradores de férias ao mesmo tempo: checa sobreposição
+    // com as parcelas (programadas/confirmadas) de QUALQUER OUTRO colaborador.
+    if (novas.length) {
+      const { data: outras } = await db.from("rh_ferias_parcelas")
+        .select("data_inicio, data_fim, colaborador_id, rh_colaboradores(nome)")
+        .neq("colaborador_id", periodo.colaborador_id).limit(5000);
+      for (const nova of novas) {
+        const conflito = (outras || []).find((o: any) => nova.data_inicio <= o.data_fim && nova.data_fim >= o.data_inicio);
+        if (conflito) {
+          const c: any = conflito.rh_colaboradores;
+          const quem = (Array.isArray(c) ? c[0]?.nome : c?.nome) || "outro colaborador";
+          return jsonErr(400, `O período desejado (${fmtBR(nova.data_inicio)} a ${fmtBR(nova.data_fim)}) NÃO é permitido: coincide com as férias de ${quem} (${fmtBR(conflito.data_inicio)} a ${fmtBR(conflito.data_fim)}). Não é permitido dois colaboradores de férias ao mesmo tempo — escolha outras datas.`);
+        }
+      }
+    }
 
     // substitui as programadas (mantém confirmadas)
     await db.from("rh_ferias_parcelas").delete().eq("periodo_id", periodoId).eq("status", "programada");
