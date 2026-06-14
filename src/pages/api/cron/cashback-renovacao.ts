@@ -4,6 +4,7 @@ import { gerarCupomRenovacao } from "~/lib/manut/clientes";
 import { enviarEmailCupomRenovacao } from "~/lib/mailer";
 import { enviarDigestVencimentosRh } from "~/lib/rhVencimentos";
 import { enviarLembretesFerias } from "~/lib/ferias";
+import { expurgarLixeira } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -98,7 +99,15 @@ export const GET: APIRoute = async ({ request, url }) => {
     console.warn("[cron][ferias] falhou:", e?.message);
   }
 
-  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest }), {
+  // ── Piggyback: expurgo da lixeira (itens com mais de 30 dias) ──
+  let lixeira: any = { removidos: 0 };
+  try {
+    lixeira = await expurgarLixeira(db);
+  } catch (e: any) {
+    console.warn("[cron][lixeira] falhou:", e?.message);
+  }
+
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira }), {
     headers: { "content-type": "application/json" },
   });
 };

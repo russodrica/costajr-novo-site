@@ -1,0 +1,101 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!["admin", "coordenador"].includes(claims.role)) return Astro.redirect("/admin");
+---
+<Admin title="Auditoria — Logs" current="logs">
+  <div class="toolbar">
+    <span class="toolbar-title">🧾 Trilha de auditoria</span>
+    <select class="filter-select" id="fAcao" onchange="carregar(1)">
+      <option value="todos">Todas as ações</option>
+      <option value="criar">Inclusões</option>
+      <option value="editar">Edições</option>
+      <option value="excluir">Exclusões</option>
+      <option value="restaurar">Restaurações</option>
+    </select>
+    <select class="filter-select" id="fEntidade" onchange="carregar(1)"><option value="todos">Todos os módulos</option></select>
+    <input class="search-input" id="fUsuario" placeholder="Usuário (e-mail)…" oninput="debCarregar()" />
+    <input class="search-input" id="fBusca" placeholder="Buscar na descrição…" oninput="debCarregar()" />
+    <input type="date" class="filter-select" id="fDesde" onchange="carregar(1)" title="De" />
+    <input type="date" class="filter-select" id="fAte" onchange="carregar(1)" title="Até" />
+  </div>
+  <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 14px">Registro de toda inclusão, edição e exclusão feita por usuários do portal — para rastreio. Visível para admin e coordenador.</p>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table style="font-size:14px">
+        <thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Módulo</th><th>Descrição</th><th>IP</th></tr></thead>
+        <tbody id="tbody"><tr><td colspan="6"><div class="loading"><div class="spinner"></div> Carregando…</div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
+    <span id="info" style="font-size:13px;color:var(--ink-mid)"></span>
+    <span style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" id="bPrev" onclick="carregar(__pag-1)">← Anterior</button>
+      <button class="btn btn-outline btn-sm" id="bNext" onclick="carregar(__pag+1)">Próxima →</button>
+    </span>
+  </div>
+
+  <!-- modal detalhe (snapshot) -->
+  <div class="modal-overlay" id="modalLog">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-title">Detalhe do registro</div>
+      <div id="logMeta" style="font-size:13px;color:var(--ink-mid);margin-bottom:10px"></div>
+      <pre id="logDados" style="background:#0F172A;color:#E2E8F0;border-radius:8px;padding:14px;font-size:12px;overflow:auto;max-height:50vh;white-space:pre-wrap;word-break:break-word"></pre>
+      <div class="modal-actions"><button class="btn btn-secondary" onclick="document.getElementById('modalLog').classList.remove('open')">Fechar</button></div>
+    </div>
+  </div>
+
+  <script is:inline>
+    let __pag = 1, __total = 0, __porPag = 50, __cacheLogs = [];
+    const ACAO = { criar:["Inclusão","badge-green"], editar:["Edição","badge-blue"], excluir:["Exclusão","badge-red"], restaurar:["Restauração","badge-orange"] };
+    const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    function fmtTs(t){ if(!t) return "—"; const d=new Date(t); return d.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}); }
+    let __deb; function debCarregar(){ clearTimeout(__deb); __deb=setTimeout(()=>carregar(1),350); }
+
+    async function carregar(pag){
+      if(pag<1) return; __pag=pag;
+      const qs=new URLSearchParams({ pagina:String(pag),
+        acao:document.getElementById("fAcao").value, entidade:document.getElementById("fEntidade").value,
+        usuario:document.getElementById("fUsuario").value, q:document.getElementById("fBusca").value,
+        desde:document.getElementById("fDesde").value, ate:document.getElementById("fAte").value });
+      const tb=document.getElementById("tbody");
+      tb.innerHTML='<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Carregando…</div></td></tr>';
+      try{
+        const r=await fetch("/api/admin/logs?"+qs.toString(),{headers:{"content-type":"application/json"}});
+        const d=await r.json();
+        if(!r.ok){ tb.innerHTML='<tr><td colspan="6" style="padding:18px;color:#b91c1c">'+(d.error||"Erro")+'</td></tr>'; return; }
+        __total=d.total; __porPag=d.porPagina; __cacheLogs=d.logs;
+        const selE=document.getElementById("fEntidade");
+        if(selE.options.length<=1 && d.entidades?.length){ for(const e of d.entidades){ const o=document.createElement("option"); o.value=e; o.textContent=e; selE.appendChild(o);} }
+        if(!d.logs.length){ tb.innerHTML='<tr><td colspan="6" style="padding:24px;text-align:center;color:#9CA3AF">Nenhum registro neste filtro.</td></tr>'; }
+        else tb.innerHTML=d.logs.map((l,i)=>{ const a=ACAO[l.acao]||[l.acao,"badge-gray"];
+          return `<tr>
+            <td style="white-space:nowrap">${fmtTs(l.ts)}</td>
+            <td>${esc(l.usuario_email||"—")}${l.usuario_role?`<div style="font-size:11px;color:#9CA3AF">${esc(l.usuario_role)}</div>`:""}</td>
+            <td><span class="badge ${a[1]}">${a[0]}</span></td>
+            <td><span style="font-size:12.5px;color:#374151">${esc(l.entidade)}</span></td>
+            <td>${esc(l.descricao||"—")} ${l.dados?`<button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="verDados(${i})">ver dados</button>`:""}</td>
+            <td style="font-size:12px;color:#9CA3AF;white-space:nowrap">${esc(l.ip||"—")}</td>
+          </tr>`; }).join("");
+        const ini=(pag-1)*__porPag+1, fim=Math.min(pag*__porPag,__total);
+        document.getElementById("info").textContent=__total?`${ini}–${fim} de ${__total}`:"0 registros";
+        document.getElementById("bPrev").disabled=pag<=1;
+        document.getElementById("bNext").disabled=pag*__porPag>=__total;
+      }catch(e){ tb.innerHTML='<tr><td colspan="6" style="padding:18px;color:#b91c1c">Erro de conexão.</td></tr>'; }
+    }
+    function verDados(i){ const l=__cacheLogs[i]; if(!l) return;
+      document.getElementById("logMeta").innerHTML=`<strong>${esc(l.descricao||"")}</strong><br>${fmtTs(l.ts)} · ${esc(l.usuario_email||"—")} · ${esc(l.entidade)} #${esc(l.registro_id||"—")}`;
+      document.getElementById("logDados").textContent=JSON.stringify(l.dados,null,2);
+      document.getElementById("modalLog").classList.add("open");
+    }
+    carregar(1);
+  </script>
+</Admin>

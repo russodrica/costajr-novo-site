@@ -1,0 +1,98 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!["admin", "coordenador"].includes(claims.role)) return Astro.redirect("/admin");
+---
+<Admin title="Lixeira" current="lixeira">
+  <div class="toolbar">
+    <span class="toolbar-title">🗑️ Lixeira — recuperação de 30 dias</span>
+    <select class="filter-select" id="fEntidade" onchange="carregar(1)"><option value="todos">Todos os módulos</option></select>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-mid)"><input type="checkbox" id="fRest" onchange="carregar(1)" /> mostrar restaurados</label>
+  </div>
+  <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 14px">Tudo que é excluído no portal fica aqui por <strong>30 dias</strong> e pode ser recuperado. Depois disso é apagado de vez. Visível para admin e coordenador.</p>
+
+  <div id="msg"></div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table style="font-size:14px">
+        <thead><tr><th>Excluído em</th><th>Módulo</th><th>Descrição</th><th>Por</th><th>Expira em</th><th>Ações</th></tr></thead>
+        <tbody id="tbody"><tr><td colspan="6"><div class="loading"><div class="spinner"></div> Carregando…</div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
+    <span id="info" style="font-size:13px;color:var(--ink-mid)"></span>
+    <span style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" id="bPrev" onclick="carregar(__pag-1)">← Anterior</button>
+      <button class="btn btn-outline btn-sm" id="bNext" onclick="carregar(__pag+1)">Próxima →</button>
+    </span>
+  </div>
+
+  <div class="modal-overlay" id="modalItem">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-title">Conteúdo excluído</div>
+      <div id="itemMeta" style="font-size:13px;color:var(--ink-mid);margin-bottom:10px"></div>
+      <pre id="itemDados" style="background:#0F172A;color:#E2E8F0;border-radius:8px;padding:14px;font-size:12px;overflow:auto;max-height:50vh;white-space:pre-wrap;word-break:break-word"></pre>
+      <div class="modal-actions"><button class="btn btn-secondary" onclick="document.getElementById('modalItem').classList.remove('open')">Fechar</button></div>
+    </div>
+  </div>
+
+  <script is:inline>
+    let __pag = 1, __total = 0, __porPag = 50, __cache = [];
+    const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    function fmtTs(t){ if(!t) return "—"; return new Date(t).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}); }
+    function diasRestantes(exp){ if(!exp) return ""; const d=Math.ceil((new Date(exp)-Date.now())/86400000); return d; }
+
+    async function carregar(pag){
+      if(pag<1) return; __pag=pag;
+      const qs=new URLSearchParams({ pagina:String(pag), entidade:document.getElementById("fEntidade").value, incluir_restaurados:document.getElementById("fRest").checked?"1":"0" });
+      const tb=document.getElementById("tbody");
+      tb.innerHTML='<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Carregando…</div></td></tr>';
+      try{
+        const r=await fetch("/api/admin/lixeira?"+qs.toString(),{headers:{"content-type":"application/json"}});
+        const d=await r.json();
+        if(!r.ok){ tb.innerHTML='<tr><td colspan="6" style="padding:18px;color:#b91c1c">'+(d.error||"Erro")+'</td></tr>'; return; }
+        __total=d.total; __porPag=d.porPagina; __cache=d.itens;
+        const selE=document.getElementById("fEntidade");
+        if(selE.options.length<=1 && d.entidades?.length){ for(const e of d.entidades){ const o=document.createElement("option"); o.value=e; o.textContent=e; selE.appendChild(o);} }
+        if(!d.itens.length){ tb.innerHTML='<tr><td colspan="6" style="padding:24px;text-align:center;color:#9CA3AF">Lixeira vazia neste filtro. 🎉</td></tr>'; }
+        else tb.innerHTML=d.itens.map((it,i)=>{ const dias=diasRestantes(it.expira_em);
+          const expTxt = it.restaurado ? '<span class="badge badge-gray">restaurado</span>' : (dias<=0?'<span class="badge badge-red">expira hoje</span>':`<span class="badge ${dias<=5?'badge-red':'badge-gray'}">${dias} dia(s)</span>`);
+          return `<tr>
+            <td style="white-space:nowrap">${fmtTs(it.excluido_em)}</td>
+            <td><span style="font-size:12.5px;color:#374151">${esc(it.entidade)}</span></td>
+            <td>${esc(it.descricao||"—")} <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="verItem(${i})">ver</button></td>
+            <td style="font-size:12.5px">${esc(it.excluido_por||"—")}</td>
+            <td>${expTxt}</td>
+            <td>${it.restaurado?"—":`<button class="btn btn-success btn-sm" onclick="restaurar('${it.id}', this)">♻ Restaurar</button>`}</td>
+          </tr>`; }).join("");
+        const ini=(pag-1)*__porPag+1, fim=Math.min(pag*__porPag,__total);
+        document.getElementById("info").textContent=__total?`${ini}–${fim} de ${__total}`:"0 itens";
+        document.getElementById("bPrev").disabled=pag<=1;
+        document.getElementById("bNext").disabled=pag*__porPag>=__total;
+      }catch(e){ tb.innerHTML='<tr><td colspan="6" style="padding:18px;color:#b91c1c">Erro de conexão.</td></tr>'; }
+    }
+    function verItem(i){ const it=__cache[i]; if(!it) return;
+      document.getElementById("itemMeta").innerHTML=`<strong>${esc(it.descricao||"")}</strong><br>${esc(it.entidade)} #${esc(it.registro_id||"—")} · excluído por ${esc(it.excluido_por||"—")} em ${fmtTs(it.excluido_em)}`;
+      document.getElementById("itemDados").textContent=JSON.stringify(it.dados,null,2);
+      document.getElementById("modalItem").classList.add("open");
+    }
+    async function restaurar(id, btn){
+      if(!confirm("Restaurar este item de volta ao sistema?")) return;
+      btn.disabled=true; btn.textContent="Restaurando…";
+      const r=await fetch(`/api/admin/lixeira/${id}/restaurar`,{method:"POST",headers:{"content-type":"application/json"}});
+      const d=await r.json().catch(()=>({}));
+      const msg=document.getElementById("msg");
+      if(r.ok){ msg.innerHTML='<div class="alert alert-success">Item restaurado com sucesso.</div>'; carregar(__pag); }
+      else { btn.disabled=false; btn.textContent="♻ Restaurar"; msg.innerHTML='<div class="alert alert-error">'+(d.error||"Falha ao restaurar")+'</div>'; }
+      setTimeout(()=>{msg.innerHTML="";},6000);
+    }
+    carregar(1);
+  </script>
+</Admin>

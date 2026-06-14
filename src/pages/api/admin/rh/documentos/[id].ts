@@ -1,13 +1,14 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
 // PATCH /api/admin/rh/documentos/[id] — edita documento
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const id = params.id!;
     const body = await request.json();
 
@@ -21,20 +22,25 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const db = supabaseAdmin();
     const { data, error } = await db.from("rh_documentos").update(patch).eq("id", id).select().single();
     if (error) return jsonErr(400, error.message);
+    await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "rh_documentos", registro_id: id, descricao: `Editou documento "${data.titulo}"`, dados: patch });
     return jsonOk(data);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
 };
 
-// DELETE /api/admin/rh/documentos/[id] — exclui documento
+// DELETE /api/admin/rh/documentos/[id] — exclui documento (vai para a lixeira por 30 dias)
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const id = params.id!;
     const db = supabaseAdmin();
-    const { error } = await db.from("rh_documentos").delete().eq("id", id);
-    if (error) return jsonErr(400, error.message);
+    const { data: doc } = await db.from("rh_documentos").select("titulo").eq("id", id).maybeSingle();
+    const r = await excluirComLixeira(db, { req: request, admin }, {
+      tabela: "rh_documentos", id, entidade: "rh_documentos",
+      descricao: doc ? `Excluiu documento "${doc.titulo}"` : `Excluiu documento ${id}`,
+    });
+    if (!r.ok) return jsonErr(400, r.error || "Falha ao excluir");
     return jsonOk({ ok: true });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
