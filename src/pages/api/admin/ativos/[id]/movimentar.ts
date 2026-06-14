@@ -55,12 +55,14 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
         ...movimento,
       }).select().single();
       if (e2) throw new Error(e2.message);
-      // E-mail ao ADM sempre que o STATUS do ativo mudar (não bloqueia a ação)
+      // Avisos (best-effort — não bloqueiam a ação)
       const antes = mov.status_anterior as string | null;
       const depois = mov.status_novo as string | null;
-      if (depois && antes !== depois) {
-        const lAntes = STATUS_LABEL[antes || ""] || antes || "—";
-        const lDepois = STATUS_LABEL[depois] || depois;
+      const mudouStatus = !!depois && antes !== depois;
+      const lAntes = STATUS_LABEL[antes || ""] || antes || "—";
+      const lDepois = STATUS_LABEL[depois || ""] || depois || "—";
+      // E-mail ao ADM só quando o STATUS muda
+      if (mudouStatus) {
         enviarEmailSimples({
           to: ATIVOS_ALERT_EMAIL,
           subject: `Ativo: ${ident} → ${lDepois}`,
@@ -72,11 +74,16 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
             <p style="margin:0;color:#9CA3AF;font-size:12px">Por ${admin.email} em ${new Date().toLocaleString("pt-BR")}.</p>
           </div>`,
         }).catch(() => { /* e-mail é best-effort */ });
-        // espelha o aviso no grupo do Telegram (best-effort)
-        enviarTelegram(
-          `🏷️ <b>Ativo — mudança de status</b>\n${escTg(ident)}\n${escTg(lAntes)} → <b>${escTg(lDepois)}</b>\n<i>${escTg(String(mov.descricao || ""))}</i>\nPor ${escTg(admin.email)}`
-        ).catch(() => { /* best-effort */ });
       }
+      // Telegram em QUALQUER movimentação do ativo (pedido da Adriana)
+      const tgIcone: Record<string, string> = {
+        cadastro: "🆕", entrega: "🤝", transferencia: "🔀", devolucao: "↩️", envio_manutencao: "🔧",
+        retorno_manutencao: "✅", ocorrencia: "⚠️", mudanca_status: "🔄", baixa: "⛔", descarte: "🗑️", edicao: "✏️",
+      };
+      const tgStatus = mudouStatus ? `\nStatus: ${escTg(lAntes)} → <b>${escTg(lDepois)}</b>` : "";
+      enviarTelegram(
+        `${tgIcone[String(mov.tipo)] || "•"} <b>Ativo — movimentação</b>\n${escTg(ident)}\n<i>${escTg(String(mov.descricao || ""))}</i>${tgStatus}\nPor ${escTg(admin.email)}`
+      ).catch(() => { /* best-effort */ });
       return mov;
     }
 

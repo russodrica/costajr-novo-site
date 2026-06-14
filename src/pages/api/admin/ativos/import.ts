@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
+import { enviarTelegram, escTg } from "../../../../lib/telegram";
 
 export const prerender = false;
 
@@ -196,6 +197,10 @@ export const POST: APIRoute = async ({ request }) => {
         descricao: `Importou ${criados} ativo(s) em massa`,
         dados: { criados, atualizados },
       });
+    }
+
+    if (criados > 0 || atualizados > 0) {
+      enviarTelegram(`📥 <b>Importação de ativos</b>\n${criados} criado(s) · ${atualizados} atualizado(s)\nPor ${escTg(admin.email)}`).catch(() => { /* best-effort */ });
     }
 
     return jsonOk({ ok: true, criados, atualizados, erros: analise.erros });

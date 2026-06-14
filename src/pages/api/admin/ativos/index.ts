@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
+import { enviarTelegram, escTg } from "../../../../lib/telegram";
 
 export const prerender = false;
 
@@ -67,6 +68,8 @@ export const POST: APIRoute = async ({ request }) => {
       status_novo: data.status,
       feito_por: admin.email,
     });
+
+    enviarTelegram(`🆕 <b>Ativo cadastrado</b>\n${escTg(data.descricao)}${data.numero_patrimonial ? ` (pat. ${escTg(data.numero_patrimonial)})` : ""}\nCategoria: ${escTg(data.categoria)}\nPor ${escTg(admin.email)}`).catch(() => { /* best-effort */ });
 
     await registrarAcao(db, { req: request, admin }, {
       acao: "criar",

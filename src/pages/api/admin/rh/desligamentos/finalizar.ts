@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { enviarEmailSimples } from "../../../../../lib/mailer";
+import { enviarTelegram, escTg } from "../../../../../lib/telegram";
 
 export const prerender = false;
 
@@ -58,6 +59,9 @@ export const POST: APIRoute = async ({ request }) => {
     for (const a of ativos) {
       await db.from("ativos").update({ status: "em_estoque", alocado_para_tipo: null, alocado_para_id: null, alocado_para_nome: null }).eq("id", a.id);
       await db.from("ativos_movimentos").insert({ ativo_id: a.id, tipo: "devolucao", descricao: `Devolução no desligamento de ${colab.nome}`, status_anterior: "alocado", status_novo: "em_estoque", feito_por: admin.email });
+    }
+    if (ativos.length) {
+      enviarTelegram(`↩️ <b>Devolução no desligamento</b>\n${escTg(colab.nome)} devolveu ${ativos.length} ativo(s) ao estoque.\nPor ${escTg(admin.email)}`).catch(() => { /* best-effort */ });
     }
 
     const { data: desl, error } = await db.from("rh_desligamentos").insert({

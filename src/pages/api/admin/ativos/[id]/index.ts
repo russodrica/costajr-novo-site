@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { enviarTelegram, escTg } from "../../../../../lib/telegram";
 
 export const prerender = false;
 
@@ -58,6 +59,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       dados: { campos_alterados: Object.keys(patch).filter(k => k !== "updated_at") },
       feito_por: admin.email,
     });
+
+    enviarTelegram(`✏️ <b>Ativo editado</b>\n${escTg(data.descricao)}${data.numero_patrimonial ? ` (pat. ${escTg(data.numero_patrimonial)})` : ""}\nCampos: ${escTg(Object.keys(patch).filter(k => k !== "updated_at").join(", "))}\nPor ${escTg(admin.email)}`).catch(() => { /* best-effort */ });
 
     return jsonOk(data);
   } catch (e: any) {
