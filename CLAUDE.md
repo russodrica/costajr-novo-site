@@ -639,6 +639,36 @@ Validado E2E (antes recebe comunicado; depois bloqueado). Reativar = re-aprovar
 manual em /admin/membros. OBS: revogacao so dispara pelo PATCH interativo (botao
 Desligar); re-import em massa setando desligado NAO revoga (edge case).
 
+## Atualizacao 13/06/2026 (parte 4) — Diagramacao global + ficha do colaborador em abas
+
+**Diagramacao global (commit 6c39e3e):** elevada a tipografia/espaco na BASE do
+layout (src/layouts/Admin.astro) -> vale para TODAS as telas do admin de uma vez.
+table 0.875->0.95rem, td padding 13/14, page-title 1.15rem, toolbar 1.12rem,
+section-title 1.05rem, stat-value 2.05rem, badge .78rem, botoes .86rem, inputs
+maiores. Ajuste conservador (1-2px). Confirmado no Financeiro (15.2px tabela etc).
+
+**Ficha do colaborador em ABAS (migration 043 validade_na RODADA; commit 6df3c65):**
+o modal do colaborador agora tem 2 abas estilo Excel: "Dados gerais" (form+acesso)
+e "Documentos". Novo colaborador abre so em Dados (aba de docs escondida).
+Documentos em COLUNA UNICA agrupada (como no Monday): Pessoais (Contrato/Termo,
+RG/Habilitacao, Ficha de Registro, Teste de Personalidade) - Tecnicos (ASO, Ficha
+de EPI, Ordem de Servico) - Treinamentos/NRs (NR-01, NR-06, NR-10, NR-35 em ordem).
+Cada doc: badge de vencimento CLARO (Vence dd/mm verde/laranja, Vencido vermelho,
+Sem vencimento=N/A, ou "Definir vencimento"), ✏️ editar e 🗑️ excluir (lixeira 30d).
+Anexo ganhou checkbox "Sem vencimento (nao aplicavel)" -> grava validade_na;
+docs com data disparam lembrete por e-mail (ja existia), docs N/A nao cobram.
+SLOT_GRUPOS+SLOT_DEF em src/pages/admin/rh.astro; abas via fichaTab(); editarDoc
+exposto (docs da ficha sao mesclados em docPorId p/ o ✏️ achar).
+
+**LICAO de cache (PWA):** o sw.js do admin e network-first p/ HTML e cache-first
+p/ /_astro/ (assets versionados por hash, entao auto-bustam). Quando a REDE
+navegador<->Vercel OSCILA, o fetch de HTML falha e o SW serve o HTML cacheado
+(que referencia o JS antigo) -> parece "deploy nao propagou", mas e a rede. NAO e
+bug do SW. Em caso de duvida: hard refresh (Ctrl+Shift+R) ou limpar SW/caches.
+Nesta sessao a rede ao site oscilou MUITO (curl e browser deram 000/timeout
+intermitente) — verificacoes E2E feitas direto no banco (Supabase REST/Management
+API, confiaveis) quando o HTTP do app nao respondia.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
