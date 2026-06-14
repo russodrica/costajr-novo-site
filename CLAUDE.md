@@ -1047,6 +1047,15 @@ Adriana: "Jessica" (2 candidatas), "Junior" x2, "RH" (setor, nao pessoa), "Lidia
 Eustaquia de Souza" (nao consta no RH). Modulos que ja eram RH-keyed (ferias/EPI/
 avaliacoes/documentos) nao precisaram mudar. Commit 6a899e7.
 
+**Fechamento (decisoes da Adriana, mesmo dia, script `scripts/_tmp_recuperar.mjs`):**
+os 5 nomes pendentes foram resolvidos — "Junior" (2 chips) = JOSE FERREIRA DA COSTA
+JUNIOR; "Jessica" = JESSICA OLIVEIRA CRUZ; "RH" = SAMYRIA (esta com ela hoje). Os
+equipamentos de DESLIGADOS (12) + o celular da Lidia (desligada) = **13 celulares
+DEVOLVIDOS ao estoque** com movimento `devolucao` registrado (historico preservado:
+de_nome = quem estava com ele). Estado final: 19 equipamentos alocados, TODOS com
+`alocado_para_id` = rh.id (0 so por nome). As 23 pessoas ativas do RH sem login seguem
+sem acesso (Adriana libera caso a caso pelo botao "Dar acesso" na ficha do RH).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
