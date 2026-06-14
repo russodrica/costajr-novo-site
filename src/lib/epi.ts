@@ -5,15 +5,18 @@ import { enviarEmailSimples } from "./mailer";
 // A ficha SEMPRE sai completa, com todos os EPIs necessários (PGR da CJR).
 // ════════════════════════════════════════════════════════════════════════
 
-// Ordem e itens conforme o documento padrão da Costa Júnior.
+// Ordem e itens conforme o documento padrão da Costa Júnior
+// ("Controle de Entrega de Equipamento de Proteção Individual E.P.I.").
 export const EPI_CATALOGO = [
   "Máscara respiratória",
   "Protetor auricular",
   "Óculos de proteção",
   "Botina",
+  "Calça",
   "Camiseta",
   "Luva pigmentada",
   "Luva de raspa",
+  "Luva de borracha",
   "Capacete",
 ];
 

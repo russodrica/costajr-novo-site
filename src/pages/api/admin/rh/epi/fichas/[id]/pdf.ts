@@ -12,11 +12,20 @@ export const GET: APIRoute = async ({ request, params }) => {
     const db = supabaseAdmin();
     const { data: ficha } = await db.from("epi_fichas").select("*").eq("id", params.id!).maybeSingle();
     if (!ficha) return new Response("Ficha não encontrada", { status: 404 });
-    const { data: colab } = await db.from("rh_colaboradores").select("nome, cargo, setor, cpf").eq("id", ficha.colaborador_id).maybeSingle();
+    const { data: colab } = await db.from("rh_colaboradores").select("nome, cargo, setor, cpf, rg, data_admissao, data_desligamento").eq("id", ficha.colaborador_id).maybeSingle();
+
+    // logo (do próprio site) — opcional; nunca derruba a geração
+    let logoBytes: Uint8Array | null = null;
+    try {
+      const origem = new URL(request.url).origin;
+      const lr = await fetch(`${origem}/logo-cjr.png`);
+      if (lr.ok) logoBytes = new Uint8Array(await lr.arrayBuffer());
+    } catch { logoBytes = null; }
 
     const pdf = await gerarEpiFichaPdf({
       colaborador: colab?.nome || "—", cargo: colab?.cargo, setor: colab?.setor, cpf: colab?.cpf,
-      tipo: ficha.tipo, data_geracao: ficha.data_geracao, itens: ficha.itens || [],
+      rg: colab?.rg, data_admissao: colab?.data_admissao, data_demissao: colab?.data_desligamento,
+      tipo: ficha.tipo, data_geracao: ficha.data_geracao, itens: ficha.itens || [], logoBytes,
     });
     const nome = `ficha-epi-${(colab?.nome || "colaborador").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${ficha.data_geracao}.pdf`;
     return new Response(pdf as unknown as BodyInit, {
