@@ -53,15 +53,18 @@ export function ciclosVencidos(dataAdmissao: string): number {
 
 // ── Resumo de completude de um período ──────────────────────────────────
 export type Parcela = { id: string; data_inicio: string; dias: number; data_fim: string; status: string; aviso_pos?: boolean };
-export function resumoPeriodo(dias_direito: number, parcelas: Parcela[]) {
+export function resumoPeriodo(dias_direito: number, parcelas: Parcela[], dias_abono = 0) {
+  const abono = Math.max(0, Math.min(dias_direito, dias_abono || 0));
+  // dias vendidos (abono) reduzem o descanso a programar
+  const aDescansar = Math.max(0, dias_direito - abono);
   const somaProgramada = parcelas.reduce((s, p) => s + (p.dias || 0), 0);
   const somaConfirmada = parcelas.filter((p) => p.status === "confirmada").reduce((s, p) => s + (p.dias || 0), 0);
-  const completo = somaProgramada >= dias_direito;
-  const tudoConfirmado = somaConfirmada >= dias_direito;
+  const completo = somaProgramada + abono >= dias_direito;
+  const tudoConfirmado = somaConfirmada + abono >= dias_direito;
   return {
-    somaProgramada, somaConfirmada, completo, tudoConfirmado,
-    faltam: Math.max(0, dias_direito - somaProgramada),
-    restanteParaProgramar: Math.max(0, dias_direito - somaProgramada),
+    somaProgramada, somaConfirmada, completo, tudoConfirmado, abono, aDescansar,
+    faltam: Math.max(0, aDescansar - somaProgramada),
+    restanteParaProgramar: Math.max(0, aDescansar - somaProgramada),
   };
 }
 
@@ -128,7 +131,7 @@ export async function enviarLembretesFerias(db: any, opts: { dry?: boolean; para
   for (const p of lista) {
     const nome = p.rh_colaboradores.nome;
     const parcelas = parcelasPorPeriodo[p.id] || [];
-    const r = resumoPeriodo(p.dias_direito, parcelas);
+    const r = resumoPeriodo(p.dias_direito, parcelas, p.dias_abono);
 
     // 1) Vencimento (limite concessivo): 6/3/1 mês se NÃO programado
     if (!r.completo) {

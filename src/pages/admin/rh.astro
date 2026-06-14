@@ -451,6 +451,13 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       <div class="modal-title" id="tituloModalFerias">Programar férias</div>
       <div id="msgFerias"></div>
       <div style="font-size:13px;color:#6B7280;margin-bottom:8px" id="feriasResumoTopo"></div>
+      <div style="display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;margin-bottom:10px;flex-wrap:wrap">
+        <label style="font-size:13px;font-weight:600;color:#374151">💰 Vender (abono pecuniário):</label>
+        <select id="feriasAbono" onchange="recalcFeriasFaltam()" style="padding:6px 9px;border:1px solid #E5E7EB;border-radius:8px">
+          <option value="0">Não vender</option><option value="10">10 dias</option><option value="15">15 dias</option><option value="20">20 dias</option><option value="30">30 dias</option>
+        </select>
+        <span id="feriasFaltam" style="font-size:12.5px;color:#6B7280"></span>
+      </div>
       <div id="feriasParcelasEdit"></div>
       <button type="button" class="btn btn-outline btn-sm" id="btnAddParcela" onclick="addLinhaParcela()" style="margin-top:8px">+ Adicionar parcela</button>
       <div class="modal-actions">
@@ -880,7 +887,22 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       edit.innerHTML = "";
       if (programadas.length) programadas.forEach((x: any) => addLinhaParcela(x.data_inicio, x.dias));
       else addLinhaParcela("", 10);
+      (document.getElementById("feriasAbono") as HTMLSelectElement).value = String(p.dias_abono || 0);
+      recalcFeriasFaltam();
       document.getElementById("modalFerias")!.classList.add("open");
+    }
+    function recalcFeriasFaltam() {
+      if (!feriasModalPer) return;
+      const direito = feriasModalPer.dias_direito || 30;
+      const abono = parseInt((document.getElementById("feriasAbono") as HTMLSelectElement).value, 10) || 0;
+      const prog = Array.from(document.querySelectorAll("#feriasParcelasEdit .pl-dias")).reduce((s, el) => s + (parseInt((el as HTMLInputElement).value, 10) || 0), 0);
+      const conf = (feriasModalPer.parcelas || []).filter((x: any) => x.status === "confirmada").reduce((s: number, x: any) => s + x.dias, 0);
+      const aDescansar = Math.max(0, direito - abono);
+      const faltam = Math.max(0, aDescansar - prog - conf);
+      const el = document.getElementById("feriasFaltam")!;
+      el.innerHTML = abono > 0
+        ? `Descanso a programar: <strong>${aDescansar} dias</strong> (vendeu ${abono}) · ${faltam > 0 ? `faltam <strong style="color:#B91C1C">${faltam}</strong>` : '<strong style="color:#166534">completo ✓</strong>'}`
+        : `${faltam > 0 ? `faltam <strong style="color:#B91C1C">${faltam}</strong> de ${direito}` : '<strong style="color:#166534">30 dias completos ✓</strong>'}`;
     }
     function addLinhaParcela(dataInicio = "", dias: number | string = 10) {
       const edit = document.getElementById("feriasParcelasEdit")!;
@@ -890,8 +912,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       div.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:8px";
       div.innerHTML = `
         <input type="date" class="pl-inicio" value="${dataInicio}" style="flex:1;padding:7px 9px;border:1px solid #E5E7EB;border-radius:8px" />
-        <input type="number" class="pl-dias" value="${dias}" min="5" max="30" style="width:80px;padding:7px 9px;border:1px solid #E5E7EB;border-radius:8px" /> <span style="font-size:12px;color:#6B7280">dias</span>
-        <button type="button" title="Remover linha" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px" onclick="this.parentElement.remove()">✕</button>`;
+        <input type="number" class="pl-dias" value="${dias}" min="5" max="30" oninput="recalcFeriasFaltam()" style="width:80px;padding:7px 9px;border:1px solid #E5E7EB;border-radius:8px" /> <span style="font-size:12px;color:#6B7280">dias</span>
+        <button type="button" title="Remover linha" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px" onclick="this.parentElement.remove();recalcFeriasFaltam()">✕</button>`;
       edit.appendChild(div);
     }
     async function salvarParcelas() {
@@ -901,9 +923,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         data_inicio: (l.querySelector(".pl-inicio") as HTMLInputElement).value,
         dias: parseInt((l.querySelector(".pl-dias") as HTMLInputElement).value, 10),
       })).filter((p) => p.data_inicio && p.dias);
+      const dias_abono = parseInt((document.getElementById("feriasAbono") as HTMLSelectElement).value, 10) || 0;
       const msg = document.getElementById("msgFerias") as any;
       const res = await fetch(`/api/admin/rh/ferias/${feriasModalPer.id}/parcelas`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parcelas }),
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parcelas, dias_abono }),
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok) { fecharModal("modalFerias"); carregarFerias(); }
@@ -933,6 +956,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).programarFerias = programarFerias;
     (window as any).addLinhaParcela = addLinhaParcela;
     (window as any).salvarParcelas = salvarParcelas;
+    (window as any).recalcFeriasFaltam = recalcFeriasFaltam;
     (window as any).confirmarParcela = confirmarParcela;
     (window as any).removerParcela = removerParcela;
     (window as any).semearFerias = semearFerias;

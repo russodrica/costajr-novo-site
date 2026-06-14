@@ -26,7 +26,7 @@ export const GET: APIRoute = async ({ request, url }) => {
       }
       const out = (periodos || []).map((p: any) => {
         const pcs = parcelas.filter((x) => x.periodo_id === p.id);
-        return { ...p, parcelas: pcs, resumo: resumoPeriodo(p.dias_direito, pcs) };
+        return { ...p, parcelas: pcs, resumo: resumoPeriodo(p.dias_direito, pcs, p.dias_abono) };
       });
       return jsonOk(out);
     }
@@ -48,7 +48,7 @@ export const GET: APIRoute = async ({ request, url }) => {
         id: p.id, colaborador_id: p.colaborador_id, colaborador: p.rh_colaboradores.nome,
         inicio_aquisitivo: p.inicio_aquisitivo, fim_aquisitivo: p.fim_aquisitivo,
         limite_concessivo: p.limite_concessivo, dias_direito: p.dias_direito, status: p.status,
-        parcelas: pcs, resumo: resumoPeriodo(p.dias_direito, pcs),
+        parcelas: pcs, resumo: resumoPeriodo(p.dias_direito, pcs, p.dias_abono),
       };
     }).sort((a: any, b: any) => (a.completo === b.completo ? 0 : a.resumo.completo ? 1 : -1) || (a.limite_concessivo < b.limite_concessivo ? -1 : 1));
     return jsonOk(out);

@@ -22,6 +22,12 @@ export const POST: APIRoute = async ({ request, params }) => {
     const { data: periodo } = await db.from("rh_ferias_periodos").select("*").eq("id", periodoId).maybeSingle();
     if (!periodo) return jsonErr(404, "Período não encontrado");
 
+    // Abono pecuniário (vender dias): 0/10/15/20/30. Reduz o descanso a programar.
+    const ABONOS = [0, 10, 15, 20, 30];
+    const abono = body.dias_abono === undefined ? (periodo.dias_abono || 0) : parseInt(body.dias_abono, 10) || 0;
+    if (!ABONOS.includes(abono)) return jsonErr(400, "Abono inválido — use 0, 10, 15, 20 ou 30 dias.");
+    if (abono >= periodo.dias_direito) return jsonErr(400, `O abono não pode ser igual ou maior que o direito (${periodo.dias_direito} dias).`);
+
     const { data: existentes } = await db.from("rh_ferias_parcelas").select("*").eq("periodo_id", periodoId);
     const confirmadas = (existentes || []).filter((p: any) => p.status === "confirmada");
 
@@ -41,8 +47,8 @@ export const POST: APIRoute = async ({ request, params }) => {
       return jsonErr(400, `Máximo de ${MAX_PARCELAS} parcelas por período (já há ${confirmadas.length} confirmada(s)).`);
     const somaConf = confirmadas.reduce((s: number, p: any) => s + p.dias, 0);
     const somaNovas = novas.reduce((s, p) => s + p.dias, 0);
-    if (somaConf + somaNovas > periodo.dias_direito)
-      return jsonErr(400, `A soma das parcelas (${somaConf + somaNovas}) excede o direito de ${periodo.dias_direito} dias.`);
+    if (somaConf + somaNovas + abono > periodo.dias_direito)
+      return jsonErr(400, `A soma das parcelas (${somaConf + somaNovas}) + abono vendido (${abono}) excede o direito de ${periodo.dias_direito} dias.`);
 
     // sobreposição de datas entre as novas parcelas
     const ord = [...novas].sort((a, b) => (a.data_inicio < b.data_inicio ? -1 : 1));
@@ -79,11 +85,11 @@ export const POST: APIRoute = async ({ request, params }) => {
       });
     }
 
-    const completo = somaConf + somaNovas >= periodo.dias_direito;
+    const completo = somaConf + somaNovas + abono >= periodo.dias_direito;
     const novoStatus = periodo.status === "vencido" ? "vencido" : completo ? "programado" : "aberto";
-    await db.from("rh_ferias_periodos").update({ status: novoStatus, updated_at: new Date().toISOString() }).eq("id", periodoId);
+    await db.from("rh_ferias_periodos").update({ status: novoStatus, dias_abono: abono, updated_at: new Date().toISOString() }).eq("id", periodoId);
 
-    return jsonOk({ ok: true, programadas: novas.length, soma: somaConf + somaNovas, status: novoStatus });
+    return jsonOk({ ok: true, programadas: novas.length, abono, soma: somaConf + somaNovas, status: novoStatus });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
