@@ -12,7 +12,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const id = params.id!;
     const body = await request.json();
 
-    const editaveis = ["colaborador_id", "titulo", "tipo", "url", "validade", "validade_na", "observacoes"];
+    const editaveis = ["colaborador_id", "titulo", "tipo", "url", "validade", "validade_na", "data_aplicacao", "observacoes"];
     const patch: Record<string, unknown> = {};
     for (const c of editaveis) if (body[c] !== undefined) patch[c] = body[c] === "" ? null : body[c];
     if (patch.validade_na === null) patch.validade_na = false;

@@ -51,11 +51,12 @@ export const POST: APIRoute = async ({ request }) => {
 
     const validadeNA = String(form.get("validade_na") || "") === "true" || String(form.get("validade_na") || "") === "on";
     const validade = validadeNA ? null : (String(form.get("validade") || "").trim() || null);
+    const data_aplicacao = String(form.get("data_aplicacao") || "").trim() || null;
     const observacoes = String(form.get("observacoes") || "").trim() || null;
 
     const row: Record<string, unknown> = {
       colaborador_id, titulo, tipo: tipo || "outro", storage_path: storagePath,
-      validade, validade_na: validadeNA, observacoes, criado_por: admin.email,
+      validade, validade_na: validadeNA, data_aplicacao, observacoes, criado_por: admin.email,
     };
     const { data, error } = await db.from("rh_documentos").insert(row).select().single();
     if (error) {
