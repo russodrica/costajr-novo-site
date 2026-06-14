@@ -86,7 +86,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (body.seed) {
       const { data: colabs } = await db.from("rh_colaboradores")
-        .select("id, nome, data_admissao, regime, status").in("regime", ["clt", "pj"]).neq("status", "desligado").neq("status", "congelado").limit(2000);
+        .select("id, nome, data_admissao, regime, status").in("regime", ["clt", "pj"]).neq("status", "desligado").neq("status_juridico", "congelado").limit(2000);
       const { data: existentes } = await db.from("rh_ferias_periodos").select("colaborador_id, inicio_aquisitivo").limit(5000);
       const jaTem = new Set((existentes || []).map((e: any) => `${e.colaborador_id}|${e.inicio_aquisitivo}`));
       const novos: any[] = [];

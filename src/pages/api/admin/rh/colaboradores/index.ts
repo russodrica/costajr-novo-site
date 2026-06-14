@@ -6,7 +6,8 @@ import { registrarAcao } from "../../../../../lib/auditoria";
 export const prerender = false;
 
 const REGIMES = ["clt", "pj", "estagio", "temporario", "socio", "diarista"];
-const STATUS = ["ativo", "ferias", "afastado", "congelado", "desligado"];
+const STATUS = ["ativo", "ferias", "afastado", "desligado"];
+const STATUS_JURIDICO = ["normal", "em_processo", "congelado"];
 
 // GET /api/admin/rh/colaboradores?status=&setor=&busca=
 export const GET: APIRoute = async ({ request, url }) => {
@@ -49,10 +50,11 @@ export const POST: APIRoute = async ({ request }) => {
     if (!body.nome) return jsonErr(400, "Nome é obrigatório");
     if (body.regime && !REGIMES.includes(body.regime)) return jsonErr(400, "Regime inválido");
     if (body.status && !STATUS.includes(body.status)) return jsonErr(400, "Status inválido");
+    if (body.status_juridico && !STATUS_JURIDICO.includes(body.status_juridico)) return jsonErr(400, "Status jurídico inválido");
 
     const campos = [
       "profile_id", "nome", "email", "telefone", "telefone_pessoal", "cpf", "rg", "data_nascimento", "foto_url",
-      "cargo", "setor", "regime", "salario", "data_admissao", "data_desligamento", "status",
+      "cargo", "setor", "regime", "salario", "data_admissao", "data_desligamento", "status", "status_juridico",
       "endereco", "cidade", "uf", "contato_emergencia_nome", "contato_emergencia_telefone",
       "pix", "banco", "agencia", "conta", "observacoes",
     ];

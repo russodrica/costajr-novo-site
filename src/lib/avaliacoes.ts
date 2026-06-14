@@ -44,7 +44,7 @@ export async function enviarLembreteAvaliacoes(db: any, opts: { para?: string; d
   const ano = hoje.getUTCFullYear();
   const trim = trimestreDoMes(mes);
 
-  const { data: ativos } = await db.from("rh_colaboradores").select("id, nome").neq("status", "desligado").neq("status", "congelado").limit(2000);
+  const { data: ativos } = await db.from("rh_colaboradores").select("id, nome").neq("status", "desligado").neq("status_juridico", "congelado").limit(2000);
   const { data: feitas } = await db.from("rh_avaliacoes").select("colaborador_id").eq("ano", ano).eq("trimestre", trim).eq("tipo", "gestor");
   const feitoSet = new Set((feitas || []).map((f: any) => f.colaborador_id));
   const pendentes = (ativos || []).filter((c: any) => !feitoSet.has(c.id));

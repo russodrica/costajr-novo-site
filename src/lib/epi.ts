@@ -43,13 +43,13 @@ export async function enviarAlertasEpi(db: any, opts: { para?: string; dry?: boo
 
   // itens ativos, com validade, que vencem em <=15 dias (inclui vencidos) e ainda não avisados
   const { data } = await db.from("epi_entregas")
-    .select("id, epi, ca, data_validade, aviso_15, colaborador_id, rh_colaboradores(nome, status)")
+    .select("id, epi, ca, data_validade, aviso_15, colaborador_id, rh_colaboradores(nome, status, status_juridico)")
     .eq("status", "ativo").not("data_validade", "is", null)
     .lte("data_validade", limite15).eq("aviso_15", false).limit(2000);
 
   const itens = (data || [])
-    // status "congelado" (litígio/acordo) ou desligado pausa os alertas de EPI
-    .filter((d: any) => { const c: any = Array.isArray(d.rh_colaboradores) ? d.rh_colaboradores[0] : d.rh_colaboradores; return !c || (c.status !== "desligado" && c.status !== "congelado"); })
+    // status jurídico "congelado" (litígio/acordo) ou desligado pausa os alertas de EPI
+    .filter((d: any) => { const c: any = Array.isArray(d.rh_colaboradores) ? d.rh_colaboradores[0] : d.rh_colaboradores; return !c || (c.status !== "desligado" && c.status_juridico !== "congelado"); })
     .map((d: any) => {
       const c: any = d.rh_colaboradores;
       return { ...d, colaborador: (Array.isArray(c) ? c[0]?.nome : c?.nome) || "—", dias: diasAte(d.data_validade) };

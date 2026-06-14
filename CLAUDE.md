@@ -988,6 +988,22 @@ A coluna status_juridico (migration 055) ficou VESTIGIAL (sem uso na UI/APIs);
 nao foi dropada (inofensiva). Congelado conta como ativo (status!=desligado) —
 aparece nas listas, so nao recebe alertas.
 
+## Atualizacao 14/06/2026 (parte 7) — Status juridico SEPARADO de novo (revert da 056)
+
+A Adriana percebeu que precisa da pessoa ficar ATIVA *e* ter o status juridico ao
+mesmo tempo — entao o congelado NAO pode ser status operacional. **Migration 057
+RODADA** reverte a constraint do status p/ 4 valores (ativo|ferias|afastado|
+desligado). 'congelado' VOLTOU a ser STATUS JURIDICO separado (status_juridico:
+normal|em_processo|congelado, stJuridico map). Campo "Status juridico" restaurado
+no form (acima do Status), banner liga no #colabStatusJuridico, validacao
+STATUS_JURIDICO nas APIs, camposColab/editarColab com status_juridico. A pausa de
+alertas voltou p/ **status_juridico==='congelado'** em ferias/vencimentos/epi/
+avaliacoes. E2E: PATCH status=ativo + status_juridico=congelado -> ambos persistem,
+excluido das ferias, continua ativo. DECISAO FINAL: status operacional (Ativo/
+Ferias/Afastado/Desligado) e status_juridico (Normal/Em processo/Congelado) sao
+campos INDEPENDENTES; uma pessoa pode ser Ativa E Congelada. (As migrations 055/
+056/057 contam a saga; o estado final = separado, igual a 055.)
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
