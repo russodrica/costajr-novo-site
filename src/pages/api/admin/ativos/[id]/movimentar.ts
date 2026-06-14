@@ -2,10 +2,17 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { enviarEmailSimples } from "../../../../../lib/mailer";
 
 export const prerender = false;
 
-const STATUS_VALIDOS = ["em_estoque", "disponivel", "alocado", "em_manutencao", "em_transito", "extraviado", "roubado", "danificado", "baixado", "descartado"];
+const ATIVOS_ALERT_EMAIL = import.meta.env.ATIVOS_ALERT_EMAIL || "adm@costajr.com.br";
+const STATUS_VALIDOS = ["em_estoque", "disponivel", "alocado", "em_manutencao", "em_transito", "extraviado", "roubado", "danificado", "baixado", "descartado", "vendido"];
+const STATUS_LABEL: Record<string, string> = {
+  em_estoque: "Em estoque", disponivel: "Disponível", alocado: "Alocado", em_manutencao: "Em manutenção",
+  em_transito: "Em trânsito", extraviado: "Extraviado", roubado: "Roubado", danificado: "Danificado",
+  baixado: "Baixado", descartado: "Descartado", vendido: "Vendido",
+};
 const TIPOS_OCORRENCIA = ["extravio", "roubo", "furto", "dano", "quebra", "sinistro", "outro"];
 
 /**
@@ -47,6 +54,24 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
         ...movimento,
       }).select().single();
       if (e2) throw new Error(e2.message);
+      // E-mail ao ADM sempre que o STATUS do ativo mudar (não bloqueia a ação)
+      const antes = mov.status_anterior as string | null;
+      const depois = mov.status_novo as string | null;
+      if (depois && antes !== depois) {
+        const lAntes = STATUS_LABEL[antes || ""] || antes || "—";
+        const lDepois = STATUS_LABEL[depois] || depois;
+        enviarEmailSimples({
+          to: ATIVOS_ALERT_EMAIL,
+          subject: `Ativo: ${ident} → ${lDepois}`,
+          html: `<div style="font-family:Arial,sans-serif;color:#2D2F36;max-width:620px">
+            <h2 style="color:#C41E3A;margin:0 0 6px">Mudança de status de ativo</h2>
+            <p style="margin:0 0 10px"><strong>${ident}</strong></p>
+            <p style="margin:0 0 4px">Status: <strong>${lAntes}</strong> → <strong style="color:#C41E3A">${lDepois}</strong></p>
+            <p style="margin:0 0 4px;color:#5B5F6B;font-size:14px">${String(mov.descricao || "")}</p>
+            <p style="margin:0;color:#9CA3AF;font-size:12px">Por ${admin.email} em ${new Date().toLocaleString("pt-BR")}.</p>
+          </div>`,
+        }).catch(() => { /* e-mail é best-effort */ });
+      }
       return mov;
     }
 
@@ -107,6 +132,30 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
             de_tipo: ativo.alocado_para_tipo, de_id: ativo.alocado_para_id, de_nome: ativo.alocado_para_nome,
             para_tipo: "obra", para_id: obra_id || null, para_nome: obra_nome,
             status_novo: "alocado", condicao: condicao || null,
+          }
+        );
+        return jsonOk({ movimento: mov });
+      }
+
+      case "transferir_deposito": {
+        // Guardar em depósito = volta para estoque, mas com o local registrado.
+        // NÃO gera termo de responsabilidade (não é posse de pessoa).
+        const { deposito_id, deposito_nome, condicao, observacao } = body;
+        let depId = deposito_id || null;
+        let depNome = deposito_nome || null;
+        if (depId) {
+          const { data: dep } = await db.from("depositos").select("id, nome, ativo").eq("id", depId).maybeSingle();
+          if (dep) depNome = dep.nome;
+        }
+        if (!depNome) return jsonErr(400, "Informe o depósito");
+        const mov = await aplicar(
+          { status: "em_estoque", alocado_para_tipo: "deposito", alocado_para_id: depId, alocado_para_nome: depNome },
+          {
+            tipo: "transferencia",
+            descricao: `Guardado no depósito ${depNome}${observacao ? ` — ${observacao}` : ""}`,
+            de_tipo: ativo.alocado_para_tipo, de_id: ativo.alocado_para_id, de_nome: ativo.alocado_para_nome,
+            para_tipo: "deposito", para_id: depId, para_nome: depNome,
+            status_novo: "em_estoque", condicao: condicao || null,
           }
         );
         return jsonOk({ movimento: mov });
@@ -208,17 +257,24 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
       }
 
       case "mudar_status": {
-        const { novo_status, observacao } = body;
+        const { novo_status, observacao, valor_venda } = body;
         if (!novo_status) return jsonErr(400, "Informe o novo status");
         if (!STATUS_VALIDOS.includes(novo_status)) return jsonErr(400, "Status inválido");
-        const mov = await aplicar(
-          { status: novo_status },
-          {
-            tipo: "mudanca_status",
-            descricao: `Status alterado de "${ativo.status}" para "${novo_status}"${observacao ? ` — ${observacao}` : ""}`,
-            status_novo: novo_status,
-          }
-        );
+        const patch: Record<string, unknown> = { status: novo_status };
+        let extra = "";
+        if (novo_status === "vendido") {
+          const v = valor_venda != null && valor_venda !== "" ? Number(valor_venda) : null;
+          if (v != null && (isNaN(v) || v < 0)) return jsonErr(400, "Valor da venda inválido.");
+          patch.valor_venda = v;
+          patch.data_venda = agora.slice(0, 10);
+          patch.alocado_para_tipo = null; patch.alocado_para_id = null; patch.alocado_para_nome = null;
+          extra = v != null ? ` — venda R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "";
+        }
+        const mov = await aplicar(patch, {
+          tipo: "mudanca_status",
+          descricao: `Status alterado de "${STATUS_LABEL[ativo.status] || ativo.status}" para "${STATUS_LABEL[novo_status] || novo_status}"${observacao ? ` — ${observacao}` : ""}${extra}`,
+          status_novo: novo_status,
+        });
         return jsonOk({ movimento: mov });
       }
 

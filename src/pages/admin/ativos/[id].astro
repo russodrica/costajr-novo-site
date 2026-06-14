@@ -11,7 +11,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 const id = Astro.params.id!;
 const db = supabaseAdmin();
 
-const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutencoes }, { data: ocorrencias }, { data: membros }, { data: obras }, { data: planos }] = await Promise.all([
+const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutencoes }, { data: ocorrencias }, { data: membros }, { data: obras }, { data: planos }, { data: depositos }] = await Promise.all([
   db.from("ativos").select("*").eq("id", id).maybeSingle(),
   db.from("ativos_movimentos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }).limit(500),
   db.from("ativos_termos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
@@ -20,6 +20,7 @@ const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutenc
   db.from("rh_colaboradores").select("id, nome, email, profile_id").neq("status", "desligado").order("nome"),
   db.from("obras").select("id, nome, status").neq("status", "cancelada").order("nome"),
   db.from("ativos_manutencao_planos").select("*").eq("ativo_id", id).eq("ativo", true).order("proxima_em"),
+  db.from("depositos").select("id, nome").eq("ativo", true).order("nome"),
 ]);
 const hojeISO = new Date().toISOString().slice(0, 10);
 
@@ -32,12 +33,12 @@ const categorias: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   em_estoque: "Em estoque", disponivel: "Disponível", alocado: "Alocado", em_manutencao: "Em manutenção",
   em_transito: "Em trânsito", extraviado: "Extraviado", roubado: "Roubado", danificado: "Danificado",
-  baixado: "Baixado", descartado: "Descartado",
+  baixado: "Baixado", descartado: "Descartado", vendido: "Vendido",
 };
 const statusBadge: Record<string, string> = {
   em_estoque: "badge-blue", disponivel: "badge-green", alocado: "badge-purple", em_manutencao: "badge-orange",
   em_transito: "badge-yellow", extraviado: "badge-red", roubado: "badge-red", danificado: "badge-red",
-  baixado: "badge-gray", descartado: "badge-gray",
+  baixado: "badge-gray", descartado: "badge-gray", vendido: "badge-green",
 };
 const movIcone: Record<string, string> = {
   cadastro: "🆕", entrega: "🤝", transferencia: "🏗️", devolucao: "↩️", envio_manutencao: "🔧",
@@ -53,7 +54,7 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return Number
 function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR"); }
 function fmtDateTime(d: string | null) { if (!d) return "—"; return new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
 
-const ativoEncerrado = ["baixado", "descartado"].includes(ativo.status);
+const ativoEncerrado = ["baixado", "descartado", "vendido"].includes(ativo.status);
 const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v);
 ---
 <Admin title={`Ativo — ${ativo.descricao}`} current="ativos">
@@ -75,7 +76,8 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     <div class="acoes-bar">
       {ativo.status !== "em_manutencao" && <button class="btn btn-primary" onclick="abrirModal('modalEntregar')">🤝 Entregar a colaborador</button>}
       {ativo.status !== "em_manutencao" && <button class="btn btn-info" onclick="abrirModal('modalTransferir')">🏗️ Transferir para obra</button>}
-      {ativo.alocado_para_nome && <button class="btn btn-success" onclick="abrirModal('modalDevolver')">↩️ Registrar devolução</button>}
+      {ativo.status !== "em_manutencao" && <button class="btn btn-info" onclick="abrirModal('modalDeposito')">📦 Guardar em depósito</button>}
+      {ativo.alocado_para_nome && ativo.alocado_para_tipo !== "deposito" && <button class="btn btn-success" onclick="abrirModal('modalDevolver')">↩️ Registrar devolução</button>}
       {ativo.status !== "em_manutencao"
         ? <button class="btn btn-warning" onclick="abrirModal('modalManutencao')">🔧 Enviar p/ manutenção</button>
         : <button class="btn btn-success" onclick="abrirModal('modalRetornoManutencao')">✅ Retorno da manutenção</button>}
@@ -112,7 +114,8 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
           </dd></div>
           <div><dt>Garantia</dt><dd>{ativo.garantia ? `Sim — até ${fmtDate(ativo.garantia_fim)}` : "Não"}</dd></div>
           {ativo.manual_url && <div><dt>Manual</dt><dd><a href={ativo.manual_url} target="_blank">📎 abrir manual</a></dd></div>}
-          {ativo.alocado_para_nome && <div><dt>Alocado para</dt><dd><strong>{ativo.alocado_para_tipo === "obra" ? "🏗️" : "👤"} {ativo.alocado_para_nome}</strong></dd></div>}
+          {ativo.alocado_para_nome && <div><dt>{ativo.alocado_para_tipo === "deposito" ? "Guardado em" : "Alocado para"}</dt><dd><strong>{ativo.alocado_para_tipo === "obra" ? "🏗️" : ativo.alocado_para_tipo === "deposito" ? "📦" : "👤"} {ativo.alocado_para_nome}</strong></dd></div>}
+          {ativo.status === "vendido" && <div><dt>Venda</dt><dd><strong style="color:#16A34A">{fmtMoney(ativo.valor_venda)}</strong>{ativo.data_venda ? ` · ${fmtDate(ativo.data_venda)}` : ""}</dd></div>}
           {ativo.observacoes && <div><dt>Observações</dt><dd>{ativo.observacoes}</dd></div>}
         </div>
 
@@ -299,7 +302,8 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       <div class="modal-title">🏗️ Transferir para obra</div>
       <form data-acao="transferir_obra">
         <div class="form-group"><label>Obra *</label>
-          <select name="obra_sel" required>
+          <input type="text" id="obraSearch" placeholder="🔎 Buscar obra pelo nome..." autocomplete="off" oninput="filtrarObras()" style="margin-bottom:6px" />
+          <select name="obra_sel" id="obraSelect" required>
             <option value="">Selecione...</option>
             {obras?.map((o: any) => <option value={o.id} data-nome={o.nome}>{o.nome}</option>)}
             <option value="__outra__">Outra (digitar nome)...</option>
@@ -311,6 +315,31 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
           <button type="submit" class="btn btn-primary">Transferir</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalDeposito">
+    <div class="modal">
+      <div class="modal-title">📦 Guardar em depósito</div>
+      <form data-acao="transferir_deposito">
+        {depositos?.length ? (
+          <div class="form-group"><label>Depósito *</label>
+            <select name="deposito_sel" required>
+              <option value="">Selecione...</option>
+              {depositos.map((d: any) => <option value={d.id} data-nome={d.nome}>{d.nome}</option>)}
+            </select>
+          </div>
+        ) : (
+          <p style="font-size:13px;color:#B91C1C;margin-bottom:12px">Nenhum depósito ativo. Cadastre em <a href="/admin/depositos" style="color:var(--brand);font-weight:700">Depósitos</a>.</p>
+        )}
+        <div class="form-group"><label>Condição do equipamento</label><input name="condicao" /></div>
+        <div class="form-group"><label>Observação</label><input name="observacao" /></div>
+        <p style="font-size:12px;color:#6B7280;margin-bottom:12px">O equipamento volta ao estoque, guardado neste depósito. Não gera termo de responsabilidade.</p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" disabled={!depositos?.length}>Guardar</button>
         </div>
       </form>
     </div>
@@ -392,10 +421,11 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       <div class="modal-title">🔄 Mudar status</div>
       <form data-acao="mudar_status">
         <div class="form-group"><label>Novo status</label>
-          <select name="novo_status">
+          <select name="novo_status" onchange="toggleValorVenda()">
             {Object.entries(statusLabels).map(([k, v]) => <option value={k} selected={k === ativo.status}>{v}</option>)}
           </select>
         </div>
+        <div class="form-group" id="grpValorVenda" style="display:none"><label>Valor da venda (R$)</label><input name="valor_venda" type="number" step="0.01" min="0" placeholder="Ex: 350,00" /></div>
         <div class="form-group"><label>Observação</label><input name="observacao" /></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharModais()">Cancelar</button>
@@ -647,6 +677,12 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
           else { body.obra_id = sel.value; body.obra_nome = opt?.dataset.nome; }
           if (!body.obra_nome) { alert("Informe a obra"); return; }
         }
+        if (acao === "transferir_deposito") {
+          const sel = f.querySelector("select[name='deposito_sel']") as HTMLSelectElement | null;
+          if (!sel || !sel.value) { alert("Selecione o depósito"); return; }
+          body.deposito_id = sel.value;
+          body.deposito_nome = sel.selectedOptions[0]?.dataset.nome;
+        }
         if (f.id === "formBaixa") {
           acao = body.tipo_baixa;
           const rotulo = acao === "baixar" ? "baixa" : "descarte";
@@ -858,6 +894,24 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     }
     (window as any).anexarNf = anexarNf;
     (window as any).removerNf = removerNf;
+
+    // busca na lista de obras (lista extensa)
+    function filtrarObras() {
+      const termo = (document.getElementById("obraSearch") as HTMLInputElement).value.toLowerCase().trim();
+      const sel = document.getElementById("obraSelect") as HTMLSelectElement;
+      Array.from(sel.options).forEach((o) => {
+        if (!o.value || o.value.startsWith("__")) { o.hidden = false; return; }
+        o.hidden = !!termo && !o.text.toLowerCase().includes(termo);
+      });
+    }
+    // mostra o campo "valor da venda" só quando o status escolhido for Vendido
+    function toggleValorVenda() {
+      const sel = document.querySelector("#modalStatus select[name='novo_status']") as HTMLSelectElement;
+      const grp = document.getElementById("grpValorVenda") as HTMLElement;
+      if (grp) grp.style.display = sel && sel.value === "vendido" ? "" : "none";
+    }
+    (window as any).filtrarObras = filtrarObras;
+    (window as any).toggleValorVenda = toggleValorVenda;
 
     (window as any).fecharModais = fecharModais;
     (window as any).abrirModal = abrirModal;

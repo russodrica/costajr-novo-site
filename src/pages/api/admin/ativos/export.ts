@@ -11,7 +11,7 @@ const CATEGORIAS: Record<string, string> = {
 const STATUS: Record<string, string> = {
   em_estoque: "Em estoque", disponivel: "Disponível", alocado: "Alocado", em_manutencao: "Em manutenção",
   em_transito: "Em trânsito", extraviado: "Extraviado", roubado: "Roubado", danificado: "Danificado",
-  baixado: "Baixado", descartado: "Descartado",
+  baixado: "Baixado", descartado: "Descartado", vendido: "Vendido",
 };
 
 // Colunas na MESMA ordem usada pela importação (export ↔ import compatíveis).
@@ -60,18 +60,20 @@ export const GET: APIRoute = async ({ request, url }) => {
       });
     }
 
-    const STATUS_FORA = ["extraviado", "roubado", "baixado", "descartado"];
+    const STATUS_EXTRAVIO = ["extraviado", "roubado"];
+    const STATUS_SAIDA = ["baixado", "descartado", "vendido"];
+    const STATUS_FORA = [...STATUS_EXTRAVIO, ...STATUS_SAIDA];
     const db = supabaseAdmin();
     let q = db.from("ativos").select("*").order("categoria").order("descricao").limit(5000);
     const categoria = url.searchParams.get("categoria");
     const status = url.searchParams.get("status");
     const busca = url.searchParams.get("busca");
-    // Espelha a tela: "fora_uso" = só itens fora de circulação; demais = só em circulação
-    // (salvo quando um status específico é pedido).
-    if (categoria === "fora_uso") {
-      if (status && status !== "todos") q = q.eq("status", status);
-      else q = q.in("status", STATUS_FORA);
-    } else {
+    // Espelha as abas da tela
+    if (categoria === "deposito") q = q.eq("alocado_para_tipo", "deposito");
+    else if (categoria === "extraviados") q = q.in("status", STATUS_EXTRAVIO);
+    else if (categoria === "saidas") q = q.in("status", STATUS_SAIDA);
+    else if (categoria === "conserto") q = q.eq("status", "danificado");
+    else {
       if (categoria && categoria !== "todas") q = q.eq("categoria", categoria);
       if (status && status !== "todos") q = q.eq("status", status);
       else q = q.not("status", "in", `(${STATUS_FORA.join(",")})`);

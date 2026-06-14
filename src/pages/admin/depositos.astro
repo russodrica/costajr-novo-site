@@ -1,0 +1,113 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: depositos } = await db.from("depositos").select("*").order("ativo", { ascending: false }).order("nome");
+// quantos ativos guardados em cada depósito
+const { data: guardados } = await db.from("ativos").select("alocado_para_id").eq("alocado_para_tipo", "deposito");
+const porDeposito: Record<string, number> = {};
+for (const a of guardados || []) if (a.alocado_para_id) porDeposito[a.alocado_para_id] = (porDeposito[a.alocado_para_id] || 0) + 1;
+const ativosCount = (depositos || []).filter((d: any) => d.ativo).length;
+---
+<Admin title="Depósitos" current="depositos">
+  <div class="toolbar">
+    <span class="toolbar-title">Depósitos ({ativosCount} ativo{ativosCount === 1 ? "" : "s"})</span>
+    <button class="btn btn-primary" onclick="abrirNovo()">+ Novo depósito</button>
+  </div>
+
+  <p style="color:var(--ink-mid);font-size:13.5px;margin:-4px 0 14px">Locais de guarda dos equipamentos. Em um ativo, use <strong>📦 Guardar em depósito</strong> para registrar onde ele está. Depósitos inativos não aparecem nas transferências.</p>
+
+  <div id="msg"></div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Depósito</th><th>Endereço</th><th>Responsável</th><th>Equipamentos</th><th>Situação</th><th></th></tr></thead>
+        <tbody>
+          {(depositos || []).length ? (depositos || []).map((d: any) => (
+            <tr style={d.ativo ? "" : "opacity:.6"}>
+              <td><strong>{d.nome}</strong></td>
+              <td style="font-size:12.5px;color:#6B7280">{[d.endereco, d.cidade, d.uf].filter(Boolean).join(", ") || "—"}</td>
+              <td style="font-size:12.5px">{d.responsavel || "—"}</td>
+              <td>{porDeposito[d.id] ? <a href={`/admin/ativos?local=deposito&deposito=${d.id}`}>{porDeposito[d.id]} item(ns)</a> : "0"}</td>
+              <td>{d.ativo ? <span class="badge badge-green">Ativo</span> : <span class="badge badge-gray">Inativo</span>}</td>
+              <td style="white-space:nowrap;text-align:right">
+                <button class="btn btn-secondary btn-sm" onclick={`editar(${JSON.stringify(d).replace(/"/g, "&quot;")})`}>Editar</button>
+                {d.ativo
+                  ? <button class="btn btn-outline btn-sm" onclick={`setAtivo('${d.id}', false)`}>Inativar</button>
+                  : <button class="btn btn-success btn-sm" onclick={`setAtivo('${d.id}', true)`}>Reativar</button>}
+              </td>
+            </tr>
+          )) : <tr><td colspan="6"><div class="empty-state" style="padding:30px"><strong>Nenhum depósito</strong><p>Cadastre o primeiro no botão "+ Novo depósito".</p></div></td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalDep">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-title" id="modalDepTitle">Novo depósito</div>
+      <form id="formDep">
+        <input type="hidden" name="id" />
+        <div class="form-group"><label>Nome *</label><input name="nome" required placeholder="Ex: Depósito Ipiranga" /></div>
+        <div class="form-row">
+          <div class="form-group"><label>Endereço</label><input name="endereco" /></div>
+          <div class="form-group"><label>Cidade</label><input name="cidade" /></div>
+          <div class="form-group" style="max-width:90px"><label>UF</label><input name="uf" maxlength="2" /></div>
+        </div>
+        <div class="form-group"><label>Responsável</label><input name="responsavel" /></div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fechar()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function fechar() { document.getElementById("modalDep")!.classList.remove("open"); }
+    function abrirNovo() {
+      const f = document.getElementById("formDep") as HTMLFormElement;
+      f.reset(); (f.querySelector("[name=id]") as HTMLInputElement).value = "";
+      document.getElementById("modalDepTitle")!.textContent = "Novo depósito";
+      document.getElementById("modalDep")!.classList.add("open");
+    }
+    function editar(d: any) {
+      const f = document.getElementById("formDep") as HTMLFormElement;
+      f.reset();
+      for (const k of ["id", "nome", "endereco", "cidade", "uf", "responsavel", "observacoes"]) {
+        const el = f.querySelector(`[name=${k}]`) as HTMLInputElement; if (el) el.value = d[k] || "";
+      }
+      document.getElementById("modalDepTitle")!.textContent = "Editar depósito";
+      document.getElementById("modalDep")!.classList.add("open");
+    }
+    async function setAtivo(id: string, ativo: boolean) {
+      if (!confirm(ativo ? "Reativar este depósito?" : "Inativar este depósito? Ele deixa de aparecer nas transferências.")) return;
+      const res = await fetch(`/api/admin/depositos/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ativo }) });
+      if (res.ok) location.reload(); else alert((await res.json()).error || "Erro");
+    }
+    document.getElementById("formDep")!.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const body: Record<string, any> = Object.fromEntries(new FormData(f).entries());
+      const id = body.id; delete body.id;
+      const url = id ? `/api/admin/depositos/${id}` : "/api/admin/depositos";
+      const method = id ? "PATCH" : "POST";
+      const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) location.reload();
+      else document.getElementById("msg")!.innerHTML = `<div class="alert alert-error">${(await res.json()).error || "Erro ao salvar"}</div>`;
+    });
+    (window as any).abrirNovo = abrirNovo;
+    (window as any).editar = editar;
+    (window as any).setAtivo = setAtivo;
+    (window as any).fechar = fechar;
+  </script>
+</Admin>

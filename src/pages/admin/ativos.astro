@@ -14,18 +14,22 @@ const filtroStatus = Astro.url.searchParams.get("status") || "todos";
 const busca = Astro.url.searchParams.get("busca") || "";
 const filtroGarantia = Astro.url.searchParams.get("garantia") || ""; // "vencendo" = garantia ativa nos próximos 60 dias
 
-// Status que tiram o ativo de circulação: somem das abas de categoria e da contagem
-// de "disponíveis", e vão para a aba própria "Fora de uso". "danificado" NÃO entra
-// aqui — segue na lista normal e é sinalizado no resumo "Para conserto".
-const STATUS_FORA = ["extraviado", "roubado", "baixado", "descartado"];
+// Grupos de status. "danificado" continua em circulação (na categoria) e também
+// aparece na aba "Para conserto". Itens fora de circulação saem das categorias.
+const STATUS_EXTRAVIO = ["extraviado", "roubado"];
+const STATUS_SAIDA = ["baixado", "descartado", "vendido"];
+const STATUS_FORA = [...STATUS_EXTRAVIO, ...STATUS_SAIDA];
 const STATUS_CIRC = ["em_estoque", "disponivel", "alocado", "em_manutencao", "em_transito", "danificado"];
-const foraUso = filtroCategoria === "fora_uso";
+// Abas especiais (não são categorias de tipo)
+const ESPECIAIS = ["deposito", "extraviados", "saidas", "conserto"];
+const ehEspecial = ESPECIAIS.includes(filtroCategoria);
 
 let q = db.from("ativos").select("*").order("created_at", { ascending: false }).limit(1000);
-if (foraUso) {
-  if (filtroStatus !== "todos" && STATUS_FORA.includes(filtroStatus)) q = q.eq("status", filtroStatus);
-  else q = q.in("status", STATUS_FORA);
-} else {
+if (filtroCategoria === "deposito") q = q.eq("alocado_para_tipo", "deposito");
+else if (filtroCategoria === "extraviados") q = q.in("status", STATUS_EXTRAVIO);
+else if (filtroCategoria === "saidas") q = q.in("status", STATUS_SAIDA);
+else if (filtroCategoria === "conserto") q = q.eq("status", "danificado");
+else {
   if (filtroCategoria !== "todas") q = q.eq("categoria", filtroCategoria);
   if (filtroStatus !== "todos" && STATUS_CIRC.includes(filtroStatus)) q = q.eq("status", filtroStatus);
   else q = q.not("status", "in", `(${STATUS_FORA.join(",")})`); // só itens em circulação
@@ -42,15 +46,18 @@ if (busca) {
 const { data: ativos, error: ativosErro } = await q;
 
 // Indicadores (sobre todos os ativos, independente do filtro)
-const { data: todosAtivos } = await db.from("ativos").select("status, categoria, valor_aquisicao, garantia, garantia_fim, alocado_para_tipo");
+const { data: todosAtivos } = await db.from("ativos").select("status, categoria, valor_aquisicao, valor_venda, garantia, garantia_fim, alocado_para_tipo");
 const emCirculacao = (todosAtivos || []).filter((a) => !STATUS_FORA.includes(a.status));
-const itensForaUso = (todosAtivos || []).filter((a) => STATUS_FORA.includes(a.status));
+const itensDeposito = (todosAtivos || []).filter((a) => a.alocado_para_tipo === "deposito");
+const itensExtravio = (todosAtivos || []).filter((a) => STATUS_EXTRAVIO.includes(a.status));
+const itensSaida = (todosAtivos || []).filter((a) => STATUS_SAIDA.includes(a.status));
 const totalCirc = emCirculacao.length;
-const foraUsoTotal = itensForaUso.length;
 const porStatus: Record<string, number> = {};
 for (const a of todosAtivos || []) porStatus[a.status] = (porStatus[a.status] || 0) + 1;
-// Patrimônio = valor dos ativos em circulação (baixados/descartados/extraviados não contam)
+// Patrimônio = valor dos ativos em circulação (baixados/descartados/extraviados/vendidos não contam)
 const valorTotal = emCirculacao.reduce((s, a) => s + (Number(a.valor_aquisicao) || 0), 0);
+// Valor de vendas = soma do valor_venda dos vendidos (SEPARADO do patrimônio)
+const valorVendas = (todosAtivos || []).filter((a) => a.status === "vendido").reduce((s, a) => s + (Number(a.valor_venda) || 0), 0);
 // Contagem por categoria considera SÓ os em circulação (bate com o número da aba)
 const porCategoria: Record<string, number> = {};
 for (const a of emCirculacao) porCategoria[a.categoria] = (porCategoria[a.categoria] || 0) + 1;
@@ -80,12 +87,12 @@ const categorias: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   em_estoque: "Em estoque", disponivel: "Disponível", alocado: "Alocado", em_manutencao: "Em manutenção",
   em_transito: "Em trânsito", extraviado: "Extraviado", roubado: "Roubado", danificado: "Danificado",
-  baixado: "Baixado", descartado: "Descartado",
+  baixado: "Baixado", descartado: "Descartado", vendido: "Vendido",
 };
 const statusBadge: Record<string, string> = {
   em_estoque: "badge-blue", disponivel: "badge-green", alocado: "badge-purple", em_manutencao: "badge-orange",
   em_transito: "badge-yellow", extraviado: "badge-red", roubado: "badge-red", danificado: "badge-red",
-  baixado: "badge-gray", descartado: "badge-gray",
+  baixado: "badge-gray", descartado: "badge-gray", vendido: "badge-green",
 };
 const catIcone: Record<string, string> = {
   telefonia: "📱", informatica: "💻", equipamento_obra: "🛠️", epi: "🦺", veiculo: "🚗", mobiliario: "🪑", outros: "📦",
@@ -94,25 +101,29 @@ function fmtMoney(v: number | null) { if (v == null) return "—"; return Number
 function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR"); }
 
 const ordemCat = Object.keys(categorias);
-// Rótulos/ícones dos status "fora de uso" (usados como grupos na aba própria)
-const foraLabels: Record<string, string> = { extraviado: "Extraviados", roubado: "Roubados / furtados", baixado: "Baixados", descartado: "Descartados" };
-const foraIcones: Record<string, string> = { extraviado: "❓", roubado: "🚨", baixado: "⛔", descartado: "🗑️" };
+const extravioLabels: Record<string, string> = { extraviado: "Extraviados", roubado: "Roubados / furtados" };
+const extravioIcones: Record<string, string> = { extraviado: "❓", roubado: "🚨" };
+const saidaLabels: Record<string, string> = { baixado: "Baixados", descartado: "Descartados", vendido: "Vendidos" };
+const saidaIcones: Record<string, string> = { baixado: "⛔", descartado: "🗑️", vendido: "💰" };
 
-// Agrupa a lista: por STATUS na aba "Fora de uso"; por CATEGORIA nas demais.
+// Agrupa a lista conforme a aba ativa.
 let grupos: { key: string; label: string; icone: string; itens: any[] }[];
-if (foraUso) {
-  grupos = STATUS_FORA
-    .map((s) => ({ key: s, label: foraLabels[s] || s, icone: foraIcones[s] || "📦", itens: (ativos || []).filter((a: any) => a.status === s) }))
-    .filter((g) => g.itens.length);
+if (filtroCategoria === "extraviados") {
+  grupos = STATUS_EXTRAVIO.map((s) => ({ key: s, label: extravioLabels[s], icone: extravioIcones[s], itens: (ativos || []).filter((a: any) => a.status === s) })).filter((g) => g.itens.length);
+} else if (filtroCategoria === "saidas") {
+  grupos = STATUS_SAIDA.map((s) => ({ key: s, label: saidaLabels[s], icone: saidaIcones[s], itens: (ativos || []).filter((a: any) => a.status === s) })).filter((g) => g.itens.length);
+} else if (filtroCategoria === "deposito") {
+  const nomes = [...new Set((ativos || []).map((a: any) => a.alocado_para_nome || "Sem depósito definido"))];
+  grupos = nomes.map((n) => ({ key: String(n), label: String(n), icone: "📦", itens: (ativos || []).filter((a: any) => (a.alocado_para_nome || "Sem depósito definido") === n) })).filter((g) => g.itens.length);
+} else if (filtroCategoria === "conserto") {
+  grupos = [{ key: "danificado", label: "Aguardando conserto", icone: "🔧", itens: (ativos || []) }].filter((g) => g.itens.length);
 } else {
-  grupos = ordemCat
-    .map((cat) => ({ key: cat, label: categorias[cat], icone: catIcone[cat] || "📦", itens: (ativos || []).filter((a: any) => a.categoria === cat) }))
-    .filter((g) => g.itens.length);
+  grupos = ordemCat.map((cat) => ({ key: cat, label: categorias[cat], icone: catIcone[cat] || "📦", itens: (ativos || []).filter((a: any) => a.categoria === cat) })).filter((g) => g.itens.length);
   const semCat = (ativos || []).filter((a: any) => !ordemCat.includes(a.categoria));
   if (semCat.length) grupos.push({ key: "_sem", label: "Sem categoria", icone: "📦", itens: semCat });
 }
-// Cabeçalhos de grupo aparecem na visão "Todos" e na aba "Fora de uso".
-const mostrarSep = foraUso || filtroCategoria === "todas";
+// Cabeçalhos de grupo aparecem na visão "Todos" e nas abas especiais.
+const mostrarSep = ehEspecial || filtroCategoria === "todas";
 
 // Abas (preservam busca/garantia; o status é específico de cada grupo, então não viaja)
 function abaHref(cat: string) {
@@ -125,6 +136,14 @@ function abaHref(cat: string) {
 }
 const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
   .concat(ordemCat.filter((c) => porCategoria[c]).map((c) => ({ cat: c, label: categorias[c], icone: catIcone[c] || "📦", count: porCategoria[c] })));
+const abasEspeciais = [
+  { cat: "deposito", label: "Em depósito", icone: "📦", count: itensDeposito.length },
+  { cat: "extraviados", label: "Extraviados", icone: "❓", count: itensExtravio.length },
+  { cat: "saidas", label: "Saídas", icone: "⛔", count: itensSaida.length },
+  { cat: "conserto", label: "Para conserto", icone: "🔧", count: quebrados.length },
+];
+const tituloEspecial: Record<string, string> = { deposito: "Em depósito", extraviados: "Extraviados / roubados", saidas: "Saídas (baixa / descarte / venda)", conserto: "Para conserto" };
+const tituloAba = ehEspecial ? tituloEspecial[filtroCategoria] : filtroCategoria === "todas" ? "Todos os ativos" : (categorias[filtroCategoria] || "Ativos");
 ---
 <Admin title="Ativos Patrimoniais" current="ativos">
 
@@ -135,16 +154,24 @@ const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
     <div class="stat-card"><div class="stat-value">{totalCirc}</div><div class="stat-label">Ativos em uso/estoque</div></div>
     <div class="stat-card"><div class="stat-value" style="color:#7C3AED">{porStatus.alocado ?? 0}</div><div class="stat-label">Em uso (alocados)</div></div>
     <div class="stat-card"><div class="stat-value" style="color:#1D4ED8">{(porStatus.em_estoque ?? 0) + (porStatus.disponivel ?? 0)}</div><div class="stat-label">Em estoque</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:#D97706">{porStatus.em_manutencao ?? 0}</div><div class="stat-label">Em manutenção</div></div>
-    <a class="stat-card" href={quebrados.length ? "#resumo-conserto" : undefined} style={quebrados.length ? "text-decoration:none;cursor:pointer" : ""} title="Equipamentos quebrados aguardando conserto">
-      <div class="stat-value" style={quebrados.length ? "color:#B91C1C" : "color:#16A34A"}>{quebrados.length}</div>
-      <div class="stat-label">Para conserto {quebrados.length ? "↓" : ""}</div>
+    <a class="stat-card" href="/admin/ativos?categoria=deposito" style="text-decoration:none;cursor:pointer" title="Equipamentos guardados em depósito">
+      <div class="stat-value" style={itensDeposito.length ? "color:#0E7490" : ""}>{itensDeposito.length}</div>
+      <div class="stat-label">Em depósito {itensDeposito.length ? "→" : ""}</div>
     </a>
-    <a class="stat-card" href="/admin/ativos?categoria=fora_uso" style="text-decoration:none;cursor:pointer" title="Itens extraviados, roubados, baixados ou descartados — fora de circulação">
-      <div class="stat-value" style={foraUsoTotal ? "color:#6B7280" : ""}>{foraUsoTotal}</div>
-      <div class="stat-label">Fora de uso {foraUsoTotal ? "→" : ""}</div>
+    <div class="stat-card"><div class="stat-value" style="color:#D97706">{porStatus.em_manutencao ?? 0}</div><div class="stat-label">Em manutenção</div></div>
+    <a class="stat-card" href="/admin/ativos?categoria=conserto" style="text-decoration:none;cursor:pointer" title="Equipamentos quebrados aguardando conserto">
+      <div class="stat-value" style={quebrados.length ? "color:#B91C1C" : "color:#16A34A"}>{quebrados.length}</div>
+      <div class="stat-label">Para conserto {quebrados.length ? "→" : ""}</div>
+    </a>
+    <a class="stat-card" href="/admin/ativos?categoria=extraviados" style="text-decoration:none;cursor:pointer" title="Itens extraviados ou roubados">
+      <div class="stat-value" style={itensExtravio.length ? "color:#B91C1C" : ""}>{itensExtravio.length}</div>
+      <div class="stat-label">Extraviados {itensExtravio.length ? "→" : ""}</div>
     </a>
     <div class="stat-card"><div class="stat-value" style="color:#16A34A;font-size:1.35rem">{fmtMoney(valorTotal)}</div><div class="stat-label">Valor do patrimônio</div></div>
+    <a class="stat-card" href="/admin/ativos?categoria=saidas" style="text-decoration:none;cursor:pointer" title="Total recebido em vendas de ativos (separado do patrimônio)">
+      <div class="stat-value" style="color:#0E7490;font-size:1.35rem">{fmtMoney(valorVendas)}</div>
+      <div class="stat-label">Valor de vendas {valorVendas ? "→" : ""}</div>
+    </a>
     <a class="stat-card" href="/admin/ativos?garantia=vencendo" style="text-decoration:none;cursor:pointer" title="Ver os ativos com garantia vencendo nos próximos 60 dias">
       <div class="stat-value" style={garantiaVencendo ? "color:#D97706" : ""}>{garantiaVencendo}</div>
       <div class="stat-label">Garantias vencendo (60d) {garantiaVencendo ? "→" : ""}</div>
@@ -152,57 +179,37 @@ const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
     <div class="stat-card"><div class="stat-value" style={preventivasVencidas ? "color:#B91C1C" : "color:#16A34A"}>{preventivasVencidas ?? 0}</div><div class="stat-label">Preventivas vencidas</div></div>
   </div>
 
-  <!-- Resumo para conserto (ferramentas/equipamentos quebrados) -->
-  {(quebrados.length > 0 || emConserto.length > 0) && (
-    <div id="resumo-conserto" class="card resumo-conserto">
-      <div class="rc-head">
-        <span class="rc-title">🔧 Resumo para conserto</span>
-        <span class="rc-sub">{quebrados.length} aguardando conserto · {emConserto.length} já em manutenção</span>
-      </div>
-      {quebrados.length ? (
-        <div class="table-wrap">
-          <table class="rc-table">
-            <thead><tr><th></th><th>Equipamento</th><th>Categoria</th><th>Patrimônio / Série</th><th>Onde está</th><th></th></tr></thead>
-            <tbody>
-              {quebrados.map((a: any) => (
-                <tr class="row-link" onclick={`window.location.href='/admin/ativos/${a.id}'`}>
-                  <td style="font-size:1.05rem">{catIcone[a.categoria] || "📦"}</td>
-                  <td><strong>{a.descricao}</strong>{(a.marca || a.modelo) && <div style="font-size:11px;color:#9CA3AF">{[a.marca, a.modelo].filter(Boolean).join(" · ")}</div>}</td>
-                  <td>{categorias[a.categoria] || a.categoria}</td>
-                  <td style="font-size:12px">{a.numero_patrimonial ? `Pat. ${a.numero_patrimonial}` : a.numero_serie ? `S/N ${a.numero_serie}` : "—"}</td>
-                  <td style="font-size:12px;color:#6B7280">{a.alocado_para_nome ? `com ${a.alocado_para_nome}` : "em estoque"}</td>
-                  <td style="text-align:right;white-space:nowrap"><span class="btn btn-outline btn-sm">Ver / enviar p/ conserto →</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p class="rc-empty">Nenhum equipamento quebrado aguardando. {emConserto.length} em manutenção no momento.</p>
-      )}
-    </div>
-  )}
-
-  <!-- Abas por categoria -->
+  <!-- Abas -->
   <div class="cat-abas">
     {abas.map((a) => (
       <a href={abaHref(a.cat)} class={`cat-aba ${a.cat === filtroCategoria ? "ativa" : ""}`}>
         <span class="cat-aba-ic">{a.icone}</span>{a.label}<span class="cat-aba-num">{a.count}</span>
       </a>
     ))}
-    <a href="/admin/ativos?categoria=fora_uso" class={`cat-aba cat-aba-fora ${foraUso ? "ativa" : ""}`} title="Itens extraviados, roubados, baixados ou descartados — fora de circulação">
-      <span class="cat-aba-ic">🚫</span>Fora de uso<span class="cat-aba-num">{foraUsoTotal}</span>
-    </a>
+    <span class="cat-abas-sep"></span>
+    {abasEspeciais.map((a) => (
+      <a href={abaHref(a.cat)} class={`cat-aba cat-aba-esp ${a.cat === filtroCategoria ? "ativa" : ""}`}>
+        <span class="cat-aba-ic">{a.icone}</span>{a.label}<span class="cat-aba-num">{a.count}</span>
+      </a>
+    ))}
   </div>
+
+  {filtroCategoria === "conserto" && emConserto.length > 0 && (
+    <div class="alert" style="background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412">
+      Além dos {quebrados.length} aguardando, há <strong>{emConserto.length}</strong> equipamento(s) já <strong>em manutenção</strong> no momento.
+    </div>
+  )}
 
   <!-- Filtros -->
   <div class="toolbar">
-    <span class="toolbar-title">{foraUso ? "Fora de uso" : filtroCategoria === "todas" ? "Todos os ativos" : (categorias[filtroCategoria] || "Ativos")} ({ativos?.length ?? 0})</span>
+    <span class="toolbar-title">{tituloAba} ({ativos?.length ?? 0})</span>
     <input class="search-input" id="busca" placeholder="Buscar por descrição, série, patrimônio, pessoa..." value={busca} />
-    <select class="filter-select" id="fStatus">
-      <option value="todos" selected={filtroStatus === "todos"}>Todos status</option>
-      {(foraUso ? STATUS_FORA : STATUS_CIRC).map((k) => <option value={k} selected={k === filtroStatus}>{statusLabels[k]}</option>)}
-    </select>
+    {!ehEspecial && (
+      <select class="filter-select" id="fStatus">
+        <option value="todos" selected={filtroStatus === "todos"}>Todos status</option>
+        {STATUS_CIRC.map((k) => <option value={k} selected={k === filtroStatus}>{statusLabels[k]}</option>)}
+      </select>
+    )}
     <button class="btn btn-outline" id="btnExport" title="Baixar a lista atual em CSV (abre no Excel)">⬇️ Exportar</button>
     <button class="btn btn-outline" onclick="document.getElementById('modalImport').classList.add('open')" title="Cadastrar/atualizar vários ativos de uma vez por planilha">⬆️ Importar em massa</button>
     <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo ativo</button>
@@ -238,7 +245,7 @@ const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
                   </td>
                   <td>
                     {a.alocado_para_nome
-                      ? <span>{a.alocado_para_tipo === "obra" ? "🏗️ " : "👤 "}{a.alocado_para_nome}</span>
+                      ? <span>{a.alocado_para_tipo === "obra" ? "🏗️ " : a.alocado_para_tipo === "deposito" ? "📦 " : "👤 "}{a.alocado_para_nome}</span>
                       : <span style="color:#9CA3AF">—</span>}
                   </td>
                   <td>{fmtMoney(a.valor_aquisicao)}</td>
@@ -247,8 +254,8 @@ const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
                 </tr>
               ))}
             </Fragment>
-          )) : <tr><td colspan="8"><div class="empty-state">{foraUso
-              ? <Fragment><strong>Nenhum item fora de uso 🎉</strong><p>Itens extraviados, roubados, baixados ou descartados apareceriam aqui.</p></Fragment>
+          )) : <tr><td colspan="8"><div class="empty-state">{ehEspecial
+              ? <Fragment><strong>Nada nesta aba 🎉</strong><p>Nenhum item aqui no momento.</p></Fragment>
               : <Fragment><strong>Nenhum ativo encontrado</strong><p>Cadastre o primeiro ativo no botão "+ Novo ativo".</p></Fragment>}</div></td></tr>}
         </tbody>
       </table>
@@ -381,10 +388,11 @@ const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
     .cat-aba-ic { font-size: 1.05rem; }
     .cat-aba-num { background: rgba(15,23,42,.08); color: inherit; border-radius: 999px; padding: 0 8px; font-size: 0.76rem; font-weight: 800; }
     .cat-aba.ativa .cat-aba-num { background: rgba(255,255,255,.25); }
-    /* Aba "Fora de uso" — separada à direita, tom neutro */
-    .cat-aba-fora { margin-left: auto; color: #6B7280; border-style: dashed; }
-    .cat-aba-fora:hover { border-color: #6B7280; color: #374151; }
-    .cat-aba-fora.ativa { background: #6B7280; color: #fff; border-color: #6B7280; box-shadow: 0 2px 8px rgba(107,114,128,.3); }
+    /* Abas especiais (depósito, extraviados, saídas, conserto) — tom neutro, tracejado */
+    .cat-abas-sep { width: 1px; align-self: stretch; min-height: 22px; background: #E2E8F0; margin: 0 3px; }
+    .cat-aba-esp { color: #475569; border-style: dashed; }
+    .cat-aba-esp:hover { border-color: #64748B; color: #334155; }
+    .cat-aba-esp.ativa { background: #475569; color: #fff; border-color: #475569; box-shadow: 0 2px 8px rgba(71,85,105,.3); }
     /* Resumo para conserto */
     .resumo-conserto { margin: 0 0 16px; border-left: 4px solid #F59E0B; background: #FFFBEB; }
     .rc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -410,7 +418,8 @@ const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
     function filtrarRecarrega() {
       // a categoria vem das ABAS (já está na URL) — aqui só status + busca
       const url = new URL(window.location.href);
-      url.searchParams.set("status", (document.getElementById("fStatus") as HTMLSelectElement).value);
+      const st = document.getElementById("fStatus") as HTMLSelectElement | null;
+      if (st) url.searchParams.set("status", st.value); else url.searchParams.delete("status");
       url.searchParams.set("busca", (document.getElementById("busca") as HTMLInputElement).value);
       window.location.href = url.toString();
     }
@@ -421,7 +430,7 @@ const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
     document.getElementById("btnExport")?.addEventListener("click", () => {
       const p = new URLSearchParams();
       const cat = new URLSearchParams(location.search).get("categoria") || "todas";
-      const st = (document.getElementById("fStatus") as HTMLSelectElement).value;
+      const st = (document.getElementById("fStatus") as HTMLSelectElement | null)?.value || "todos";
       const bq = (document.getElementById("busca") as HTMLInputElement).value;
       if (cat && cat !== "todas") p.set("categoria", cat);
       if (st && st !== "todos") p.set("status", st);
