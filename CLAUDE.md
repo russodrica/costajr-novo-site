@@ -854,6 +854,52 @@ forjar admin_token com a lib jose e JWT_SECRET do .env (issuer "costajr.com.br",
 tipo:"admin") -> fetch com header cookie. Cuidado: dev server no OneDrive estoura
 EMFILE (too many open files) sob varios requests simultaneos — testar 1 rota por vez.
 
+## Atualizacao 14/06/2026 (parte 2) — Lote de ajustes RH (feedback da Adriana)
+
+Lote de 12 ajustes pedidos pela Adriana, validados via dev server autenticado
+(JWT forjado) + Supabase REST (site em prod, dev local p/ E2E):
+- **BUG avaliar (raiz importante):** o botao "Avaliar" nao respondia. Causa:
+  `define:vars` no <script is:inline> faz o Astro EMBRULHAR o script numa funcao,
+  entao `avaliar`/`carregar` etc. ficam locais e o `onclick="avaliar()"` (escopo
+  global) nao acha -> ReferenceError. FIX: `Object.assign(window,{...})` expoe as
+  funcoes. PADRAO: toda tela com define:vars + onclick inline precisa expor ao
+  window (auditadas: avaliacoes corrigida; orcamentos/perguntas ja expunham).
+- **Ficha do colaborador:** botao X p/ fechar no topo do modalColab.
+- **Documentos:** upload REAL de arquivo do PC (antes so URL) -> bucket privado
+  rh; novo endpoint /api/admin/rh/documentos/upload (multipart, storage_path).
+- **Recrutamento:** Titulo da vaga = dropdown de CARGOS (migration 052 rh_cargos,
+  17 cargos seedados + API /api/admin/rh/cargos CRUD soft-delete + modal
+  "gerenciar cargos"); Area = pre-selecao (Operacao/Comercial/Admin/Financeiro/RH);
+  Demandante = dropdown de colaboradores ativos; banner de empty-state no kanban
+  (estava vazio = 0 candidatos, por isso ela "nao achou o kanban"). Criados dados
+  de teste (🧪): 1 funcionario, 1 vaga, 5 candidatos no funil.
+- **EPI ficha PDF:** reescrito no formato OFICIAL da empresa ("Controle de Entrega
+  de EPI" — fonte: FICHA-DE-EPI-*-D4Sign.pdf e Termo de EPI_Givanildo/Crispim):
+  logo CJR, caixa Nome/Funcao/Admissao/RG, DECLARACAO completa + Base Legal NR1/NR6,
+  tabela Quant|Descricao|CA|Data Entrega|Assinatura|Data Devolucao (SEM coluna
+  Validade no impresso), rodape institucional. SANITIZA caracteres (Helvetica/
+  WinAnsi nao codifica emoji -> quebrava). Catalogo: + Calca + Luva de borracha.
+  Logo buscado de origin/logo-cjr.png. Endpoint passa RG/admissao.
+- **EPI dedup:** ficha de EPI removida da aba Documentos (slot ficha_epi fora de
+  SLOT_GRUPOS + slotDoDoc nao mapeia mais "epi"); fica so na aba EPIs. Docs antigos
+  caem em "Outros documentos".
+- **EPI Crispim/Givanildo:** ja existiam (Monday). RG/cargo atualizados + 8 EPIs
+  cada das fichas reais (CAs corretos, SEM vencimento p/ a Adriana definir e
+  disparar o alerta de 15 dias, que ja roda no cron).
+- **Ferias:** auto-avanco do periodo aquisitivo. garantirPeriodoAtual() no cron
+  diario cria o periodo do ciclo VIGENTE (ciclosVencidos-1) p/ cada CLT/PJ ativo
+  sem ele -> a data se ajusta a cada ano sozinha. (Os dados ja estavam corretos;
+  faltava o auto-avanco.)
+- **Clima (decisao: NATIVO, sem MS Forms):** enviarLembreteClima() no cron (1o de
+  Mar/Jun/Set/Dez) e-mail p/ todos os ativos + RH cobrando preenchimento da
+  pesquisa ativa (link anonimo); indicador resumido na tela (classe eNPS, ponto
+  forte, dimensao a melhorar, participacao). classeEnps() reutilizavel.
+- **E-mail/Outlook (decisao: MANTER RESEND):** confirmado que os avisos automaticos
+  saem via Resend (re_..., FROM noreply@costajr.com.br) no cron diario da Vercel
+  (cashback-renovacao 9h + regua-cobranca 12h; Hobby limita a 2). NAO ha "agendamento
+  no Outlook" — nao foi pedido integrar.
+Migrations: **052_rh_cargos RODADA.** Telas E2E 200. Commits ee2cf9b..4fd8518.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
