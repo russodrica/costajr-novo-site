@@ -810,11 +810,49 @@ curriculo_url); tela Colaboradores do app (ja coberta pelo /admin/rh).
 dimensoes + comentarios; encerrar/reabrir). /clima/[token] publico ANONIMO (sem
 login; sem colaborador_id). src/lib/clima.ts. Verificado E2E.
 
-**FILA RESTANTE (ordem):** (3) People Analytics RH (turnover/headcount/vencidos —
-dados ja existem), (4) pagina publica de vagas + banco de talentos, (5) Perfil
-comportamental DISC/Eneagrama (questionario completo dos modelos F3/F4; hoje so o
-RESULTADO e dropdown no candidato), (6) automacoes de e-mail do desligamento
-(TI/banco/Alelo/VT/Totalpass, do board), (7) upload real de documentos do candidato.
+**FILA DE RECRUTAMENTO/RH 100% CONCLUIDA (14/06/2026) — fazer sem pausar + auditoria
++ visual amigavel (pedido da Adriana).** Itens 3-7 entregues e validados E2E
+(site fora do ar -> validacao via Supabase REST + dev server autenticado com JWT
+forjado da lib/auth):
+- **(6) Desligamento — gating + e-mails** (commit ee2cf9b): /api/admin/rh/
+  desligamentos/{posse,finalizar} cruzam Ativos (alocado) + EPIs (ativos) e SO
+  deixam desligar se tudo devolvido em bom estado + passos por regime (CLT: exame
+  demissional+emocional, aviso previo, termo encerramento; PJ: contrato encerramento).
+  Ao concluir: devolve EPIs/ativos, desliga, revoga acesso, e e-mail de checklist
+  de cancelamentos (TI/banco/Alelo/VT/Totalpass + ASO p/ CLT) p/ RH_ALERT_EMAIL.
+- **(3) People Analytics RH** (commit ee2cf9b): /admin/rh-analytics — headcount,
+  turnover 12m, idade/tempo de casa medios, docs/EPIs vencendo, aniversariantes,
+  nota desempenho, eNPS + graficos CSS (rotatividade/regime/setor). LICAO CRITICA
+  DE BUILD: o compilador JSX do Astro 5 QUEBRA com `.map` aninhado que retorna JSX
+  com atributos `title={...}` (erro esbuild "Expected '>' but found title" mesmo com
+  variaveis puras e tsc limpo). SOLUCAO: renderizar listas/graficos como STRING HTML
+  no frontmatter e injetar com `<Fragment set:html={...} />`. Padrao a reusar.
+- **(7) Upload real do curriculo** (migration 050 RODADA; commit a-seguir): coluna
+  rh_candidatos.curriculo_path/curriculo_nome; /api/admin/rh/candidatos/[id]/curriculo
+  (POST multipart->bucket privado rh; GET url assinada 10min; DELETE). Modal do
+  candidato anexa/ve/remove arquivo (PDF/DOC/DOCX/img ate 10MB) alem do link.
+- **(4) Pagina publica de vagas + banco de talentos** (commit a-seguir): /vagas
+  (publica, Base.astro) lista vagas abertas + modal de candidatura c/ upload de cv
+  e aceite LGPD; CTA Banco de Talentos (candidatura espontanea, vaga_id null). API
+  publica POST /api/vagas/candidatar (multipart, cria candidato em triagem, sobe cv
+  no bucket rh, notifica RH). Filtro "🌟 Banco de Talentos" no /admin/recrutamento.
+  Link "Trabalhe conosco" no rodape do site.
+- **(5) Teste DISC + Eneagrama por link** (migration 051 RODADA; commit a-seguir):
+  src/lib/testes.ts (16 grupos DISC escolha-forcada + 27 afirmacoes Eneagrama escala
+  1-5, calculo dominante/tipo). /teste/[token] publico (questionario 2 partes,
+  progresso, resultado na hora). API /api/teste/[token] (GET perguntas, POST calcula
+  e salva teste_disc/teste_eneagrama + detalhe jsonb; anti-reenvio). Admin gera link
+  pelo modal do candidato (/api/admin/rh/candidatos/[id]/teste-link) e ve o resultado.
+- **Auditoria + VISUAL AMIGAVEL** (commit a-seguir): componente src/components/
+  RhNav.astro — barra de navegacao com 5 cards coloridos (👥 Pessoas, 🧭 Recrutamento,
+  ⭐ Avaliacoes, 🌡️ Clima, 📈 People Analytics) no topo das 5 telas, card ativo
+  destacado. Auditoria estatica: 0 botoes mortos (75 handlers), 0 fetch non-GET sem
+  content-type. Print confirmado nas telas (login via cookie admin_token + JWT forjado).
+
+**DICA P/ VALIDAR COM SITE FORA DO AR:** `npx astro dev --port 4329` em background +
+forjar admin_token com a lib jose e JWT_SECRET do .env (issuer "costajr.com.br",
+tipo:"admin") -> fetch com header cookie. Cuidado: dev server no OneDrive estoura
+EMFILE (too many open files) sob varios requests simultaneos — testar 1 rota por vez.
 
 ## Convencoes desta pasta para o Claude Code
 
