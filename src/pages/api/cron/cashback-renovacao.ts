@@ -5,6 +5,7 @@ import { enviarEmailCupomRenovacao } from "~/lib/mailer";
 import { enviarDigestVencimentosRh, enviarAniversariantesDoMes } from "~/lib/rhVencimentos";
 import { enviarLembretesFerias } from "~/lib/ferias";
 import { expurgarLixeira } from "~/lib/auditoria";
+import { enviarAlertasEpi } from "~/lib/epi";
 
 export const prerender = false;
 
@@ -107,6 +108,14 @@ export const GET: APIRoute = async ({ request, url }) => {
     console.warn("[cron][lixeira] falhou:", e?.message);
   }
 
+  // ── Piggyback: alertas de EPI a vencer (15 dias) → rh@ + engenharia@ ──
+  let epi: any = { total: 0, enviados: 0 };
+  try {
+    epi = await enviarAlertasEpi(db);
+  } catch (e: any) {
+    console.warn("[cron][epi] falhou:", e?.message);
+  }
+
   // ── Piggyback: aniversariantes do mês — só no dia 1 ──
   let aniversariantes: any = { total: 0, enviados: 0 };
   if (new Date().getUTCDate() === 1) {
@@ -117,7 +126,7 @@ export const GET: APIRoute = async ({ request, url }) => {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira, aniversariantes }), {
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira, aniversariantes, epi }), {
     headers: { "content-type": "application/json" },
   });
 };

@@ -485,6 +485,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       <div class="ficha-tabs" id="fichaTabs" style="display:none">
         <button type="button" class="ficha-tab active" data-ft="dados" onclick="fichaTab('dados')">📋 Dados gerais</button>
         <button type="button" class="ficha-tab" data-ft="docs" onclick="fichaTab('docs')">📎 Documentos <span id="fichaTabDocsCount" style="opacity:.75"></span></button>
+        <button type="button" class="ficha-tab" data-ft="epi" onclick="fichaTab('epi')">🦺 EPIs</button>
       </div>
       <div id="fichaPaneDados">
       <form id="formColab">
@@ -568,6 +569,21 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           <button type="button" class="btn btn-secondary btn-sm" id="btnAnexarDocFicha">+ Anexar documento</button>
         </div>
         <div id="fichaDocsLista"><div class="loading"><div class="spinner"></div> Carregando documentos...</div></div>
+      </div>
+
+      <!-- Aba EPIs -->
+      <div id="fichaPaneEpi" style="display:none">
+        <div class="section-header" style="margin-bottom:10px">
+          <span class="section-title" style="font-size:15px">🦺 Ficha de EPI</span>
+          <span style="display:flex;gap:6px">
+            <button type="button" class="btn btn-outline btn-sm" onclick="salvarEpi()" id="btnSalvarEpi">💾 Salvar</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="gerarFichaEpi('completa')" id="btnGerarEpi">🖨️ Gerar ficha completa</button>
+          </span>
+        </div>
+        <div id="epiMsg"></div>
+        <div id="epiLista"><div class="loading"><div class="spinner"></div> Carregando EPIs...</div></div>
+        <p style="font-size:12px;color:#9CA3AF;margin-top:8px">A ficha sai sempre completa, com todos os EPIs. Preencha CA, tamanho e validade; a entrega vem com a data de hoje. Alerta automático 15 dias antes do vencimento para rh@ e engenharia@. Gere o PDF, imprima, colha a assinatura e anexe o documento assinado no histórico.</p>
+        <div id="epiFichas" style="margin-top:14px"></div>
       </div>
     </div>
   </div>
@@ -1038,10 +1054,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     const camposColab = ["nome","email","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
 
     function fichaTab(qual: string) {
-      const dados = qual === "dados";
-      (document.getElementById("fichaPaneDados") as any).style.display = dados ? "" : "none";
-      (document.getElementById("fichaPaneDocs") as any).style.display = dados ? "none" : "";
+      const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi" };
+      for (const [k, id] of Object.entries(panes)) { const el = document.getElementById(id); if (el) (el as any).style.display = (k === qual ? "" : "none"); }
       document.querySelectorAll(".ficha-tab").forEach((t) => t.classList.toggle("active", (t as any).dataset.ft === qual));
+      if (qual === "epi" && (window as any).__fichaColabId) carregarEpi((window as any).__fichaColabId);
     }
     (window as any).fichaTab = fichaTab;
 
@@ -1135,6 +1151,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     }
 
     async function carregarFicha(colabId: string, nome: string) {
+      (window as any).__fichaColabId = colabId;
+      (window as any).__fichaColabNome = nome;
+      (window as any).__epiCarregadoDe = null; // força recarregar EPIs ao trocar de ficha
       const wrap = document.getElementById("fichaDocsLista")!;
       const acessoBox = document.getElementById("fichaAcessoLista")!;
       wrap.innerHTML = '<div class="loading"><div class="spinner"></div> Carregando documentos...</div>';
@@ -1231,6 +1250,91 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (res.ok) carregarFicha(colabId, nome); else alert("Erro ao excluir documento");
     }
     (window as any).excluirDocFicha = excluirDocFicha;
+
+    // ── EPIs (Ficha de EPI gerada no sistema) ──
+    const hojeIsoEpi = () => new Date().toISOString().slice(0, 10);
+    async function carregarEpi(colabId: string) {
+      if ((window as any).__epiCarregadoDe === colabId) return; // já carregado p/ esta ficha
+      const box = document.getElementById("epiLista")!;
+      box.innerHTML = '<div class="loading"><div class="spinner"></div> Carregando EPIs...</div>';
+      try {
+        const res = await fetch(`/api/admin/rh/epi?colaborador_id=${colabId}`);
+        const d = await res.json();
+        if (!res.ok) { box.innerHTML = '<div class="alert alert-error">Erro ao carregar EPIs.</div>'; return; }
+        (window as any).__epiCarregadoDe = colabId;
+        const hoje = hojeIsoEpi();
+        box.innerHTML = `<div class="table-wrap"><table style="font-size:13px">
+          <thead><tr><th style="min-width:150px">EPI</th><th>CA</th><th>Tam.</th><th>Entrega</th><th>Vencimento</th><th>Devolução</th><th>Repor</th></tr></thead>
+          <tbody>${(d.itens || []).map((it: any) => {
+            const venc = it.data_validade && it.data_validade < hoje;
+            const vencendo = it.data_validade && !venc && it.data_validade <= em30Str;
+            const corV = venc ? "#B91C1C" : vencendo ? "#D97706" : "#E5E7EB";
+            return `<tr data-epi="${escD(it.epi)}">
+              <td><strong>${escD(it.epi)}</strong></td>
+              <td><input class="epi-ca" value="${escD(it.ca || "")}" placeholder="CA" style="width:80px;padding:5px 7px;border:1px solid #E5E7EB;border-radius:6px" /></td>
+              <td><input class="epi-tam" value="${escD(it.tamanho || "")}" style="width:52px;padding:5px 7px;border:1px solid #E5E7EB;border-radius:6px" /></td>
+              <td><input class="epi-ent" type="date" value="${it.data_entrega || hoje}" style="padding:5px 6px;border:1px solid #E5E7EB;border-radius:6px" /></td>
+              <td><input class="epi-val" type="date" value="${it.data_validade || ""}" style="padding:5px 6px;border:2px solid ${corV};border-radius:6px" /></td>
+              <td><input class="epi-dev" type="date" value="${it.data_devolucao || ""}" style="padding:5px 6px;border:1px solid #E5E7EB;border-radius:6px" /></td>
+              <td><button type="button" class="btn btn-outline btn-sm" title="Gerar ficha de reposição só deste item" onclick="gerarFichaEpi('reposicao','${escD(it.epi).replace(/'/g, "")}')">↻</button></td>
+            </tr>`;
+          }).join("")}</tbody></table></div>`;
+        // histórico de fichas
+        const fbox = document.getElementById("epiFichas")!;
+        fbox.innerHTML = (d.fichas || []).length
+          ? `<div class="section-title" style="font-size:13.5px;margin-bottom:6px">Fichas geradas</div>${d.fichas.map((f: any) => `
+            <div style="display:flex;align-items:center;gap:8px;border:1px solid #ECEFF3;border-radius:8px;padding:8px 10px;margin-bottom:6px">
+              <span style="flex:1;font-size:13px"><strong>${f.tipo === "reposicao" ? "Reposição" : "Completa"}</strong> · ${brData(f.data_geracao)} · ${(f.itens || []).length} item(ns)
+                ${f.status === "assinada" ? '<span class="badge badge-green" style="margin-left:6px">assinada</span>' : '<span class="badge badge-yellow" style="margin-left:6px">aguarda assinatura</span>'}</span>
+              <a class="btn btn-secondary btn-sm" href="/api/admin/rh/epi/fichas/${f.id}/pdf" target="_blank" rel="noopener">🖨️ PDF</a>
+              ${f.status === "assinada"
+                ? `<a class="btn btn-outline btn-sm" href="/api/admin/rh/epi/fichas/${f.id}/assinado" target="_blank" rel="noopener">📎 Assinado</a>`
+                : `<label class="btn btn-outline btn-sm" style="cursor:pointer">📎 Anexar assinado<input type="file" accept="application/pdf,image/*" style="display:none" onchange="anexarAssinadoEpi('${f.id}', this)" /></label>`}
+            </div>`).join("")}`
+          : '<p style="font-size:12.5px;color:#9CA3AF">Nenhuma ficha gerada ainda.</p>';
+      } catch { box.innerHTML = '<div class="alert alert-error">Erro de conexão.</div>'; }
+    }
+    function coletarEpi() {
+      return Array.from(document.querySelectorAll("#epiLista tr[data-epi]")).map((tr) => ({
+        epi: (tr as any).dataset.epi,
+        ca: (tr.querySelector(".epi-ca") as HTMLInputElement).value.trim() || null,
+        tamanho: (tr.querySelector(".epi-tam") as HTMLInputElement).value.trim() || null,
+        data_entrega: (tr.querySelector(".epi-ent") as HTMLInputElement).value || null,
+        data_validade: (tr.querySelector(".epi-val") as HTMLInputElement).value || null,
+        data_devolucao: (tr.querySelector(".epi-dev") as HTMLInputElement).value || null,
+      }));
+    }
+    async function salvarEpi() {
+      const colabId = (window as any).__fichaColabId; if (!colabId) return;
+      const msg = document.getElementById("epiMsg")!;
+      const res = await fetch("/api/admin/rh/epi/entregas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ colaborador_id: colabId, itens: coletarEpi() }) });
+      const d = await res.json().catch(() => ({}));
+      msg.innerHTML = res.ok ? '<div class="alert alert-success">EPIs salvos.</div>' : `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
+      setTimeout(() => { msg.innerHTML = ""; }, 5000);
+      return res.ok;
+    }
+    async function gerarFichaEpi(tipo: string, epi?: string) {
+      const colabId = (window as any).__fichaColabId; if (!colabId) return;
+      const ok = await salvarEpi(); if (ok === false) return; // salva os campos antes de gerar
+      const body: any = { colaborador_id: colabId, tipo };
+      if (tipo === "reposicao") body.epis = [epi];
+      const res = await fetch("/api/admin/rh/epi/gerar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { window.open(`/api/admin/rh/epi/fichas/${d.ficha_id}/pdf`, "_blank"); (window as any).__epiCarregadoDe = null; carregarEpi(colabId); }
+      else { document.getElementById("epiMsg")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao gerar"}</div>`; }
+    }
+    async function anexarAssinadoEpi(fichaId: string, input: HTMLInputElement) {
+      const file = input.files?.[0]; if (!file) return;
+      const fd = new FormData(); fd.append("arquivo", file);
+      const res = await fetch(`/api/admin/rh/epi/fichas/${fichaId}/assinado`, { method: "POST", body: fd });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { (window as any).__epiCarregadoDe = null; carregarEpi((window as any).__fichaColabId); }
+      else alert("Erro ao anexar: " + (d.error || res.status));
+    }
+    (window as any).carregarEpi = carregarEpi;
+    (window as any).salvarEpi = salvarEpi;
+    (window as any).gerarFichaEpi = gerarFichaEpi;
+    (window as any).anexarAssinadoEpi = anexarAssinadoEpi;
 
     // ── Acesso ao portal (vínculo RH ↔ Membros) ──
     function renderAcesso(colabId: string, nome: string, membro: any, email: string) {
