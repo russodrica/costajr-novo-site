@@ -971,6 +971,23 @@ de range (Ferias + Cronograma) — ambas tratadas como parcelas; se a Adriana
 quiser so uma, ajustar. Re-rodar: o script tem os dados embutidos (snapshot
 14/06); p/ atualizar, re-extrair do Monday e atualizar o array MONDAY.
 
+## Atualizacao 14/06/2026 (parte 6) — 'Congelado' virou STATUS (decisao da Adriana)
+
+A Adriana preferiu o congelado DIRETO no dropdown de Status (em vez do campo
+separado status_juridico). **Migration 056 RODADA:** atualizou a CHECK constraint
+rh_colaboradores_status_check p/ aceitar 'congelado' (ativo|ferias|afastado|
+congelado|desligado). stColab + badgeColab ganharam 'congelado' (badge-purple,
+rotulo "🔒 Congelado"). Campo 'Status juridico' REMOVIDO do form; banner de
+congelado agora liga no select de Status (toggleColabCongelado le #colabStatus).
+Validacao de status nas APIs (POST index + PATCH [id]) inclui congelado. A pausa
+de alertas migrou de status_juridico==='congelado' p/ **status==='congelado'** em:
+ferias (lembretes + auto-avanco + seed), rhVencimentos, epi, avaliacoes. LICAO:
+o status tinha CHECK constraint no banco — adicionar valor de enum exige ALTER da
+constraint, nao so a validacao no codigo (erro rh_colaboradores_status_check).
+A coluna status_juridico (migration 055) ficou VESTIGIAL (sem uso na UI/APIs);
+nao foi dropada (inofensiva). Congelado conta como ativo (status!=desligado) —
+aparece nas listas, so nao recebe alertas.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
