@@ -60,9 +60,12 @@ const blocosDef = [
   { key: "pj_inativo", titulo: "PJ — Inativos (desligados)", regime: "pj", ativo: false, aberto: false },
   { key: "outros_inativo", titulo: "Outros — Inativos (desligados)", regime: "outros", ativo: false, aberto: false },
 ];
-const blocos = blocosDef
-  .map(b => ({ ...b, itens: colaboradores.filter(c => !ehDiarista(c) && (c.status !== "desligado") === b.ativo && regimeBloco(c) === b.regime) }))
-  .filter(b => b.itens.length);
+const blocosTodos = blocosDef
+  .map(b => ({ ...b, itens: colaboradores.filter(c => !ehDiarista(c) && (c.status !== "desligado") === b.ativo && regimeBloco(c) === b.regime) }));
+const blocosAtivos = blocosTodos.filter(b => b.ativo && b.itens.length);
+// inativos vão para aba própria e abrem expandidos lá
+const blocosInativos = blocosTodos.filter(b => !b.ativo && b.itens.length).map(b => ({ ...b, aberto: true }));
+const totalInativos = colaboradores.filter(c => c.status === "desligado" && !ehDiarista(c)).length;
 
 // ── Labels e badges ──
 const stColab: Record<string, string> = { ativo: "Ativo", ferias: "Férias", afastado: "Afastado", desligado: "Desligado" };
@@ -137,8 +140,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
   <div class="pills" style="margin-bottom:16px">
     <button class="pill" data-aba="alertas" onclick="mostrarAba('alertas')">🚨 Alertas <span class="count" id="alertasBadge" style="background:#FEE2E2;color:#B91C1C"></span></button>
     <button class="pill" data-aba="ferias" onclick="mostrarAba('ferias')">🏖 Férias <span class="count" id="feriasBadge" style="background:#FEE2E2;color:#B91C1C"></span></button>
-    <button class="pill active" data-aba="colaboradores" onclick="mostrarAba('colaboradores')">Colaboradores <span class="count">{colaboradores.length}</span></button>
+    <button class="pill active" data-aba="colaboradores" onclick="mostrarAba('colaboradores')">Colaboradores <span class="count">{totalAtivos}</span></button>
     <button class="pill" data-aba="diaristas" onclick="mostrarAba('diaristas')">👷 Diaristas <span class="count">{diaristas.length}</span></button>
+    <button class="pill" data-aba="inativos" onclick="mostrarAba('inativos')">Inativos <span class="count">{totalInativos}</span></button>
     <button class="pill" data-aba="ausencias" onclick="mostrarAba('ausencias')">Ausências <span class="count">{ausencias.length}</span></button>
     <button class="pill" data-aba="documentos" onclick="mostrarAba('documentos')">Documentos <span class="count">{documentos.length}</span></button>
     <button class="pill" data-aba="admissoes" onclick="mostrarAba('admissoes')">Admissões <span class="count">{admissoesAbertas}</span></button>
@@ -155,7 +159,6 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <option value="ativo">Ativos</option>
         <option value="ferias">Em férias</option>
         <option value="afastado">Afastados</option>
-        <option value="desligado">Desligados</option>
       </select>
       <button class="btn btn-outline" id="btnExportColab" onclick="exportarColabs()" title="Baixar a lista em CSV">⬇️ Exportar</button>
       <button class="btn btn-outline" onclick="document.getElementById('modalImportColab').classList.add('open')" title="Cadastrar/atualizar vários de uma vez por planilha">⬆️ Importar</button>
@@ -163,7 +166,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     </div>
     {!colaboradores.length && <div class="card"><div class="empty-state"><strong>Nenhum colaborador cadastrado</strong>Clique em “+ Novo colaborador” para começar.</div></div>}
 
-    {blocos.map(b => (
+    {blocosAtivos.map(b => (
       <div class="card bloco-colab" data-bloco={b.key} style="margin-bottom:14px;padding:0;overflow:hidden">
         <button type="button" class="bloco-head" onclick={`toggleBloco('${b.key}')`} aria-expanded={String(b.aberto)}>
           <span class="bloco-seta" data-aberto={String(b.aberto)}>▸</span>
@@ -172,14 +175,14 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         </button>
         <div class="bloco-body" id={`bloco-body-${b.key}`} style={b.aberto ? "" : "display:none"}>
           <div class="table-wrap">
-            <table>
-              <thead><tr><th>Nome</th><th>Cargo</th><th>Setor</th><th>Admissão</th><th>Status</th><th>Ações</th></tr></thead>
+            <table class="tabela-colab">
+              <thead><tr><th>Nome</th><th>Cargo</th><th class="col-salario">Salário</th><th>Admissão</th><th>Status</th><th>Ações</th></tr></thead>
               <tbody>
                 {b.itens.map(c => (
                   <tr class="colab-row" data-status={c.status} data-busca={buscaColab(c)}>
-                    <td><strong>{c.nome}</strong>{c.email && <div class="sub-info">{c.email}</div>}</td>
-                    <td>{c.cargo || "—"}{c.salario != null && <div class="sub-info">{fmtBRL(c.salario)}</div>}</td>
-                    <td>{c.setor || "—"}</td>
+                    <td><strong>{c.nome}</strong></td>
+                    <td>{c.cargo || "—"}</td>
+                    <td class="col-salario">{fmtBRL(c.salario)}</td>
                     <td>{fmtData(c.data_admissao)}</td>
                     <td><span class={`badge ${badgeColab[c.status] || "badge-gray"}`}>{stColab[c.status] || c.status}</span></td>
                     <td>
@@ -191,6 +194,43 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
                   </tr>
                 ))}
                 <tr class="bloco-sem-res" style="display:none"><td colspan="6" style="text-align:center;color:#999;padding:16px">Nenhum corresponde à busca neste bloco</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    ))}
+  </section>
+
+  <!-- ════════ ABA INATIVOS (desligados) ════════ -->
+  <section class="tab-section" id="aba-inativos" style="display:none">
+    <div class="toolbar">
+      <span class="toolbar-title">Inativos (desligados)</span>
+      <input class="search-input" id="buscaInativos" placeholder="Buscar nome, cargo, CPF…" oninput="filtrarInativos()" />
+    </div>
+    {!blocosInativos.length && <div class="card"><div class="empty-state"><strong>Nenhum colaborador inativo</strong>Os desligados aparecem aqui.</div></div>}
+    {blocosInativos.map(b => (
+      <div class="card bloco-colab" data-bloco={b.key} style="margin-bottom:14px;padding:0;overflow:hidden">
+        <button type="button" class="bloco-head" onclick={`toggleBloco('${b.key}')`} aria-expanded={String(b.aberto)}>
+          <span class="bloco-seta" data-aberto={String(b.aberto)}>▸</span>
+          <span class="bloco-titulo">{b.titulo}</span>
+          <span class="bloco-count">{b.itens.length}</span>
+        </button>
+        <div class="bloco-body" id={`bloco-body-${b.key}`} style={b.aberto ? "" : "display:none"}>
+          <div class="table-wrap">
+            <table class="tabela-colab">
+              <thead><tr><th>Nome</th><th>Cargo</th><th>Admissão</th><th>Desligamento</th><th>Ações</th></tr></thead>
+              <tbody>
+                {b.itens.map(c => (
+                  <tr class="colab-row" data-status={c.status} data-busca={buscaColab(c)}>
+                    <td><strong>{c.nome}</strong></td>
+                    <td>{c.cargo || "—"}</td>
+                    <td>{fmtData(c.data_admissao)}</td>
+                    <td>{fmtData(c.data_desligamento)}</td>
+                    <td><button class="btn btn-secondary btn-sm" onclick={`editarColab('${c.id}')`}>Abrir ficha</button></td>
+                  </tr>
+                ))}
+                <tr class="bloco-sem-res" style="display:none"><td colspan="5" style="text-align:center;color:#999;padding:16px">Nenhum corresponde à busca neste bloco</td></tr>
               </tbody>
             </table>
           </div>
@@ -946,15 +986,13 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     }
     (window as any).toggleBloco = toggleBloco;
 
-    function filtrarColabs() {
-      const busca = ((document.getElementById("buscaColab") as any)?.value || "").toLowerCase().trim();
-      const status = (document.getElementById("filtroStatusColab") as any)?.value || "todos";
-      const buscando = !!busca || status !== "todos";
-      document.querySelectorAll(".bloco-colab").forEach((bloco) => {
+    function aplicarFiltroBlocos(rootSel: string, busca: string, status: string) {
+      const buscando = !!busca || (status && status !== "todos");
+      document.querySelectorAll(`${rootSel} .bloco-colab`).forEach((bloco) => {
         let visiveis = 0;
         bloco.querySelectorAll("tr.colab-row").forEach((tr) => {
           const el = tr as any;
-          const okStatus = status === "todos" || el.dataset.status === status;
+          const okStatus = !status || status === "todos" || el.dataset.status === status;
           const okBusca = !busca || (el.dataset.busca || "").includes(busca);
           const mostra = okStatus && okBusca;
           el.style.display = mostra ? "" : "none";
@@ -962,7 +1000,6 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         });
         const semRes = bloco.querySelector(".bloco-sem-res") as any;
         if (semRes) semRes.style.display = (buscando && visiveis === 0) ? "" : "none";
-        // ao buscar/filtrar, abre os blocos que têm resultado e esconde os vazios
         const body = bloco.querySelector(".bloco-body") as any;
         const seta = bloco.querySelector(".bloco-seta") as any;
         if (buscando) {
@@ -973,6 +1010,16 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         }
       });
     }
+    function filtrarColabs() {
+      const busca = ((document.getElementById("buscaColab") as any)?.value || "").toLowerCase().trim();
+      const status = (document.getElementById("filtroStatusColab") as any)?.value || "todos";
+      aplicarFiltroBlocos("#aba-colaboradores", busca, status);
+    }
+    function filtrarInativos() {
+      const busca = ((document.getElementById("buscaInativos") as any)?.value || "").toLowerCase().trim();
+      aplicarFiltroBlocos("#aba-inativos", busca, "todos");
+    }
+    (window as any).filtrarInativos = filtrarInativos;
 
     // ── Colaboradores: novo / editar / desligar ──
     const camposColab = ["nome","email","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
@@ -1454,12 +1501,19 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
   <style>
     .sub-info { font-size: 0.75rem; color: #9CA3AF; margin-top: 2px; }
-    .bloco-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 13px 18px; background: #FAFBFC; border: 0; border-bottom: 1px solid var(--border, #E5E7EB); cursor: pointer; font-family: inherit; text-align: left; }
+    .bloco-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 15px 18px; background: #FAFBFC; border: 0; border-bottom: 1px solid var(--border, #E5E7EB); cursor: pointer; font-family: inherit; text-align: left; }
     .bloco-head:hover { background: #F0F1F5; }
-    .bloco-seta { font-size: 14px; color: #6B7280; transition: transform .15s; }
+    .bloco-seta { font-size: 15px; color: #6B7280; transition: transform .15s; }
     .bloco-seta[data-aberto="true"] { transform: rotate(90deg); }
-    .bloco-titulo { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 14px; color: var(--ink, #2D2F36); flex: 1; }
-    .bloco-count { background: var(--brand, #C41E3A); color: #fff; border-radius: 99px; font-size: 12px; font-weight: 700; padding: 2px 10px; min-width: 26px; text-align: center; }
+    .bloco-titulo { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15.5px; color: var(--ink, #2D2F36); flex: 1; }
+    .bloco-count { background: var(--brand, #C41E3A); color: #fff; border-radius: 99px; font-size: 13px; font-weight: 700; padding: 3px 11px; min-width: 28px; text-align: center; }
+    /* Tabelas de pessoas: fontes maiores e mais respiro (pedido da diagramação) */
+    .tabela-colab { font-size: 15px; }
+    .tabela-colab th { font-size: 12.5px; letter-spacing: .02em; text-transform: uppercase; color: #6B7280; }
+    .tabela-colab td { padding-top: 14px; padding-bottom: 14px; }
+    .tabela-colab td strong { font-size: 15.5px; font-weight: 700; }
+    .tabela-colab .col-salario { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #374151; white-space: nowrap; }
+    .tabela-colab thead .col-salario { text-align: right; }
     .validade-vencida { color: #B91C1C; font-weight: 700; }
     .validade-proxima { color: #B45309; font-weight: 700; }
     .lista-aniversariantes { list-style: none; margin: 0; padding: 0; }
