@@ -60,13 +60,22 @@ export const GET: APIRoute = async ({ request, url }) => {
       });
     }
 
+    const STATUS_FORA = ["extraviado", "roubado", "baixado", "descartado"];
     const db = supabaseAdmin();
     let q = db.from("ativos").select("*").order("categoria").order("descricao").limit(5000);
     const categoria = url.searchParams.get("categoria");
     const status = url.searchParams.get("status");
     const busca = url.searchParams.get("busca");
-    if (categoria && categoria !== "todas") q = q.eq("categoria", categoria);
-    if (status && status !== "todos") q = q.eq("status", status);
+    // Espelha a tela: "fora_uso" = só itens fora de circulação; demais = só em circulação
+    // (salvo quando um status específico é pedido).
+    if (categoria === "fora_uso") {
+      if (status && status !== "todos") q = q.eq("status", status);
+      else q = q.in("status", STATUS_FORA);
+    } else {
+      if (categoria && categoria !== "todas") q = q.eq("categoria", categoria);
+      if (status && status !== "todos") q = q.eq("status", status);
+      else q = q.not("status", "in", `(${STATUS_FORA.join(",")})`);
+    }
     if (busca) {
       const b = busca.replace(/[%,()]/g, " ").trim();
       q = q.or(`descricao.ilike.%${b}%,marca.ilike.%${b}%,modelo.ilike.%${b}%,numero_serie.ilike.%${b}%,numero_patrimonial.ilike.%${b}%,codigo_interno.ilike.%${b}%,alocado_para_nome.ilike.%${b}%`);
