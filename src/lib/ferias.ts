@@ -77,7 +77,7 @@ export function resumoPeriodo(dias_direito: number, parcelas: Parcela[], dias_ab
 // ════════════════════════════════════════════════════════════════════════
 export async function garantirPeriodoAtual(db: any): Promise<{ criados: number }> {
   const { data: colabs } = await db.from("rh_colaboradores")
-    .select("id, data_admissao, regime, status").in("regime", ["clt", "pj"]).neq("status", "desligado").limit(3000);
+    .select("id, data_admissao, regime, status, status_juridico").in("regime", ["clt", "pj"]).neq("status", "desligado").neq("status_juridico", "congelado").limit(3000);
   const { data: existentes } = await db.from("rh_ferias_periodos").select("colaborador_id, inicio_aquisitivo").limit(8000);
   const jaTem = new Set((existentes || []).map((e: any) => `${e.colaborador_id}|${e.inicio_aquisitivo}`));
   const novos: any[] = [];
@@ -109,13 +109,14 @@ export async function enviarLembretesFerias(db: any, opts: { dry?: boolean; para
   // períodos abertos de colaboradores CLT ativos
   const { data: periodos } = await db
     .from("rh_ferias_periodos")
-    .select("*, rh_colaboradores(nome, regime, status)")
+    .select("*, rh_colaboradores(nome, regime, status, status_juridico)")
     .neq("status", "concluido")
     .limit(2000);
 
   const lista = (periodos || []).filter((p: any) => {
     const c = p.rh_colaboradores;
-    return c && (c.regime === "clt" || c.regime === "pj") && c.status !== "desligado";
+    // status jurídico "congelado" pausa os lembretes de férias
+    return c && (c.regime === "clt" || c.regime === "pj") && c.status !== "desligado" && c.status_juridico !== "congelado";
   });
   if (!lista.length) return { eventos: 0, enviados: 0 };
 

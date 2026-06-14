@@ -504,6 +504,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       <button type="button" aria-label="Fechar" onclick="fecharModal('modalColab')" style="position:absolute;top:14px;right:16px;border:none;background:none;font-size:1.7rem;line-height:1;cursor:pointer;color:#9CA3AF;padding:0;width:32px;height:32px">×</button>
       <div class="modal-title" id="tituloModalColab" style="padding-right:32px">Novo colaborador</div>
       <div id="msgColab"></div>
+      <div id="colabCongeladoBanner" style="display:none;background:#EEF2FF;border:1px solid #C7D2FE;color:#3730A3;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px">🔒 <strong>Status jurídico: Congelado.</strong> A programação de férias e os alertas automáticos estão <strong>pausados</strong> para este colaborador.</div>
       <div class="ficha-tabs" id="fichaTabs" style="display:none">
         <button type="button" class="ficha-tab active" data-ft="dados" onclick="fichaTab('dados')">📋 Dados gerais</button>
         <button type="button" class="ficha-tab" data-ft="docs" onclick="fichaTab('docs')">📎 Documentos <span id="fichaTabDocsCount" style="opacity:.75"></span></button>
@@ -540,6 +541,16 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
             </select>
           </div>
           <div class="form-group"><label>Salário (R$)</label><input name="salario" type="number" step="0.01" min="0" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Status jurídico <span style="font-weight:400;color:#9CA3AF;font-size:.8rem">(congelado pausa férias e alertas)</span></label>
+            <select name="status_juridico" id="colabStatusJuridico" onchange="toggleColabCongelado()">
+              <option value="normal">Normal</option>
+              <option value="em_processo">Em processo (litígio em andamento)</option>
+              <option value="congelado">🔒 Congelado — pausar alertas</option>
+            </select>
+          </div>
+          <div class="form-group"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Admissão <span style="color:#C41E3A">*</span></label><input name="data_admissao" type="date" /></div>
@@ -1190,7 +1201,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).filtrarInativos = filtrarInativos;
 
     // ── Colaboradores: novo / editar / desligar ──
-    const camposColab = ["nome","email","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
+    const camposColab = ["nome","email","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","status_juridico","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
 
     function fichaTab(qual: string) {
       const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi", pendencias: "fichaPanePendencias" };
@@ -1209,10 +1220,17 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       (document.getElementById("msgColab") as any).innerHTML = "";
       (document.getElementById("fichaTabs") as any).style.display = "none"; // sem aba de docs ao criar
       (document.getElementById("fichaAcessoWrap") as any).style.display = "none";
+      toggleColabCongelado();
       fichaTab("dados");
       document.getElementById("modalColab")?.classList.add("open");
     }
 
+    function toggleColabCongelado() {
+      const sel = document.getElementById("colabStatusJuridico") as HTMLSelectElement | null;
+      const b = document.getElementById("colabCongeladoBanner");
+      if (b) b.style.display = (sel && sel.value === "congelado") ? "" : "none";
+    }
+    (window as any).toggleColabCongelado = toggleColabCongelado;
     function editarColab(id: string) {
       const c = colabPorId[id];
       if (!c) { alert("Colaborador não encontrado nos dados carregados. Recarregue a página."); return; }
@@ -1222,6 +1240,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       for (const campo of camposColab) {
         if (form.elements[campo]) form.elements[campo].value = c[campo] ?? "";
       }
+      if (form.elements["status_juridico"]) form.elements["status_juridico"].value = c.status_juridico || "normal";
+      toggleColabCongelado();
       (document.getElementById("tituloModalColab") as any).textContent = "Editar colaborador";
       (document.getElementById("msgColab") as any).innerHTML = "";
       (document.getElementById("fichaTabs") as any).style.display = "flex";

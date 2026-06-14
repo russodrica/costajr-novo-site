@@ -935,6 +935,22 @@ modalFeriasHist (so leitura). E2E: historico inclui concluido / painel principal
   topo da aba (parcial sem EPI no load da ficha, total ao abrir a aba). Verificado
   ao vivo no Crispim (1 campo + 1 EPI vencido = badge 2).
 
+## Atualizacao 14/06/2026 (parte 4) — Status juridico do colaborador (congelado pausa alertas)
+
+**Migration 055 RODADA; commit a-seguir:** rh_colaboradores.status_juridico
+(normal | em_processo | congelado, default normal). Campo no form da ficha
+(Dados gerais) + banner azul no topo do modal quando congelado. APIs de
+colaborador (POST index + PATCH [id]) e camposColab/editarColab aceitam o campo.
+Quando **congelado** (litigio/acordo), os alertas automaticos e a programacao de
+ferias ficam PAUSADOS — exclusao aplicada em: ferias (enviarLembretesFerias +
+garantirPeriodoAtual + seed POST), vencimento de docs (rhVencimentos
+montarVencimentos), EPI (enviarAlertasEpi), avaliacoes (enviarLembreteAvaliacoes).
+Criterio: status_juridico != 'congelado' (alem dos ja existentes status!=desligado
+e regime!=diarista). E2E: PATCH congelado -> excluido da elegibilidade de ferias;
+reset normal -> reaparece. UI verificada ao vivo (banner + 3 opcoes). NOTA: ha um
+flag `trabalhista` separado em portal_profiles (gate de acesso ao portal/JunIA) —
+nao confundir com status_juridico (RH/alertas).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.

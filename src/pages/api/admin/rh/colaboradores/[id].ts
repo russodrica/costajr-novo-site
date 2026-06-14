@@ -47,7 +47,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     const editaveis = [
       "profile_id", "nome", "email", "telefone", "telefone_pessoal", "cpf", "rg", "data_nascimento", "foto_url",
-      "cargo", "setor", "regime", "salario", "data_admissao", "data_desligamento", "status",
+      "cargo", "setor", "regime", "salario", "data_admissao", "data_desligamento", "status", "status_juridico",
       "endereco", "cidade", "uf", "contato_emergencia_nome", "contato_emergencia_telefone",
       "pix", "banco", "agencia", "conta", "observacoes",
     ];
