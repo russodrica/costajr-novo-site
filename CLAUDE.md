@@ -1018,6 +1018,35 @@ DA SAGA (nao refazer): 055 criou campo separado -> 056 juntou no status -> 057
 separou de novo -> 058 juntou DE VEZ (estado atual). Resumo p/ futuras sessoes:
 **congelado e um valor do campo status; nao existe campo status_juridico na UI.**
 
+## Atualizacao 14/06/2026 (parte 9) — Vinculo RH como base das pessoas
+
+**DECISAO/INVARIANTE (Adriana): o RH (`rh_colaboradores`) e a BASE das pessoas; e
+ele que "libera" para o resto do portal.** Login do portal = `portal_profiles`, ligado
+ao RH por `rh_colaboradores.profile_id` (-> portal_profiles.id). O endpoint
+`/api/admin/rh/colaboradores/[id]/acesso` cria/vincula o login a partir do colaborador
+do RH (nao criar login solto).
+
+**Equipamentos apontam para a PESSOA do RH:** `ativos.alocado_para_id =
+rh_colaboradores.id` (NAO portal_profiles.id). `/api/portal/meus-equipamentos` resolve
+login -> rh (profile_id) -> equipamentos alocados ao rh.id (busca por
+`in (rh.id, login)` por retrocompat). A entrega (`/admin/ativos/[id]` + movimentar
+"entregar") escolhe da LISTA DO RH (pessoas ativas); o termo de responsabilidade usa o
+login (`ativos_termos.colaborador_id` -> portal_profiles, FK) — entrega de quem nao tem
+login gera termo sem assinante digital. `desligamentos/posse|finalizar` ja cruzavam por
+rh.id OU profile_id OU nome (continuam compativeis).
+
+**Migracao pontual rodada (idempotente, script `scripts/_tmp_vinculos.mjs`, gitignorado):**
+estado anterior era CAOTICO — 33 equipamentos alocados SO por nome (0 com id) => nada
+aparecia em "Meus Equipamentos"; e so 1 de 97 do RH tinha login (12 dos 13 membros
+soltos). Aplicado: 8 membros vinculados ao RH (email/nome; PULADO o falso-positivo do
+inbox generico `contato@costajr.com.br` que casava Leonardo<->"Adriana Teste"); 28
+equipamentos re-apontados para a pessoa do RH (nome limpo; apelido Gabi->Gabrielly;
+nota de obra movida p/ observacoes). **12 equipamentos estao com pessoas DESLIGADAS
+(nunca devolvidos — recuperar).** 5 nomes ambiguos ficaram so com o texto p/ decisao da
+Adriana: "Jessica" (2 candidatas), "Junior" x2, "RH" (setor, nao pessoa), "Lidia
+Eustaquia de Souza" (nao consta no RH). Modulos que ja eram RH-keyed (ferias/EPI/
+avaliacoes/documentos) nao precisaram mudar. Commit 6a899e7.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
