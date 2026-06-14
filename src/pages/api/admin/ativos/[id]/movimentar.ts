@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { enviarEmailSimples } from "../../../../../lib/mailer";
+import { enviarTelegram, escTg } from "../../../../../lib/telegram";
 
 export const prerender = false;
 
@@ -71,6 +72,10 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
             <p style="margin:0;color:#9CA3AF;font-size:12px">Por ${admin.email} em ${new Date().toLocaleString("pt-BR")}.</p>
           </div>`,
         }).catch(() => { /* e-mail é best-effort */ });
+        // espelha o aviso no grupo do Telegram (best-effort)
+        enviarTelegram(
+          `🏷️ <b>Ativo — mudança de status</b>\n${escTg(ident)}\n${escTg(lAntes)} → <b>${escTg(lDepois)}</b>\n<i>${escTg(String(mov.descricao || ""))}</i>\nPor ${escTg(admin.email)}`
+        ).catch(() => { /* best-effort */ });
       }
       return mov;
     }
