@@ -25,15 +25,19 @@ export const GET: APIRoute = async ({ request }) => {
     const hoje = new Date().toISOString().slice(0, 10);
     const limite = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10); // janela de 60 dias
 
-    const [{ data: docs }, { data: colabs }, { data: docsAso }, { data: ausencias }] = await Promise.all([
-      db.from("rh_documentos").select("id, titulo, tipo, validade, colaborador_id, rh_colaboradores(nome)")
+    const [{ data: docs }, { data: colabsRaw }, { data: docsAso }, { data: ausRaw }] = await Promise.all([
+      db.from("rh_documentos").select("id, titulo, tipo, validade, colaborador_id, rh_colaboradores(nome, status, regime)")
         .not("validade", "is", null).lte("validade", limite).order("validade", { ascending: true }).limit(2000),
-      db.from("rh_colaboradores").select("id, nome, cargo, setor").eq("status", "ativo"),
+      // base de colaboradores: TODOS menos desligados; regime entra p/ excluir diaristas
+      db.from("rh_colaboradores").select("id, nome, cargo, setor, status, regime").neq("status", "desligado"),
       db.from("rh_documentos").select("colaborador_id").eq("tipo", "aso"),
-      db.from("rh_ausencias").select("id, tipo, data_inicio, data_fim, status, rh_colaboradores(nome)")
+      db.from("rh_ausencias").select("id, tipo, data_inicio, data_fim, status, rh_colaboradores(nome, status, regime)")
         .lte("data_inicio", new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10))
         .gte("data_fim", hoje).in("status", ["aprovada", "solicitada"]).order("data_inicio").limit(200),
     ]);
+
+    // Não considera DESLIGADOS (inativos) nem DIARISTAS (esporádicos) em lembretes/alertas.
+    const elegivel = (c: any) => c && c.status !== "desligado" && c.regime !== "diarista";
 
     const mapDoc = (d: any) => ({
       id: d.id, titulo: d.titulo, tipo: d.tipo, validade: d.validade,
@@ -41,13 +45,15 @@ export const GET: APIRoute = async ({ request }) => {
       colaborador: d.rh_colaboradores?.nome || "—", colaborador_id: d.colaborador_id,
     });
 
-    const todos = (docs || []).map(mapDoc);
+    const todos = (docs || []).filter((d: any) => elegivel(d.rh_colaboradores)).map(mapDoc);
     const vencidos = todos.filter((d) => d.dias < 0);
     const vencendo = todos.filter((d) => d.dias >= 0); // 0..60 dias
 
-    // colaboradores ativos sem ASO cadastrado
+    // colaboradores sem ASO (exceto desligados e diaristas; mantém férias/afastado)
+    const colabs = (colabsRaw || []).filter((c: any) => c.regime !== "diarista");
+    const ausencias = (ausRaw || []).filter((a: any) => elegivel(a.rh_colaboradores));
     const comAso = new Set((docsAso || []).map((d: any) => d.colaborador_id));
-    const semAso = (colabs || []).filter((c) => !comAso.has(c.id)).map((c) => ({ id: c.id, nome: c.nome, cargo: c.cargo, setor: c.setor }));
+    const semAso = colabs.filter((c) => !comAso.has(c.id)).map((c) => ({ id: c.id, nome: c.nome, cargo: c.cargo, setor: c.setor }));
 
     return jsonOk({
       resumo: {

@@ -19,12 +19,15 @@ export const GET: APIRoute = async ({ request }) => {
     const hoje = new Date().toISOString().slice(0, 10);
 
     const { data, error } = await db.from("rh_documentos")
-      .select("titulo, tipo, validade, rh_colaboradores(nome, cargo, setor)")
+      .select("titulo, tipo, validade, rh_colaboradores(nome, cargo, setor, status, regime)")
       .not("validade", "is", null).lte("validade", limite).order("validade", { ascending: true }).limit(5000);
     if (error) return new Response(error.message, { status: 500 });
 
     const cols = ["Colaborador", "Cargo", "Setor", "Documento", "Tipo", "Validade", "Situação"];
-    const linhas = (data || []).map((d: any) => {
+    // Não inclui DESLIGADOS (inativos) nem DIARISTAS (esporádicos) no relatório de vencimentos.
+    const linhas = (data || [])
+      .filter((d: any) => { const c = d.rh_colaboradores; return c && c.status !== "desligado" && c.regime !== "diarista"; })
+      .map((d: any) => {
       const venc = d.validade < hoje;
       return [
         d.rh_colaboradores?.nome, d.rh_colaboradores?.cargo, d.rh_colaboradores?.setor,

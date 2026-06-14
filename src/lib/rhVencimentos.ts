@@ -24,13 +24,17 @@ type Doc = { id: string; titulo: string; tipo: string; validade: string; dias: n
 async function coletar(db: any): Promise<Doc[]> {
   const limite = new Date(Date.now() + 32 * 86400000).toISOString().slice(0, 10);
   const { data } = await db.from("rh_documentos")
-    .select("id, titulo, tipo, validade, rh_colaboradores(nome)")
+    .select("id, titulo, tipo, validade, rh_colaboradores(nome, status, regime)")
     .not("validade", "is", null).lte("validade", limite)
     .order("validade", { ascending: true }).limit(3000);
-  return (data || []).map((d: any) => ({
-    id: d.id, titulo: d.titulo, tipo: d.tipo, validade: d.validade,
-    dias: diasAte(d.validade), colaborador: d.rh_colaboradores?.nome || "—",
-  }));
+  // Não alerta documentos de DESLIGADOS (inativos) nem de DIARISTAS (esporádicos).
+  // Critério: status != 'desligado' (mantém férias/afastado) E regime != 'diarista'.
+  return (data || [])
+    .filter((d: any) => { const c = d.rh_colaboradores; return c && c.status !== "desligado" && c.regime !== "diarista"; })
+    .map((d: any) => ({
+      id: d.id, titulo: d.titulo, tipo: d.tipo, validade: d.validade,
+      dias: diasAte(d.validade), colaborador: d.rh_colaboradores?.nome || "—",
+    }));
 }
 
 function tabela(titulo: string, lista: Doc[], cor: string): string {

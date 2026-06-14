@@ -44,7 +44,7 @@ const emFeriasHoje = new Set(
     .map(a => a.colaborador_id)
 ).size;
 const aniversariantes = colaboradores
-  .filter(c => c.status !== "desligado" && c.data_nascimento && Number(String(c.data_nascimento).slice(5, 7)) === mesAtual)
+  .filter(c => c.status !== "desligado" && !ehDiarista(c) && c.data_nascimento && Number(String(c.data_nascimento).slice(5, 7)) === mesAtual)
   .sort((a, b) => Number(String(a.data_nascimento).slice(8, 10)) - Number(String(b.data_nascimento).slice(8, 10)));
 const docsVencendo = documentos.filter(d => d.validade && d.validade >= hoje && d.validade <= em30).length;
 
