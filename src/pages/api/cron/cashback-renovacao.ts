@@ -7,6 +7,7 @@ import { enviarLembretesFerias, garantirPeriodoAtual } from "~/lib/ferias";
 import { expurgarLixeira } from "~/lib/auditoria";
 import { enviarAlertasEpi } from "~/lib/epi";
 import { enviarLembreteAvaliacoes } from "~/lib/avaliacoes";
+import { enviarLembreteClima } from "~/lib/clima";
 
 export const prerender = false;
 
@@ -128,6 +129,7 @@ export const GET: APIRoute = async ({ request, url }) => {
   // ── Piggyback: aniversariantes do mês + lembrete de avaliação — só no dia 1 ──
   let aniversariantes: any = { total: 0, enviados: 0 };
   let avaliacoes: any = { disparou: false };
+  let clima: any = { enviados: 0 };
   if (new Date().getUTCDate() === 1) {
     try {
       aniversariantes = await enviarAniversariantesDoMes(db);
@@ -139,9 +141,14 @@ export const GET: APIRoute = async ({ request, url }) => {
     } catch (e: any) {
       console.warn("[cron][avaliacoes] falhou:", e?.message);
     }
+    try {
+      clima = await enviarLembreteClima(db); // só dispara em Mar/Jun/Set/Dez (1º dia)
+    } catch (e: any) {
+      console.warn("[cron][clima] falhou:", e?.message);
+    }
   }
 
-  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira, aniversariantes, epi, avaliacoes }), {
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira, aniversariantes, epi, avaliacoes, clima }), {
     headers: { "content-type": "application/json" },
   });
 };

@@ -40,6 +40,15 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       box.innerHTML = d.pesquisas.map(p => {
         const link = `${location.origin}/clima/${p.token}`;
         const e = p.enps;
+        // ── Indicador resumido (pontos relevantes) ──
+        const claEnps = e.score>=50?["Excelente","#16A34A"]:e.score>=10?["Bom","#65A30D"]:e.score>=0?["Razoável","#D97706"]:["Crítico","#B91C1C"];
+        const dims = DIMS.map(dim=>({t:dim.t, v:p.dimMed[dim.k]||0})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+        const resumo = e.total ? `<div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px">
+          <span>📊 Clima geral: <strong style="color:${claEnps[1]}">${claEnps[0]}</strong> (eNPS ${e.score})</span>
+          ${dims.length?`<span>💪 Ponto forte: <strong>${esc(dims[0].t)}</strong> (${dims[0].v})</span>`:""}
+          ${dims.length>1?`<span>🎯 A melhorar: <strong>${esc(dims[dims.length-1].t)}</strong> (${dims[dims.length-1].v})</span>`:""}
+          <span>🙋 Participação: <strong>${e.total}</strong> resposta(s)</span>
+        </div>` : "";
         return `<div class="card" style="margin-bottom:14px">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
             <div><strong style="font-size:15px">${esc(p.titulo)}</strong> ${p.periodo?`<span style="color:#9CA3AF">· ${esc(p.periodo)}</span>`:""}
@@ -54,6 +63,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
           </div>
           ${e.total?`<div style="display:flex;gap:14px;margin-top:10px;font-size:12.5px;color:#6B7280">
             <span>👍 Promotores: <strong>${e.promotores}</strong></span><span>😐 Passivos: <strong>${e.passivos}</strong></span><span>👎 Detratores: <strong>${e.detratores}</strong></span></div>`:""}
+          ${resumo}
           <div style="margin-top:10px">${DIMS.map(dim=>{ const v=p.dimMed[dim.k]||0; return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><span style="flex:1;font-size:12.5px">${esc(dim.t)}</span><div style="width:120px;background:#F3F4F6;border-radius:6px;height:8px"><div style="width:${v/5*100}%;background:var(--brand);height:8px;border-radius:6px"></div></div><strong style="width:34px;text-align:right;font-size:12.5px">${v||"—"}</strong></div>`; }).join("")}</div>
           ${p.comentarios.length?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:#374151">💬 Comentários (${p.comentarios.length})</summary><div style="margin-top:6px">${p.comentarios.map(c=>`<div style="font-size:13px;color:#5B5F6B;border-left:3px solid #E5E7EB;padding:4px 10px;margin-bottom:5px">${esc(c)}</div>`).join("")}</div></details>`:""}
         </div>`;
