@@ -124,6 +124,15 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
           </div>
           <p style="font-size:11.5px;color:#9CA3AF;margin-top:4px">PDF, DOC/DOCX ou imagem · até 10 MB. Salve o candidato primeiro para anexar.</p>
         </div>
+        <div class="form-group" id="candTesteBox" style="display:none">
+          <label>Teste de perfil (DISC + Eneagrama)</label>
+          <div id="candTesteStatus" style="font-size:13px;color:#6B7280;margin-bottom:6px"></div>
+          <div id="candTesteLink" style="display:none;gap:8px;margin-bottom:6px">
+            <input readonly id="candTesteUrl" style="flex:1;min-width:160px;padding:7px 10px;border:1px solid #E5E7EB;border-radius:8px;font-size:12px;color:#374151" onclick="this.select()" />
+            <button type="button" class="btn btn-outline btn-sm" onclick="copiarTesteLink()">📋 Copiar</button>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="gerarTesteLink()">🧭 Gerar link do teste</button>
+        </div>
         <div class="form-group"><label>Etapa</label>
           <select name="etapa" id="candEtapa"></select>
         </div>
@@ -249,8 +258,8 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
           + `<a href="#" onclick="removerCurriculo();return false" style="color:#B91C1C">Remover</a>`;
       } else { box.innerHTML = "Nenhum arquivo anexado."; }
     }
-    function abrirCandidato() { _candId=""; const f=document.getElementById("formCand"); f.reset(); f.elements.id.value=""; document.getElementById("candCurriculoBox").style.display="none"; document.getElementById("tituloCand").textContent="Novo candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
-    function editarCand(id) { const c=CAND.find(x=>x.id===id); if(!c) return; _candId=id; const f=document.getElementById("formCand"); f.reset(); const campos=["id","nome","email","telefone","vaga_id","origem","etapa","entrevista_comportamental_em","entrevista_tecnica_em","teste_resultado","observacoes","data_nascimento","experiencia","formacao","conhecimento_tecnologico","possui_habilitacao","possui_veiculo","disp_imediata","disp_viagem","disp_presencial","personalidade","restricao","teste_disc","teste_eneagrama","curriculo_url"]; for(const k of campos){ if(!f.elements[k]) continue; const v=c[k]; f.elements[k].value = (v===null||v===undefined)?"":String(v); } document.getElementById("candCurriculoBox").style.display=""; document.getElementById("candCurriculoFile").value=""; renderCurriculoStatus(c); document.getElementById("tituloCand").textContent="Editar candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
+    function abrirCandidato() { _candId=""; const f=document.getElementById("formCand"); f.reset(); f.elements.id.value=""; document.getElementById("candCurriculoBox").style.display="none"; document.getElementById("candTesteBox").style.display="none"; document.getElementById("tituloCand").textContent="Novo candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
+    function editarCand(id) { const c=CAND.find(x=>x.id===id); if(!c) return; _candId=id; const f=document.getElementById("formCand"); f.reset(); const campos=["id","nome","email","telefone","vaga_id","origem","etapa","entrevista_comportamental_em","entrevista_tecnica_em","teste_resultado","observacoes","data_nascimento","experiencia","formacao","conhecimento_tecnologico","possui_habilitacao","possui_veiculo","disp_imediata","disp_viagem","disp_presencial","personalidade","restricao","teste_disc","teste_eneagrama","curriculo_url"]; for(const k of campos){ if(!f.elements[k]) continue; const v=c[k]; f.elements[k].value = (v===null||v===undefined)?"":String(v); } document.getElementById("candCurriculoBox").style.display=""; document.getElementById("candCurriculoFile").value=""; renderCurriculoStatus(c); document.getElementById("candTesteBox").style.display=""; renderTesteStatus(c); document.getElementById("tituloCand").textContent="Editar candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
     async function enviarCurriculo() {
       if(!_candId){ alert("Salve o candidato primeiro para anexar o currículo."); return; }
       const inp=document.getElementById("candCurriculoFile"); const file=inp.files&&inp.files[0];
@@ -271,6 +280,23 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       const res=await fetch(`/api/admin/rh/candidatos/${_candId}/curriculo`,{method:"DELETE",headers:{"content-type":"application/json"}});
       if(res.ok){ const i=CAND.findIndex(x=>x.id===_candId); if(i>=0){ CAND[i].curriculo_path=null; CAND[i].curriculo_nome=null; } renderCurriculoStatus(CAND[i]); }
     }
+    function renderTesteStatus(c) {
+      const box=document.getElementById("candTesteStatus"); const linkBox=document.getElementById("candTesteLink");
+      if(c && c.teste_respondido_em){
+        box.innerHTML=`✅ Respondido · <strong>${esc(c.teste_disc||"—")}</strong> · <strong>${esc(c.teste_eneagrama||"—")}</strong>`;
+      } else if(c && c.teste_token){
+        box.innerHTML="🔗 Link gerado — aguardando o candidato responder.";
+        document.getElementById("candTesteUrl").value=`${location.origin}/teste/${c.teste_token}`; linkBox.style.display="flex";
+      } else { box.innerHTML="Nenhum teste enviado."; linkBox.style.display="none"; }
+    }
+    async function gerarTesteLink() {
+      if(!_candId){ alert("Salve o candidato primeiro."); return; }
+      const res=await fetch(`/api/admin/rh/candidatos/${_candId}/teste-link`,{method:"POST",headers:{"content-type":"application/json"}});
+      const d=await res.json().catch(()=>({}));
+      if(res.ok){ const i=CAND.findIndex(x=>x.id===_candId); if(i>=0) CAND[i].teste_token=d.token; document.getElementById("candTesteUrl").value=`${location.origin}${d.path}`; document.getElementById("candTesteLink").style.display="flex"; document.getElementById("candTesteStatus").innerHTML="🔗 Link gerado — envie ao candidato."; }
+      else alert(d.error||"Erro ao gerar link.");
+    }
+    function copiarTesteLink(){ const u=document.getElementById("candTesteUrl"); navigator.clipboard.writeText(u.value); const b=event.target; const t=b.textContent; b.textContent="Copiado!"; setTimeout(()=>b.textContent=t,1500); }
     document.getElementById("formCand").addEventListener("submit", async e => {
       e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const id=body.id; delete body.id;
       const res=await fetch(id?`/api/admin/rh/candidatos/${id}`:"/api/admin/rh/candidatos",{method:id?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});

@@ -1,0 +1,159 @@
+---
+import { supabaseAdmin } from "~/lib/supabase";
+import { DISC_GRUPOS, ENEAGRAMA_ITENS } from "~/lib/testes";
+
+const token = Astro.params.token!;
+const db = supabaseAdmin();
+const { data: cand } = await db.from("rh_candidatos").select("nome, teste_respondido_em").eq("teste_token", token).maybeSingle();
+const invalido = !cand;
+const jaRespondeu = !!cand?.teste_respondido_em;
+
+const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// DISC: grupos de 4 opções (escolha 1)
+const discHtml = DISC_GRUPOS.map((g, n) =>
+  `<div class="q" data-grupo="${g.id}">
+    <div class="q-num">${n + 1}. Qual palavra <strong>mais</strong> combina com você?</div>
+    <div class="disc-opts">${g.opcoes.map((o) =>
+      `<button type="button" class="disc-opt" data-grupo="${g.id}" data-dim="${o.d}">${esc(o.t)}</button>`).join("")}</div>
+  </div>`).join("");
+
+// Eneagrama: afirmação + escala 1..5
+const escala = [["1", "Discordo"], ["2", ""], ["3", "Neutro"], ["4", ""], ["5", "Concordo"]];
+const eneaHtml = ENEAGRAMA_ITENS.map((it, i) =>
+  `<div class="q" data-idx="${i}">
+    <div class="q-num">${i + 1}. ${esc(it.t)}</div>
+    <div class="enea-scale">${escala.map(([v, lbl]) =>
+      `<button type="button" class="enea-opt" data-idx="${i}" data-v="${v}"><span class="num">${v}</span>${lbl ? `<span class="lbl">${lbl}</span>` : ""}</button>`).join("")}</div>
+  </div>`).join("");
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Teste de Perfil — Costa Júnior</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root{--brand:#C41E3A;--ink:#2D2F36;--mid:#5B5F6B}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Open Sans',sans-serif;background:#F2F4F8;color:var(--ink);padding:18px}
+    .wrap{max-width:680px;margin:0 auto}
+    .card{background:#fff;border-radius:14px;box-shadow:0 4px 16px rgba(16,24,40,.08);padding:26px 24px;margin-top:16px}
+    h1{font-family:'Montserrat',sans-serif;font-size:1.4rem;color:var(--brand)}
+    .sub{color:var(--mid);font-size:.92rem;margin-top:6px;line-height:1.5}
+    .step-title{font-family:'Montserrat',sans-serif;font-size:1.05rem;margin:6px 0 2px}
+    .step-help{color:var(--mid);font-size:.85rem;margin-bottom:14px}
+    .q{padding:14px 0;border-bottom:1px solid #F0F1F4}
+    .q:last-child{border-bottom:0}
+    .q-num{font-size:.95rem;font-weight:600;margin-bottom:10px}
+    .disc-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .disc-opt{padding:11px 10px;border:1.5px solid #D9DCE3;background:#fff;border-radius:10px;cursor:pointer;font-weight:600;font-size:.92rem;color:var(--ink);transition:all .12s}
+    .disc-opt:hover{border-color:var(--brand)}
+    .disc-opt.sel{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .enea-scale{display:flex;gap:6px}
+    .enea-opt{flex:1;padding:9px 2px;border:1.5px solid #D9DCE3;background:#fff;border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;transition:all .12s}
+    .enea-opt:hover{border-color:var(--brand)}
+    .enea-opt.sel{background:var(--brand);border-color:var(--brand)}
+    .enea-opt.sel .num,.enea-opt.sel .lbl{color:#fff}
+    .enea-opt .num{font-weight:800;font-size:1rem}
+    .enea-opt .lbl{font-size:.62rem;color:var(--mid);text-align:center;line-height:1.1}
+    .btn{width:100%;margin-top:22px;padding:14px;background:var(--brand);color:#fff;border:0;border-radius:10px;font-weight:700;font-size:1rem;cursor:pointer}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .prog{position:sticky;top:0;background:#F2F4F8;padding:8px 0;font-size:.82rem;color:var(--mid);z-index:5}
+    .prog b{color:var(--brand)}
+    #msg{color:#B91C1C;font-size:.9rem;margin-top:10px;text-align:center}
+    .hide{display:none}
+    .res-box{background:#F8FAFC;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-top:14px}
+    .res-box h3{color:var(--brand);font-size:1.05rem;margin-bottom:4px}
+    .res-box p{color:var(--mid);font-size:.92rem;line-height:1.5}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    {invalido ? (
+      <div class="card"><h1>Link inválido</h1><p class="sub">Este link de teste não foi encontrado. Fale com o RH da Costa Júnior.</p></div>
+    ) : jaRespondeu ? (
+      <div class="card"><h1>✅ Teste já respondido</h1><p class="sub">Obrigado, {cand!.nome}! Suas respostas já foram registradas. Nossa equipe entrará em contato.</p></div>
+    ) : (
+      <Fragment>
+        <div class="card">
+          <h1>🧭 Teste de Perfil Comportamental</h1>
+          <p class="sub">Olá, <strong>{cand!.nome}</strong>! Este é um teste rápido (cerca de 5 min) com duas partes: <strong>DISC</strong> e <strong>Eneagrama</strong>. Não há respostas certas ou erradas — responda com sinceridade, pensando em como você realmente é.</p>
+        </div>
+
+        <div class="prog" id="prog"></div>
+
+        <div class="card" id="card-disc">
+          <div class="step-title">Parte 1 de 2 · DISC</div>
+          <div class="step-help">Em cada item, escolha a palavra que <strong>mais</strong> combina com você.</div>
+          <div set:html={discHtml}></div>
+        </div>
+
+        <div class="card hide" id="card-enea">
+          <div class="step-title">Parte 2 de 2 · Eneagrama</div>
+          <div class="step-help">Indique o quanto você concorda com cada afirmação (1 = discordo, 5 = concordo).</div>
+          <div set:html={eneaHtml}></div>
+          <button class="btn" id="btnEnviar">Finalizar e enviar</button>
+          <div id="msg" class="hide"></div>
+        </div>
+
+        <div class="card hide" id="card-ok">
+          <h1>🎉 Concluído!</h1>
+          <p class="sub">Obrigado por responder, {cand!.nome}. Aqui está um resumo do seu perfil:</p>
+          <div class="res-box"><h3 id="resDisc"></h3><p id="resDiscD"></p></div>
+          <div class="res-box"><h3 id="resEnea"></h3><p id="resEneaD"></p></div>
+          <p class="sub" style="margin-top:14px">Nossa equipe de RH já recebeu seu resultado. 🍀</p>
+        </div>
+      </Fragment>
+    )}
+  </div>
+
+  {!invalido && !jaRespondeu && (
+    <script is:inline define:vars={{ token, totalDisc: DISC_GRUPOS.length, totalEnea: ENEAGRAMA_ITENS.length }}>
+      const disc = {}; const enea = {};
+      function atualizarProg() {
+        const d = Object.keys(disc).length, e = Object.keys(enea).length;
+        document.getElementById("prog").innerHTML = `DISC <b>${d}/${totalDisc}</b> &nbsp;·&nbsp; Eneagrama <b>${e}/${totalEnea}</b>`;
+        // revela a parte 2 quando o DISC termina
+        if (d >= totalDisc) document.getElementById("card-enea").classList.remove("hide");
+      }
+      document.querySelectorAll(".disc-opt").forEach((b) => b.addEventListener("click", () => {
+        const g = b.dataset.grupo; disc[g] = b.dataset.dim;
+        document.querySelectorAll(`.disc-opt[data-grupo="${g}"]`).forEach((x) => x.classList.remove("sel"));
+        b.classList.add("sel"); atualizarProg();
+        if (Object.keys(disc).length >= totalDisc) setTimeout(() => document.getElementById("card-enea").scrollIntoView({ behavior: "smooth" }), 120);
+      }));
+      document.querySelectorAll(".enea-opt").forEach((b) => b.addEventListener("click", () => {
+        const i = b.dataset.idx; enea[i] = Number(b.dataset.v);
+        document.querySelectorAll(`.enea-opt[data-idx="${i}"]`).forEach((x) => x.classList.remove("sel"));
+        b.classList.add("sel"); atualizarProg();
+      }));
+      atualizarProg();
+
+      document.getElementById("btnEnviar").addEventListener("click", async () => {
+        const msg = document.getElementById("msg");
+        if (Object.keys(disc).length < totalDisc) { msg.classList.remove("hide"); msg.textContent = "Volte e responda todas as palavras do DISC."; return; }
+        if (Object.keys(enea).length < totalEnea) { msg.classList.remove("hide"); msg.textContent = "Responda todas as afirmações do Eneagrama."; return; }
+        const btn = document.getElementById("btnEnviar"); btn.disabled = true; btn.textContent = "Enviando…"; msg.classList.add("hide");
+        try {
+          const res = await fetch(`/api/teste/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ disc, eneagrama: enea }) });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok) {
+            document.getElementById("card-disc").classList.add("hide");
+            document.getElementById("card-enea").classList.add("hide");
+            document.getElementById("prog").classList.add("hide");
+            document.getElementById("resDisc").textContent = d.disc.sigla;
+            document.getElementById("resDiscD").textContent = d.disc.descricao;
+            document.getElementById("resEnea").textContent = d.eneagrama.nome;
+            document.getElementById("resEneaD").textContent = d.eneagrama.descricao;
+            document.getElementById("card-ok").classList.remove("hide");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          } else { msg.classList.remove("hide"); msg.textContent = d.error || "Erro ao enviar."; btn.disabled = false; btn.textContent = "Finalizar e enviar"; }
+        } catch { msg.classList.remove("hide"); msg.textContent = "Erro de conexão."; btn.disabled = false; btn.textContent = "Finalizar e enviar"; }
+      });
+    </script>
+  )}
+</body>
+</html>
