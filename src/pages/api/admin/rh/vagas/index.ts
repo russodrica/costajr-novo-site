@@ -6,6 +6,8 @@ import { registrarAcao } from "../../../../../lib/auditoria";
 export const prerender = false;
 
 const STATUS = ["aberta", "em_andamento", "preenchida", "cancelada"];
+export const VAGA_CAMPOS = ["titulo", "cargo", "regime", "setor", "demandante", "quantidade", "descricao", "status",
+  "data_abertura", "data_prevista", "demanda", "perfil_desejado", "habilitacao", "modo_trabalho", "tipo_contratacao"];
 
 // GET /api/admin/rh/vagas — lista vagas (com contagem de candidatos)
 export const GET: APIRoute = async ({ request }) => {
@@ -35,7 +37,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (!body.titulo) return jsonErr(400, "Título é obrigatório.");
     if (body.status && !STATUS.includes(body.status)) return jsonErr(400, "Status inválido.");
     const row: any = { criado_por: admin.email };
-    for (const c of ["titulo", "cargo", "regime", "setor", "demandante", "quantidade", "descricao", "status"]) if (body[c] !== undefined && body[c] !== "") row[c] = body[c];
+    for (const c of VAGA_CAMPOS) if (body[c] !== undefined && body[c] !== "") row[c] = body[c];
     const db = supabaseAdmin();
     const { data, error } = await db.from("rh_vagas").insert(row).select().single();
     if (error) return jsonErr(400, error.message);

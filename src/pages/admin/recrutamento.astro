@@ -28,20 +28,42 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       <div id="msgVaga"></div>
       <form id="formVaga">
         <input type="hidden" name="id" />
-        <div class="form-group"><label>Título da vaga *</label><input name="titulo" required /></div>
         <div class="form-row">
-          <div class="form-group"><label>Cargo</label><input name="cargo" /></div>
-          <div class="form-group"><label>Regime</label>
-            <select name="regime"><option value="">—</option><option value="clt">CLT</option><option value="pj">PJ</option><option value="estagio">Estágio</option><option value="temporario">Temporário</option></select>
+          <div class="form-group"><label>Título da vaga *</label><input name="titulo" required /></div>
+          <div class="form-group"><label>Data (abertura)</label><input name="data_abertura" type="date" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Demanda</label>
+            <select name="demanda"><option value="">—</option><option>Nova</option><option>Reposição</option><option>Aumento de quadro</option></select>
+          </div>
+          <div class="form-group"><label>Área</label><input name="setor" placeholder="Ex.: Operação" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Data prevista p/ início</label><input name="data_prevista" type="date" /></div>
+          <div class="form-group"><label>Perfil desejado</label>
+            <select name="perfil_desejado"><option value="">—</option><option>Colaborativo</option><option>Competitivo</option><option>Analítico</option><option>Executor</option><option>Comunicador</option><option>Planejador</option></select>
           </div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Setor</label><input name="setor" /></div>
-          <div class="form-group"><label>Demandante</label><input name="demandante" /></div>
-          <div class="form-group"><label>Qtd. de vagas</label><input name="quantidade" type="number" min="1" value="1" /></div>
+          <div class="form-group"><label>Habilitação</label>
+            <select name="habilitacao"><option value="">—</option><option>Indiferente</option><option>Obrigatória</option></select>
+          </div>
+          <div class="form-group"><label>Trabalho</label>
+            <select name="modo_trabalho"><option value="">—</option><option>Presencial</option><option>Remoto</option><option>Híbrido</option></select>
+          </div>
         </div>
-        <div class="form-group"><label>Status</label>
-          <select name="status"><option value="aberta">Aberta</option><option value="em_andamento">Em andamento</option><option value="preenchida">Preenchida</option><option value="cancelada">Cancelada</option></select>
+        <div class="form-row">
+          <div class="form-group"><label>Tipo de contratação</label>
+            <select name="tipo_contratacao"><option value="">—</option><option>CLT</option><option>PJ</option><option>CLT, PJ</option><option>Estágio</option><option>Temporário</option></select>
+          </div>
+          <div class="form-group"><label>Status</label>
+            <select name="status"><option value="aberta">Aberta</option><option value="em_andamento">Em andamento</option><option value="preenchida">Preenchida</option><option value="cancelada">Cancelada</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Cargo</label><input name="cargo" /></div>
+          <div class="form-group"><label>Demandante</label><input name="demandante" /></div>
+          <div class="form-group"><label>Qtd.</label><input name="quantidade" type="number" min="1" value="1" /></div>
         </div>
         <div class="form-group"><label>Descrição</label><textarea name="descricao"></textarea></div>
         <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="fecharModal('modalVaga')">Cancelar</button><button type="submit" class="btn btn-primary">Salvar</button></div>
@@ -121,6 +143,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
     const ETAPA_T = Object.fromEntries(ETAPAS.map(e => [e.k, e]));
     let VAGAS = [], CAND = [];
     const esc = s => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const br = d => d ? String(d).slice(0,10).split("-").reverse().join("/") : "—";
     function fecharModal(id){ document.getElementById(id).classList.remove("open"); }
 
     async function carregarVagas() {
@@ -131,8 +154,11 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       document.getElementById("vagasBox").innerHTML = VAGAS.length
         ? `<div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">${VAGAS.map(v => `
           <div class="card" style="padding:12px 14px">
-            <div style="display:flex;justify-content:space-between;gap:6px"><strong style="font-size:14px">${esc(v.titulo)}</strong><span class="badge ${stBadge[v.status]||"badge-gray"}">${stLabel[v.status]||v.status}</span></div>
-            <div style="font-size:12.5px;color:#6B7280;margin-top:3px">${esc(v.cargo||"—")} · ${(v.regime||"—").toUpperCase()} · ${v.candidatos.ativos} no funil</div>
+            <div style="display:flex;justify-content:space-between;gap:6px"><strong style="font-size:14px">💼 ${esc(v.titulo)}</strong><span class="badge ${stBadge[v.status]||"badge-gray"}">${stLabel[v.status]||v.status}</span></div>
+            <div style="font-size:12.5px;color:#6B7280;margin-top:3px">👤 ${esc(v.perfil_desejado||v.cargo||"—")}${v.setor?" · "+esc(v.setor):""}${v.tipo_contratacao?" · "+esc(v.tipo_contratacao):""}</div>
+            <div style="font-size:12px;color:#6B7280;margin-top:6px;background:#F8F9FB;border-radius:6px;padding:5px 8px">
+              📅 <strong>Data:</strong> ${br(v.data_abertura)} &nbsp; ⏱ <strong>Prevista:</strong> ${br(v.data_prevista)}</div>
+            <div style="font-size:12px;color:#9CA3AF;margin-top:5px">${v.candidatos.ativos} candidato(s) no funil</div>
             <div style="margin-top:8px;display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="editarVaga('${v.id}')">Editar</button><button class="btn btn-danger btn-sm" onclick="excluirVaga('${v.id}','${esc(v.titulo).replace(/'/g,'')}')">🗑</button></div>
           </div>`).join("")}</div>`
         : '<div class="card" style="text-align:center;color:#6B7280;padding:18px">Nenhuma vaga. Clique em <strong>+ Nova vaga</strong>.</div>';
@@ -194,7 +220,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
     }
 
     function abrirVaga() { const f = document.getElementById("formVaga"); f.reset(); f.elements.id.value = ""; document.getElementById("tituloVaga").textContent = "Nova vaga"; document.getElementById("msgVaga").innerHTML=""; document.getElementById("modalVaga").classList.add("open"); }
-    function editarVaga(id) { const v = VAGAS.find(x=>x.id===id); if(!v) return; const f=document.getElementById("formVaga"); f.reset(); for(const k of ["id","titulo","cargo","regime","setor","demandante","quantidade","descricao","status"]) if(f.elements[k]) f.elements[k].value = v[k] ?? ""; document.getElementById("tituloVaga").textContent="Editar vaga"; document.getElementById("msgVaga").innerHTML=""; document.getElementById("modalVaga").classList.add("open"); }
+    function editarVaga(id) { const v = VAGAS.find(x=>x.id===id); if(!v) return; const f=document.getElementById("formVaga"); f.reset(); for(const k of ["id","titulo","cargo","setor","demandante","quantidade","descricao","status","data_abertura","data_prevista","demanda","perfil_desejado","habilitacao","modo_trabalho","tipo_contratacao"]) if(f.elements[k]) f.elements[k].value = (v[k]===null||v[k]===undefined)?"":String(v[k]).slice(0, k.startsWith("data")?10:200); document.getElementById("tituloVaga").textContent="Editar vaga"; document.getElementById("msgVaga").innerHTML=""; document.getElementById("modalVaga").classList.add("open"); }
     async function excluirVaga(id, t) { if(!confirm(`Excluir a vaga "${t}"? (vai para a Lixeira 30 dias)`)) return; const r=await fetch(`/api/admin/rh/vagas/${id}`,{method:"DELETE",headers:{"content-type":"application/json"}}); if(r.ok){carregarVagas();carregarKanban();} else alert("Erro ao excluir."); }
     document.getElementById("formVaga").addEventListener("submit", async e => {
       e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const id=body.id; delete body.id;
