@@ -1188,7 +1188,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     // Grupos da ficha (ordem como no Monday): pessoais · técnicos · treinamentos (NRs em ordem)
     const SLOT_GRUPOS = [
       { titulo: "🪪 Documentos pessoais", keys: ["contrato", "rg_hab", "ficha_registro", "teste"] },
-      { titulo: "🛠️ Documentos técnicos", keys: ["aso", "ficha_epi", "os"] },
+      { titulo: "🛠️ Documentos técnicos", keys: ["aso", "os"] },
       { titulo: "🦺 Treinamentos (NRs)", keys: ["nr01", "nr06", "nr10", "nr35"] },
       { titulo: "⚠️ Disciplinares", keys: ["advertencia", "suspensao"] },
     ];
@@ -1201,7 +1201,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (np.includes("registro")) return "ficha_registro";
       if (np.includes("personalidade") || np.startsWith("teste")) return "teste";
       if (np.startsWith("aso")) return "aso";
-      if (np.includes("epi")) return "ficha_epi";
+      // Ficha de EPI NÃO é mais slot da aba Documentos (fica só na aba EPIs);
+      // fichas antigas com "EPI" no título caem em "Outros documentos".
       if (np.includes("nr35") || np.includes("nr 35")) return "nr35";
       if (np.includes("nr10") || np.includes("nr 10")) return "nr10";
       if (np.includes("nr06") || np.includes("nr 06") || np.includes("nr 6")) return "nr06";
@@ -1209,7 +1210,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (np.includes("ordem") || np === "os") return "os";
       if (np.includes("suspens")) return "suspensao";
       if (np.includes("advert")) return "advertencia";
-      const porTipo: Record<string, string> = { contrato: "contrato", aso: "aso", ficha_epi: "ficha_epi", cnh: "rg_hab", advertencia: "advertencia" };
+      const porTipo: Record<string, string> = { contrato: "contrato", aso: "aso", cnh: "rg_hab", advertencia: "advertencia" };
       return porTipo[doc.tipo] || "outros";
     }
     function nomeCurtoDoc(titulo: string): string {
