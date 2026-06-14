@@ -626,9 +626,18 @@ servico, fallback de membro com FK historico) -> so registrarAcao. Tabelas/idCol
 conferidos (ex.: orc_servicos idCol=codigo; obras_tarefas/anotacoes id vem de
 ?tarefa=/?anotacao= e nao de params.id). Criacoes/edicoes tambem logam. Fluxo de
 recuperacao validado E2E contra o banco (criar->excluir->lixeira+log->restaurar).
-PENDENTE: ligar log de criacao nos POST /index.ts restantes (so DELETEs foram 100%);
-comunicados/notificacoes p/ membro desligado (decisao da Adriana: revogar acesso ao
-desligar vs filtrar — em aberto).
+
+**Log de INCLUSAO + revogacao ao desligar (commit e126892):** workflow ligou
+registrarAcao acao "criar" em 43 endpoints POST (criacao unica; imports em massa
+logam 1x com a contagem; acoes como movimentar/converter/gerar-preventivas/rdo/
+parcelas logam o que geraram). Cobertura final: **67 endpoints logam, 21 com
+lixeira**. REVOGAR ACESSO AO DESLIGAR (decisao da Adriana, opcao 1): o PATCH de
+rh/colaboradores/[id] quando status=desligado seta portal_profiles.approval_status=
+'rejected' do membro vinculado + apaga portal_sessoes (bloqueia login E tira de
+comunicados/notificacoes, que filtram approval_status='approved'). Logado.
+Validado E2E (antes recebe comunicado; depois bloqueado). Reativar = re-aprovar
+manual em /admin/membros. OBS: revogacao so dispara pelo PATCH interativo (botao
+Desligar); re-import em massa setando desligado NAO revoga (edge case).
 
 ## Convencoes desta pasta para o Claude Code
 
