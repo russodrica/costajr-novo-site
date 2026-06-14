@@ -1,0 +1,83 @@
+---
+import { supabaseAdmin } from "../../lib/supabase";
+import { DIMENSOES } from "../../lib/clima";
+
+const token = Astro.params.token!;
+const db = supabaseAdmin();
+const { data: pesquisa } = await db.from("rh_clima_pesquisas").select("titulo, periodo, ativa").eq("token", token).maybeSingle();
+const encerrada = !pesquisa || !pesquisa.ativa;
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pesquisa de Clima — Costa Júnior</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root{--brand:#C41E3A;--ink:#2D2F36;--mid:#5B5F6B}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Open Sans',sans-serif;background:#F2F4F8;color:var(--ink);padding:18px}
+    .wrap{max-width:620px;margin:0 auto}
+    .card{background:#fff;border-radius:14px;box-shadow:0 4px 16px rgba(16,24,40,.08);padding:26px 24px;margin-top:16px}
+    h1{font-family:'Montserrat',sans-serif;font-size:1.4rem;color:var(--brand)}
+    .sub{color:var(--mid);font-size:.92rem;margin-top:4px}
+    .q{margin-top:20px}
+    .q label{display:block;font-weight:600;margin-bottom:8px;font-size:.95rem}
+    .enps{display:flex;flex-wrap:wrap;gap:6px}
+    .enps button{width:40px;height:40px;border:1px solid #D1D5DB;background:#fff;border-radius:8px;cursor:pointer;font-weight:700;font-size:.95rem}
+    .enps button.sel{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .escala{display:flex;gap:6px}
+    .escala button{flex:1;padding:9px 0;border:1px solid #D1D5DB;background:#fff;border-radius:8px;cursor:pointer;font-weight:700}
+    .escala button.sel{background:var(--brand);color:#fff;border-color:var(--brand)}
+    textarea{width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;min-height:80px;font-family:inherit;font-size:.95rem}
+    .btn{width:100%;margin-top:22px;padding:13px;background:var(--brand);color:#fff;border:0;border-radius:10px;font-weight:700;font-size:1rem;cursor:pointer}
+    .anon{font-size:.82rem;color:#16A34A;margin-top:6px}
+    .ok{text-align:center;padding:30px 10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    {encerrada ? (
+      <div class="card"><h1>Pesquisa encerrada</h1><p class="sub">Esta pesquisa de clima não está mais disponível. Obrigado!</p></div>
+    ) : (
+      <div class="card" id="form">
+        <h1>🌡️ Pesquisa de Clima</h1>
+        <p class="sub">{pesquisa!.titulo}{pesquisa!.periodo ? ` · ${pesquisa!.periodo}` : ""}</p>
+        <p class="anon">🔒 Anônima — suas respostas não são identificadas.</p>
+
+        <div class="q">
+          <label>De 0 a 10, o quanto você recomendaria a Costa Júnior como um lugar para se trabalhar?</label>
+          <div class="enps" id="enps">{Array.from({length:11},(_, i)=> <button type="button" data-v={i}>{i}</button>)}</div>
+        </div>
+
+        {DIMENSOES.map(d => (
+          <div class="q">
+            <label>{d.t}</label>
+            <div class="escala" data-dim={d.k}>{[1,2,3,4,5].map(n => <button type="button" data-v={n}>{n}</button>)}</div>
+          </div>
+        ))}
+
+        <div class="q"><label>Comentários (opcional)</label><textarea id="coment" placeholder="O que podemos melhorar?"></textarea></div>
+        <div id="msg"></div>
+        <button class="btn" onclick="enviar()">Enviar resposta</button>
+      </div>
+    )}
+    <div class="card ok" id="okcard" style="display:none"><h1>✅ Obrigado!</h1><p class="sub">Sua resposta foi registrada anonimamente.</p></div>
+  </div>
+
+  <script is:inline define:vars={{ token }}>
+    let enps = null; const dims = {};
+    document.querySelectorAll("#enps button").forEach(b => b.onclick = () => { enps = Number(b.dataset.v); document.querySelectorAll("#enps button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel"); });
+    document.querySelectorAll(".escala").forEach(esc => esc.querySelectorAll("button").forEach(b => b.onclick = () => { dims[esc.dataset.dim] = Number(b.dataset.v); esc.querySelectorAll("button").forEach(x=>x.classList.remove("sel")); b.classList.add("sel"); }));
+    async function enviar() {
+      const msg = document.getElementById("msg");
+      if (enps === null) { msg.innerHTML = '<p style="color:#B91C1C;font-size:.9rem;margin-top:8px">Responda a primeira pergunta (0 a 10).</p>'; return; }
+      const res = await fetch(`/api/clima/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enps, respostas: dims, comentario: document.getElementById("coment").value }) });
+      if (res.ok) { document.getElementById("form").style.display = "none"; document.getElementById("okcard").style.display = ""; }
+      else { const d = await res.json().catch(()=>({})); msg.innerHTML = `<p style="color:#B91C1C;font-size:.9rem;margin-top:8px">${d.error || "Erro ao enviar"}</p>`; }
+    }
+  </script>
+</body>
+</html>
