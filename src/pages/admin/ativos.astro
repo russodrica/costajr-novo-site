@@ -34,6 +34,8 @@ const total = todosAtivos?.length ?? 0;
 const porStatus: Record<string, number> = {};
 for (const a of todosAtivos || []) porStatus[a.status] = (porStatus[a.status] || 0) + 1;
 const valorTotal = (todosAtivos || []).reduce((s, a) => s + (Number(a.valor_aquisicao) || 0), 0);
+const porCategoria: Record<string, number> = {};
+for (const a of todosAtivos || []) porCategoria[a.categoria] = (porCategoria[a.categoria] || 0) + 1;
 const hoje = new Date(); const em60 = new Date(); em60.setDate(em60.getDate() + 60);
 const garantiaVencendo = (todosAtivos || []).filter(a => a.garantia && a.garantia_fim && new Date(a.garantia_fim) >= hoje && new Date(a.garantia_fim) <= em60).length;
 
@@ -70,6 +72,19 @@ const ativosPorCat = ordemCat
   .filter((g) => g.itens.length);
 const semCat = (ativos || []).filter((a: any) => !ordemCat.includes(a.categoria));
 if (semCat.length) ativosPorCat.push({ cat: "_sem", label: "Sem categoria", icone: "📦", itens: semCat });
+
+// Abas por categoria (preservam busca/status/garantia)
+function abaHref(cat: string) {
+  const p = new URLSearchParams();
+  if (cat !== "todas") p.set("categoria", cat);
+  if (busca) p.set("busca", busca);
+  if (filtroStatus !== "todos") p.set("status", filtroStatus);
+  if (filtroGarantia) p.set("garantia", filtroGarantia);
+  const qs = p.toString();
+  return "/admin/ativos" + (qs ? "?" + qs : "");
+}
+const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: total }]
+  .concat(ordemCat.filter((c) => porCategoria[c]).map((c) => ({ cat: c, label: categorias[c], icone: catIcone[c] || "📦", count: porCategoria[c] })));
 ---
 <Admin title="Ativos Patrimoniais" current="ativos">
 
@@ -90,14 +105,19 @@ if (semCat.length) ativosPorCat.push({ cat: "_sem", label: "Sem categoria", icon
     <div class="stat-card"><div class="stat-value" style={preventivasVencidas ? "color:#B91C1C" : "color:#16A34A"}>{preventivasVencidas ?? 0}</div><div class="stat-label">Preventivas vencidas</div></div>
   </div>
 
+  <!-- Abas por categoria -->
+  <div class="cat-abas">
+    {abas.map((a) => (
+      <a href={abaHref(a.cat)} class={`cat-aba ${a.cat === filtroCategoria ? "ativa" : ""}`}>
+        <span class="cat-aba-ic">{a.icone}</span>{a.label}<span class="cat-aba-num">{a.count}</span>
+      </a>
+    ))}
+  </div>
+
   <!-- Filtros -->
   <div class="toolbar">
-    <span class="toolbar-title">Ativos ({ativos?.length ?? 0})</span>
+    <span class="toolbar-title">{filtroCategoria === "todas" ? "Todos os ativos" : (categorias[filtroCategoria] || "Ativos")} ({ativos?.length ?? 0})</span>
     <input class="search-input" id="busca" placeholder="Buscar por descrição, série, patrimônio, pessoa..." value={busca} />
-    <select class="filter-select" id="fCategoria">
-      <option value="todas" selected={filtroCategoria === "todas"}>Todas categorias</option>
-      {Object.entries(categorias).map(([k, v]) => <option value={k} selected={k === filtroCategoria}>{v}</option>)}
-    </select>
     <select class="filter-select" id="fStatus">
       <option value="todos" selected={filtroStatus === "todos"}>Todos status</option>
       {Object.entries(statusLabels).map(([k, v]) => <option value={k} selected={k === filtroStatus}>{v}</option>)}
@@ -121,7 +141,7 @@ if (semCat.length) ativosPorCat.push({ cat: "_sem", label: "Sem categoria", icon
         <tbody>
           {ativosPorCat.length ? ativosPorCat.map((g) => (
             <Fragment>
-              <tr class="cat-sep"><td colspan="8">{g.icone} {g.label} <span class="cat-count">{g.itens.length}</span></td></tr>
+              {filtroCategoria === "todas" && <tr class="cat-sep"><td colspan="8">{g.icone} {g.label} <span class="cat-count">{g.itens.length}</span></td></tr>}
               {g.itens.map((a: any) => (
                 <tr class="row-link" onclick={`window.location.href='/admin/ativos/${a.id}'`}>
                   <td style="font-size:1.1rem">{catIcone[a.categoria] || "📦"}</td>
@@ -266,6 +286,18 @@ if (semCat.length) ativosPorCat.push({ cat: "_sem", label: "Sem categoria", icon
 
   <style>
     .row-link { cursor: pointer; }
+    /* Abas por categoria */
+    .cat-abas { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; }
+    .cat-aba {
+      display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+      padding: 8px 14px; border-radius: 10px; font-size: 0.92rem; font-weight: 700;
+      color: #475569; background: #fff; border: 1.5px solid #E2E8F0; transition: all .12s;
+    }
+    .cat-aba:hover { border-color: var(--brand); color: var(--brand); }
+    .cat-aba.ativa { background: var(--brand); color: #fff; border-color: var(--brand); box-shadow: 0 2px 8px rgba(196,30,58,.28); }
+    .cat-aba-ic { font-size: 1.05rem; }
+    .cat-aba-num { background: rgba(15,23,42,.08); color: inherit; border-radius: 999px; padding: 0 8px; font-size: 0.76rem; font-weight: 800; }
+    .cat-aba.ativa .cat-aba-num { background: rgba(255,255,255,.25); }
     /* Divisória de grupo (categoria) na lista de ativos */
     .cat-sep td {
       background: #F1F5F9; color: #334155; font-weight: 800; font-size: 0.92rem;
@@ -282,20 +314,19 @@ if (semCat.length) ativosPorCat.push({ cat: "_sem", label: "Sem categoria", icon
 
   <script>
     function filtrarRecarrega() {
+      // a categoria vem das ABAS (já está na URL) — aqui só status + busca
       const url = new URL(window.location.href);
-      url.searchParams.set("categoria", (document.getElementById("fCategoria") as HTMLSelectElement).value);
       url.searchParams.set("status", (document.getElementById("fStatus") as HTMLSelectElement).value);
       url.searchParams.set("busca", (document.getElementById("busca") as HTMLInputElement).value);
       window.location.href = url.toString();
     }
-    document.getElementById("fCategoria")?.addEventListener("change", filtrarRecarrega);
     document.getElementById("fStatus")?.addEventListener("change", filtrarRecarrega);
     document.getElementById("busca")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") filtrarRecarrega(); });
 
     // Exportar CSV respeitando os filtros atuais
     document.getElementById("btnExport")?.addEventListener("click", () => {
       const p = new URLSearchParams();
-      const cat = (document.getElementById("fCategoria") as HTMLSelectElement).value;
+      const cat = new URLSearchParams(location.search).get("categoria") || "todas";
       const st = (document.getElementById("fStatus") as HTMLSelectElement).value;
       const bq = (document.getElementById("busca") as HTMLInputElement).value;
       if (cat && cat !== "todas") p.set("categoria", cat);
