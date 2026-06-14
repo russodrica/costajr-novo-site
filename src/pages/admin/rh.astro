@@ -481,8 +481,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
   <!-- ════════ MODAL COLABORADOR (novo/editar) ════════ -->
   <div class="modal-overlay" id="modalColab">
-    <div class="modal" style="max-width:680px">
-      <div class="modal-title" id="tituloModalColab">Novo colaborador</div>
+    <div class="modal" style="max-width:680px;position:relative">
+      <button type="button" aria-label="Fechar" onclick="fecharModal('modalColab')" style="position:absolute;top:14px;right:16px;border:none;background:none;font-size:1.7rem;line-height:1;cursor:pointer;color:#9CA3AF;padding:0;width:32px;height:32px">×</button>
+      <div class="modal-title" id="tituloModalColab" style="padding-right:32px">Novo colaborador</div>
       <div id="msgColab"></div>
       <div class="ficha-tabs" id="fichaTabs" style="display:none">
         <button type="button" class="ficha-tab active" data-ft="dados" onclick="fichaTab('dados')">📋 Dados gerais</button>
@@ -698,7 +699,12 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
             {Object.entries(tiposDoc).map(([v, l]) => <option value={v}>{l}</option>)}
           </select>
         </div>
-        <div class="form-group"><label>URL do arquivo</label><input name="url" type="url" placeholder="https://…" /></div>
+        <div class="form-group">
+          <label>Anexar arquivo (do computador)</label>
+          <input type="file" name="arquivo" id="docArquivo" accept=".pdf,.doc,.docx,image/*" />
+          <span style="font-size:11.5px;color:var(--ink-light)">PDF, DOC/DOCX ou imagem · até 15 MB · guardado em cofre privado.</span>
+        </div>
+        <div class="form-group"><label>…ou cole um link (URL)</label><input name="url" type="url" placeholder="https://…" /></div>
         <div class="form-group">
           <label>Vencimento</label>
           <input name="validade" type="date" id="docValidade" />
@@ -1653,13 +1659,34 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
     document.getElementById("formDoc")?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const fd = new FormData(e.target as any);
+      const formEl = e.target as HTMLFormElement;
+      const fd = new FormData(formEl);
       const body: Record<string, any> = Object.fromEntries(fd.entries());
       body.validade_na = body.validade_na === "on";       // checkbox → boolean
       if (body.validade_na) body.validade = "";            // N/A: sem data (vira null no servidor)
       const id = body.id;
       delete body.id;
       const msg = document.getElementById("msgDoc") as any;
+      const fileInput = document.getElementById("docArquivo") as HTMLInputElement;
+      const arquivo = fileInput?.files?.[0];
+
+      // Anexar ARQUIVO (multipart → cofre privado) só vale para NOVO documento
+      if (arquivo && !id) {
+        const up = new FormData();
+        up.append("arquivo", arquivo);
+        up.append("colaborador_id", body.colaborador_id || "");
+        up.append("titulo", body.titulo || "");
+        up.append("tipo", body.tipo || "outro");
+        up.append("validade", body.validade || "");
+        up.append("validade_na", String(body.validade_na));
+        up.append("observacoes", body.observacoes || "");
+        const res = await fetch("/api/admin/rh/documentos/upload", { method: "POST", body: up });
+        if (res.ok) window.location.reload();
+        else { const d = await res.json().catch(() => ({} as any)); msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao enviar arquivo"}</div>`; }
+        return;
+      }
+
+      delete body.arquivo; // não vai no JSON
       const res = await fetch(id ? `/api/admin/rh/documentos/${id}` : "/api/admin/rh/documentos", {
         method: id ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },

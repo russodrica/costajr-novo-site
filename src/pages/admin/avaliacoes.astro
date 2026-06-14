@@ -120,6 +120,8 @@ const anos = [anoAtual, anoAtual - 1, anoAtual - 2];
       if (res.ok) { fecharModal("modalAval"); carregar(); }
       else document.getElementById("avalMsg").innerHTML = `<div class="alert alert-error">${d.error||"Erro ao salvar"}</div>`;
     }
+    // define:vars embrulha este script numa função → expõe ao window p/ os onclick/onchange inline acharem
+    Object.assign(window, { carregar, avaliar, fecharModal, salvarAval, recalcNota });
     carregar();
   </script>
 </Admin>
