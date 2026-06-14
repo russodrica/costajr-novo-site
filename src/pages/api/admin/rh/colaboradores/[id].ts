@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -36,7 +37,7 @@ export const GET: APIRoute = async ({ request, params }) => {
 // PATCH /api/admin/rh/colaboradores/[id] — atualiza dados cadastrais
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const id = params.id!;
     const body = await request.json();
 
@@ -68,6 +69,24 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const db = supabaseAdmin();
     const { data, error } = await db.from("rh_colaboradores").update(patch).eq("id", id).select().single();
     if (error) return jsonErr(400, error.message);
+
+    const desligando = patch.status === "desligado";
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "editar", entidade: "rh_colaboradores", registro_id: id,
+      descricao: desligando ? `Desligou colaborador "${data.nome}"` : `Editou colaborador "${data.nome}"`,
+      dados: patch,
+    });
+
+    // Ao DESLIGAR, revoga o acesso ao portal: bloqueia o login (approval_status)
+    // e encerra as sessões ativas. Isso também o tira de comunicados/notificações.
+    if (desligando && data.profile_id) {
+      await db.from("portal_profiles").update({ approval_status: "rejected" }).eq("id", data.profile_id);
+      await db.from("portal_sessoes").delete().eq("user_id", data.profile_id);
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "editar", entidade: "acesso_portal", registro_id: data.profile_id,
+        descricao: `Revogou acesso ao portal de "${data.nome}" (colaborador desligado)`,
+      });
+    }
     return jsonOk(data);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

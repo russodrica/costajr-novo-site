@@ -1,13 +1,14 @@
 import type { APIRoute } from "astro";
 import { requireAdmin, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
 // POST — agendar uma preventiva avulsa OU gerar automaticamente o ciclo completo
 export const POST: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdmin(request);
+    const admin = await requireAdmin(request);
     const { id } = params;
     if (!id) return jsonErr(400, "id obrigatório");
 
@@ -46,6 +47,13 @@ export const POST: APIRoute = async ({ request, params }) => {
         .insert(rows)
         .select("id, data_agendada, status, manut_lojas(id, nome), manut_tecnicos(id, nome)");
       if (error) throw new Error(error.message);
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar",
+        entidade: "manut_preventivas",
+        registro_id: null,
+        descricao: `Gerou ${created?.length || 0} preventivas automáticas do cliente ${id}`,
+        dados: { cliente_id: id, geradas: created?.length || 0, visitas, data_base: dataBase.toISOString().slice(0, 10) },
+      });
       return jsonOk({ geradas: created?.length || 0, preventivas: created || [] }, 201);
     }
 
@@ -53,7 +61,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     const { loja_id, tecnico_id, data_agendada } = body;
     if (!data_agendada) throw new Error("Data é obrigatória");
 
-    const { data, error } = await supabaseAdmin()
+    const db = supabaseAdmin();
+    const { data, error } = await db
       .from("manut_preventivas")
       .insert({
         cliente_id: id,
@@ -65,6 +74,13 @@ export const POST: APIRoute = async ({ request, params }) => {
       .select("id, data_agendada, status, manut_lojas(id, nome), manut_tecnicos(id, nome)")
       .single();
     if (error) throw new Error(error.message);
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "manut_preventivas",
+      registro_id: data?.id ?? null,
+      descricao: `Agendou preventiva do cliente ${id} para ${data_agendada}`,
+      dados: { cliente_id: id, loja_id: loja_id || null, tecnico_atribuido_id: tecnico_id || null, data_agendada, status: "agendada" },
+    });
     return jsonOk(data, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autorizado" ? 401 : 500, e.message);

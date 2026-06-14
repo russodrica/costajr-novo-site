@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { requireAdminCookie, jsonOk, jsonErr } from "~/lib/auth";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -87,6 +88,14 @@ export const POST: APIRoute = async ({ request }) => {
       ({ error } = await sb.from("portal_kb").insert(linhas.map(({ source: _s, ...resto }) => resto)));
     }
     if (error) return jsonErr(500, error.message);
+
+    await registrarAcao(sb, { req: request, admin: claims }, {
+      acao: "criar",
+      entidade: "portal_kb",
+      registro_id: null,
+      descricao: `Importou ${blocos.length} bloco(s) na base de conhecimento "${titulo}" (categoria ${categoria}) a partir de ${fonte}`,
+      dados: { criados: blocos.length, atualizados: 0, titulo, categoria, fonte, caracteres: texto.length },
+    });
 
     return jsonOk({ ok: true, blocos: blocos.length, caracteres: texto.length }, 201);
   } catch (e: any) {

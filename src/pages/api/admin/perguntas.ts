@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../lib/auth";
 import { supabaseAdmin } from "../../../lib/supabase";
 import { pontuarEntrada, notificar } from "../../../lib/junia";
+import { registrarAcao } from "../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -63,6 +64,14 @@ export const POST: APIRoute = async ({ request }) => {
         `"${p.question.slice(0, 80)}${p.question.length > 80 ? "…" : ""}"`,
         p.conversation_id ? `/portal/junia?conversa=${p.conversation_id}` : "/portal/junia");
     }
+
+    // log de inclusão: resposta do gestor registrada
+    const perguntaResumo = `${p.question.slice(0, 60)}${p.question.length > 60 ? "…" : ""}`;
+    await registrarAcao(sb, { req: request, admin }, {
+      acao: "criar", entidade: "portal_pending_questions", registro_id: p.id,
+      descricao: `Respondeu pendência "${perguntaResumo}"${body.adicionar_kb ? " (adicionada à base de conhecimento)" : ""}`,
+      dados: { pergunta: p.question, resposta, categoria, adicionada_kb: !!body.adicionar_kb },
+    });
 
     // 4. adiciona à base de conhecimento
     if (body.adicionar_kb) {

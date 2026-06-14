@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -55,7 +56,7 @@ export const GET: APIRoute = async ({ request, url }) => {
 // POST /api/admin/orcamentos/servicos  (novo serviço)
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const body = await request.json();
     if (!body.codigo || !String(body.codigo).trim()) return jsonErr(400, "Código é obrigatório");
     if (!body.descricao || !String(body.descricao).trim()) return jsonErr(400, "Descrição é obrigatória");
@@ -74,6 +75,13 @@ export const POST: APIRoute = async ({ request }) => {
       if (error.code === "23505") return jsonErr(409, `Código "${row.codigo}" já existe na base.`);
       return jsonErr(400, error.message);
     }
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "orc_servicos",
+      registro_id: data?.id ?? null,
+      descricao: `Criou serviço "${data?.codigo ?? row.codigo}" — ${data?.descricao ?? row.descricao ?? ""}`.trim(),
+      dados: data,
+    });
     return jsonOk(data, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

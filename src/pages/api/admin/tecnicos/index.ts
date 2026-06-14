@@ -2,10 +2,11 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, hashSenha, gerarSenhaInicial, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { sincronizarLojasDoTecnico } from "../../../../lib/manut/tecnicos";
+import { registrarAcao } from "../../../../lib/auditoria";
 
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const { nome, email, cpf, telefone, especialidades, senha, lojas } = await request.json();
     if (!nome || !email) return jsonErr(400, "nome e email são obrigatórios");
     const senhaFinal = senha || gerarSenhaInicial();
@@ -22,6 +23,14 @@ export const POST: APIRoute = async ({ request }) => {
     if (Array.isArray(lojas) && lojas.length) {
       await sincronizarLojasDoTecnico(data.id, lojas);
     }
+
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "manut_tecnicos",
+      registro_id: data.id,
+      descricao: `Criou técnico "${nome}"`,
+      dados: data,
+    });
 
     return jsonOk({ ...data, senha_inicial: senhaFinal, lojas: lojas || [] }, 201);
   } catch (e: any) {

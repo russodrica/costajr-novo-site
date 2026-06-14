@@ -1,12 +1,13 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const clienteId = params.id!;
     const db = supabaseAdmin();
 
@@ -64,7 +65,16 @@ export const POST: APIRoute = async ({ request, params }) => {
     const { data, error } = await db.from("manut_preventivas").insert(inserts).select();
     if (error) return jsonErr(400, error.message);
 
-    return jsonOk({ criadas: data?.length ?? 0 });
+    const criadas = data?.length ?? 0;
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "manut_preventivas",
+      registro_id: null,
+      descricao: `Gerou ${criadas} preventiva(s) agendada(s) para o cliente ${clienteId} (${lojas.length} loja(s), ${totalVisitas} visita(s) cada)`,
+      dados: { cliente_id: clienteId, criadas, lojas: lojas.length, total_visitas: totalVisitas, plano: cliente.plano_selecionado },
+    });
+
+    return jsonOk({ criadas });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }

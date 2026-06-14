@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -51,6 +52,15 @@ export const POST: APIRoute = async ({ request }) => {
       const { error: eUpd } = await db.from("fin_extrato_ofx")
         .update({ status: "conciliado", lancamento_id: lanc.id }).eq("id", extrato_id);
       if (eUpd) return jsonErr(500, eUpd.message);
+
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar",
+        entidade: "fin_lancamentos",
+        registro_id: lanc.id,
+        descricao: `Criou lançamento "${novo.descricao}" R$ ${novo.valor} via conciliação OFX`,
+        dados: lanc,
+      });
+
       return jsonOk({ ok: true, status: "conciliado", lancamento: lanc });
     }
 

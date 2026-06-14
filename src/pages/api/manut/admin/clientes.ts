@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdmin, jsonOk, jsonErr, hashSenha, gerarSenhaInicial } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -21,7 +22,7 @@ export const GET: APIRoute = async ({ request }) => {
 
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdmin(request);
+    const admin = await requireAdmin(request);
     const body = await request.json();
     const { nome, email, telefone, plano_selecionado, valor_mensal_contratado, visitas_contratadas } = body;
     if (!nome || !email) return jsonErr(400, "nome e email obrigatórios");
@@ -48,6 +49,15 @@ export const POST: APIRoute = async ({ request }) => {
     }).select("id,codigo,nome,email,status").single();
 
     if (error) throw new Error(error.message);
+
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "manut_clientes",
+      registro_id: data?.id ?? null,
+      descricao: `Criou cliente "${nome}" (${codigo})`,
+      dados: { id: data?.id, nome, email: email.toLowerCase().trim(), codigo, telefone: telefone || null, plano_selecionado: plano_selecionado || null, valor_mensal_contratado: valor_mensal_contratado ? Number(valor_mensal_contratado) : null, visitas_contratadas: visitas_contratadas ? Number(visitas_contratadas) : 1 },
+    });
+
     return jsonOk({ ...data, senhaInicial });
   } catch (e: any) {
     return jsonErr(e.message === "Não autorizado" ? 401 : e.message.includes("409") ? 409 : 500, e.message);

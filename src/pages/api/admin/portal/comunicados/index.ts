@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { requireAdminCookie, jsonOk, jsonErr } from "~/lib/auth";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -15,6 +16,14 @@ export const POST: APIRoute = async ({ request }) => {
       .insert({ title, content, category: category || "comunicado", target_role: target_role || "all", created_by: claims.sub })
       .select().single();
     if (error) return jsonErr(500, "Erro ao criar comunicado.");
+
+    await registrarAcao(sb, { req: request, admin: { email: claims.email, role: claims.role } }, {
+      acao: "criar",
+      entidade: "portal_announcements",
+      registro_id: data?.id,
+      descricao: `Criou comunicado "${title}"`,
+      dados: data,
+    });
 
     // Notifica os colaboradores no sino do portal (todos ou só o perfil alvo)
     try {

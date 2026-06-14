@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -64,6 +65,13 @@ export const POST: APIRoute = async ({ request, params }) => {
         return jsonErr(409, "Já existe RDO desta data — edite o existente");
       return jsonErr(400, error.message);
     }
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "obras_rdo",
+      registro_id: data?.id ?? null,
+      descricao: `Gerou RDO da obra ${params.id} (data ${body.data})`,
+      dados: data,
+    });
     return jsonOk(data, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

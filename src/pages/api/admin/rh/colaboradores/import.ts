@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -149,6 +150,17 @@ export const POST: APIRoute = async ({ request }) => {
       const { error } = await db.from("rh_colaboradores").update(u.patch).eq("id", u.id);
       if (!error) atualizados++;
     }
+
+    if (criados > 0 || atualizados > 0) {
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar",
+        entidade: "rh_colaboradores",
+        registro_id: null,
+        descricao: `Importou ${criados} colaborador(es) (${atualizados} atualizado(s))`,
+        dados: { criados, atualizados },
+      });
+    }
+
     return jsonOk({ ok: true, criados, atualizados, erros: analise.erros });
   } catch (e: any) {
     return jsonErr(500, `Falha na importação: ${e?.message || e}`);

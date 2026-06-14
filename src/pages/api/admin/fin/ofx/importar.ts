@@ -2,13 +2,14 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { parseOfx } from "../../../../../lib/ofx";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
 // POST /api/admin/fin/ofx/importar — body { conteudo: string (texto do arquivo OFX) }
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const body = await request.json();
     const conteudo = body?.conteudo;
     if (!conteudo || typeof conteudo !== "string")
@@ -52,6 +53,15 @@ export const POST: APIRoute = async ({ request }) => {
         if (error) return jsonErr(500, error.message);
       }
     }
+
+    const duplicadas = unicas.length - novas.length + (transacoes.length - unicas.length);
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "fin_extrato_ofx",
+      registro_id: null,
+      descricao: `Importou ${novas.length} transação(ões) OFX${conta ? ` da conta ${conta}` : ""}`,
+      dados: { criados: novas.length, duplicadas, conta: conta || null },
+    });
 
     return jsonOk({
       importadas: novas.length,

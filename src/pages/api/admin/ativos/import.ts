@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
+import { registrarAcao } from "../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -187,6 +188,14 @@ export const POST: APIRoute = async ({ request }) => {
         atualizados++;
         await db.from("ativos_movimentos").insert({ ativo_id: u.id, tipo: "edicao", descricao: "Dados atualizados via importação em massa", feito_por: admin.email });
       }
+    }
+
+    if (criados > 0) {
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar", entidade: "ativos", registro_id: null,
+        descricao: `Importou ${criados} ativo(s) em massa`,
+        dados: { criados, atualizados },
+      });
     }
 
     return jsonOk({ ok: true, criados, atualizados, erros: analise.erros });

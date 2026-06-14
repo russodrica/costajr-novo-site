@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
+import { registrarAcao } from "../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -65,6 +66,14 @@ export const POST: APIRoute = async ({ request }) => {
       descricao: "Ativo cadastrado no sistema",
       status_novo: data.status,
       feito_por: admin.email,
+    });
+
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "ativos",
+      registro_id: data.id,
+      descricao: `Criou ativo "${data.descricao}" (${data.categoria})`,
+      dados: data,
     });
 
     return jsonOk(data, 201);

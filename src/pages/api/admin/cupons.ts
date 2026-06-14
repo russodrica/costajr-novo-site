@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -8,7 +9,7 @@ const TIPOS_VALIDOS = new Set(["desconto", "indicacao", "nova_loja", "representa
 
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const body = await request.json();
 
     const codigo = String(body.codigo || "").trim().toUpperCase();
@@ -68,6 +69,15 @@ export const POST: APIRoute = async ({ request }) => {
     }).select("*").single();
 
     if (error) throw new Error(error.message);
+
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "manut_cupons",
+      registro_id: data?.id ?? null,
+      descricao: `Criou cupom "${codigo}" (${tipo}, ${desconto}% desconto)`,
+      dados: data,
+    });
+
     return jsonOk(data, 201);
   } catch (e: any) {
     const code = e.message === "Não autenticado" ? 401 : 400;

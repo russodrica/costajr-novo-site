@@ -1,12 +1,13 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, hashSenha, gerarSenhaInicial, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const db = supabaseAdmin();
     const leadId = params.id!;
 
@@ -42,6 +43,18 @@ export const POST: APIRoute = async ({ request, params }) => {
       .select()
       .single();
     if (errCliente) return jsonErr(400, errCliente.message);
+
+    await registrarAcao(
+      db,
+      { req: request, admin },
+      {
+        acao: "criar",
+        entidade: "manut_clientes",
+        registro_id: cliente.id,
+        descricao: `Converteu lead "${lead.nome}" em cliente (${codigo})`,
+        dados: cliente,
+      },
+    );
 
     // Cria a loja automaticamente com os dados do lead
     let loja = null;

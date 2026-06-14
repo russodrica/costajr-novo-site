@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { d4signConfigurado, listarCofres, uploadPdf, criarListaSignatarios, enviarParaAssinatura, registrarWebhook } from "../../../../../lib/d4sign";
 import { gerarTermoPdf } from "../../../../../lib/termoPdf";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -58,6 +59,14 @@ export const POST: APIRoute = async ({ request, params, url }) => {
       descricao: `Termo de responsabilidade enviado para assinatura via D4Sign (${termo.colaborador_email})`,
       dados: { termo_id: termo.id, d4sign_uuid: uuidDoc },
       feito_por: admin.email,
+    });
+
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "ativos_termos",
+      registro_id: termo.id,
+      descricao: `Enviou termo de "${termo.colaborador_nome}" para assinatura na D4Sign`,
+      dados: { termo_id: termo.id, d4sign_uuid: uuidDoc, colaborador_email: termo.colaborador_email, cofre },
     });
 
     return jsonOk(atualizado);

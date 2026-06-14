@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { calcularPeriodo, ciclosVencidos, resumoPeriodo } from "../../../../../lib/ferias";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -61,7 +62,7 @@ export const GET: APIRoute = async ({ request, url }) => {
 //   { colaborador_id, ... }         → cria um período (datas calculadas da admissão se omitidas)
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const body = await request.json();
     const db = supabaseAdmin();
 
@@ -86,6 +87,15 @@ export const POST: APIRoute = async ({ request }) => {
         if (error) return jsonErr(500, `Erro ao semear: ${error.message}`);
         criados += data?.length || 0;
       }
+      if (criados > 0) {
+        await registrarAcao(db, { req: request, admin }, {
+          acao: "criar",
+          entidade: "rh_ferias_periodos",
+          registro_id: null,
+          descricao: `Gerou períodos de férias para ${criados} colaborador(es) CLT`,
+          dados: { criados, sem_admissao: semAdmissao },
+        });
+      }
       return jsonOk({ ok: true, criados, ja_existiam: (colabs || []).length - novos.length - semAdmissao, sem_admissao: semAdmissao });
     }
 
@@ -100,6 +110,13 @@ export const POST: APIRoute = async ({ request }) => {
     const { data, error } = await db.from("rh_ferias_periodos")
       .insert({ colaborador_id: body.colaborador_id, ...dados, status: "aberto", observacoes: body.observacoes || null }).select().single();
     if (error) return jsonErr(400, error.message);
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "rh_ferias_periodos",
+      registro_id: data.id,
+      descricao: `Criou período aquisitivo de férias (aquisitivo ${dados.inicio_aquisitivo} a ${dados.fim_aquisitivo})`,
+      dados: data,
+    });
     return jsonOk(data, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

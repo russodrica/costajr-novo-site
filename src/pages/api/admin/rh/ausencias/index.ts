@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -41,7 +42,7 @@ export const GET: APIRoute = async ({ request, url }) => {
 // POST /api/admin/rh/ausencias — cria ausência
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const body = await request.json();
     const { colaborador_id, tipo, data_inicio, data_fim } = body;
     if (!colaborador_id || !tipo || !data_inicio || !data_fim) {
@@ -62,6 +63,15 @@ export const POST: APIRoute = async ({ request }) => {
     const db = supabaseAdmin();
     const { data, error } = await db.from("rh_ausencias").insert(row).select().single();
     if (error) return jsonErr(400, error.message);
+
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "rh_ausencias",
+      registro_id: data?.id ?? null,
+      descricao: `Registrou ausência (${tipo}) de ${dias} dia(s) — ${data_inicio} a ${data_fim}`,
+      dados: data ?? row,
+    });
+
     return jsonOk(data, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

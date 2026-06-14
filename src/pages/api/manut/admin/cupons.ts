@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdmin, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -20,7 +21,7 @@ export const GET: APIRoute = async ({ request }) => {
 
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdmin(request);
+    const admin = await requireAdmin(request);
     const body = await request.json();
     const { codigo, descricao, desconto_percentual, duracao_meses, usos_maximos, validade } = body;
     if (!codigo || !desconto_percentual) return jsonErr(400, "codigo e desconto_percentual obrigatórios");
@@ -39,6 +40,17 @@ export const POST: APIRoute = async ({ request }) => {
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+    await registrarAcao(
+      supabaseAdmin(),
+      { req: request, admin },
+      {
+        acao: "criar",
+        entidade: "manut_cupons",
+        registro_id: data?.id ?? null,
+        descricao: `Criou cupom "${data?.codigo ?? codigo}" (${Number(desconto_percentual)}% de desconto)`,
+        dados: data,
+      },
+    );
     return jsonOk(data);
   } catch (e: any) {
     return jsonErr(e.message === "Não autorizado" ? 401 : 500, e.message);

@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../lib/supabase";
 import { addDays, MAX_PARCELAS, MIN_DIAS_PARCELA } from "../../../../../../lib/ferias";
+import { registrarAcao } from "../../../../../../lib/auditoria";
 
 export const prerender = false;
 
@@ -12,7 +13,7 @@ const isData = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && !is
 //   (mantém as já confirmadas). Valida ≤3 no total e soma ≤ dias_direito.
 export const POST: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
     const periodoId = params.id!;
     const body = await request.json();
     const entrada = Array.isArray(body.parcelas) ? body.parcelas : [];
@@ -53,6 +54,13 @@ export const POST: APIRoute = async ({ request, params }) => {
     if (novas.length) {
       const { error } = await db.from("rh_ferias_parcelas").insert(novas);
       if (error) return jsonErr(400, error.message);
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar",
+        entidade: "rh_ferias_parcelas",
+        registro_id: periodoId,
+        descricao: `Programou ${novas.length} parcela(s) de férias (${somaNovas} dias) do período ${periodoId}`,
+        dados: { periodo_id: periodoId, parcelas: novas },
+      });
     }
 
     const completo = somaConf + somaNovas >= periodo.dias_direito;

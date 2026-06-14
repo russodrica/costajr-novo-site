@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -43,6 +44,13 @@ export const POST: APIRoute = async ({ request }) => {
     const db = supabaseAdmin();
     const { data, error } = await db.from("rh_admissoes").insert(row).select().single();
     if (error) return jsonErr(400, error.message);
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "criar",
+      entidade: "rh_admissoes",
+      registro_id: data?.id ?? null,
+      descricao: `Criou admissão digital "${nome}"`,
+      dados: data,
+    });
     return jsonOk(data, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

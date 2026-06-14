@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdmin, jsonOk, jsonErr, hashSenha, gerarSenhaInicial } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
+import { registrarAcao } from "~/lib/auditoria";
 
 export const prerender = false;
 
@@ -19,7 +20,7 @@ export const GET: APIRoute = async ({ request }) => {
 
 export const POST: APIRoute = async ({ request }) => {
   try {
-    await requireAdmin(request);
+    const admin = await requireAdmin(request);
     const body = await request.json();
     const { nome, email, telefone, especialidades } = body;
     if (!nome || !email) return jsonErr(400, "nome e email obrigatórios");
@@ -40,6 +41,15 @@ export const POST: APIRoute = async ({ request }) => {
       .single();
 
     if (error) throw new Error(error.message);
+
+    await registrarAcao(supabaseAdmin(), { req: request, admin }, {
+      acao: "criar",
+      entidade: "manut_tecnicos",
+      registro_id: data?.id ?? null,
+      descricao: `Criou técnico "${data?.nome || nome}"`,
+      dados: data,
+    });
+
     return jsonOk({ ...data, senhaInicial });
   } catch (e: any) {
     return jsonErr(e.message === "Não autorizado" ? 401 : 500, e.message);
