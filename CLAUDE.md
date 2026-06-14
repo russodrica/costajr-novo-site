@@ -739,6 +739,43 @@ Analytics RH (dados ja existem), (4) pagina publica de vagas + banco de talentos
 (5) perfil comportamental DISC. NAO construir (integrar): ponto eletronico
 (Portaria 671, risco legal) e folha/DP (contabilidade).
 
+## Atualizacao 13/06/2026 (parte 7) — Desligamento travado por devolucao + specs RH/DP
+
+**Desligamento so conclui apos devolucao completa (commit dfe0d68):** pedido da
+Adriana. O botao Desligar agora cruza a POSSE do colaborador com o modulo de
+Ativos e com os EPIs/uniformes, e SO desliga se tudo foi devolvido em perfeito
+estado + passos do regime. /api/admin/rh/desligamentos/posse (ativos alocados a
+ele por id/profile_id/nome + epi_entregas status=ativo sem data_devolucao).
+/api/admin/rh/desligamentos/finalizar = GATE no servidor: bloqueia com lista de
+pendencias se faltar item devolvido/em perfeito estado; CLT exige exame
+demissional+exame emocional+aviso previo(cumprido/dispensado)+termo de
+encerramento; PJ exige contrato de encerramento. Ao concluir: baixa EPIs
+(devolvido), devolve ativos (status em_estoque + ativos_movimentos tipo
+devolucao), desliga e revoga acesso. O PATCH de colaborador BLOQUEIA status->
+desligado direto (so pelo fluxo). Verificado E2E no banco. Ativos: status
+'alocado', alocado_para_tipo='colaborador', alocado_para_id, alocado_para_nome.
+
+**Specs lidas (Marketing/1_Orientativos/1_Processos/Fluxos_Automacoes_RH DP.xlsx):**
+aba RH = funil de R&S (divulgacao>recepcao>perfil aderente>1a comportamental>2a
+tecnico>admissao "so com envio integral">analise documental>doc basica (Onvio,
+clinica)>doc SST (ASO, contabilidade)>doc pessoal (conta, cracha, EPIs/uniforme,
+VA/VT/VR, email/ControlID)>integracao (onboarding + assinaturas: contrato, VT/VA,
+banco de horas, ficha EPI, uniforme, termo equipamentos/ferramentas)>arquivamento).
+aba DP = ativos PJ/CLT, atividades periodicas (calendario: dia15 adiantamento,
+dia1 salario, dia25 compra VA/VT), AVALIACAO DESEMPENHO (formulario trimestral
+Mar/Jun/Set/Dez, consolida em Excel), DESLIGAMENTO (emails automaticos: TI cancela
+acessos, banco cancela conta, CLT agenda exame demissional, Alelo/VT/Totalpass
+cancelamento), entrevista de desligamento, arquivamento.
+
+**PENDENTE (melhorias aprovadas, proximas — ordem sugerida):** (1) Avaliacao de
+Desempenho trimestral (board + Fluxos), (2) Pesquisa de Clima/eNPS, (3) People
+Analytics RH, (4) pagina publica de vagas + banco de talentos, (5) Perfil
+comportamental DISC/Eneagrama (Adriana passou os modelos F3_Teste DISC.xlsx e
+F4_Teste Eneagrama.xlsx — planilhas de terceiros a digitalizar como questionario).
+Contratos: a Adriana vai passar os modelos padrao; RH gera so contrato de proposta,
+encerramento PJ, termo de posse de equipamentos e termo de encerramento de posse
+(liberado so com devolucao em perfeito estado).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
