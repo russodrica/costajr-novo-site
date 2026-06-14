@@ -8,77 +8,92 @@ import Portal from "~/layouts/Portal.astro";
   </div>
 
   <div id="hub-content" style="display:none">
-    <div id="welcome-banner" style="
-      background: linear-gradient(135deg, #1A1C20 0%, #2D2F36 60%, #3A1419 100%);
-      border-radius: 14px; padding: 32px 36px; color: #fff; margin-bottom: 28px;
-      display: flex; align-items: center; justify-content: space-between; gap: 20px;
-    ">
-      <div>
-        <p style="font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:#FC8181;margin:0 0 8px">Portal do Colaborador</p>
-        <h2 style="font-family:'Montserrat',sans-serif;font-size:26px;font-weight:800;margin:0 0 8px;color:#fff">
-          Olá, <span id="welcomeName">colaborador</span>! 👋
-        </h2>
-        <p style="margin:0;color:#D1D5DB;font-size:15px">Bem-vindo ao seu espaço interno. Acesse seus módulos abaixo.</p>
+    <div id="welcome-banner">
+      <div class="wb-text">
+        <p class="wb-eyebrow">Portal do Colaborador</p>
+        <h2 class="wb-title">Olá, <span id="welcomeName">colaborador</span>! 👋</h2>
+        <p class="wb-sub">Que bom te ver por aqui. Escolha um atalho abaixo para começar.</p>
       </div>
-      <div style="text-align:right;flex-shrink:0">
-        <p style="margin:0;font-size:12px;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.1em">Cargo</p>
-        <p id="welcomeRole" style="margin:4px 0 0;font-family:'Montserrat',sans-serif;font-size:18px;font-weight:800;color:var(--brand)">—</p>
+      <div class="wb-role">
+        <p class="wb-role-label">Seu acesso</p>
+        <p id="welcomeRole" class="wb-role-value">—</p>
       </div>
     </div>
 
-    <!-- Módulos -->
-    <div id="modules-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:28px"></div>
+    <!-- Atalhos / módulos -->
+    <p class="secao-titulo">Seus atalhos</p>
+    <div id="modules-grid"></div>
 
-    <!-- Avisos e KB em duas colunas -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-      <div class="card">
-        <div class="section-header" style="margin-bottom:16px">
-          <h2 style="margin:0;font-size:16px">📢 Comunicados</h2>
-          <span id="avisos-count" style="font-size:12px;color:var(--ink-light)"></span>
-        </div>
-        <div id="avisos-list"><div class="loading"><div class="spinner"></div></div></div>
-      </div>
-
-      <div class="card">
-        <div class="section-header" style="margin-bottom:16px">
-          <h2 style="margin:0;font-size:16px">🔍 Base de Conhecimento</h2>
-        </div>
-        <div style="margin-bottom:12px">
-          <input type="text" id="kb-search" placeholder="Pesquisar perguntas frequentes..."
-            style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;outline:none;font-family:'Open Sans',sans-serif">
-        </div>
-        <div id="kb-list"><div class="loading"><div class="spinner"></div></div></div>
-      </div>
+    <!-- Comunicados -->
+    <p class="secao-titulo" style="margin-top:34px">📢 Comunicados</p>
+    <div class="card avisos-card">
+      <div id="avisos-list"><div class="loading"><div class="spinner"></div></div></div>
     </div>
   </div>
 
   <style>
+    /* ─── Banner de boas-vindas ─── */
+    #welcome-banner {
+      background: linear-gradient(135deg, #1A1C20 0%, #2D2F36 55%, #3A1419 100%);
+      border-radius: 18px; padding: 34px 38px; color: #fff; margin-bottom: 30px;
+      display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    }
+    .wb-eyebrow { font-size: 13px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #FC8181; margin: 0 0 10px; }
+    .wb-title { font-family: 'Montserrat', sans-serif; font-size: 32px; font-weight: 800; margin: 0 0 10px; color: #fff; line-height: 1.1; }
+    .wb-sub { margin: 0; color: #D1D5DB; font-size: 17px; }
+    .wb-role { text-align: right; flex-shrink: 0; }
+    .wb-role-label { margin: 0; font-size: 12px; color: #9CA3AF; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+    .wb-role-value { margin: 6px 0 0; font-family: 'Montserrat', sans-serif; font-size: 20px; font-weight: 800; color: #FC8181; }
+
+    .secao-titulo {
+      font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 19px;
+      color: var(--ink); margin: 0 0 16px;
+    }
+
+    /* ─── Cards de módulo (atalhos) ─── */
+    #modules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px,1fr)); gap: 18px; }
     .module-card {
-      background: #fff; border: 1px solid var(--border); border-radius: 14px;
-      padding: 28px 24px; cursor: pointer; text-decoration: none; color: inherit;
-      display: flex; flex-direction: column; gap: 10px;
+      background: #fff; border: 1.5px solid var(--border); border-radius: 18px;
+      padding: 26px 24px; cursor: pointer; text-decoration: none; color: inherit;
+      display: flex; align-items: center; gap: 18px;
       transition: all .2s ease; position: relative; overflow: hidden;
     }
-    .module-card::before {
-      content: ""; position: absolute; top: 0; left: 0; height: 3px; width: 0;
-      background: var(--brand); transition: width .25s ease;
+    .module-card:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,.12); border-color: rgba(196,30,58,.3); }
+    .module-icon {
+      width: 62px; height: 62px; border-radius: 16px; flex-shrink: 0;
+      background: var(--brand-light); color: var(--brand);
+      display: flex; align-items: center; justify-content: center; font-size: 30px;
     }
-    .module-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,.1); border-color: rgba(196,30,58,.25); }
-    .module-card:hover::before { width: 100%; }
-    .module-icon { font-size: 28px; }
-    .module-card h3 { font-family:'Montserrat',sans-serif; font-size:15px; font-weight:800; margin:0; color:var(--ink); }
-    .module-card p { font-size:13px; color:var(--ink-mid); margin:0; line-height:1.5; }
-    .aviso-item { border-bottom: 1px solid var(--border-light); padding-bottom: 12px; margin-bottom: 12px; }
-    .aviso-item:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
-    .aviso-item strong { display: block; font-size: 13.5px; margin-bottom: 2px; color: var(--ink); }
-    .aviso-item span { font-size: 12px; color: var(--ink-light); }
-    .kb-item { border-bottom: 1px solid var(--border-light); padding: 10px 0; }
-    .kb-item:last-child { border-bottom: 0; }
-    .kb-q { font-size: 13.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
-    .kb-a { font-size: 13px; color: var(--ink-mid); margin-top: 6px; display: none; line-height: 1.6; }
-    .kb-item.open .kb-a { display: block; }
-    @media (max-width: 700px) {
-      div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+    .module-icon img { width: 50px; height: 50px; object-fit: contain; }
+    .module-body { min-width: 0; }
+    .module-card h3 {
+      font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 800;
+      margin: 0 0 4px; color: var(--ink); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .module-card p { font-size: 14.5px; color: var(--ink-mid); margin: 0; line-height: 1.45; }
+    .mod-tag {
+      font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 700;
+      background: var(--brand); color: #fff; border-radius: 100px; padding: 2px 9px;
+      text-transform: none; letter-spacing: 0;
+    }
+    /* Destaque do JunIA (substitui a base de conhecimento) */
+    .module-card.destaque { border-color: rgba(196,30,58,.4); background: linear-gradient(135deg,#fff 60%,#FFF5F6); }
+    .module-card.destaque .module-icon { background: var(--brand); color: #fff; }
+
+    /* ─── Comunicados ─── */
+    .avisos-card { padding: 22px 26px; }
+    .aviso-item { display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid var(--border-light); padding: 14px 0; }
+    .aviso-item:first-child { padding-top: 0; }
+    .aviso-item:last-child { border-bottom: 0; padding-bottom: 0; }
+    .aviso-item strong { font-size: 16px; font-weight: 700; color: var(--ink); flex: 1; }
+    .aviso-item .aviso-data { font-size: 13px; color: var(--ink-light); white-space: nowrap; flex-shrink: 0; }
+    .avisos-vazio { color: var(--ink-light); font-size: 15px; margin: 6px 0; text-align: center; padding: 18px 0; }
+
+    @media (max-width: 640px) {
+      #welcome-banner { flex-direction: column; align-items: flex-start; padding: 26px 24px; }
+      .wb-role { text-align: left; }
+      .wb-title { font-size: 27px; }
+      #modules-grid { grid-template-columns: 1fr; }
     }
   </style>
 
@@ -102,14 +117,14 @@ import Portal from "~/layouts/Portal.astro";
 
     // Módulos disponíveis por role
     const modules = [
-      { icon: "✅", title: "Onboarding", desc: "Integração e boas-vindas", href: "/portal/onboarding", roles: "all" },
+      { icon: '<img src="/junia-mascote.png" alt="JunIA">', title: "JunIA", desc: "Pergunte aqui — a inteligência da Costa Júnior responde na hora", href: "/portal/junia", roles: "all", destaque: true },
+      { icon: "✅", title: "Onboarding", desc: "Sua integração e boas-vindas", href: "/portal/onboarding", roles: "all" },
       { icon: "🎬", title: "Treinamentos", desc: "Vídeos e materiais do seu setor", href: "/portal/treinamentos", roles: "all" },
-      { icon: '<img src="/junia-mascote.png" alt="JunIA" style="width:46px;height:46px;object-fit:contain">', title: "JunIA", desc: "Pergunte — a inteligência da Costa Júnior responde", href: "/portal/junia", roles: "all" },
       { icon: "💬", title: "Fórum", desc: "Troca de ideias com a equipe", href: "/portal/forum", roles: "all" },
       { icon: "📄", title: "Documentos", desc: "Manuais e procedimentos técnicos", href: "/portal/documentos", roles: "all" },
+      { icon: "🎒", title: "Meus Equipamentos", desc: "Equipamentos sob sua responsabilidade", href: "/portal/meus-equipamentos", roles: "all" },
       { icon: "💰", title: "Gest. Comercial", desc: "Leads, contratos e metas", href: "/portal/gestao-comercial", roles: "admin,coordenador,comercial" },
       { icon: "🔧", title: "Gest. Manutenção", desc: "Clientes, chamados e técnicos", href: "/portal/gestao-manutencao", roles: "admin,coordenador,operacional" },
-      { icon: "🎒", title: "Meus Equipamentos", desc: "Equipamentos sob sua responsabilidade", href: "/portal/meus-equipamentos", roles: "all" },
       { icon: "🙍", title: "Minha Conta", desc: "Editar nome e trocar senha", href: "/portal/minha-conta", roles: "all" },
     ];
 
@@ -117,9 +132,14 @@ import Portal from "~/layouts/Portal.astro";
     modules.forEach(m => {
       if (m.roles !== "all" && !m.roles.split(",").includes(role)) return;
       const a = document.createElement("a");
-      a.className = "module-card";
+      a.className = "module-card" + ((m as any).destaque ? " destaque" : "");
       a.href = m.href;
-      a.innerHTML = `<div class="module-icon">${m.icon}</div><h3>${m.title}</h3><p>${m.desc}</p>`;
+      a.innerHTML = `
+        <div class="module-icon">${m.icon}</div>
+        <div class="module-body">
+          <h3>${m.title}${(m as any).destaque ? '<span class="mod-tag">💬 chat</span>' : ""}</h3>
+          <p>${m.desc}</p>
+        </div>`;
       grid.appendChild(a);
     });
 
@@ -131,37 +151,12 @@ import Portal from "~/layouts/Portal.astro";
       .then(r => r.ok ? r.json() : [])
       .then((items: any[]) => {
         const el = document.getElementById("avisos-list")!;
-        if (!items.length) { el.innerHTML = '<p style="color:var(--ink-light);font-size:13px">Nenhum comunicado no momento.</p>'; return; }
-        document.getElementById("avisos-count")!.textContent = `${items.length} recente(s)`;
-        el.innerHTML = items.slice(0, 5).map((a: any) => `
+        if (!items.length) { el.innerHTML = '<p class="avisos-vazio">Nenhum comunicado no momento. 🙂</p>'; return; }
+        el.innerHTML = items.slice(0, 6).map((a: any) => `
           <div class="aviso-item">
             <strong>${a.title}</strong>
-            <span>${new Date(a.created_at).toLocaleDateString("pt-BR")}</span>
+            <span class="aviso-data">${new Date(a.created_at).toLocaleDateString("pt-BR")}</span>
           </div>`).join("");
-      }).catch(() => { document.getElementById("avisos-list")!.innerHTML = '<p style="color:var(--ink-light);font-size:13px">Erro ao carregar.</p>'; });
-
-    // KB
-    let kbAll: any[] = [];
-    fetch("/api/portal/kb", { headers: { "x-portal-auth": token } })
-      .then(r => r.ok ? r.json() : [])
-      .then((items: any[]) => {
-        kbAll = items;
-        renderKb(items);
-      }).catch(() => { document.getElementById("kb-list")!.innerHTML = '<p style="color:var(--ink-light);font-size:13px">Erro ao carregar.</p>'; });
-
-    function renderKb(items: any[]) {
-      const el = document.getElementById("kb-list")!;
-      if (!items.length) { el.innerHTML = '<p style="color:var(--ink-light);font-size:13px">Nenhum resultado.</p>'; return; }
-      el.innerHTML = items.slice(0, 6).map((k: any, i: number) => `
-        <div class="kb-item" data-idx="${i}">
-          <div class="kb-q" onclick="this.parentElement.classList.toggle('open')">❓ ${k.question}</div>
-          <div class="kb-a">${k.answer}</div>
-        </div>`).join("");
-    }
-
-    document.getElementById("kb-search")!.addEventListener("input", (e) => {
-      const q = (e.target as HTMLInputElement).value.toLowerCase();
-      renderKb(q ? kbAll.filter((k: any) => k.question.toLowerCase().includes(q) || k.answer.toLowerCase().includes(q)) : kbAll);
-    });
+      }).catch(() => { document.getElementById("avisos-list")!.innerHTML = '<p class="avisos-vazio">Erro ao carregar.</p>'; });
   </script>
 </Portal>
