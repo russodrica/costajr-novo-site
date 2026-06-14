@@ -900,6 +900,13 @@ Lote de 12 ajustes pedidos pela Adriana, validados via dev server autenticado
   no Outlook" — nao foi pedido integrar.
 Migrations: **052_rh_cargos RODADA.** Telas E2E 200. Commits ee2cf9b..4fd8518.
 
+**Abono pecuniario (vender ferias) — migration 053 RODADA; commit 3d6f68b:** modal
+de ferias ganhou seletor "Vender (abono)" 0/10/15/20/30; dias vendidos reduzem o
+descanso a programar (rh_ferias_periodos.dias_abono). resumoPeriodo(d,p,abono):
+completo quando programado+abono>=direito. API parcelas valida abono (set valido,
+< direito, soma+abono<=direito). Nota: CLT limita abono a 1/3 (10 dias) — as 4
+opcoes ficam a criterio do RH. E2E ok.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
