@@ -17,7 +17,7 @@ const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutenc
   db.from("ativos_termos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
   db.from("ativos_manutencoes").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
   db.from("ativos_ocorrencias").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
-  db.from("portal_profiles").select("id, display_name, full_name, email").eq("approval_status", "approved").order("display_name"),
+  db.from("rh_colaboradores").select("id, nome, email, profile_id").neq("status", "desligado").order("nome"),
   db.from("obras").select("id, nome, status").neq("status", "cancelada").order("nome"),
   db.from("ativos_manutencao_planos").select("*").eq("ativo_id", id).eq("ativo", true).order("proxima_em"),
 ]);
@@ -278,7 +278,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
         <div class="form-group"><label>Colaborador *</label>
           <select name="colaborador_sel" required>
             <option value="">Selecione...</option>
-            {membros?.map((m: any) => <option value={m.id} data-nome={m.display_name || m.full_name || m.email} data-email={m.email}>{m.display_name || m.full_name || m.email}</option>)}
+            {membros?.map((m: any) => <option value={m.id} data-nome={m.nome} data-email={m.email || ""}>{m.nome}{m.profile_id ? "" : " (sem login)"}</option>)}
             <option value="__outro__">Outro (digitar nome)...</option>
           </select>
         </div>

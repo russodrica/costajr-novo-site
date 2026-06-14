@@ -53,24 +53,35 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
     switch (acao) {
       case "entregar": {
         const { colaborador_id, colaborador_nome, colaborador_email, condicao, observacao } = body;
-        if (!colaborador_nome) return jsonErr(400, "Informe o colaborador");
+        // colaborador_id agora é o ID da PESSOA do RH (rh_colaboradores). Buscamos a pessoa
+        // p/ gravar o nome correto e descobrir o login (profile_id) que assina o termo.
+        let alocId: string | null = null;   // dono do equipamento = pessoa do RH
+        let profileId: string | null = null; // login que aceita o termo (FK -> portal_profiles)
+        let nome = colaborador_nome;
+        let email = colaborador_email || null;
+        if (colaborador_id) {
+          const { data: colab } = await db.from("rh_colaboradores").select("id, nome, email, profile_id").eq("id", colaborador_id).maybeSingle();
+          if (colab) { alocId = colab.id; profileId = colab.profile_id || null; nome = colab.nome || nome; email = colab.email || email; }
+          else { alocId = colaborador_id; } // caso não seja um RH conhecido, mantém o id informado
+        }
+        if (!nome) return jsonErr(400, "Informe o colaborador");
         const mov = await aplicar(
-          { status: "alocado", alocado_para_tipo: "colaborador", alocado_para_id: colaborador_id || null, alocado_para_nome: colaborador_nome },
+          { status: "alocado", alocado_para_tipo: "colaborador", alocado_para_id: alocId, alocado_para_nome: nome },
           {
             tipo: "entrega",
-            descricao: `Entregue para ${colaborador_nome}${observacao ? ` — ${observacao}` : ""}`,
+            descricao: `Entregue para ${nome}${observacao ? ` — ${observacao}` : ""}`,
             de_tipo: ativo.alocado_para_tipo, de_id: ativo.alocado_para_id, de_nome: ativo.alocado_para_nome,
-            para_tipo: "colaborador", para_id: colaborador_id || null, para_nome: colaborador_nome,
+            para_tipo: "colaborador", para_id: alocId, para_nome: nome,
             status_novo: "alocado", condicao: condicao || null,
           }
         );
 
         // Termo de responsabilidade gerado automaticamente
-        const conteudo = gerarTermo(ativo, { nome: colaborador_nome, email: colaborador_email }, condicao, admin.email);
+        const conteudo = gerarTermo(ativo, { nome, email: email || undefined }, condicao, admin.email);
         const { data: termo, error: e3 } = await db.from("ativos_termos").insert({
           ativo_id: id, movimento_id: mov.id,
-          colaborador_id: colaborador_id || null,
-          colaborador_nome, colaborador_email: colaborador_email || null,
+          colaborador_id: profileId,
+          colaborador_nome: nome, colaborador_email: email,
           conteudo, condicao: condicao || null,
           criado_por: admin.email,
         }).select().single();
@@ -79,7 +90,7 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
           acao: "criar",
           entidade: "ativos_termos",
           registro_id: termo.id,
-          descricao: `Entregou ativo ${ident} para ${colaborador_nome} (termo de responsabilidade gerado)`,
+          descricao: `Entregou ativo ${ident} para ${nome} (termo de responsabilidade gerado)`,
           dados: termo,
         });
         return jsonOk({ movimento: mov, termo });
@@ -112,10 +123,10 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
             status_novo: "em_estoque", condicao: condicao || null, fotos: fotos || [],
           }
         );
-        // termos pendentes/aceitos deste colaborador viram cancelados (equipamento devolvido)
-        if (ativo.alocado_para_tipo === "colaborador" && ativo.alocado_para_id) {
+        // equipamento devolvido → cancela os termos em aberto deste ativo
+        if (ativo.alocado_para_tipo === "colaborador") {
           await db.from("ativos_termos").update({ status: "cancelado" })
-            .eq("ativo_id", id).eq("colaborador_id", ativo.alocado_para_id).neq("status", "cancelado");
+            .eq("ativo_id", id).neq("status", "cancelado");
         }
         return jsonOk({ movimento: mov });
       }

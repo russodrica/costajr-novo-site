@@ -22,11 +22,17 @@ export const GET: APIRoute = async ({ request }) => {
     const claims = await requireAdmin(request);
     const sb = supabaseAdmin();
 
+    // RH é a base das pessoas: o equipamento é alocado à PESSOA do RH (rh_colaboradores.id).
+    // O login (portal_profiles.id = claims.sub) é resolvido para a pessoa do RH via profile_id.
+    const { data: colab } = await sb.from("rh_colaboradores").select("id").eq("profile_id", claims.sub).maybeSingle();
+    // ids possíveis do "dono": a pessoa do RH e, por retrocompat., o próprio id de login.
+    const idsDono = [colab?.id, claims.sub].filter(Boolean) as string[];
+
     const [{ data: ativos, error: e1 }, { data: termos, error: e2 }] = await Promise.all([
       sb.from("ativos")
         .select("id, descricao, categoria, subcategoria, marca, modelo, numero_serie, numero_patrimonial, status, fotos, campos, updated_at")
         .eq("alocado_para_tipo", "colaborador")
-        .eq("alocado_para_id", claims.sub),
+        .in("alocado_para_id", idsDono),
       sb.from("ativos_termos")
         .select("id, ativo_id, conteudo, condicao, status, aceito_em, created_at")
         .eq("colaborador_id", claims.sub)
