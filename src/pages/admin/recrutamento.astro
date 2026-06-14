@@ -1,0 +1,189 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+---
+<Admin title="Recrutamento & Seleção" current="recrutamento">
+  <div class="toolbar">
+    <span class="toolbar-title">🧲 Recrutamento & Seleção</span>
+    <select class="filter-select" id="filtroVaga" onchange="carregarKanban()"><option value="">Todas as vagas</option></select>
+    <button class="btn btn-outline" onclick="abrirVaga()">+ Nova vaga</button>
+    <button class="btn btn-primary" onclick="abrirCandidato()">+ Novo candidato</button>
+  </div>
+
+  <div id="vagasBox" style="margin-bottom:16px"></div>
+
+  <div id="kanban" style="overflow-x:auto;padding-bottom:8px">
+    <div class="loading"><div class="spinner"></div> Carregando…</div>
+  </div>
+
+  <!-- Modal vaga -->
+  <div class="modal-overlay" id="modalVaga">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-title" id="tituloVaga">Nova vaga</div>
+      <div id="msgVaga"></div>
+      <form id="formVaga">
+        <input type="hidden" name="id" />
+        <div class="form-group"><label>Título da vaga *</label><input name="titulo" required /></div>
+        <div class="form-row">
+          <div class="form-group"><label>Cargo</label><input name="cargo" /></div>
+          <div class="form-group"><label>Regime</label>
+            <select name="regime"><option value="">—</option><option value="clt">CLT</option><option value="pj">PJ</option><option value="estagio">Estágio</option><option value="temporario">Temporário</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Setor</label><input name="setor" /></div>
+          <div class="form-group"><label>Demandante</label><input name="demandante" /></div>
+          <div class="form-group"><label>Qtd. de vagas</label><input name="quantidade" type="number" min="1" value="1" /></div>
+        </div>
+        <div class="form-group"><label>Status</label>
+          <select name="status"><option value="aberta">Aberta</option><option value="em_andamento">Em andamento</option><option value="preenchida">Preenchida</option><option value="cancelada">Cancelada</option></select>
+        </div>
+        <div class="form-group"><label>Descrição</label><textarea name="descricao"></textarea></div>
+        <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="fecharModal('modalVaga')">Cancelar</button><button type="submit" class="btn btn-primary">Salvar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal candidato -->
+  <div class="modal-overlay" id="modalCand">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-title" id="tituloCand">Novo candidato</div>
+      <div id="msgCand"></div>
+      <form id="formCand">
+        <input type="hidden" name="id" />
+        <div class="form-group"><label>Nome *</label><input name="nome" required /></div>
+        <div class="form-row">
+          <div class="form-group"><label>E-mail</label><input name="email" type="email" /></div>
+          <div class="form-group"><label>Telefone</label><input name="telefone" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Vaga</label><select name="vaga_id" id="candVaga"><option value="">—</option></select></div>
+          <div class="form-group"><label>Origem</label><input name="origem" placeholder="Indicação, Gupy…" /></div>
+        </div>
+        <div class="form-group"><label>Etapa</label>
+          <select name="etapa" id="candEtapa"></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Entrevista comportamental</label><input name="entrevista_comportamental_em" type="date" /></div>
+          <div class="form-group"><label>Entrevista técnica</label><input name="entrevista_tecnica_em" type="date" /></div>
+        </div>
+        <div class="form-group"><label>Resultado do teste</label><input name="teste_resultado" /></div>
+        <div class="form-group"><label>Feedback / Observações</label><textarea name="observacoes"></textarea></div>
+        <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="fecharModal('modalCand')">Cancelar</button><button type="submit" class="btn btn-primary">Salvar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <script is:inline>
+    const ETAPAS = [
+      { k: "triagem", t: "Triagem", c: "#6B7280" },
+      { k: "teste", t: "Teste (PB)", c: "#7C3AED" },
+      { k: "entrevista_comportamental", t: "Entrev. Comportamental", c: "#2563EB" },
+      { k: "entrevista_tecnica", t: "Entrev. Técnica", c: "#0891B2" },
+      { k: "proposta", t: "Proposta", c: "#D97706" },
+      { k: "admissao", t: "Admissão", c: "#C026D3" },
+      { k: "contratado", t: "Contratado", c: "#16A34A" },
+      { k: "reprovado", t: "Reprovado", c: "#B91C1C" },
+    ];
+    const ETAPA_T = Object.fromEntries(ETAPAS.map(e => [e.k, e]));
+    let VAGAS = [], CAND = [];
+    const esc = s => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    function fecharModal(id){ document.getElementById(id).classList.remove("open"); }
+
+    async function carregarVagas() {
+      const r = await fetch("/api/admin/rh/vagas", { headers: { "content-type": "application/json" } });
+      VAGAS = await r.json();
+      const stLabel = { aberta:"Aberta", em_andamento:"Em andamento", preenchida:"Preenchida", cancelada:"Cancelada" };
+      const stBadge = { aberta:"badge-green", em_andamento:"badge-blue", preenchida:"badge-gray", cancelada:"badge-red" };
+      document.getElementById("vagasBox").innerHTML = VAGAS.length
+        ? `<div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">${VAGAS.map(v => `
+          <div class="card" style="padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;gap:6px"><strong style="font-size:14px">${esc(v.titulo)}</strong><span class="badge ${stBadge[v.status]||"badge-gray"}">${stLabel[v.status]||v.status}</span></div>
+            <div style="font-size:12.5px;color:#6B7280;margin-top:3px">${esc(v.cargo||"—")} · ${(v.regime||"—").toUpperCase()} · ${v.candidatos.ativos} no funil</div>
+            <div style="margin-top:8px;display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="editarVaga('${v.id}')">Editar</button><button class="btn btn-danger btn-sm" onclick="excluirVaga('${v.id}','${esc(v.titulo).replace(/'/g,'')}')">🗑</button></div>
+          </div>`).join("")}</div>`
+        : '<div class="card" style="text-align:center;color:#6B7280;padding:18px">Nenhuma vaga. Clique em <strong>+ Nova vaga</strong>.</div>';
+      const sel = document.getElementById("filtroVaga"), cs = document.getElementById("candVaga");
+      const opts = `<option value="">—</option>` + VAGAS.map(v => `<option value="${v.id}">${esc(v.titulo)}</option>`).join("");
+      cs.innerHTML = opts;
+      sel.innerHTML = `<option value="">Todas as vagas</option>` + VAGAS.map(v => `<option value="${v.id}">${esc(v.titulo)}</option>`).join("");
+      document.getElementById("candEtapa").innerHTML = ETAPAS.map(e => `<option value="${e.k}">${e.t}</option>`).join("");
+    }
+
+    async function carregarKanban() {
+      const vaga = document.getElementById("filtroVaga").value;
+      const r = await fetch("/api/admin/rh/candidatos" + (vaga ? `?vaga_id=${vaga}` : ""), { headers: { "content-type": "application/json" } });
+      CAND = await r.json();
+      const box = document.getElementById("kanban");
+      box.innerHTML = `<div style="display:flex;gap:12px;min-width:max-content">${ETAPAS.map(e => {
+        const itens = CAND.filter(c => c.etapa === e.k);
+        return `<div style="min-width:210px;width:210px;flex-shrink:0">
+          <div style="font-size:12.5px;font-weight:800;color:${e.c};text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;display:flex;justify-content:space-between">${e.t}<span style="background:#F3F4F6;border-radius:99px;padding:0 8px;color:#6B7280">${itens.length}</span></div>
+          ${itens.map(c => cardCand(c)).join("") || '<div style="font-size:12px;color:#C4C7CE;text-align:center;padding:10px;border:1px dashed #E5E7EB;border-radius:8px">vazio</div>'}
+        </div>`;
+      }).join("")}</div>`;
+    }
+    function cardCand(c) {
+      const idx = ETAPAS.findIndex(e => e.k === c.etapa);
+      const podeContratar = ["proposta", "admissao"].includes(c.etapa);
+      const final = ["contratado", "reprovado"].includes(c.etapa);
+      return `<div class="card" style="padding:9px 11px;margin-bottom:8px">
+        <strong style="font-size:13.5px">${esc(c.nome)}</strong>
+        <div style="font-size:11.5px;color:#9CA3AF;margin:2px 0 6px">${esc(c.rh_vagas?.titulo || "sem vaga")}${c.email ? " · " + esc(c.email) : ""}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${!final && idx > 0 ? `<button class="btn btn-outline btn-sm" title="Voltar etapa" onclick="moverCand('${c.id}',-1)">◀</button>` : ""}
+          ${!final && idx < 5 ? `<button class="btn btn-outline btn-sm" title="Avançar etapa" onclick="moverCand('${c.id}',1)">▶</button>` : ""}
+          ${podeContratar ? `<button class="btn btn-success btn-sm" title="Contratar" onclick="contratar('${c.id}','${esc(c.nome).replace(/'/g,'')}')">✓ Contratar</button>` : ""}
+          ${!final ? `<button class="btn btn-danger btn-sm" title="Reprovar" onclick="reprovar('${c.id}')">✕</button>` : ""}
+          <button class="btn btn-secondary btn-sm" onclick="editarCand('${c.id}')">✎</button>
+        </div>
+      </div>`;
+    }
+    async function moverCand(id, dir) {
+      const c = CAND.find(x => x.id === id); if (!c) return;
+      const idx = ETAPAS.findIndex(e => e.k === c.etapa); const nova = ETAPAS[idx + dir]; if (!nova) return;
+      await patchCand(id, { etapa: nova.k });
+    }
+    async function reprovar(id) {
+      const motivo = prompt("Motivo da reprovação (opcional):") || "";
+      await patchCand(id, { etapa: "reprovado", motivo_reprovacao: motivo });
+    }
+    async function contratar(id, nome) {
+      if (!confirm(`Contratar "${nome}"? Será criado o colaborador (você completa a ficha, EPI e documentos em seguida).`)) return;
+      const res = await fetch(`/api/admin/rh/candidatos/${id}/contratar`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { alert("Colaborador criado! Abra o RH → Colaboradores para completar a ficha, EPIs e documentos."); carregarVagas(); carregarKanban(); }
+      else alert("Erro: " + (d.error || res.status));
+    }
+    async function patchCand(id, patch) {
+      const res = await fetch(`/api/admin/rh/candidatos/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
+      if (res.ok) carregarKanban(); else { const d = await res.json().catch(()=>({})); alert("Erro: " + (d.error || res.status)); }
+    }
+
+    function abrirVaga() { const f = document.getElementById("formVaga"); f.reset(); f.elements.id.value = ""; document.getElementById("tituloVaga").textContent = "Nova vaga"; document.getElementById("msgVaga").innerHTML=""; document.getElementById("modalVaga").classList.add("open"); }
+    function editarVaga(id) { const v = VAGAS.find(x=>x.id===id); if(!v) return; const f=document.getElementById("formVaga"); f.reset(); for(const k of ["id","titulo","cargo","regime","setor","demandante","quantidade","descricao","status"]) if(f.elements[k]) f.elements[k].value = v[k] ?? ""; document.getElementById("tituloVaga").textContent="Editar vaga"; document.getElementById("msgVaga").innerHTML=""; document.getElementById("modalVaga").classList.add("open"); }
+    async function excluirVaga(id, t) { if(!confirm(`Excluir a vaga "${t}"? (vai para a Lixeira 30 dias)`)) return; const r=await fetch(`/api/admin/rh/vagas/${id}`,{method:"DELETE",headers:{"content-type":"application/json"}}); if(r.ok){carregarVagas();carregarKanban();} else alert("Erro ao excluir."); }
+    document.getElementById("formVaga").addEventListener("submit", async e => {
+      e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const id=body.id; delete body.id;
+      const res=await fetch(id?`/api/admin/rh/vagas/${id}`:"/api/admin/rh/vagas",{method:id?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+      const d=await res.json().catch(()=>({}));
+      if(res.ok){fecharModal("modalVaga");carregarVagas();} else document.getElementById("msgVaga").innerHTML=`<div class="alert alert-error">${d.error||"Erro"}</div>`;
+    });
+
+    function abrirCandidato() { const f=document.getElementById("formCand"); f.reset(); f.elements.id.value=""; document.getElementById("tituloCand").textContent="Novo candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
+    function editarCand(id) { const c=CAND.find(x=>x.id===id); if(!c) return; const f=document.getElementById("formCand"); f.reset(); for(const k of ["id","nome","email","telefone","vaga_id","origem","etapa","entrevista_comportamental_em","entrevista_tecnica_em","teste_resultado","observacoes"]) if(f.elements[k]) f.elements[k].value=c[k]??""; document.getElementById("tituloCand").textContent="Editar candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
+    document.getElementById("formCand").addEventListener("submit", async e => {
+      e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const id=body.id; delete body.id;
+      const res=await fetch(id?`/api/admin/rh/candidatos/${id}`:"/api/admin/rh/candidatos",{method:id?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+      const d=await res.json().catch(()=>({}));
+      if(res.ok){fecharModal("modalCand");carregarKanban();} else document.getElementById("msgCand").innerHTML=`<div class="alert alert-error">${d.error||"Erro"}</div>`;
+    });
+
+    (async () => { await carregarVagas(); await carregarKanban(); })();
+  </script>
+</Admin>
