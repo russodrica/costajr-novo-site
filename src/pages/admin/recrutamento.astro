@@ -115,6 +115,15 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
           </div>
         </div>
         <div class="form-group"><label>Currículo / documentos (link)</label><input name="curriculo_url" type="url" placeholder="https://… (OneDrive/Drive)" /></div>
+        <div class="form-group" id="candCurriculoBox" style="display:none">
+          <label>Currículo (arquivo — guardado em cofre privado)</label>
+          <div id="candCurriculoStatus" style="font-size:13px;color:#6B7280;margin-bottom:6px"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="file" id="candCurriculoFile" accept=".pdf,.doc,.docx,image/*" style="font-size:13px" />
+            <button type="button" class="btn btn-outline btn-sm" onclick="enviarCurriculo()">📎 Anexar</button>
+          </div>
+          <p style="font-size:11.5px;color:#9CA3AF;margin-top:4px">PDF, DOC/DOCX ou imagem · até 10 MB. Salve o candidato primeiro para anexar.</p>
+        </div>
         <div class="form-group"><label>Etapa</label>
           <select name="etapa" id="candEtapa"></select>
         </div>
@@ -229,8 +238,37 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       if(res.ok){fecharModal("modalVaga");carregarVagas();} else document.getElementById("msgVaga").innerHTML=`<div class="alert alert-error">${d.error||"Erro"}</div>`;
     });
 
-    function abrirCandidato() { const f=document.getElementById("formCand"); f.reset(); f.elements.id.value=""; document.getElementById("tituloCand").textContent="Novo candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
-    function editarCand(id) { const c=CAND.find(x=>x.id===id); if(!c) return; const f=document.getElementById("formCand"); f.reset(); const campos=["id","nome","email","telefone","vaga_id","origem","etapa","entrevista_comportamental_em","entrevista_tecnica_em","teste_resultado","observacoes","data_nascimento","experiencia","formacao","conhecimento_tecnologico","possui_habilitacao","possui_veiculo","disp_imediata","disp_viagem","disp_presencial","personalidade","restricao","teste_disc","teste_eneagrama","curriculo_url"]; for(const k of campos){ if(!f.elements[k]) continue; const v=c[k]; f.elements[k].value = (v===null||v===undefined)?"":String(v); } document.getElementById("tituloCand").textContent="Editar candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
+    let _candId = "";
+    function renderCurriculoStatus(c) {
+      const box = document.getElementById("candCurriculoStatus");
+      if (c && c.curriculo_path) {
+        box.innerHTML = `✅ <strong>${esc(c.curriculo_nome || "currículo")}</strong> anexado · `
+          + `<a href="#" onclick="verCurriculo();return false" style="color:var(--brand);font-weight:600">Ver</a> · `
+          + `<a href="#" onclick="removerCurriculo();return false" style="color:#B91C1C">Remover</a>`;
+      } else { box.innerHTML = "Nenhum arquivo anexado."; }
+    }
+    function abrirCandidato() { _candId=""; const f=document.getElementById("formCand"); f.reset(); f.elements.id.value=""; document.getElementById("candCurriculoBox").style.display="none"; document.getElementById("tituloCand").textContent="Novo candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
+    function editarCand(id) { const c=CAND.find(x=>x.id===id); if(!c) return; _candId=id; const f=document.getElementById("formCand"); f.reset(); const campos=["id","nome","email","telefone","vaga_id","origem","etapa","entrevista_comportamental_em","entrevista_tecnica_em","teste_resultado","observacoes","data_nascimento","experiencia","formacao","conhecimento_tecnologico","possui_habilitacao","possui_veiculo","disp_imediata","disp_viagem","disp_presencial","personalidade","restricao","teste_disc","teste_eneagrama","curriculo_url"]; for(const k of campos){ if(!f.elements[k]) continue; const v=c[k]; f.elements[k].value = (v===null||v===undefined)?"":String(v); } document.getElementById("candCurriculoBox").style.display=""; document.getElementById("candCurriculoFile").value=""; renderCurriculoStatus(c); document.getElementById("tituloCand").textContent="Editar candidato"; document.getElementById("msgCand").innerHTML=""; document.getElementById("modalCand").classList.add("open"); }
+    async function enviarCurriculo() {
+      if(!_candId){ alert("Salve o candidato primeiro para anexar o currículo."); return; }
+      const inp=document.getElementById("candCurriculoFile"); const file=inp.files&&inp.files[0];
+      if(!file){ alert("Escolha um arquivo."); return; }
+      document.getElementById("candCurriculoStatus").innerHTML="⏳ Enviando…";
+      const fd=new FormData(); fd.append("arquivo", file);
+      const res=await fetch(`/api/admin/rh/candidatos/${_candId}/curriculo`,{method:"POST",body:fd});
+      const d=await res.json().catch(()=>({}));
+      if(res.ok){ const i=CAND.findIndex(x=>x.id===_candId); if(i>=0) CAND[i]=d.data||d; inp.value=""; renderCurriculoStatus(d.data||d); }
+      else { document.getElementById("candCurriculoStatus").innerHTML=`<span style="color:#B91C1C">${d.error||"Erro ao enviar"}</span>`; }
+    }
+    async function verCurriculo() {
+      const res=await fetch(`/api/admin/rh/candidatos/${_candId}/curriculo`,{headers:{"content-type":"application/json"}});
+      const d=await res.json().catch(()=>({})); if(res.ok&&d.url) window.open(d.url,"_blank"); else alert(d.error||"Erro");
+    }
+    async function removerCurriculo() {
+      if(!confirm("Remover o currículo anexado?")) return;
+      const res=await fetch(`/api/admin/rh/candidatos/${_candId}/curriculo`,{method:"DELETE",headers:{"content-type":"application/json"}});
+      if(res.ok){ const i=CAND.findIndex(x=>x.id===_candId); if(i>=0){ CAND[i].curriculo_path=null; CAND[i].curriculo_nome=null; } renderCurriculoStatus(CAND[i]); }
+    }
     document.getElementById("formCand").addEventListener("submit", async e => {
       e.preventDefault(); const fd=new FormData(e.target); const body=Object.fromEntries(fd.entries()); const id=body.id; delete body.id;
       const res=await fetch(id?`/api/admin/rh/candidatos/${id}`:"/api/admin/rh/candidatos",{method:id?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
