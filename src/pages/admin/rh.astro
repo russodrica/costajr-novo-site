@@ -517,12 +517,12 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <p style="font-size:12px;color:var(--ink-light);margin:0 0 10px">Campos com <span style="color:#C41E3A">*</span> são obrigatórios (exceto para diaristas).</p>
         <div class="form-group"><label>Nome <span style="color:#C41E3A">*</span></label><input name="nome" /></div>
         <div class="form-row">
-          <div class="form-group"><label>E-mail <span style="color:#C41E3A">*</span></label><input name="email" type="email" /></div>
+          <div class="form-group"><label>E-mail corporativo <span style="color:#C41E3A">*</span></label><input name="email" type="email" placeholder="nome@costajr.com.br" /></div>
           <div class="form-group"><label>Telefone (empresa) <span style="color:#C41E3A">*</span></label><input name="telefone" /></div>
         </div>
         <div class="form-row">
+          <div class="form-group"><label>E-mail pessoal</label><input name="email_pessoal" type="email" placeholder="pessoal@gmail.com" /></div>
           <div class="form-group"><label>Telefone (pessoal) <span style="color:#C41E3A">*</span></label><input name="telefone_pessoal" /></div>
-          <div class="form-group"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>CPF <span style="color:#C41E3A">*</span></label><input name="cpf" placeholder="000.000.000-00" /></div>
@@ -1191,7 +1191,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).filtrarInativos = filtrarInativos;
 
     // ── Colaboradores: novo / editar / desligar ──
-    const camposColab = ["nome","email","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
+    const camposColab = ["nome","email","email_pessoal","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
 
     function fichaTab(qual: string) {
       const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi", pendencias: "fichaPanePendencias" };
@@ -1494,7 +1494,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
     // ── Pendências consolidadas do colaborador ──
     const PEND_CAMPOS_OBRIG: [string, string][] = [
-      ["nome", "Nome"], ["email", "E-mail"], ["telefone", "Telefone (empresa)"], ["telefone_pessoal", "Telefone (pessoal)"],
+      ["nome", "Nome"], ["email", "E-mail corporativo"], ["telefone", "Telefone (empresa)"], ["telefone_pessoal", "Telefone (pessoal)"],
       ["cpf", "CPF"], ["rg", "RG"], ["data_nascimento", "Data de nascimento"], ["cargo", "Cargo"], ["data_admissao", "Admissão"],
       ["endereco", "Endereço"], ["contato_emergencia_nome", "Contato de emergência (nome)"], ["contato_emergencia_telefone", "Contato de emergência (telefone)"],
     ];
@@ -1734,7 +1734,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
     // campos obrigatórios da ficha (exceto diaristas, que são esporádicos)
     const OBRIGATORIOS: [string, string][] = [
-      ["nome", "Nome"], ["email", "E-mail"], ["telefone", "Telefone (empresa)"], ["telefone_pessoal", "Telefone (pessoal)"],
+      ["nome", "Nome"], ["email", "E-mail corporativo"], ["telefone", "Telefone (empresa)"], ["telefone_pessoal", "Telefone (pessoal)"],
       ["cpf", "CPF"], ["rg", "RG"], ["data_nascimento", "Nascimento"], ["cargo", "Cargo"],
       ["data_admissao", "Admissão"], ["endereco", "Endereço"],
       ["contato_emergencia_nome", "Contato de emergência (nome)"],

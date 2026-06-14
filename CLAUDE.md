@@ -1056,6 +1056,66 @@ de_nome = quem estava com ele). Estado final: 19 equipamentos alocados, TODOS co
 `alocado_para_id` = rh.id (0 so por nome). As 23 pessoas ativas do RH sem login seguem
 sem acesso (Adriana libera caso a caso pelo botao "Dar acesso" na ficha do RH).
 
+## Atualizacao 14/06/2026 (parte 10) — Ativos 5 abas + Telegram (2 bots) + jurídico→Telegram
+
+**Ativos reestruturado em ABAS (commit da sessao):** /admin/ativos agora separa por
+categoria + abas ESPECIAIS (`ESPECIAIS=["deposito","extraviados","saidas","conserto"]`).
+STATUS_EXTRAVIO=[extraviado,roubado], STATUS_SAIDA=[baixado,descartado,vendido],
+STATUS_CIRC inclui danificado. Itens extraviados/baixados/vendidos SAEM dos ativos
+disponiveis (aba propria); "Para conserto" (danificado) e ABA APARTADA de resumo;
+"Em deposito" e aba propria. KPIs novos: Em deposito, Para conserto, Extraviados,
+**Valor de vendas (separado do patrimonio)**. Status **VENDIDO** + `valor_venda`/
+`data_venda` (campo aparece no modalStatus via toggleValorVenda). Transferir-p/-obra
+ganhou LUPA de busca (#obraSearch + filtrarObras). **Migration 059 RODADA:** tabela
+`depositos` (+ seed Ipiranga) + ALTER ativos_alocado_para_tipo_check (+deposito) +
+ALTER ativos_status_check (+vendido) + colunas valor_venda/data_venda. Novo destino de
+transferencia: DEPOSITO (movimentar.ts caso `transferir_deposito`, SEM termo). CRUD de
+depositos em /admin/depositos. **E-mail p/ adm@costajr.com.br em QUALQUER mudanca de
+status** (ATIVOS_ALERT_EMAIL no aplicar() do movimentar.ts).
+
+**TELEGRAM — central src/lib/telegram.ts (UM BOT POR CANAL):** `enviarTelegram(texto,
+{canal})` best-effort (nunca lanca). Resolve `TELEGRAM_BOT_TOKEN_<CANAL>` +
+`TELEGRAM_CHAT_<CANAL>`; sem isso cai no padrao `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`.
+HTML via escTg(). DOIS canais ativos e VALIDADOS em producao (HTTP 200 {"ok":true} nos 2):
+- **ATIVOS** (@cjr_ativo_bot, grupo CJR_ATIVOS) = canal PADRAO. Dispara em TODA
+  movimentacao de equipamento (movimentar.ts: entrega/devolucao/troca-status/venda/
+  deposito/conserto). Token 8790779785:... | chat TELEGRAM_CHAT_ID=-5495934006.
+- **ADM** (@cjr_adm_bot, grupo CJR_ADM) = RH/admin/juridico. Wired em rhVencimentos.ts
+  (docs a vencer + aniversariantes), ferias.ts, epi.ts, avaliacoes.ts,
+  desligamentos/finalizar.ts, vagas/candidatar.ts. Token 8871443844:... |
+  chat TELEGRAM_CHAT_ADM=-5348850906.
+
+**Jurídico (e-mail) → Telegram via Power Automate (FUNCIONANDO):** endpoint recebedor
+`POST /api/integra/email-telegram` protegido por segredo (header `x-integra-secret` ou
+`?key=`) = `INTEGRA_TELEGRAM_SECRET=cjr_7b885290b46430854521c7d0`. Le o corpo de forma
+tolerante (JSON quebrado vira assunto cru). Fluxo Power Automate "Juridico para Telegram
+(CJR_ADM)": trigger "Quando um novo e-mail e recebido (V3)" (Office 365 Outlook, pasta
+JURÍDICO) → HTTP POST ao endpoint com Assunto/De/caixa → cai no grupo CJR_ADM. Body
+aceita `canal` (default ADM) — testei canal ATIVOS por ele tambem (200 ok).
+
+**SEGURANCA (invariante desta sessao):** os 2 TOKENS DE BOT foram colados pela Adriana
+na Vercel (eu NAO digito API keys em sistemas externos). Eu so adicionei os valores
+nao-secretos (TELEGRAM_CHAT_ID, TELEGRAM_CHAT_ADM, INTEGRA_TELEGRAM_SECRET) e disparei o
+Reimplante. Variaveis de ambiente da Vercel SO valem apos um REDEPLOY.
+
+**Outras entregas da sessao:** /intranet com botoes "Acessar" (1 linha); /portal home
+redesenhado (cards maiores, JunIA em destaque, sem Base de Conhecimento — vira chat),
+`<style is:global>` (estilos scoped do Astro NAO alcancam innerHTML); sw.js cjr-v2;
+vinculo RH↔membros↔equipamentos consolidado (parte 9).
+
+**PENDENTE p/ proxima sessao (pedidos da Adriana ainda nao feitos):**
+1. **Onda Perfis** — em /admin/membros renomear "cargo"→"perfis" = as 8 AREAS (ADMIN,
+   MANUTENÇÃO-OPERAÇÃO, MANUTENÇÃO-ADMINISTRATIVO, OPERAÇÃO, RH, FINANCEIRO, COMERCIAL,
+   JURÍDICO; REMOVER COORDENADOR). Usuario inativo sai automaticamente de Membros.
+   Area habilitada = modulo aparece. (NAO comecado — mexe em permissoes do portal todo.)
+2. **Bot Telegram de VOLTA (inbound)** — alguem do grupo de Ativos manda no PRIVADO do
+   bot "movimentei X" e o sistema registra. Identifica a pessoa pelo TELEFONE registrado
+   no sistema. Precisa migration 060 (telegram_sessoes) + webhook + setWebhook do bot.
+3. **Ficha: e-mail corporativo x pessoal SEPARADOS** — telefone ja esta separado
+   (telefone/telefone_pessoal); falta `email_pessoal` (na migration 060, NAO rodada).
+**Migration 060 (telegram_sessoes + rh_colaboradores.email_pessoal) ESCRITA mas NAO
+RODADA.** (As 3 estao entrelacadas: 060 destrava a 2 e a 3.)
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.

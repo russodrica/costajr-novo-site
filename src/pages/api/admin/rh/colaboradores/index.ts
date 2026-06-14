@@ -51,7 +51,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (body.status && !STATUS.includes(body.status)) return jsonErr(400, "Status inválido");
 
     const campos = [
-      "profile_id", "nome", "email", "telefone", "telefone_pessoal", "cpf", "rg", "data_nascimento", "foto_url",
+      "profile_id", "nome", "email", "email_pessoal", "telefone", "telefone_pessoal", "cpf", "rg", "data_nascimento", "foto_url",
       "cargo", "setor", "regime", "salario", "data_admissao", "data_desligamento", "status",
       "endereco", "cidade", "uf", "contato_emergencia_nome", "contato_emergencia_telefone",
       "pix", "banco", "agencia", "conta", "observacoes",

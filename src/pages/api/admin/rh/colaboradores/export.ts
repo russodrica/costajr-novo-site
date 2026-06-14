@@ -8,7 +8,7 @@ const REGIMES: Record<string, string> = { clt: "CLT", pj: "PJ", estagio: "Estág
 const STATUS: Record<string, string> = { ativo: "Ativo", ferias: "Férias", afastado: "Afastado", desligado: "Desligado" };
 
 const COLUNAS = [
-  "ID", "Nome", "E-mail", "Telefone", "CPF", "RG", "Data nascimento", "Cargo", "Setor",
+  "ID", "Nome", "E-mail corporativo", "E-mail pessoal", "Telefone empresa", "Telefone pessoal", "CPF", "RG", "Data nascimento", "Cargo", "Setor",
   "Regime", "Salário", "Data admissão", "Status", "Cidade", "UF", "PIX", "Banco", "Agência", "Conta", "Observações",
 ];
 function csv(v: unknown) { const s = v == null ? "" : String(v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
@@ -26,7 +26,7 @@ export const GET: APIRoute = async ({ request, url }) => {
         "# Regime: clt, pj, estagio, temporario ou socio. Status: ativo, ferias, afastado, desligado",
         "# Datas no formato AAAA-MM-DD. Salário com ponto decimal (2500.00).",
       ];
-      const ex = ["", "João da Silva", "joao@costajr.com.br", "11 99999-0000", "111.222.333-44", "12.345.678-9",
+      const ex = ["", "João da Silva", "joao@costajr.com.br", "joao.pessoal@gmail.com", "11 4000-0000", "11 99999-0000", "111.222.333-44", "12.345.678-9",
         "1990-05-20", "Pedreiro", "Obra", "clt", "2500.00", "2026-01-10", "ativo", "São Paulo", "SP", "", "", "", "", ""];
       const out = "﻿" + [...instr, COLUNAS.join(";"), ex.map(csv).join(";")].join("\r\n");
       return new Response(out, { status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="modelo-importacao-colaboradores.csv"' } });
