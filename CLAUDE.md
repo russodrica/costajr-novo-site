@@ -595,6 +595,41 @@ validada (overflow de mes, ciclosVencidos). RLS ligado (service-role only, igual
 ativos/RH). ADIADO: saldo proporcional p/ quem tem <1 ano, abono pecuniario (venda
 de 1/3), ferias coletivas, visao do colaborador no portal.
 
+## Atualizacao 13/06/2026 (parte 3) — Exclusao de lembretes, diagramacao RH e Auditoria/Lixeira
+
+**Inativos/diaristas SEM lembretes (commit 900e6cb):** desligados (status=desligado)
+e diaristas (regime=diarista) nao recebem mais lembrete/e-mail. Auditado por
+workflow (8 superficies). Corrigido em src/lib/rhVencimentos.ts (digest de docs),
+alertas.ts (aba Alertas: docs+sem-ASO+ausencias; "sem ASO" trocou .eq(status,ativo)
+por .neq(status,desligado) p/ NAO barrar ferias/afastado), rh.astro (aniversariantes
+exclui diarista), export-vencimentos.ts. Criterio: status!='desligado' (NUNCA
+=='ativo') e regime!='diarista'; filtro em JS (embedded filter PostgREST e fragil).
+Ferias ja estava ok (so CLT ativo).
+
+**Diagramacao do RH (commit 62d67f3):** aba Colaboradores so mostra ATIVOS
+(contador=ativos); desligados foram p/ aba propria "Inativos" (com busca). Tabela:
+removido e-mail e coluna "Setor"; salario em COLUNA propria (alinhado direita,
+tabular); fontes maiores (.tabela-colab). filtrarColabs escopado a #aba-colaboradores;
+novo filtrarInativos.
+
+**Auditoria + Lixeira de 30 dias (migration 042 RODADA; commits e5166e9/ae0e943):**
+LOG de tudo + recuperacao de exclusoes. Tabelas audit_log (ts/usuario/acao/entidade/
+registro_id/descricao/dados jsonb/ip) e lixeira (dados jsonb/excluido_por/expira_em=
++30d/restaurado). IDs text, RLS. src/lib/auditoria.ts: registrarAcao(),
+excluirComLixeira() (le linha->lixeira->apaga->loga), restaurarDaLixeira(),
+expurgarLixeira() (cron diario piggyback). Telas /admin/logs (trilha filtravel
+paginada) e /admin/lixeira (restaurar em 30d) no menu grupo "Sistema" — so admin/
+coordenador. APIs /api/admin/logs, /api/admin/lixeira, /lixeira/[id]/restaurar.
+**25 endpoints DELETE ligados** (workflow 24 + 1 ref): exclusao de cadastro real ->
+lixeira; casos especiais (storage anexo, unlink de acesso, soft-delete de lancamento/
+servico, fallback de membro com FK historico) -> so registrarAcao. Tabelas/idCols
+conferidos (ex.: orc_servicos idCol=codigo; obras_tarefas/anotacoes id vem de
+?tarefa=/?anotacao= e nao de params.id). Criacoes/edicoes tambem logam. Fluxo de
+recuperacao validado E2E contra o banco (criar->excluir->lixeira+log->restaurar).
+PENDENTE: ligar log de criacao nos POST /index.ts restantes (so DELETEs foram 100%);
+comunicados/notificacoes p/ membro desligado (decisao da Adriana: revogar acesso ao
+desligar vs filtrar — em aberto).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
