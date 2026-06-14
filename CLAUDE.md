@@ -951,6 +951,26 @@ reset normal -> reaparece. UI verificada ao vivo (banner + 3 opcoes). NOTA: ha u
 flag `trabalhista` separado em portal_profiles (gate de acesso ao portal/JunIA) —
 nao confundir com status_juridico (RH/alertas).
 
+## Atualizacao 14/06/2026 (parte 5) — Import das FERIAS programadas do Monday
+
+**scripts/importar-ferias-monday.mjs (RODADO; commit a-seguir):** as ferias
+programadas nas colunas do board RH (6629107099) nao tinham vindo no import
+original (o export de 11/06 trouxe as colunas mas com valores null). Puxei
+fresco via Monday MCP. Colunas: `dup__of_f_rias__1` (Ferias, range) +
+`cronograma__1` (Cronograma, range) = parcelas; `dup__of_venc_f_rias__1`
+(Venc. Ferias, data) = limite_concessivo. Casamento por monday_id.
+**Resultado: 25 colaboradores, 22 periodos criados, 38 parcelas** (passadas=
+confirmada/gozada, futuras=programada). Idempotente (nao duplica parcela com
+mesma data_inicio no periodo). LICAO: PostgREST batch INSERT exige que TODAS as
+linhas tenham as MESMAS chaves (erro PGRST102 "All object keys must match") —
+lotes que misturavam parcela confirmada (com confirmada_em/por) e programada
+(sem) falhavam em silencio; fix: sempre incluir confirmada_em/confirmada_por
+(null quando programada) + CHECAR rp.ok no fetch. Removida 1 parcela de teste
+sobreposta da Adriana (06-30->07-14, residuo). Os dados do Monday tem 2 colunas
+de range (Ferias + Cronograma) — ambas tratadas como parcelas; se a Adriana
+quiser so uma, ajustar. Re-rodar: o script tem os dados embutidos (snapshot
+14/06); p/ atualizar, re-extrair do Monday e atualizar o array MONDAY.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
