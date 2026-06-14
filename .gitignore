@@ -15,3 +15,6 @@ scripts/SENHAS-INICIAIS.txt
 scripts/SENHA-TEMPORARIA-ADMIN.txt
 scripts/resultado-*.log
 publicar-resultado.log
+
+# scripts de rascunho temporarios
+scripts/_tmp_*
