@@ -12,9 +12,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const id = params.id!;
     const body = await request.json();
 
-    const editaveis = ["colaborador_id", "titulo", "tipo", "url", "validade", "observacoes"];
+    const editaveis = ["colaborador_id", "titulo", "tipo", "url", "validade", "validade_na", "observacoes"];
     const patch: Record<string, unknown> = {};
     for (const c of editaveis) if (body[c] !== undefined) patch[c] = body[c] === "" ? null : body[c];
+    if (patch.validade_na === null) patch.validade_na = false;
     if (!Object.keys(patch).length) return jsonErr(400, "Nada para atualizar");
     if (patch.titulo === null) return jsonErr(400, "Título não pode ficar vazio");
     if (patch.colaborador_id === null) return jsonErr(400, "Colaborador é obrigatório");

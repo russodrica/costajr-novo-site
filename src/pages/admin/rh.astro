@@ -481,6 +481,11 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     <div class="modal" style="max-width:680px">
       <div class="modal-title" id="tituloModalColab">Novo colaborador</div>
       <div id="msgColab"></div>
+      <div class="ficha-tabs" id="fichaTabs" style="display:none">
+        <button type="button" class="ficha-tab active" data-ft="dados" onclick="fichaTab('dados')">📋 Dados gerais</button>
+        <button type="button" class="ficha-tab" data-ft="docs" onclick="fichaTab('docs')">📎 Documentos <span id="fichaTabDocsCount" style="opacity:.75"></span></button>
+      </div>
+      <div id="fichaPaneDados">
       <form id="formColab">
         <input type="hidden" name="id" id="colabId" />
         <p style="font-size:12px;color:var(--ink-light);margin:0 0 10px">Campos com <span style="color:#C41E3A">*</span> são obrigatórios (exceto para diaristas).</p>
@@ -553,10 +558,11 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <div class="section-title" style="font-size:15px;margin-bottom:10px">🔑 Acesso ao portal (Membro)</div>
         <div id="fichaAcessoLista"><div class="loading"><div class="spinner"></div> Verificando...</div></div>
       </div>
+      </div><!-- /fichaPaneDados -->
 
-      <!-- Documentos anexados do colaborador (só na edição) -->
-      <div id="fichaDocsWrap" style="display:none;border-top:1px solid #E5E7EB;margin-top:18px;padding-top:14px">
-        <div class="section-header" style="margin-bottom:10px">
+      <!-- Aba Documentos -->
+      <div id="fichaPaneDocs" style="display:none">
+        <div class="section-header" style="margin-bottom:12px">
           <span class="section-title" style="font-size:15px">📎 Documentos anexados <span id="fichaDocsCount" style="color:#9CA3AF;font-weight:600"></span></span>
           <button type="button" class="btn btn-secondary btn-sm" id="btnAnexarDocFicha">+ Anexar documento</button>
         </div>
@@ -615,7 +621,13 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           </select>
         </div>
         <div class="form-group"><label>URL do arquivo</label><input name="url" type="url" placeholder="https://…" /></div>
-        <div class="form-group"><label>Validade</label><input name="validade" type="date" /></div>
+        <div class="form-group">
+          <label>Vencimento</label>
+          <input name="validade" type="date" id="docValidade" />
+          <label style="display:flex;align-items:center;gap:6px;font-weight:500;margin-top:6px;font-size:0.85rem;color:var(--ink-mid)">
+            <input type="checkbox" name="validade_na" id="docValidadeNA" onchange="document.getElementById('docValidade').disabled=this.checked; if(this.checked){document.getElementById('docValidade').value='';}" /> Sem vencimento (não aplicável)
+          </label>
+        </div>
         <div class="form-group"><label>Observações</label><textarea name="observacoes"></textarea></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharModal('modalDoc')">Cancelar</button>
@@ -1024,14 +1036,23 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     // ── Colaboradores: novo / editar / desligar ──
     const camposColab = ["nome","email","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
 
+    function fichaTab(qual: string) {
+      const dados = qual === "dados";
+      (document.getElementById("fichaPaneDados") as any).style.display = dados ? "" : "none";
+      (document.getElementById("fichaPaneDocs") as any).style.display = dados ? "none" : "";
+      document.querySelectorAll(".ficha-tab").forEach((t) => t.classList.toggle("active", (t as any).dataset.ft === qual));
+    }
+    (window as any).fichaTab = fichaTab;
+
     function abrirModalColab() {
       const form = document.getElementById("formColab") as any;
       form.reset();
       (document.getElementById("colabId") as any).value = "";
       (document.getElementById("tituloModalColab") as any).textContent = "Novo colaborador";
       (document.getElementById("msgColab") as any).innerHTML = "";
+      (document.getElementById("fichaTabs") as any).style.display = "none"; // sem aba de docs ao criar
       (document.getElementById("fichaAcessoWrap") as any).style.display = "none";
-      (document.getElementById("fichaDocsWrap") as any).style.display = "none";
+      fichaTab("dados");
       document.getElementById("modalColab")?.classList.add("open");
     }
 
@@ -1046,8 +1067,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       }
       (document.getElementById("tituloModalColab") as any).textContent = "Editar colaborador";
       (document.getElementById("msgColab") as any).innerHTML = "";
+      (document.getElementById("fichaTabs") as any).style.display = "flex";
       (document.getElementById("fichaAcessoWrap") as any).style.display = "";
-      (document.getElementById("fichaDocsWrap") as any).style.display = "";
+      fichaTab("dados"); // sempre abre em Dados gerais
       carregarFicha(id, c.nome || "");
       document.getElementById("modalColab")?.classList.add("open");
     }
@@ -1076,6 +1098,13 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       { key: "nr01", label: "NR-01 · GRO", tipo: "certificado", prefixo: "NR01", validade: true },
     ];
     const SLOT_LABEL: Record<string, string> = Object.fromEntries(SLOTS_DOC.map((s) => [s.key, s.label]));
+    const SLOT_DEF: Record<string, any> = Object.fromEntries(SLOTS_DOC.map((s) => [s.key, s]));
+    // Grupos da ficha (ordem como no Monday): pessoais · técnicos · treinamentos (NRs em ordem)
+    const SLOT_GRUPOS = [
+      { titulo: "🪪 Documentos pessoais", keys: ["contrato", "rg_hab", "ficha_registro", "teste"] },
+      { titulo: "🛠️ Documentos técnicos", keys: ["aso", "ficha_epi", "os"] },
+      { titulo: "🦺 Treinamentos (NRs)", keys: ["nr01", "nr06", "nr10", "nr35"] },
+    ];
     function slotDoDoc(doc: any): string {
       const t = doc.titulo || "";
       const idx = t.indexOf(" — ");
@@ -1111,68 +1140,70 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         const d = await res.json();
         renderAcesso(colabId, nome, d.membro, d.colaborador?.email);
         const docs = d.documentos || [];
+        docs.forEach((doc: any) => { docPorId[doc.id] = doc; }); // p/ o ✏️ editar funcionar na ficha
         const nomeJs = escD(nome).replace(/['"]/g, "");
-        // separa: ativos por slot, catch-all "outros", e vencidos (histórico)
+        // agrupa docs por slot
         const porSlot: Record<string, any[]> = {};
-        const vencidos: { doc: any; slot: string }[] = [];
         const outros: any[] = [];
         for (const doc of docs) {
-          const venc = doc.validade && doc.validade < hojeStr;
           const slot = slotDoDoc(doc);
-          if (venc) { vencidos.push({ doc, slot }); continue; }
           if (slot === "outros") { outros.push(doc); continue; }
           (porSlot[slot] = porSlot[slot] || []).push(doc);
         }
         const slotsPreenchidos = SLOTS_DOC.filter((s) => (porSlot[s.key] || []).length).length;
-        document.getElementById("fichaDocsCount")!.textContent = `(${slotsPreenchidos}/${SLOTS_DOC.length} tipos${vencidos.length ? ` · ${vencidos.length} vencido${vencidos.length > 1 ? "s" : ""}` : ""})`;
+        const cnt = `(${slotsPreenchidos}/${SLOTS_DOC.length})`;
+        document.getElementById("fichaDocsCount")!.textContent = cnt;
+        const tabCnt = document.getElementById("fichaTabDocsCount"); if (tabCnt) tabCnt.textContent = cnt;
 
-        const linhaDoc = (doc: any, contexto: string, tag?: string) => {
-          const vencendo = doc.validade && doc.validade >= hojeStr && doc.validade <= em30Str;
+        // badge de vencimento bem claro
+        const badgeVenc = (doc: any, slotValidade: boolean) => {
+          if (doc.validade) {
+            const venc = doc.validade < hojeStr;
+            const vencendo = !venc && doc.validade <= em30Str;
+            const cor = venc ? "#991B1B" : vencendo ? "#92400E" : "#166534";
+            const fundo = venc ? "#FEE2E2" : vencendo ? "#FEF3C7" : "#DCFCE7";
+            const txt = venc ? `⚠ Vencido ${brData(doc.validade)}` : `Vence ${brData(doc.validade)}`;
+            return `<span style="background:${fundo};color:${cor};font-weight:700;font-size:12px;padding:3px 10px;border-radius:6px;white-space:nowrap">${txt}</span>`;
+          }
+          if (doc.validade_na) return `<span style="background:#F3F4F6;color:#6B7280;font-size:12px;padding:3px 10px;border-radius:6px;white-space:nowrap">Sem vencimento</span>`;
+          if (slotValidade) return `<span style="background:#FEF3C7;color:#92400E;font-size:12px;padding:3px 10px;border-radius:6px;white-space:nowrap" title="Edite (✏️) para informar o vencimento ou marcar Não aplicável">⚠ Definir vencimento</span>`;
+          return "";
+        };
+        // uma linha de documento (coluna única)
+        const docItem = (doc: any, slotValidade: boolean) => {
           const temArq = doc.storage_path || doc.url;
           const link = temArq
             ? `<a href="/api/admin/rh/documentos/${doc.id}/arquivo" target="_blank" rel="noopener" title="Abrir (link seguro temporário)">📎 ${nomeCurtoDoc(doc.titulo)}</a>`
             : nomeCurtoDoc(doc.titulo);
-          const corVal = contexto === "venc" ? "#B91C1C" : vencendo ? "#D97706" : "#6B7280";
-          const val = doc.validade
-            ? ` <span style="font-size:11px;color:${corVal};font-weight:700;white-space:nowrap">${contexto === "venc" ? "venceu" : "val."} ${brData(doc.validade)}</span>`
-            : "";
-          return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">
-            ${tag ? `<span style="font-size:10px;background:#F3F4F6;border-radius:4px;padding:1px 6px;color:#6B7280;font-weight:700;flex-shrink:0">${tag}</span>` : ""}
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px">${link}${val}</span>
-            <button type="button" title="Excluir" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0" onclick="excluirDocFicha('${doc.id}','${colabId}','${nomeJs}')">🗑</button>
+          return `<div style="display:flex;align-items:center;gap:10px;padding:3px 0">
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px">${link}</span>
+            ${badgeVenc(doc, slotValidade)}
+            <button type="button" title="Editar (vencimento / não aplicável)" style="background:none;border:none;color:#2563EB;cursor:pointer;font-size:14px;flex-shrink:0" onclick="editarDoc('${doc.id}')">✏️</button>
+            <button type="button" title="Excluir (vai para a Lixeira por 30 dias)" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:15px;flex-shrink:0" onclick="excluirDocFicha('${doc.id}','${colabId}','${nomeJs}')">🗑️</button>
           </div>`;
         };
 
-        let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:10px">';
-        for (const s of SLOTS_DOC) {
-          const lista = porSlot[s.key] || [];
-          const temHist = vencidos.some((v) => v.slot === s.key);
-          const preenchido = lista.length > 0;
-          const cor = preenchido ? "#16A34A" : temHist ? "#D97706" : "#DC2626";
-          const fundo = preenchido ? "#F0FDF4" : temHist ? "#FFFBEB" : "#FEF2F2";
-          const borda = preenchido ? "#BBF7D0" : temHist ? "#FDE68A" : "#FECACA";
-          const corpo = preenchido
-            ? lista.map((doc: any) => linhaDoc(doc, "ok")).join("")
-            : `<div style="font-size:12px;color:${cor};font-weight:600">${temHist ? "⚠ Vencido — anexe o atual" : "○ Não anexado"}</div>`;
-          html += `<div style="border:1px solid ${borda};background:${fundo};border-radius:8px;padding:9px 10px">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px">
-              <span style="font-size:12.5px;font-weight:700;color:#374151">${s.label}${s.validade ? ' <span style="font-size:9.5px;color:#9CA3AF;font-weight:600">⏱ validade</span>' : ""}</span>
-              <button type="button" title="Anexar ${s.label}" style="background:#fff;border:1px solid ${borda};border-radius:6px;width:22px;height:22px;line-height:1;cursor:pointer;color:#374151;font-size:14px;flex-shrink:0" onclick="abrirModalDocPara('${colabId}','${nomeJs}','${s.prefixo}','${s.tipo}')">+</button>
-            </div>${corpo}
-          </div>`;
+        let html = "";
+        for (const g of SLOT_GRUPOS) {
+          html += `<div style="margin-bottom:16px">
+            <div style="font-size:12.5px;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px">${g.titulo}</div>`;
+          for (const key of g.keys) {
+            const s = SLOT_DEF[key]; if (!s) continue;
+            const lista = porSlot[key] || [];
+            const preenchido = lista.length > 0;
+            html += `<div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #ECEFF3;border-left:3px solid ${preenchido ? "#16A34A" : "#E5E7EB"};border-radius:8px;padding:10px 12px;margin-bottom:7px;background:#fff">
+              <div style="width:160px;flex-shrink:0;font-size:13.5px;font-weight:700;color:#374151">${s.label}${s.validade ? '<span style="font-size:10px;color:#9CA3AF;font-weight:600;display:block;margin-top:1px">com vencimento</span>' : ""}</div>
+              <div style="flex:1;min-width:0">${preenchido
+                ? lista.map((doc: any) => docItem(doc, s.validade)).join("")
+                : '<div style="font-size:13px;color:#B91C1C;font-weight:600;padding:3px 0">○ Não anexado</div>'}</div>
+              <button type="button" title="Anexar ${s.label}" class="btn btn-secondary btn-sm" style="flex-shrink:0" onclick="abrirModalDocPara('${colabId}','${nomeJs}','${s.prefixo}','${s.tipo}')">+ Anexar</button>
+            </div>`;
+          }
+          html += "</div>";
         }
-        html += "</div>";
         if (outros.length) {
-          html += `<div style="margin-top:12px"><div style="font-size:12.5px;font-weight:700;color:#6B7280;margin-bottom:4px">Outros documentos</div>${outros.map((doc: any) => linhaDoc(doc, "ok")).join("")}</div>`;
-        }
-        if (vencidos.length) {
-          html += `<details style="margin-top:14px;border-top:1px dashed #E5E7EB;padding-top:10px">
-            <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#B45309">📁 Documentos vencidos (histórico) — ${vencidos.length}</summary>
-            <div style="margin-top:8px">${vencidos
-              .sort((a, b) => (a.doc.validade < b.doc.validade ? 1 : -1))
-              .map((v) => linhaDoc(v.doc, "venc", SLOT_LABEL[v.slot] || "Outro"))
-              .join("")}</div>
-          </details>`;
+          html += `<div style="margin-bottom:8px"><div style="font-size:12.5px;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px">Outros documentos</div>
+            <div style="border:1px solid #ECEFF3;border-radius:8px;padding:10px 12px;background:#fff">${outros.map((doc: any) => docItem(doc, false)).join("")}</div></div>`;
         }
         wrap.innerHTML = html;
       } catch { wrap.innerHTML = '<p style="color:#999;font-size:13px">Erro de conexão.</p>'; }
@@ -1338,6 +1369,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       const form = document.getElementById("formDoc") as any;
       form.reset();
       (document.getElementById("docId") as any).value = "";
+      (document.getElementById("docValidade") as HTMLInputElement).disabled = false;
       (document.getElementById("tituloModalDoc") as any).textContent = "Novo documento";
       (document.getElementById("msgDoc") as any).innerHTML = "";
       document.getElementById("modalDoc")?.classList.add("open");
@@ -1352,6 +1384,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       for (const campo of ["colaborador_id", "titulo", "tipo", "url", "validade", "observacoes"]) {
         if (form.elements[campo]) form.elements[campo].value = d[campo] ?? "";
       }
+      const na = document.getElementById("docValidadeNA") as HTMLInputElement;
+      na.checked = !!d.validade_na;
+      (document.getElementById("docValidade") as HTMLInputElement).disabled = !!d.validade_na;
       (document.getElementById("tituloModalDoc") as any).textContent = "Editar documento";
       (document.getElementById("msgDoc") as any).innerHTML = "";
       document.getElementById("modalDoc")?.classList.add("open");
@@ -1368,6 +1403,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       e.preventDefault();
       const fd = new FormData(e.target as any);
       const body: Record<string, any> = Object.fromEntries(fd.entries());
+      body.validade_na = body.validade_na === "on";       // checkbox → boolean
+      if (body.validade_na) body.validade = "";            // N/A: sem data (vira null no servidor)
       const id = body.id;
       delete body.id;
       const msg = document.getElementById("msgDoc") as any;
@@ -1501,6 +1538,11 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
   <style>
     .sub-info { font-size: 0.75rem; color: #9CA3AF; margin-top: 2px; }
+    /* Abas da ficha do colaborador (estilo Excel) */
+    .ficha-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 2px solid #E5E7EB; }
+    .ficha-tab { background: #F3F4F6; border: 1px solid #E5E7EB; border-bottom: none; border-radius: 8px 8px 0 0; padding: 9px 18px; font-size: 14px; font-weight: 700; color: #6B7280; cursor: pointer; margin-bottom: -2px; }
+    .ficha-tab:hover { color: var(--brand, #C41E3A); }
+    .ficha-tab.active { background: #fff; color: var(--brand, #C41E3A); border-color: #E5E7EB; border-bottom: 2px solid #fff; }
     .bloco-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 15px 18px; background: #FAFBFC; border: 0; border-bottom: 1px solid var(--border, #E5E7EB); cursor: pointer; font-family: inherit; text-align: left; }
     .bloco-head:hover { background: #F0F1F5; }
     .bloco-seta { font-size: 15px; color: #6B7280; transition: transform .15s; }

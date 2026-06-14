@@ -49,7 +49,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (!body.colaborador_id || !body.titulo) return jsonErr(400, "Colaborador e título são obrigatórios");
     if (body.tipo && !TIPOS_DOC.includes(body.tipo)) return jsonErr(400, "Tipo de documento inválido");
 
-    const campos = ["colaborador_id", "titulo", "tipo", "url", "validade", "observacoes"];
+    const campos = ["colaborador_id", "titulo", "tipo", "url", "validade", "validade_na", "observacoes"];
     const row: Record<string, unknown> = { criado_por: admin.email };
     for (const c of campos) if (body[c] !== undefined && body[c] !== "") row[c] = body[c];
 
