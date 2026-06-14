@@ -588,6 +588,65 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     </div>
   </div>
 
+  <!-- ════════ MODAL DESLIGAMENTO ════════ -->
+  <div class="modal-overlay" id="modalDesligamento">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-title">Desligar colaborador — <span id="deslNome"></span></div>
+      <div id="msgDesl"></div>
+      <form id="formDesligamento">
+        <input type="hidden" id="deslColabId" />
+        <div class="form-row">
+          <div class="form-group"><label>Data do desligamento</label><input name="data_desligamento" type="date" /></div>
+          <div class="form-group"><label>Tipo</label>
+            <select name="tipo">
+              <option value="pedido">Pedido de demissão</option>
+              <option value="sem_justa_causa">Dispensa sem justa causa</option>
+              <option value="justa_causa">Dispensa por justa causa</option>
+              <option value="fim_contrato">Fim de contrato</option>
+              <option value="acordo">Acordo (comum)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group"><label>Motivo</label><input name="motivo" /></div>
+        <div class="section-title" style="font-size:13.5px;margin:6px 0 8px">📝 Entrevista de desligamento</div>
+        <div class="form-group"><label>Motivo principal da saída</label>
+          <select name="motivo_principal">
+            <option value="">—</option>
+            <option>Oportunidade de trabalho melhor</option>
+            <option>Insatisfação com o trabalho</option>
+            <option>Questões pessoais</option>
+            <option>Problemas com a gestão</option>
+            <option>Outros</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Ambiente de trabalho</label>
+            <select name="ambiente"><option value="">—</option><option>Excelente</option><option>Bom</option><option>Regular</option><option>Ruim</option></select>
+          </div>
+          <div class="form-group"><label>Relação com a gestão</label>
+            <select name="relacao_gestao"><option value="">—</option><option>Excelente</option><option>Boa</option><option>Regular</option><option>Ruim</option></select>
+          </div>
+          <div class="form-group"><label>Recomendaria a empresa?</label>
+            <select name="recomendaria"><option value="">—</option><option>Sim</option><option>Talvez</option><option>Não</option></select>
+          </div>
+        </div>
+        <div class="form-group"><label>Comentários</label><textarea name="comentarios"></textarea></div>
+        <div class="section-title" style="font-size:13.5px;margin:6px 0 8px">✅ Checklist de saída</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink-mid)">
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_epi" /> EPIs devolvidos</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_ferr" /> Ferramentas/equipamentos devolvidos</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_aso" /> Exame demissional (ASO)</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_docs" /> Documentos de rescisão entregues</label>
+          <label style="display:flex;gap:8px;align-items:center;color:#16A34A"><input type="checkbox" checked disabled /> Acesso ao portal revogado (automático)</label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalDesligamento')">Cancelar</button>
+          <button type="button" class="btn btn-danger" onclick="confirmarDesligamento()">Confirmar desligamento</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ════════ MODAL AUSÊNCIA ════════ -->
   <div class="modal-overlay" id="modalAusencia">
     <div class="modal">
@@ -1427,17 +1486,30 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).salvarPerfilAcesso = salvarPerfilAcesso;
     (window as any).removerAcesso = removerAcesso;
 
-    async function desligarColab(id: string, nome: string) {
-      if (!confirm(`Desligar o colaborador "${nome}"?\n\nO status mudará para "Desligado" e a data de desligamento será registrada como hoje.`)) return;
-      const hoje = new Date().toISOString().slice(0, 10);
-      const res = await fetch(`/api/admin/rh/colaboradores/${id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status: "desligado", data_desligamento: hoje }),
-      });
-      if (res.ok) window.location.reload();
-      else { const d = await res.json().catch(() => ({} as any)); alert("Erro ao desligar: " + (d.error || `HTTP ${res.status}`)); }
+    function desligarColab(id: string, nome: string) {
+      (document.getElementById("deslColabId") as HTMLInputElement).value = id;
+      document.getElementById("deslNome")!.textContent = nome;
+      (document.getElementById("formDesligamento") as HTMLFormElement).reset();
+      (document.querySelector('#formDesligamento [name="data_desligamento"]') as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
+      document.getElementById("msgDesl")!.innerHTML = "";
+      document.getElementById("modalDesligamento")!.classList.add("open");
     }
+    async function confirmarDesligamento() {
+      const id = (document.getElementById("deslColabId") as HTMLInputElement).value;
+      const f = document.getElementById("formDesligamento") as HTMLFormElement;
+      const fd = new FormData(f);
+      const data = (fd.get("data_desligamento") as string) || new Date().toISOString().slice(0, 10);
+      const msg = document.getElementById("msgDesl")!;
+      // 1) status do colaborador → desligado (revoga acesso ao portal)
+      const r1 = await fetch(`/api/admin/rh/colaboradores/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "desligado", data_desligamento: data }) });
+      if (!r1.ok) { const d = await r1.json().catch(() => ({})); msg.innerHTML = `<div class="alert alert-error">${(d as any).error || "Erro ao desligar"}</div>`; return; }
+      // 2) registro do desligamento (entrevista + checklist)
+      const entrevista = { motivo_principal: fd.get("motivo_principal"), ambiente: fd.get("ambiente"), relacao_gestao: fd.get("relacao_gestao"), recomendaria: fd.get("recomendaria"), comentarios: fd.get("comentarios") };
+      const checklist = { epi_devolvido: fd.get("ck_epi") === "on", ferramentas_devolvidas: fd.get("ck_ferr") === "on", exame_demissional: fd.get("ck_aso") === "on", documentos_entregues: fd.get("ck_docs") === "on", acessos_revogados: true };
+      await fetch("/api/admin/rh/desligamentos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ colaborador_id: id, data_desligamento: data, tipo: fd.get("tipo"), motivo: fd.get("motivo"), entrevista, checklist, status: "concluido" }) });
+      window.location.reload();
+    }
+    (window as any).confirmarDesligamento = confirmarDesligamento;
 
     // campos obrigatórios da ficha (exceto diaristas, que são esporádicos)
     const OBRIGATORIOS: [string, string][] = [
