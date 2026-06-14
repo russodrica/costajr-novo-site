@@ -2,11 +2,24 @@
 import Admin from "../../layouts/Admin.astro";
 import RhNav from "../../components/RhNav.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
 try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const [{ data: cargosData }, { data: membrosData }] = await Promise.all([
+  db.from("rh_cargos").select("id, nome, area").eq("ativo", true).order("ordem"),
+  db.from("rh_colaboradores").select("id, nome, cargo").neq("status", "desligado").order("nome"),
+]);
+const cargos = cargosData || [];
+const membros = membrosData || [];
+const AREAS = [
+  { v: "operacao", l: "Operação" }, { v: "comercial", l: "Comercial" },
+  { v: "administrativo", l: "Administrativo" }, { v: "financeiro", l: "Financeiro" }, { v: "rh", l: "RH" },
+];
 ---
 <Admin title="Recrutamento & Seleção" current="recrutamento">
   <RhNav current="recrutamento" />
@@ -31,14 +44,22 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       <form id="formVaga">
         <input type="hidden" name="id" />
         <div class="form-row">
-          <div class="form-group"><label>Título da vaga *</label><input name="titulo" required /></div>
+          <div class="form-group">
+            <label>Título da vaga (cargo) * <button type="button" onclick="abrirCargos()" style="border:none;background:none;color:var(--brand);font-size:11px;cursor:pointer;font-weight:600">⚙️ gerenciar</button></label>
+            <select name="titulo" id="vagaTitulo" required>
+              <option value="">Selecione o cargo…</option>
+              {cargos.map(c => <option value={c.nome}>{c.nome}</option>)}
+            </select>
+          </div>
           <div class="form-group"><label>Data (abertura)</label><input name="data_abertura" type="date" /></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Demanda</label>
             <select name="demanda"><option value="">—</option><option>Nova</option><option>Reposição</option><option>Aumento de quadro</option></select>
           </div>
-          <div class="form-group"><label>Área</label><input name="setor" placeholder="Ex.: Operação" /></div>
+          <div class="form-group"><label>Área</label>
+            <select name="setor"><option value="">—</option>{AREAS.map(a => <option value={a.l}>{a.l}</option>)}</select>
+          </div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Data prevista p/ início</label><input name="data_prevista" type="date" /></div>
@@ -63,13 +84,28 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
           </div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Cargo</label><input name="cargo" /></div>
-          <div class="form-group"><label>Demandante</label><input name="demandante" /></div>
+          <div class="form-group"><label>Demandante</label>
+            <select name="demandante"><option value="">—</option>{membros.map(m => <option value={m.nome}>{m.nome}{m.cargo ? ` — ${m.cargo}` : ""}</option>)}</select>
+          </div>
           <div class="form-group"><label>Qtd.</label><input name="quantidade" type="number" min="1" value="1" /></div>
         </div>
         <div class="form-group"><label>Descrição</label><textarea name="descricao"></textarea></div>
         <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="fecharModal('modalVaga')">Cancelar</button><button type="submit" class="btn btn-primary">Salvar</button></div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal gerenciar cargos -->
+  <div class="modal-overlay" id="modalCargos">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-title">⚙️ Cargos disponíveis</div>
+      <p style="font-size:12.5px;color:#6B7280;margin:0 0 10px">Estes cargos aparecem como Título da vaga. Exclua os que não usa ou adicione novos.</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="novoCargo" placeholder="Novo cargo…" style="flex:1;padding:8px 10px;border:1px solid #E5E7EB;border-radius:8px" onkeydown="if(event.key==='Enter'){event.preventDefault();addCargo();}" />
+        <button type="button" class="btn btn-primary btn-sm" onclick="addCargo()">+ Adicionar</button>
+      </div>
+      <div id="listaCargos" style="max-height:300px;overflow-y:auto"></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="fecharModal('modalCargos')">Fechar</button></div>
     </div>
   </div>
 
@@ -196,7 +232,10 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       CAND = await r.json();
       if (talentos) CAND = CAND.filter(c => !c.vaga_id);
       const box = document.getElementById("kanban");
-      box.innerHTML = `<div style="display:flex;gap:12px;min-width:max-content">${ETAPAS.map(e => {
+      const banner = (!CAND.length && !talentos)
+        ? `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 16px;margin-bottom:12px;color:#1E40AF;font-size:13.5px">📋 <strong>Funil de candidatos.</strong> Ainda não há candidatos — clique em <strong>+ Novo candidato</strong> (ou eles entram sozinhos pela página pública de vagas). Conforme avançam, mova-os pelas colunas: Triagem → Teste → Entrevistas → Proposta → Admissão → Contratado.</div>`
+        : "";
+      box.innerHTML = banner + `<div style="display:flex;gap:12px;min-width:max-content">${ETAPAS.map(e => {
         const itens = CAND.filter(c => c.etapa === e.k);
         return `<div style="min-width:210px;width:210px;flex-shrink:0">
           <div style="font-size:12.5px;font-weight:800;color:${e.c};text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px;display:flex;justify-content:space-between">${e.t}<span style="background:#F3F4F6;border-radius:99px;padding:0 8px;color:#6B7280">${itens.length}</span></div>
@@ -242,6 +281,32 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
     }
 
     function abrirVaga() { const f = document.getElementById("formVaga"); f.reset(); f.elements.id.value = ""; document.getElementById("tituloVaga").textContent = "Nova vaga"; document.getElementById("msgVaga").innerHTML=""; document.getElementById("modalVaga").classList.add("open"); }
+
+    // ── Cargos (Título da vaga) ──
+    let CARGOS = [];
+    async function refreshCargosSelect() {
+      const r = await fetch("/api/admin/rh/cargos", { headers: { "content-type": "application/json" } });
+      CARGOS = await r.json();
+      const sel = document.getElementById("vagaTitulo"); const atual = sel.value;
+      sel.innerHTML = `<option value="">Selecione o cargo…</option>` + CARGOS.map(c => `<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join("");
+      if (atual && CARGOS.some(c => c.nome === atual)) sel.value = atual;
+    }
+    async function abrirCargos() { document.getElementById("modalCargos").classList.add("open"); await refreshCargosSelect(); renderCargos(); }
+    function renderCargos() {
+      const box = document.getElementById("listaCargos");
+      box.innerHTML = CARGOS.length ? CARGOS.map(c => `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 4px;border-bottom:1px solid #F3F4F6"><span>${esc(c.nome)}</span><button type="button" title="Excluir" onclick="excluirCargo('${c.id}','${esc(c.nome).replace(/'/g,"")}')" style="border:none;background:none;color:#DC2626;cursor:pointer;font-size:15px">🗑️</button></div>`).join("") : '<p style="color:#9CA3AF;font-size:13px">Nenhum cargo.</p>';
+    }
+    async function addCargo() {
+      const inp = document.getElementById("novoCargo"); const nome = inp.value.trim(); if (!nome) return;
+      const r = await fetch("/api/admin/rh/cargos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nome }) });
+      if (r.ok) { inp.value = ""; await refreshCargosSelect(); renderCargos(); }
+      else { const d = await r.json().catch(()=>({})); alert(d.error || "Erro ao adicionar."); }
+    }
+    async function excluirCargo(id, nome) {
+      if (!confirm(`Remover o cargo "${nome}" da lista?`)) return;
+      const r = await fetch(`/api/admin/rh/cargos/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      if (r.ok) { await refreshCargosSelect(); renderCargos(); } else alert("Erro ao remover.");
+    }
     function editarVaga(id) { const v = VAGAS.find(x=>x.id===id); if(!v) return; const f=document.getElementById("formVaga"); f.reset(); for(const k of ["id","titulo","cargo","setor","demandante","quantidade","descricao","status","data_abertura","data_prevista","demanda","perfil_desejado","habilitacao","modo_trabalho","tipo_contratacao"]) if(f.elements[k]) f.elements[k].value = (v[k]===null||v[k]===undefined)?"":String(v[k]).slice(0, k.startsWith("data")?10:200); document.getElementById("tituloVaga").textContent="Editar vaga"; document.getElementById("msgVaga").innerHTML=""; document.getElementById("modalVaga").classList.add("open"); }
     async function excluirVaga(id, t) { if(!confirm(`Excluir a vaga "${t}"? (vai para a Lixeira 30 dias)`)) return; const r=await fetch(`/api/admin/rh/vagas/${id}`,{method:"DELETE",headers:{"content-type":"application/json"}}); if(r.ok){carregarVagas();carregarKanban();} else alert("Erro ao excluir."); }
     document.getElementById("formVaga").addEventListener("submit", async e => {
