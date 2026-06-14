@@ -508,6 +508,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <button type="button" class="ficha-tab active" data-ft="dados" onclick="fichaTab('dados')">📋 Dados gerais</button>
         <button type="button" class="ficha-tab" data-ft="docs" onclick="fichaTab('docs')">📎 Documentos <span id="fichaTabDocsCount" style="opacity:.75"></span></button>
         <button type="button" class="ficha-tab" data-ft="epi" onclick="fichaTab('epi')">🦺 EPIs</button>
+        <button type="button" class="ficha-tab" data-ft="pendencias" onclick="fichaTab('pendencias')">⚠️ Pendências <span id="fichaTabPendCount" style="opacity:.85"></span></button>
       </div>
       <div id="fichaPaneDados">
       <form id="formColab">
@@ -607,6 +608,14 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <p style="font-size:12px;color:#9CA3AF;margin-top:8px">A ficha sai sempre completa, com todos os EPIs. Preencha CA, tamanho e validade; a entrega vem com a data de hoje. Alerta automático 15 dias antes do vencimento para rh@ e engenharia@. Gere o PDF, imprima, colha a assinatura e anexe o documento assinado no histórico.</p>
         <div id="epiFichas" style="margin-top:14px"></div>
         <div id="epiAnexos" style="margin-top:16px;border-top:1px solid #F0F1F4;padding-top:12px"></div>
+      </div>
+
+      <div id="fichaPanePendencias" style="display:none">
+        <div class="section-header" style="margin-bottom:10px">
+          <span class="section-title" style="font-size:15px">⚠️ Pendências do cadastro</span>
+        </div>
+        <p style="font-size:12px;color:#9CA3AF;margin:0 0 12px">Tudo o que falta resolver: campos obrigatórios, documentos faltando, fichas sem assinatura e vencimentos.</p>
+        <div id="pendConteudo"><div class="loading"><div class="spinner"></div> Verificando…</div></div>
       </div>
     </div>
   </div>
@@ -1184,10 +1193,11 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     const camposColab = ["nome","email","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
 
     function fichaTab(qual: string) {
-      const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi" };
+      const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi", pendencias: "fichaPanePendencias" };
       for (const [k, id] of Object.entries(panes)) { const el = document.getElementById(id); if (el) (el as any).style.display = (k === qual ? "" : "none"); }
       document.querySelectorAll(".ficha-tab").forEach((t) => t.classList.toggle("active", (t as any).dataset.ft === qual));
       if (qual === "epi" && (window as any).__fichaColabId) carregarEpi((window as any).__fichaColabId);
+      if (qual === "pendencias" && (window as any).__fichaColabId) carregarPendencias((window as any).__fichaColabId);
     }
     (window as any).fichaTab = fichaTab;
 
@@ -1305,6 +1315,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         renderAcesso(colabId, nome, d.membro, d.colaborador?.email);
         const docs = d.documentos || [];
         docs.forEach((doc: any) => { docPorId[doc.id] = doc; }); // p/ o ✏️ editar funcionar na ficha
+        try { setPendBadge(calcPendencias(d.colaborador || {}, docs, null).total, true); } catch { /* badge é best-effort */ }
         const nomeJs = escD(nome).replace(/['"]/g, "");
         // agrupa docs por slot
         const porSlot: Record<string, any[]> = {};
@@ -1471,6 +1482,63 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         ${itens || '<p style="font-size:12.5px;color:#9CA3AF">Nenhum anexo de ficha de EPI. Use “+ Anexar” para subir a ficha assinada/digitalizada.</p>'}`;
     }
     (window as any).carregarAnexosEpi = carregarAnexosEpi;
+
+    // ── Pendências consolidadas do colaborador ──
+    const PEND_CAMPOS_OBRIG: [string, string][] = [
+      ["nome", "Nome"], ["email", "E-mail"], ["telefone", "Telefone (empresa)"], ["telefone_pessoal", "Telefone (pessoal)"],
+      ["cpf", "CPF"], ["rg", "RG"], ["data_nascimento", "Data de nascimento"], ["cargo", "Cargo"], ["data_admissao", "Admissão"],
+      ["endereco", "Endereço"], ["contato_emergencia_nome", "Contato de emergência (nome)"], ["contato_emergencia_telefone", "Contato de emergência (telefone)"],
+    ];
+    const PEND_DOCS_OBRIG = ["contrato", "rg_hab", "carteira_trabalho", "ficha_registro", "aso", "titulo_eleitor", "certidao_nascimento", "comprovante_residencia"];
+    function calcPendencias(c: any, docs: any[], epi: any | null) {
+      const hoje = hojeIsoEpi();
+      const ehDiarista = c && c.regime === "diarista";
+      const campos = ehDiarista ? [] : PEND_CAMPOS_OBRIG.filter(([k]) => !String((c || {})[k] || "").trim()).map(([, l]) => l);
+      const porSlot: Record<string, any[]> = {};
+      for (const d of docs || []) { if (d.tipo === "ficha_epi") continue; const s = slotDoDoc(d); (porSlot[s] = porSlot[s] || []).push(d); }
+      const docsFalta = PEND_DOCS_OBRIG.filter((k) => !(porSlot[k] || []).length).map((k) => (SLOT_DEF[k]?.label || k));
+      const docsVenc = (docs || []).filter((d: any) => d.validade && d.validade < hoje).map((d: any) => `${nomeCurtoDoc(d.titulo)} — venceu ${brData(d.validade)}`);
+      let episVenc: string[] = [], semAss: string[] = [];
+      if (epi) {
+        episVenc = (epi.itens || []).filter((it: any) => it.data_validade && it.data_validade < hoje).map((it: any) => `${it.epi} — venceu ${brData(it.data_validade)}`);
+        semAss = (epi.fichas || []).filter((f: any) => f.status !== "assinada").map((f: any) => `Ficha de EPI ${f.tipo === "reposicao" ? "(reposição)" : "completa"} de ${brData(f.data_geracao)}`);
+      }
+      return { campos, docsFalta, docsVenc, episVenc, semAss, total: campos.length + docsFalta.length + docsVenc.length + episVenc.length + semAss.length };
+    }
+    function setPendBadge(total: number, parcial = false) {
+      const b = document.getElementById("fichaTabPendCount"); if (!b) return;
+      b.innerHTML = total > 0
+        ? `<span style="background:#FEE2E2;color:#B91C1C;border-radius:99px;padding:1px 7px;font-size:11px;font-weight:800">${total}${parcial ? "+" : ""}</span>`
+        : `<span style="background:#DCFCE7;color:#166534;border-radius:99px;padding:1px 7px;font-size:11px;font-weight:800">✓</span>`;
+    }
+    async function carregarPendencias(colabId: string) {
+      const box = document.getElementById("pendConteudo"); if (!box) return;
+      box.innerHTML = '<div class="loading"><div class="spinner"></div> Verificando…</div>';
+      try {
+        const [rc, re] = await Promise.all([
+          fetch(`/api/admin/rh/colaboradores/${colabId}`).then((r) => r.json()).catch(() => ({})),
+          fetch(`/api/admin/rh/epi?colaborador_id=${colabId}`).then((r) => r.json()).catch(() => ({})),
+        ]);
+        const c = rc.colaborador || {};
+        const p = calcPendencias(c, rc.documentos || [], re);
+        setPendBadge(p.total);
+        const secao = (titulo: string, cor: string, itens: string[], dica: string) => itens.length
+          ? `<div style="border:1px solid #ECEFF3;border-left:3px solid ${cor};border-radius:8px;padding:10px 12px;margin-bottom:10px">
+              <div style="font-weight:800;font-size:13px;color:${cor};margin-bottom:6px">${titulo} <span style="background:#FEE2E2;color:#B91C1C;border-radius:99px;padding:0 7px;font-size:11px">${itens.length}</span></div>
+              <ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;line-height:1.7">${itens.map((i) => `<li>${escD(i)}</li>`).join("")}</ul>
+              <div style="font-size:11.5px;color:#9CA3AF;margin-top:5px">${dica}</div>
+            </div>` : "";
+        const corpo = p.total === 0
+          ? `<div style="background:#DCFCE7;border:1px solid #BBF7D0;border-radius:10px;padding:20px;text-align:center;color:#166534;font-weight:700">✅ Nenhuma pendência — cadastro completo!</div>`
+          : secao("📝 Campos obrigatórios em branco", "#B91C1C", p.campos, "Preencha na aba “Dados gerais” e salve.")
+          + secao("📂 Documentos faltando", "#B45309", p.docsFalta, "Anexe na aba “Documentos”.")
+          + secao("✍️ Fichas de EPI sem assinatura", "#7C3AED", p.semAss, "Gere o PDF, colha a assinatura e anexe o assinado na aba “EPIs”.")
+          + secao("⏰ Documentos vencidos", "#B91C1C", p.docsVenc, "Atualize o documento e o vencimento na aba “Documentos”.")
+          + secao("🦺 EPIs vencidos", "#B91C1C", p.episVenc, "Faça a reposição e atualize a validade na aba “EPIs”.");
+        box.innerHTML = corpo;
+      } catch { box.innerHTML = '<div class="alert alert-error">Erro ao verificar pendências.</div>'; }
+    }
+    (window as any).carregarPendencias = carregarPendencias;
     function coletarEpi() {
       return Array.from(document.querySelectorAll("#epiTbody tr")).map((tr) => {
         const nomeInput = tr.querySelector(".epi-nome") as HTMLInputElement | null;

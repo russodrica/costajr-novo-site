@@ -914,6 +914,27 @@ nunca apagado (parcela/[id].ts ja fazia isso). O painel principal ja filtra
 concluidos (com parcelas+abono) e botao "📜 Historico" na aba Ferias abre modal
 modalFeriasHist (so leitura). E2E: historico inclui concluido / painel principal nao.
 
+## Atualizacao 14/06/2026 (parte 3) — EPI refinamentos + aba Pendencias
+
+- **CA pre-preenchido NA (commit 8fb76ee):** Calca e Camiseta nao tem CA -> o
+  form de EPI ja vem com CA="NA" (editavel); 6 registros existentes (Crispim/
+  Givanildo) atualizados.
+- **Anexos de ficha de EPI na aba EPIs (commit bb100e6):** secao "Anexos de Ficha
+  de EPI" lista docs tipo=ficha_epi + botao Anexar (o local sumiu ao tirar da aba
+  Docs). Fichas EPI nao aparecem mais em Documentos (filtro doc.tipo==='ficha_epi'
+  no split de slots). Novos slots de docs pessoais: Carteira de Trabalho (CTPS),
+  Titulo de Eleitor, Certidao de Nascimento, Comprovante de Residencia —
+  slotDoDoc reconhece por titulo => docs do Crispim em "Outros" migram sozinhos
+  (render-time, sem mexer no banco).
+- **Aba "⚠️ Pendencias" na ficha do colaborador (commit a-seguir):** consolida
+  tudo que falta: (1) campos obrigatorios em branco (PEND_CAMPOS_OBRIG, isenta
+  diarista), (2) documentos faltando (PEND_DOCS_OBRIG = contrato/rg/carteira/
+  ficha_registro/aso/titulo_eleitor/certidao/comprovante via slotDoDoc), (3) fichas
+  de EPI sem assinatura (epi_fichas.status != assinada), (4) documentos e EPIs
+  vencidos (validade < hoje). calcPendencias() + carregarPendencias(); badge no
+  topo da aba (parcial sem EPI no load da ficha, total ao abrir a aba). Verificado
+  ao vivo no Crispim (1 campo + 1 EPI vencido = badge 2).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
