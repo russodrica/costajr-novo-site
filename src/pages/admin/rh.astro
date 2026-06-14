@@ -606,6 +606,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <div id="epiLista"><div class="loading"><div class="spinner"></div> Carregando EPIs...</div></div>
         <p style="font-size:12px;color:#9CA3AF;margin-top:8px">A ficha sai sempre completa, com todos os EPIs. Preencha CA, tamanho e validade; a entrega vem com a data de hoje. Alerta automático 15 dias antes do vencimento para rh@ e engenharia@. Gere o PDF, imprima, colha a assinatura e anexe o documento assinado no histórico.</p>
         <div id="epiFichas" style="margin-top:14px"></div>
+        <div id="epiAnexos" style="margin-top:16px;border-top:1px solid #F0F1F4;padding-top:12px"></div>
       </div>
     </div>
   </div>
@@ -1234,6 +1235,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       { key: "contrato", label: "Contrato / Termo", tipo: "contrato", prefixo: "Contrato/Termo", validade: false },
       { key: "rg_hab", label: "RG / Habilitação", tipo: "cnh", prefixo: "RG/Habilitação", validade: false },
       { key: "ficha_registro", label: "Ficha de Registro", tipo: "outro", prefixo: "Ficha de Registro", validade: false },
+      { key: "carteira_trabalho", label: "Carteira de Trabalho (CTPS)", tipo: "outro", prefixo: "Carteira de Trabalho", validade: false },
+      { key: "titulo_eleitor", label: "Título de Eleitor", tipo: "outro", prefixo: "Título de Eleitor", validade: false },
+      { key: "certidao_nascimento", label: "Certidão de Nascimento", tipo: "outro", prefixo: "Certidão de Nascimento", validade: false },
+      { key: "comprovante_residencia", label: "Comprovante de Residência", tipo: "outro", prefixo: "Comprovante de Residência", validade: false },
       { key: "teste", label: "Teste de Personalidade", tipo: "outro", prefixo: "Teste de Personalidade", validade: false },
       { key: "aso", label: "ASO", tipo: "aso", prefixo: "ASO", validade: true },
       { key: "ficha_epi", label: "Ficha de EPI", tipo: "ficha_epi", prefixo: "Ficha EPI", validade: true },
@@ -1249,7 +1254,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     const SLOT_DEF: Record<string, any> = Object.fromEntries(SLOTS_DOC.map((s) => [s.key, s]));
     // Grupos da ficha (ordem como no Monday): pessoais · técnicos · treinamentos (NRs em ordem)
     const SLOT_GRUPOS = [
-      { titulo: "🪪 Documentos pessoais", keys: ["contrato", "rg_hab", "ficha_registro", "teste"] },
+      { titulo: "🪪 Documentos pessoais", keys: ["contrato", "rg_hab", "carteira_trabalho", "titulo_eleitor", "certidao_nascimento", "comprovante_residencia", "ficha_registro", "teste"] },
       { titulo: "🛠️ Documentos técnicos", keys: ["aso", "os"] },
       { titulo: "🦺 Treinamentos (NRs)", keys: ["nr01", "nr06", "nr10", "nr35"] },
       { titulo: "⚠️ Disciplinares", keys: ["advertencia", "suspensao"] },
@@ -1260,6 +1265,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       const np = normD(idx >= 0 ? t.slice(0, idx) : t);
       if (np.includes("contrato") || np.includes("termo")) return "contrato";
       if (np.startsWith("rg") || np.includes("habilita")) return "rg_hab";
+      if (np.includes("carteira de trabalho") || np.includes("ctps")) return "carteira_trabalho";
+      if (np.includes("titulo de eleitor") || np.includes("titulo eleitor")) return "titulo_eleitor";
+      if (np.includes("certidao") || np.includes("nascimento")) return "certidao_nascimento";
+      if (np.includes("comprovante") || np.includes("residencia")) return "comprovante_residencia";
       if (np.includes("registro")) return "ficha_registro";
       if (np.includes("personalidade") || np.startsWith("teste")) return "teste";
       if (np.startsWith("aso")) return "aso";
@@ -1301,6 +1310,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         const porSlot: Record<string, any[]> = {};
         const outros: any[] = [];
         for (const doc of docs) {
+          if (doc.tipo === "ficha_epi") continue; // ficha de EPI vive na aba EPIs
           const slot = slotDoDoc(doc);
           if (slot === "outros") { outros.push(doc); continue; }
           (porSlot[slot] = porSlot[slot] || []).push(doc);
@@ -1432,8 +1442,31 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
                 : `<label class="btn btn-outline btn-sm" style="cursor:pointer">📎 Anexar assinado<input type="file" accept="application/pdf,image/*" style="display:none" onchange="anexarAssinadoEpi('${f.id}', this)" /></label>`}
             </div>`).join("")}`
           : '<p style="font-size:12.5px;color:#9CA3AF">Nenhuma ficha gerada ainda.</p>';
+        await carregarAnexosEpi(colabId);
       } catch { box.innerHTML = '<div class="alert alert-error">Erro de conexão.</div>'; }
     }
+    // Anexos de Ficha de EPI (documentos tipo ficha_epi) — dentro da aba EPIs
+    async function carregarAnexosEpi(colabId: string) {
+      const wrap = document.getElementById("epiAnexos"); if (!wrap) return;
+      const nomeJs = (escD((window as any).__fichaColabNome || "").replace(/'/g, ""));
+      let docs: any[] = [];
+      try { const r = await fetch(`/api/admin/rh/documentos?colaborador_id=${colabId}&tipo=ficha_epi`); if (r.ok) docs = await r.json(); } catch { /* ignore */ }
+      const itens = docs.map((doc: any) => {
+        const temArq = doc.storage_path || doc.url;
+        const link = temArq ? `<a href="/api/admin/rh/documentos/${doc.id}/arquivo" target="_blank" rel="noopener">📎 ${escD(nomeCurtoDoc(doc.titulo))}</a>` : escD(nomeCurtoDoc(doc.titulo));
+        const apl = doc.data_aplicacao ? `<span style="font-size:11.5px;color:#6B7280">· ${brData(doc.data_aplicacao)}</span>` : "";
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${link} ${apl}</span>
+          <button type="button" title="Excluir" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:14px" onclick="excluirDocFicha('${doc.id}','${colabId}','${nomeJs}');carregarAnexosEpi('${colabId}')">🗑️</button>
+        </div>`;
+      }).join("");
+      wrap.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+          <span class="section-title" style="font-size:13.5px">📎 Anexos de Ficha de EPI (assinadas / digitalizadas)</span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="abrirModalDocPara('${colabId}','${nomeJs}','Ficha EPI','ficha_epi')">+ Anexar ficha de EPI</button>
+        </div>
+        ${itens || '<p style="font-size:12.5px;color:#9CA3AF">Nenhum anexo de ficha de EPI. Use “+ Anexar” para subir a ficha assinada/digitalizada.</p>'}`;
+    }
+    (window as any).carregarAnexosEpi = carregarAnexosEpi;
     function coletarEpi() {
       return Array.from(document.querySelectorAll("#epiTbody tr")).map((tr) => {
         const nomeInput = tr.querySelector(".epi-nome") as HTMLInputElement | null;
