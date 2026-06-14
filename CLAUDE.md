@@ -669,6 +669,38 @@ Nesta sessao a rede ao site oscilou MUITO (curl e browser deram 000/timeout
 intermitente) — verificacoes E2E feitas direto no banco (Supabase REST/Management
 API, confiaveis) quando o HTTP do app nao respondia.
 
+## Atualizacao 13/06/2026 (parte 5) — RH: refinamentos + modulo Ficha de EPI
+
+**Frente 1 (commit d6799c7):** (a) ficha ganhou slots Advertencia e Suspensao
+(grupo Disciplinares). (b) FERIAS agora valem p/ CLT E PJ (ferias.ts, seed e GET
+usam regime in (clt,pj)). (c) NAO permite 2 colaboradores de ferias no mesmo
+periodo: parcelas POST valida sobreposicao com parcelas de OUTROS colaboradores
+e retorna 400 claro. (d) Aniversariantes = TODOS os ativos (qualquer regime, pela
+data_nascimento); e-mail dos aniversariantes do mes no dia 1 (cron piggyback,
+enviarAniversariantesDoMes p/ rh@+adriana@). (e) /admin/membros ganhou abas
+Colaboradores (vinculados a RH via profile_id) x Terceiros (demais).
+
+**Modulo Ficha de EPI (migration 044 RODADA; commit e6cd729):** aba 🦺 EPIs na
+ficha. Catalogo fixo de 8 itens (src/lib/epi.ts EPI_CATALOGO: mascara respiratoria,
+protetor auricular, oculos, botina, camiseta, luva pigmentada, luva de raspa,
+capacete). Tabelas: epi_entregas (estado atual por colaborador+epi, UNIQUE
+colaborador_id+epi, upsert; CA/tamanho/entrega/validade/devolucao/aviso_15) e
+epi_fichas (documentos gerados: tipo completa|reposicao, itens jsonb snapshot,
+status gerada|assinada, assinado_path). APIs /api/admin/rh/epi/{index GET,
+entregas POST, gerar POST, fichas/[id]/pdf GET, fichas/[id]/assinado POST/GET}.
+PDF imprimivel via pdf-lib (src/lib/epiPdf.ts) com termo + linha de assinatura.
+"Gerar ficha completa" (todos os itens) e "reposicao" (so 1 item danificado).
+Alerta 15 dias antes do vencimento -> rh@ + engenharia@ (enviarAlertasEpi,
+piggyback no cron diario, flag aviso_15). ASSINATURA = imprimir->assinar no
+papel->anexar o assinado (decisao da Adriana, NAO D4Sign); o assinado vai pro
+bucket privado rh e a ficha vira "assinada" no historico. Fluxo de dados validado
+E2E no banco (upsert sem duplicar, snapshot, query do alerta) + PDF smoke-test ok.
+PENDENTE p/ proxima sessao (decisao da Adriana): **fluxo de contratacao/demissao**
+(board Miro uXjVIGLTH8E + FORMULARIO DE DESLIGAMENTO.xlsx que ela anexou — formulario
+de entrevista de desligamento). Nao consegui abrir o Miro (rede ao site caiu nesta
+sessao). Modelo real de EPI da empresa: "CONTORLE DE EPI_COSTA JUNIOR.xlsx" e fichas
+.docx em RH DP/1_Documentos/1_Seguranca do Trabalho/03.NR.../.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
