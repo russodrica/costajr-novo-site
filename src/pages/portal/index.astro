@@ -31,7 +31,7 @@ import Portal from "~/layouts/Portal.astro";
     </div>
   </div>
 
-  <style>
+  <style is:global>
     /* ─── Banner de boas-vindas ─── */
     #welcome-banner {
       background: linear-gradient(135deg, #1A1C20 0%, #2D2F36 55%, #3A1419 100%);
@@ -117,7 +117,7 @@ import Portal from "~/layouts/Portal.astro";
 
     // Módulos disponíveis por role
     const modules = [
-      { icon: '<img src="/junia-mascote.png" alt="JunIA">', title: "JunIA", desc: "Pergunte aqui — a inteligência da Costa Júnior responde na hora", href: "/portal/junia", roles: "all", destaque: true },
+      { icon: '<img src="/junia-mascote.png" alt="JunIA" style="width:50px;height:50px;object-fit:contain">', title: "JunIA", desc: "Pergunte aqui — a inteligência da Costa Júnior responde na hora", href: "/portal/junia", roles: "all", destaque: true },
       { icon: "✅", title: "Onboarding", desc: "Sua integração e boas-vindas", href: "/portal/onboarding", roles: "all" },
       { icon: "🎬", title: "Treinamentos", desc: "Vídeos e materiais do seu setor", href: "/portal/treinamentos", roles: "all" },
       { icon: "💬", title: "Fórum", desc: "Troca de ideias com a equipe", href: "/portal/forum", roles: "all" },
