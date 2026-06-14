@@ -1,5 +1,6 @@
 ---
 import Admin from "../../layouts/Admin.astro";
+import RhNav from "../../components/RhNav.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 
 const token = Astro.cookies.get("admin_token")?.value;
@@ -8,6 +9,7 @@ try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") t
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 ---
 <Admin title="Recrutamento & Seleção" current="recrutamento">
+  <RhNav current="recrutamento" />
   <div class="toolbar">
     <span class="toolbar-title">🧲 Recrutamento & Seleção</span>
     <select class="filter-select" id="filtroVaga" onchange="carregarKanban()"><option value="">Todas as vagas</option></select>

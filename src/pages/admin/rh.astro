@@ -1,5 +1,6 @@
 ---
 import Admin from "../../layouts/Admin.astro";
+import RhNav from "../../components/RhNav.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { supabaseAdmin } from "../../lib/supabase";
 
@@ -111,6 +112,7 @@ function buscaColab(c: any) {
 const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 ---
 <Admin title="RH — Pessoas" current="rh">
+  <RhNav current="rh" />
   {erros.map(e => <div class="alert alert-error">Erro ao carregar dados (a tabela pode ainda não existir — rode a migration 021_rh.sql no Supabase): {e}</div>)}
 
   <!-- ── Cards resumo ── -->

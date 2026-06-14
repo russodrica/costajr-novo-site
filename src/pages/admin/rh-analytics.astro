@@ -1,5 +1,6 @@
 ---
 import Admin from "../../layouts/Admin.astro";
+import RhNav from "../../components/RhNav.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { supabaseAdmin } from "../../lib/supabase";
 
@@ -107,6 +108,7 @@ const setHtml = Object.entries(porSetor).sort((a, b) => b[1] - a[1]).slice(0, 8)
 const docsVencendoTot = docsVencendo + episVencendo;
 ---
 <Admin title="People Analytics — RH" current="rh-analytics">
+  <RhNav current="rh-analytics" />
   <div class="toolbar"><span class="toolbar-title">📈 People Analytics — RH</span></div>
 
   <div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(155px,1fr))">

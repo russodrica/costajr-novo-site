@@ -1,5 +1,6 @@
 ---
 import Admin from "../../layouts/Admin.astro";
+import RhNav from "../../components/RhNav.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { supabaseAdmin } from "../../lib/supabase";
 import { COMPETENCIAS, TRIMESTRES, trimestreDoMes } from "../../lib/avaliacoes";
@@ -19,6 +20,7 @@ const trimAtual = trimestreDoMes(new Date().getMonth() + 1);
 const anos = [anoAtual, anoAtual - 1, anoAtual - 2];
 ---
 <Admin title="Avaliação de Desempenho" current="avaliacoes">
+  <RhNav current="avaliacoes" />
   <div class="toolbar">
     <span class="toolbar-title">📊 Avaliação de Desempenho</span>
     <select class="filter-select" id="selAno" onchange="carregar()">{anos.map(a => <option value={a} selected={a===anoAtual}>{a}</option>)}</select>

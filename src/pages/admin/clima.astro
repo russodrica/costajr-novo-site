@@ -1,5 +1,6 @@
 ---
 import Admin from "../../layouts/Admin.astro";
+import RhNav from "../../components/RhNav.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 
 const token = Astro.cookies.get("admin_token")?.value;
@@ -8,6 +9,7 @@ try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") t
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 ---
 <Admin title="Pesquisa de Clima" current="clima">
+  <RhNav current="clima" />
   <div class="toolbar">
     <span class="toolbar-title">🌡️ Pesquisa de Clima / eNPS</span>
     <button class="btn btn-primary" onclick="abrirNova()">+ Nova pesquisa</button>

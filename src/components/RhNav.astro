@@ -1,0 +1,46 @@
+---
+// Sub-navegação do módulo de RH — barra amigável que conecta as telas de Pessoas.
+// Uso: <RhNav current="rh" /> no topo de cada página de RH.
+interface Props { current: string; }
+const { current } = Astro.props;
+
+const itens = [
+  { key: "rh", href: "/admin/rh", icon: "👥", label: "Pessoas", desc: "Colaboradores, férias, documentos", cor: "#C41E3A" },
+  { key: "recrutamento", href: "/admin/recrutamento", icon: "🧭", label: "Recrutamento", desc: "Vagas, candidatos, testes", cor: "#2563EB" },
+  { key: "avaliacoes", href: "/admin/avaliacoes", icon: "⭐", label: "Avaliações", desc: "Desempenho trimestral", cor: "#D97706" },
+  { key: "clima", href: "/admin/clima", icon: "🌡️", label: "Clima", desc: "Pesquisa e eNPS", cor: "#0D9488" },
+  { key: "rh-analytics", href: "/admin/rh-analytics", icon: "📈", label: "People Analytics", desc: "Indicadores e gráficos", cor: "#7C3AED" },
+];
+---
+<nav class="rhnav" aria-label="Navegação do RH">
+  {itens.map((it) => (
+    <a href={it.href} class={`rhnav-card${it.key === current ? " ativo" : ""}`} style={`--c:${it.cor}`}>
+      <span class="rhnav-ico">{it.icon}</span>
+      <span class="rhnav-txt">
+        <span class="rhnav-lbl">{it.label}</span>
+        <span class="rhnav-desc">{it.desc}</span>
+      </span>
+    </a>
+  ))}
+</nav>
+
+<style>
+  .rhnav { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
+  .rhnav-card {
+    display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px;
+    background: #fff; border: 1.5px solid #ECECF1; text-decoration: none; color: #2D2F36;
+    transition: transform .12s, box-shadow .12s, border-color .12s;
+  }
+  .rhnav-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16,24,40,.08); border-color: var(--c); }
+  .rhnav-card.ativo { border-color: var(--c); background: color-mix(in srgb, var(--c) 8%, #fff); box-shadow: inset 0 0 0 1px var(--c); }
+  .rhnav-ico {
+    width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px; display: grid; place-items: center;
+    font-size: 1.25rem; background: color-mix(in srgb, var(--c) 14%, #fff);
+  }
+  .rhnav-txt { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+  .rhnav-lbl { font-weight: 700; font-size: .95rem; }
+  .rhnav-card.ativo .rhnav-lbl { color: var(--c); }
+  .rhnav-desc { font-size: .72rem; color: #8A8D96; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 1100px) { .rhnav { grid-template-columns: repeat(2, 1fr); } .rhnav-desc { white-space: normal; } }
+  @media (max-width: 560px) { .rhnav { grid-template-columns: 1fr; } }
+</style>
