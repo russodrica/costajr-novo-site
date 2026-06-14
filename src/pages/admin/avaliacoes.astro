@@ -1,0 +1,123 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+import { COMPETENCIAS, TRIMESTRES, trimestreDoMes } from "../../lib/avaliacoes";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const { data: colabs } = await db.from("rh_colaboradores")
+  .select("id, nome, cargo, setor, regime, status").neq("status", "desligado").order("nome");
+const colaboradores = (colabs || []).filter((c: any) => c.regime !== "diarista");
+const anoAtual = new Date().getFullYear();
+const trimAtual = trimestreDoMes(new Date().getMonth() + 1);
+const anos = [anoAtual, anoAtual - 1, anoAtual - 2];
+---
+<Admin title="Avaliação de Desempenho" current="avaliacoes">
+  <div class="toolbar">
+    <span class="toolbar-title">📊 Avaliação de Desempenho</span>
+    <select class="filter-select" id="selAno" onchange="carregar()">{anos.map(a => <option value={a} selected={a===anoAtual}>{a}</option>)}</select>
+    <select class="filter-select" id="selTri" onchange="carregar()">{Object.entries(TRIMESTRES).map(([k, t]) => <option value={k} selected={Number(k)===trimAtual}>{t}</option>)}</select>
+  </div>
+  <div id="cards" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:16px"></div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap"><table style="font-size:14px">
+      <thead><tr><th>Colaborador</th><th>Cargo</th><th>Situação</th><th>Nota</th><th>Ações</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table></div>
+  </div>
+
+  <!-- Modal avaliação -->
+  <div class="modal-overlay" id="modalAval">
+    <div class="modal" style="max-width:600px">
+      <div class="modal-title" id="avalTitulo">Avaliar</div>
+      <div id="avalMsg"></div>
+      <input type="hidden" id="avalColabId" />
+      <p style="font-size:12.5px;color:var(--ink-light);margin:0 0 10px">Nota de 1 (insuficiente) a 5 (excelente) por competência.</p>
+      <div id="avalCompetencias"></div>
+      <div style="text-align:right;font-weight:800;color:#C41E3A;margin:6px 0 12px">Nota geral: <span id="avalNota">—</span></div>
+      <div class="form-group"><label>Pontos fortes</label><textarea id="avalFortes"></textarea></div>
+      <div class="form-group"><label>Pontos a desenvolver</label><textarea id="avalDesenvolver"></textarea></div>
+      <div class="form-group"><label>Metas / PDI (plano de desenvolvimento)</label><textarea id="avalPdi"></textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModal('modalAval')">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="salvarAval()">Salvar avaliação</button>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline define:vars={{ COMPETENCIAS, COLABS: colaboradores }}>
+    let AVAL = {}; // colaborador_id -> avaliação
+    const esc = s => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    function fecharModal(id){ document.getElementById(id).classList.remove("open"); }
+
+    async function carregar() {
+      const ano = document.getElementById("selAno").value, tri = document.getElementById("selTri").value;
+      const r = await fetch(`/api/admin/rh/avaliacoes?ano=${ano}&trimestre=${tri}`, { headers: { "content-type": "application/json" } });
+      const lista = await r.json();
+      AVAL = {};
+      for (const a of lista) if (a.tipo === "gestor") AVAL[a.colaborador_id] = a;
+      const avaliados = COLABS.filter(c => AVAL[c.id]);
+      const notas = avaliados.map(c => Number(AVAL[c.id].nota_geral)).filter(n => n > 0);
+      const media = notas.length ? (notas.reduce((s,n)=>s+n,0)/notas.length).toFixed(2) : "—";
+      document.getElementById("cards").innerHTML = `
+        <div class="stat-card" style="border-left:3px solid #6B7280"><div class="stat-value">${COLABS.length}</div><div class="stat-label">Colaboradores</div></div>
+        <div class="stat-card" style="border-left:3px solid #16A34A"><div class="stat-value" style="color:#16A34A">${avaliados.length}</div><div class="stat-label">Avaliados</div></div>
+        <div class="stat-card" style="border-left:3px solid #DC2626"><div class="stat-value" style="color:#DC2626">${COLABS.length-avaliados.length}</div><div class="stat-label">Pendentes</div></div>
+        <div class="stat-card" style="border-left:3px solid #C41E3A"><div class="stat-value" style="color:#C41E3A">${media}</div><div class="stat-label">Nota média</div></div>`;
+      document.getElementById("tbody").innerHTML = COLABS.map(c => {
+        const a = AVAL[c.id];
+        return `<tr>
+          <td><strong>${esc(c.nome)}</strong></td>
+          <td>${esc(c.cargo||"—")}</td>
+          <td>${a ? '<span class="badge badge-green">Avaliado</span>' : '<span class="badge badge-red">Pendente</span>'}</td>
+          <td style="font-weight:700">${a ? Number(a.nota_geral).toFixed(2) : "—"}</td>
+          <td><button class="btn btn-${a?'secondary':'primary'} btn-sm" onclick="avaliar('${c.id}')">${a?'Ver / editar':'Avaliar'}</button></td>
+        </tr>`;
+      }).join("");
+    }
+    function avaliar(cid) {
+      const c = COLABS.find(x=>x.id===cid); if(!c) return;
+      document.getElementById("avalColabId").value = cid;
+      document.getElementById("avalTitulo").textContent = "Avaliar — " + c.nome;
+      document.getElementById("avalMsg").innerHTML = "";
+      const a = AVAL[cid] || {}; const resp = a.respostas || {};
+      document.getElementById("avalCompetencias").innerHTML = COMPETENCIAS.map(comp => `
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #F3F4F6">
+          <span style="flex:1;font-size:13.5px">${esc(comp.t)}</span>
+          <select class="aval-nota" data-k="${comp.k}" onchange="recalcNota()" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:6px">
+            ${[0,1,2,3,4,5].map(n => `<option value="${n}" ${Number(resp[comp.k]||0)===n?'selected':''}>${n===0?'—':n}</option>`).join("")}
+          </select>
+        </div>`).join("");
+      document.getElementById("avalFortes").value = a.pontos_fortes || "";
+      document.getElementById("avalDesenvolver").value = a.pontos_desenvolver || "";
+      document.getElementById("avalPdi").value = a.metas_pdi || "";
+      recalcNota();
+      document.getElementById("modalAval").classList.add("open");
+    }
+    function recalcNota() {
+      const notas = Array.from(document.querySelectorAll(".aval-nota")).map(s => Number(s.value)).filter(n => n>0);
+      document.getElementById("avalNota").textContent = notas.length ? (notas.reduce((s,n)=>s+n,0)/notas.length).toFixed(2) : "—";
+    }
+    async function salvarAval() {
+      const cid = document.getElementById("avalColabId").value;
+      const respostas = {};
+      document.querySelectorAll(".aval-nota").forEach(s => { const v = Number(s.value); if (v>0) respostas[s.dataset.k] = v; });
+      const body = {
+        colaborador_id: cid, ano: Number(document.getElementById("selAno").value), trimestre: Number(document.getElementById("selTri").value),
+        respostas, pontos_fortes: document.getElementById("avalFortes").value, pontos_desenvolver: document.getElementById("avalDesenvolver").value, metas_pdi: document.getElementById("avalPdi").value,
+      };
+      const res = await fetch("/api/admin/rh/avaliacoes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await res.json().catch(()=>({}));
+      if (res.ok) { fecharModal("modalAval"); carregar(); }
+      else document.getElementById("avalMsg").innerHTML = `<div class="alert alert-error">${d.error||"Erro ao salvar"}</div>`;
+    }
+    carregar();
+  </script>
+</Admin>

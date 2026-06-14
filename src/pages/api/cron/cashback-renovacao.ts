@@ -6,6 +6,7 @@ import { enviarDigestVencimentosRh, enviarAniversariantesDoMes } from "~/lib/rhV
 import { enviarLembretesFerias } from "~/lib/ferias";
 import { expurgarLixeira } from "~/lib/auditoria";
 import { enviarAlertasEpi } from "~/lib/epi";
+import { enviarLembreteAvaliacoes } from "~/lib/avaliacoes";
 
 export const prerender = false;
 
@@ -116,17 +117,23 @@ export const GET: APIRoute = async ({ request, url }) => {
     console.warn("[cron][epi] falhou:", e?.message);
   }
 
-  // ── Piggyback: aniversariantes do mês — só no dia 1 ──
+  // ── Piggyback: aniversariantes do mês + lembrete de avaliação — só no dia 1 ──
   let aniversariantes: any = { total: 0, enviados: 0 };
+  let avaliacoes: any = { disparou: false };
   if (new Date().getUTCDate() === 1) {
     try {
       aniversariantes = await enviarAniversariantesDoMes(db);
     } catch (e: any) {
       console.warn("[cron][aniversariantes] falhou:", e?.message);
     }
+    try {
+      avaliacoes = await enviarLembreteAvaliacoes(db); // só dispara em Mar/Jun/Set/Dez
+    } catch (e: any) {
+      console.warn("[cron][avaliacoes] falhou:", e?.message);
+    }
   }
 
-  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira, aniversariantes, epi }), {
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira, aniversariantes, epi, avaliacoes }), {
     headers: { "content-type": "application/json" },
   });
 };
