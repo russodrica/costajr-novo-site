@@ -541,6 +541,60 @@ estao embutidos no script (atualizar se a Adriana mover gente de grupo no Monday
 OBS: ha nomes duplicados no proprio board Monday (ROMISON, DANIEL, BEATRIZ em 2
 grupos com ids diferentes) — viram 2 linhas; dedupe so se a Adriana pedir.
 
+## Atualizacao 13/06/2026 (parte 2) — RH: anexos por slot, telefone pessoal e Ferias
+
+**APLICAR MIGRATIONS via Management API (NOVO metodo, funciona sem o SQL editor):**
+o endpoint `POST https://api.supabase.com/v1/projects/<ref>/database/query`
+(ref=llmtnzhzozvhlknjmrdr) com `{query}` e header `Authorization: Bearer <token>`
+roda DDL direto. O token vem do localStorage do dashboard Supabase
+(`supabase.dashboard.auth.token`) — via Chrome MCP: navegar pro dashboard,
+ler o token (fica em window.__sbtok), e dar fetch no endpoint. Retorna [] / 201
+em sucesso. MUITO mais confiavel que o monaco do /sql/new (que nao carregava).
+Apos CREATE TABLE rodar `notify pgrst, 'reload schema';` pro PostgREST enxergar.
+LICAO CRITICA: **os IDs do projeto sao TEXT** (rh_colaboradores.id, rh_documentos.id
+= text com uuid em texto), NAO uuid. Tabelas novas que referenciam devem usar
+`id text primary key default gen_random_uuid()::text` e FKs `text`.
+
+**Anexos em slots fixos (commit 4168cec):** a ficha do colaborador mostra os
+documentos em SLOTS fixos espelhando as colunas do Monday (Contrato/Termo, RG/Hab,
+Ficha de Registro, Teste Personalidade, ASO+venc, Ficha EPI+venc, OS, NR35/NR10/
+NR06/NR01+venc). Verde=preenchido, vermelho="nao anexado", laranja="vencido—anexe
+o atual". Vencidos saem dos slots p/ "Documentos vencidos (historico)" (recolhivel).
+Casamento por PREFIXO do titulo (os 305 docs importados tem titulo "Tipo — arquivo");
+validado 305/305 sem perda. Botao + por slot pre-preenche tipo+prefixo no anexo.
+NAO ha upload de arquivo nativo na ficha ainda (so URL); os importados ja estao no
+bucket privado `rh`. Se a Adriana quiser anexar arquivo do PC direto no slot, falta
+um upload-url p/ bucket `rh` no modal (proxima melhoria).
+
+**Telefone pessoal (migration 040, RODADA):** coluna rh_colaboradores.telefone_pessoal;
+campo no form, obrigatorio (exceto diarista), no create/edit/import. "telefone" =
+empresa; fonte Monday "CONTATO PESSOAL".
+
+**Campos obrigatorios + fix do salvar (commit 43ce1c7):** nome/email/tel empresa/
+tel pessoal/cpf/rg/nascimento/cargo/admissao/endereco/contato+tel emergencia com *
+e validacao no submit (lista o que falta; diarista isento). Bug do salvar corrigido:
+PATCH validava status/regime mesmo vazio e salario ia como texto — agora valida so
+quando ha valor e converte salario.
+
+**Programacao de Ferias (migration 041, RODADA; commit d6212f2):** CLT only (PJ/
+diaristas nao tem ferias). Tabelas rh_ferias_periodos (periodo aquisitivo 12 meses=
+30 dias, limite_concessivo=vencimento p/ tirar, status aberto|programado|em_gozo|
+concluido|vencido) e rh_ferias_parcelas (ate 3, ex 10/10/10; status programada|
+confirmada; flags aviso_30/15/7/pos). Aba 🏖 Ferias no /admin/rh: verde quando
+30 dias programados / vermelho quando falta (badge na pill), modal de programar
+parcelas, "dar OK" confirma gozo, ao confirmar 30 dias o periodo conclui e o
+proximo e liberado. Botao "Gerar periodos" semeia o periodo atual de cada CLT
+ativo a partir da admissao (idempotente, pula sem data_admissao). Lembretes por
+e-mail (rh@ + adriana@) no cron diario cashback-renovacao (piggyback, sem novo
+slot — Hobby limita a 2): 6/3/1 mes do vencimento se nao programado, semanal se
+aberto, 30/15/7 dias antes de cada parcela, "dar OK" ao passar. Digest unico por
+execucao com flags anti-duplicacao. src/lib/ferias.ts (calculo de periodo/
+completude + enviarLembretesFerias). APIs /api/admin/rh/ferias/* (index GET/POST+seed,
+[id]/parcelas POST, parcela/[id] POST confirmar/DELETE). Matematica de datas
+validada (overflow de mes, ciclosVencidos). RLS ligado (service-role only, igual
+ativos/RH). ADIADO: saldo proporcional p/ quem tem <1 ano, abono pecuniario (venda
+de 1/3), ferias coletivas, visao do colaborador no portal.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
