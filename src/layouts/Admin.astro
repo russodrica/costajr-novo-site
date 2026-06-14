@@ -34,19 +34,39 @@ const grupos: NavGroup[] = [
     ],
   },
   {
-    id: "empresa", label: "Empresa",
+    id: "operacoes", label: "Operações & Obras",
     items: [
       { href: "/admin/ativos", label: "Ativos Patrimoniais", icon: "🏷️", key: "ativos" },
       { href: "/admin/obras", label: "Obras & Projetos", icon: "🏗️", key: "obras" },
       { href: "/admin/orcamentos", label: "Orçamentos", icon: "🧮", key: "orcamentos" },
+    ],
+  },
+  {
+    id: "rh", label: "RH & Pessoas",
+    items: [
       { href: "/admin/rh", label: "RH — Pessoas", icon: "🧑‍💼", key: "rh" },
       { href: "/admin/recrutamento", label: "Recrutamento (R&S)", icon: "🧲", key: "recrutamento" },
       { href: "/admin/avaliacoes", label: "Avaliação de Desempenho", icon: "📊", key: "avaliacoes" },
       { href: "/admin/clima", label: "Pesquisa de Clima", icon: "🌡️", key: "clima" },
       { href: "/admin/rh-analytics", label: "People Analytics (RH)", icon: "📈", key: "rh-analytics" },
+    ],
+  },
+  {
+    id: "financeiro", label: "Financeiro",
+    items: [
       { href: "/admin/financeiro", label: "Financeiro", icon: "🏦", key: "financeiro" },
       { href: "/admin/fin-conciliacao", label: "Conciliação (OFX)", icon: "🔄", key: "fin-conciliacao" },
+    ],
+  },
+  {
+    id: "comercial", label: "Comercial",
+    items: [
       { href: "/admin/comercial", label: "Comercial (CRM)", icon: "📊", key: "comercial" },
+    ],
+  },
+  {
+    id: "juridico", label: "Jurídico & Documentos",
+    items: [
       { href: "/admin/assinaturas", label: "Assinaturas (D4Sign)", icon: "✍️", key: "assinaturas" },
     ],
   },
@@ -206,7 +226,7 @@ const grupoAtivo = grupos.find(g => g.items.some(i => i.key === current))?.id ??
       --surface: #FFFFFF;
       --border: #E5E7EB;
       --border-light: #F3F4F6;
-      --sidebar-bg: #16181F;
+      --sidebar-bg: #FFFFFF;
       --green: #16A34A; --green-bg: #DCFCE7;
       --amber: #B45309; --amber-bg: #FEF3C7;
       --red: #B91C1C;   --red-bg: #FEE2E2;
@@ -224,59 +244,65 @@ const grupoAtivo = grupos.find(g => g.items.some(i => i.key === current))?.id ??
 
     /* ── Sidebar ── */
     .sidebar {
-      width: 236px; min-width: 236px;
-      background: var(--sidebar-bg); color: #fff;
+      width: 252px; min-width: 252px;
+      background: var(--sidebar-bg); color: #1F2937;
+      border-right: 1px solid #E5E7EB;
       display: flex; flex-direction: column;
       position: fixed; top: 0; left: 0; height: 100vh;
       overflow-y: auto; z-index: 200;
       transition: transform 0.25s ease;
-      scrollbar-width: thin; scrollbar-color: #3a3d46 transparent;
+      scrollbar-width: thin; scrollbar-color: #CBD5E1 transparent;
     }
     .sidebar-logo {
       display: flex; align-items: baseline; gap: 6px;
       padding: 20px 20px 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      border-bottom: 1px solid #EEF1F5;
     }
-    .logo-text { font-family: 'Montserrat', sans-serif; font-size: 1.5rem; font-weight: 800; color: var(--brand); letter-spacing: .5px; }
-    .logo-sub  { font-size: 0.72rem; font-weight: 600; color: #8B8E98; text-transform: uppercase; letter-spacing: 1.5px; }
+    .logo-text { font-family: 'Montserrat', sans-serif; font-size: 1.6rem; font-weight: 800; color: var(--brand); letter-spacing: .5px; }
+    .logo-sub  { font-size: 0.74rem; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1.5px; }
 
-    .sidebar-nav { flex: 1; padding: 10px 8px 16px; }
+    .sidebar-nav { flex: 1; padding: 10px 10px 16px; }
     .nav-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 12px; margin: 1px 0; color: #A7AAB3;
-      text-decoration: none; font-size: 0.855rem; font-weight: 500;
+      display: flex; align-items: center; gap: 11px;
+      padding: 10px 12px; margin: 2px 0; color: #374151;
+      text-decoration: none; font-size: 0.97rem; font-weight: 600;
       border-radius: 8px;
       transition: background 0.15s, color 0.15s;
     }
-    .nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
-    .nav-item.active { background: var(--brand); color: #fff; font-weight: 600; box-shadow: 0 2px 8px rgba(196,30,58,.35); }
-    .nav-icon { font-size: .95rem; width: 20px; text-align: center; flex: none; }
+    .nav-item:hover { background: #F1F5F9; color: #111827; }
+    .nav-item.active { background: var(--brand); color: #fff; font-weight: 700; box-shadow: 0 2px 8px rgba(196,30,58,.35); }
+    .nav-icon { font-size: 1.05rem; width: 22px; text-align: center; flex: none; }
 
-    .nav-group { margin-top: 6px; }
+    /* itens dentro de uma área ganham um leve recuo + linha-guia */
+    .nav-group .nav-group-items { border-left: 2px solid #EEF1F5; margin-left: 14px; padding-left: 4px; }
+    .nav-group .nav-group-items .nav-item { font-size: 0.93rem; font-weight: 500; }
+    .nav-group .nav-group-items .nav-item.active { font-weight: 700; }
+
+    .nav-group { margin-top: 8px; }
     .nav-group-head {
       display: flex; align-items: center; justify-content: space-between; width: 100%;
       background: none; border: 0; cursor: pointer;
-      padding: 9px 12px 5px; font-size: 9.8px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.13em; color: #6B6F7B;
+      padding: 9px 12px 6px; font-size: 0.78rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.06em; color: #6B7280;
       font-family: 'Open Sans', sans-serif;
     }
-    .nav-group-head:hover { color: #fff; }
-    .nav-group-chev { font-size: 10px; transition: transform .2s; transform: rotate(-90deg); }
+    .nav-group-head:hover { color: var(--brand); }
+    .nav-group-chev { font-size: 11px; transition: transform .2s; transform: rotate(-90deg); color: #9CA3AF; }
     .nav-group.open .nav-group-chev { transform: rotate(0); }
     .nav-group-items { display: none; }
     .nav-group.open .nav-group-items { display: block; }
 
-    .sidebar-footer { padding: 14px 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+    .sidebar-footer { padding: 14px 16px; border-top: 1px solid #EEF1F5; }
     .btn-logout {
-      width: 100%; padding: 8px 12px;
-      background: transparent; border: 1px solid rgba(255,255,255,0.15);
-      color: #A7AAB3; border-radius: 8px; cursor: pointer;
-      font-size: 0.8rem; transition: all 0.15s;
+      width: 100%; padding: 9px 12px;
+      background: transparent; border: 1px solid #E5E7EB;
+      color: #6B7280; border-radius: 8px; cursor: pointer;
+      font-size: 0.88rem; transition: all 0.15s;
     }
-    .btn-logout:hover { background: rgba(255,255,255,0.08); color: #fff; }
+    .btn-logout:hover { background: #FEF2F2; color: var(--brand); border-color: #FCA5A5; }
 
     /* ── Main ── */
-    .main-wrap { flex: 1; margin-left: 236px; display: flex; flex-direction: column; min-height: 100vh; }
+    .main-wrap { flex: 1; margin-left: 252px; display: flex; flex-direction: column; min-height: 100vh; }
     .topbar {
       background: var(--surface); border-bottom: 1px solid var(--border);
       padding: 0 24px; height: 56px;
