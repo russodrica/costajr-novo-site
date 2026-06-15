@@ -17,7 +17,9 @@ const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutenc
   db.from("ativos_termos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
   db.from("ativos_manutencoes").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
   db.from("ativos_ocorrencias").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
-  db.from("rh_colaboradores").select("id, nome, email, profile_id").neq("status", "desligado").order("nome"),
+  // Entrega de equipamento: só colaboradores ATIVOS (exclui desligado, congelado/
+  // jurídico e o registro de teste). Inativos continuam no histórico do equipamento.
+  db.from("rh_colaboradores").select("id, nome, email, profile_id").eq("status", "ativo").not("nome", "ilike", "%teste%").order("nome"),
   db.from("obras").select("id, nome, status").neq("status", "cancelada").order("nome"),
   db.from("ativos_manutencao_planos").select("*").eq("ativo_id", id).eq("ativo", true).order("proxima_em"),
   db.from("depositos").select("id, nome").eq("ativo", true).order("nome"),
