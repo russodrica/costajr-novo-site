@@ -375,14 +375,20 @@ export async function diagnostico(dataISO: string): Promise<any> {
   // 2 datas: a alvo e uma com dados conhecidos (2025-05-20).
   try {
     const pessoas = await listarPessoas();
-    const p = pessoas.find((x) => x.ativo && x.pis);
+    const p = pessoas.find((x) => x.ativo && x.pis && !/teste|test/i.test(x.nome)) || pessoas.find((x) => x.ativo && x.pis);
     out.apuracao = [];
     if (p) {
       for (const dt of [dataISO, "2025-05-20"]) {
         try {
           const raw = String(await apiGet("/apuracao_ponto", { idPerson: p.id, dataIni: dt, dataFinal: dt }, true));
-          let s = raw; if (s.startsWith('"')) { try { s = JSON.parse(s); } catch {} }
-          out.apuracao.push({ data: dt, idPerson: p.id, len: s.length, head: s.slice(0, 280) });
+          let parsed: any = null; try { parsed = JSON.parse(raw); } catch {}
+          const dia0 = Array.isArray(parsed) ? parsed[0] : parsed;
+          const campos = dia0 && typeof dia0 === "object" ? Object.keys(dia0) : null;
+          const camposArray: Record<string, any> = {};
+          if (dia0 && typeof dia0 === "object") {
+            for (const k of Object.keys(dia0)) if (Array.isArray(dia0[k]) && dia0[k].length) camposArray[k] = dia0[k].slice(0, 8);
+          }
+          out.apuracao.push({ data: dt, idPerson: p.id, campos, camposComArray: camposArray });
         } catch (e: any) { out.apuracao.push({ data: dt, erro: String(e?.message || e) }); }
       }
     }
