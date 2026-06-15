@@ -1316,6 +1316,20 @@ nao for lido (temPerfis=false) NAO filtra (a propria pagina ja autentica) — ev
 Ajustar GRUPO_ROLES em Admin.astro se a Adriana quiser outro mapeamento. NOTA: o portal do
 COLABORADOR e gated pela matriz /admin/permissoes (areas por perfil) — coisa diferente.
 
+## Atualizacao 15/06/2026 — RH aparece p/ Jose + doc-empresa destravado
+
+**"RH nao aparecia p/ o Jose" RESOLVIDO:** era exatamente o gating por perfil (parte 15).
+Jose=Costa JR=admin -> com o filtro, admin ve TUDO, inclusive o grupo "RH & Pessoas".
+CONFIRMADO ao vivo (find no menu: ref "RH & Pessoas" + "RH — Pessoas" presentes). A Adriana
+tambem editou Admin.astro: `juridico` agora inclui `financeiro` (Financeiro ve Juridico) e
+adicionou o item "Documentos da Empresa" no grupo juridico. Deployado.
+
+**doc-empresa (WIP de sessao anterior) DESTRAVADO:** a feature "Documentos da Empresa"
+(/admin/doc-empresa, board Monday DOCUMENTOS EMPRESA) tinha codigo committed mas faltava a
+tabela. **Migration 062_doc_empresa RODADA** (doc_empresa + doc_empresa_arquivos) + bucket
+PRIVADO `doc-empresa` criado (service role). Agora a pagina lista (vazia) sem erro; falta a
+Adriana importar os docs do Monday (board 6803034312) se quiser.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
