@@ -245,85 +245,97 @@ function hhmm(d: Date): string {
   return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
 }
 
-// ─── Montagem do "dia" (pessoas ativas + batidas agrupadas por pessoa) ───────
-export type BatidaPessoa = { ts: Date; deviceId: number; deviceNome: string };
-export type DiaPonto = {
-  dataISO: string;
-  pessoasAtivas: Pessoa[];
-  porPessoa: Map<number, BatidaPessoa[]>; // idPessoa -> batidas ordenadas
-  semPisNoAfd: number;                     // batidas cujo PIS não casou com pessoa
+// ─── Montagem do "dia" via APURAÇÃO DE PONTO ─────────────────────────────────
+// Fonte real das batidas (inclusive do app). A apuração já vem classificada:
+// batida real = item com idAfd != null; "Falta no período" (idAfd null) = horário
+// esperado não batido; _typeClassification "X" = entrada sem saída.
+
+// "2026-06-15T08:15:00" (horário de parede) -> Date UTC com os mesmos números
+// (formatamos sempre em UTC, igual ao AFD, p/ não deslocar fuso).
+function parseApurDate(s: any): Date | null {
+  const m = String(s || "").match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, se] = m;
+  return new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +(se || 0)));
+}
+
+export type PessoaDia = {
+  pessoa: Pessoa;
+  trabalhaHoje: boolean; // tem horário cadastrado e período esperado/registrado hoje
+  punches: Date[];       // batidas REAIS (idAfd != null), ordenadas
+  semSaida: boolean;     // entrou e ainda não bateu a saída
 };
+export type DiaPonto = { dataISO: string; dias: PessoaDia[] };
+
+async function apuracaoDia(idPerson: number, dataISO: string): Promise<{ trabalhaHoje: boolean; punches: Date[]; semSaida: boolean }> {
+  let parsed: any = null;
+  try {
+    const raw = String(await apiGet("/apuracao_ponto", { idPerson, dataIni: dataISO, dataFinal: dataISO }, true));
+    parsed = JSON.parse(raw); if (typeof parsed === "string") parsed = JSON.parse(parsed);
+  } catch { return { trabalhaHoje: false, punches: [], semSaida: false }; }
+  const d0 = Array.isArray(parsed) ? parsed[0] : parsed;
+  const lst: any[] = d0 && Array.isArray(d0.listAfdtManutencao) ? d0.listAfdtManutencao : [];
+  if (!lst.length) return { trabalhaHoje: false, punches: [], semSaida: false }; // sem horário / folga
+  const punches = lst
+    .filter((e) => e && e.idAfd != null)
+    .map((e) => parseApurDate(e.dateTime))
+    .filter((x): x is Date => !!x)
+    .sort((a, b) => a.getTime() - b.getTime());
+  const semSaida = lst.some((e) => e && e._typeClassification === "X") || punches.length % 2 === 1;
+  return { trabalhaHoje: true, punches, semSaida };
+}
+
+// Executa fn em paralelo com concorrência limitada (1 login + N chamadas).
+async function mapLimite<T, R>(itens: T[], limite: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(itens.length);
+  let i = 0;
+  const worker = async () => { while (i < itens.length) { const idx = i++; out[idx] = await fn(itens[idx]); } };
+  await Promise.all(Array.from({ length: Math.min(limite, itens.length || 1) }, worker));
+  return out;
+}
 
 export async function montarDia(dataISO: string): Promise<DiaPonto> {
-  const [pessoas, equips] = await Promise.all([listarPessoas(), listarEquipamentos()]);
-  const ativas = pessoas.filter((p) => p.ativo);
-  const porPis = new Map<string, Pessoa>();
-  for (const p of pessoas) if (p.pis) porPis.set(p.pis, p);
+  const pessoas = (await listarPessoas()).filter((p) => p.pis);
+  const apur = await mapLimite(pessoas, 12, (p) => apuracaoDia(p.id, dataISO));
+  const dias: PessoaDia[] = pessoas.map((pessoa, idx) => ({ pessoa, ...apur[idx] }));
+  return { dataISO, dias };
+}
 
-  const batidas = await coletarBatidasDoDia(dataISO, equips);
-  const porPessoa = new Map<number, BatidaPessoa[]>();
-  let semPis = 0;
-  for (const b of batidas) {
-    const pessoa = porPis.get(b.pis);
-    if (!pessoa) { semPis++; continue; }
-    const arr = porPessoa.get(pessoa.id) || [];
-    arr.push({ ts: b.ts, deviceId: b.deviceId, deviceNome: b.deviceNome });
-    porPessoa.set(pessoa.id, arr);
-  }
-  for (const arr of porPessoa.values()) arr.sort((a, b) => a.ts.getTime() - b.ts.getTime());
-
-  return { dataISO, pessoasAtivas: ativas, porPessoa, semPisNoAfd: semPis };
+export function trabalhamHoje(dia: DiaPonto): number {
+  return dia.dias.filter((d) => d.trabalhaHoje).length;
 }
 
 // ─── Relatórios de negócio ──────────────────────────────────────────────────
 
-// ENTRADA: ativos que ainda não têm nenhuma batida no dia.
+// ENTRADA: quem trabalha hoje e ainda não tem nenhuma batida real.
 export function relatorioEntrada(dia: DiaPonto): { semEntrada: Pessoa[]; comEntrada: Pessoa[] } {
   const semEntrada: Pessoa[] = [];
   const comEntrada: Pessoa[] = [];
-  for (const p of dia.pessoasAtivas) {
-    const tem = (dia.porPessoa.get(p.id) || []).length > 0;
-    (tem ? comEntrada : semEntrada).push(p);
+  for (const d of dia.dias) {
+    if (!d.trabalhaHoje) continue;
+    (d.punches.length > 0 ? comEntrada : semEntrada).push(d.pessoa);
   }
   return { semEntrada, comEntrada };
 }
 
-// SAÍDA: quem já registrou saída (nº par de batidas) x quem está em aberto
-// (entrou mas tem nº ímpar de batidas = última é entrada, falta a saída).
+// SAÍDA: quem já bateu a saída x quem entrou e está em aberto.
 export function relatorioSaida(dia: DiaPonto): { bateuSaida: { p: Pessoa; ultima: string }[]; semSaida: { p: Pessoa; desde: string }[] } {
   const bateuSaida: { p: Pessoa; ultima: string }[] = [];
   const semSaida: { p: Pessoa; desde: string }[] = [];
-  for (const p of dia.pessoasAtivas) {
-    const bs = dia.porPessoa.get(p.id) || [];
-    if (bs.length === 0) continue; // nem entrou — é assunto do alerta de entrada
-    if (bs.length % 2 === 0) bateuSaida.push({ p, ultima: hhmm(bs[bs.length - 1].ts) });
-    else semSaida.push({ p, desde: hhmm(bs[bs.length - 1].ts) });
+  for (const d of dia.dias) {
+    if (!d.trabalhaHoje || d.punches.length === 0) continue;
+    const ult = d.punches[d.punches.length - 1];
+    if (d.semSaida) semSaida.push({ p: d.pessoa, desde: hhmm(ult) });
+    else bateuSaida.push({ p: d.pessoa, ultima: hhmm(ult) });
   }
   return { bateuSaida, semSaida };
 }
 
-// AUDITORIA DE LOCAL: pessoa cujas batidas do dia vieram de 2+ equipamentos
-// distintos (normalmente entra/sai no mesmo relógio). "Locais muito diferentes".
-// Obs.: precisão por GPS (coordenadas do app) depende da API interna do RHiD —
-// ver nota no README/instruções; esta versão é por equipamento/obra (robusta).
+// AUDITORIA DE LOCAL: a apuração não traz GPS/equipamento por batida. Auditoria
+// por localização do app depende de outra fonte (a confirmar com a Control iD).
+// Desabilitada por ora — retorna vazio (não dispara alerta).
 export type Anomalia = { p: Pessoa; locais: { nome: string; horas: string[] }[] };
-export function auditarLocais(dia: DiaPonto): Anomalia[] {
-  const anomalias: Anomalia[] = [];
-  for (const p of dia.pessoasAtivas) {
-    const bs = dia.porPessoa.get(p.id) || [];
-    if (bs.length < 2) continue;
-    const porDevice = new Map<number, { nome: string; horas: string[] }>();
-    for (const b of bs) {
-      const e = porDevice.get(b.deviceId) || { nome: b.deviceNome, horas: [] };
-      e.horas.push(hhmm(b.ts));
-      porDevice.set(b.deviceId, e);
-    }
-    if (porDevice.size >= 2) {
-      anomalias.push({ p, locais: [...porDevice.values()] });
-    }
-  }
-  return anomalias;
-}
+export function auditarLocais(_dia: DiaPonto): Anomalia[] { return []; }
 
 // ─── Diagnóstico ────────────────────────────────────────────────────────────
 // Foca em UMA pessoa (por nome) numa data: despeja a apuração dela, revelando

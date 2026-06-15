@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { enviarTelegram, escTg } from "~/lib/telegram";
-import { rhidConfigurado, agoraSP, montarDia, relatorioSaida, auditarLocais, diagnostico } from "~/lib/rhid";
+import { rhidConfigurado, agoraSP, montarDia, relatorioSaida, auditarLocais, trabalhamHoje, diagnostico } from "~/lib/rhid";
 
 export const prerender = false;
 
@@ -60,7 +60,7 @@ async function handle(request: Request, url: URL): Promise<Response> {
 
     const resumo = {
       data: dataISO,
-      ativos: d.pessoasAtivas.length,
+      trabalhamHoje: trabalhamHoje(d),
       bateuSaida: bateuSaida.length,
       semSaida: semSaida.length,
       semSaidaNomes: semSaida.map((x) => x.p.nome),
@@ -76,7 +76,7 @@ async function handle(request: Request, url: URL): Promise<Response> {
       (semSaida.length
         ? `⚠️ Ainda SEM saída (${semSaida.length}):\n${listaNomes(semSaida.map((x) => `${x.p.nome} (entrou ${x.desde})`))}`
         : `👍 Ninguém em aberto — todos que entraram já bateram a saída.`) +
-      `\n\n<i>${d.pessoasAtivas.length} ativos</i>`;
+      `\n\n<i>${trabalhamHoje(d)} trabalham hoje</i>`;
 
     const r1 = await enviarTelegram(blocoSaida, { canal: "ATIVOS" });
 

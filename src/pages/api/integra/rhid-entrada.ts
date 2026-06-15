@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { enviarTelegram, escTg } from "~/lib/telegram";
-import { rhidConfigurado, agoraSP, montarDia, relatorioEntrada, diagnostico } from "~/lib/rhid";
+import { rhidConfigurado, agoraSP, montarDia, relatorioEntrada, trabalhamHoje, diagnostico } from "~/lib/rhid";
 
 export const prerender = false;
 
@@ -54,6 +54,7 @@ async function handle(request: Request, url: URL): Promise<Response> {
   try {
     const d = await montarDia(dataISO);
     const { semEntrada, comEntrada } = relatorioEntrada(d);
+    const trab = trabalhamHoje(d);
 
     const lista = semEntrada
       .slice()
@@ -63,7 +64,7 @@ async function handle(request: Request, url: URL): Promise<Response> {
 
     const resumo = {
       data: dataISO,
-      ativos: d.pessoasAtivas.length,
+      trabalhamHoje: trab,
       comEntrada: comEntrada.length,
       semEntrada: semEntrada.length,
       semEntradaNomes: semEntrada.map((p) => p.nome),
@@ -79,7 +80,7 @@ async function handle(request: Request, url: URL): Promise<Response> {
     const msg =
       `⏰ <b>Ponto — Entrada (${dia(dataISO)})</b>\n` +
       `Sem batida de entrada até as ${String(ag.hora).padStart(2, "0")}h:\n${lista}\n\n` +
-      `<i>${semEntrada.length} sem entrada · ${comEntrada.length} já bateram · ${d.pessoasAtivas.length} ativos</i>`;
+      `<i>${semEntrada.length} sem entrada · ${comEntrada.length} já bateram · ${trab} trabalham hoje</i>`;
 
     const r = await enviarTelegram(msg, { canal: "ATIVOS" });
     return J({ ok: r.ok, enviado: r.ok, motivo: r.motivo, resumo }, r.ok ? 200 : 502);
