@@ -21,7 +21,7 @@ const GRUPO_ROLES: Record<string, string[]> = {
   financeiro: ["admin", "financeiro"],
   comercial:  ["admin", "comercial"],
   juridico:   ["admin", "juridico", "financeiro"],
-  portal:     ["admin", "rh"],
+  portal:     ["admin"],
   institucional: ["admin"],
   sistema:    ["admin"],
 };
@@ -136,9 +136,9 @@ const grupoAtivo = grupos.find(g => g.items.some(i => i.key === current))?.id ??
 // Liberação por perfil: esconde grupos sem permissão e bloqueia acesso direto à página.
 const gruposVisiveis = grupos.filter(g => podeGrupo(g.id));
 const grupoDaPagina = grupos.find(g => g.items.some(i => i.key === current));
-if (temPerfis && current && grupoDaPagina && !podeGrupo(grupoDaPagina.id)) {
-  return Astro.redirect("/admin");
-}
+// Bloqueio REAL de acesso: o redirect NÃO funciona dentro de um layout, então
+// o conteúdo da página (slot) só é renderizado se o perfil tiver permissão.
+const semAcessoPagina = !!(temPerfis && current && grupoDaPagina && !podeGrupo(grupoDaPagina.id));
 ---
 <!doctype html>
 <html lang="pt-BR">
@@ -202,7 +202,14 @@ if (temPerfis && current && grupoDaPagina && !podeGrupo(grupoDaPagina.id)) {
         <span class="topbar-brand">Costa Júnior Engenharia</span>
       </header>
       <main class="main-content">
-        <slot />
+        {semAcessoPagina ? (
+          <div style="text-align:center;padding:80px 24px;color:#5B5F6B">
+            <div style="font-size:48px;margin-bottom:12px">🔒</div>
+            <h2 style="font-family:'Montserrat',sans-serif;font-size:20px;color:#1E2128;margin:0 0 8px">Acesso restrito</h2>
+            <p style="margin:0 0 18px">Seu perfil não tem acesso a este módulo. Fale com o administrador.</p>
+            <a href="/admin" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:10px 22px;border-radius:8px;font-weight:700">Voltar ao início</a>
+          </div>
+        ) : <slot />}
       </main>
     </div>
   </div>
