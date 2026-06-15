@@ -1215,6 +1215,31 @@ cadastro (evita personificacao). chaveTel = DDD(2)+numero local(8) (tolera o 9 d
 funcionario teste) — esses NAO conseguem usar o bot ate o telefone ser corrigido com DDD
 no /admin/rh. Provavel DDD 11 (SP), mas confirmar antes de bulk-fix.
 
+## Atualizacao 14/06/2026 (parte 13) — Fix critico do Portal + perfis frescos
+
+**BUG CRITICO (commit f51835f):** o `<script define:vars>` do `src/layouts/Portal.astro`
+tinha `(el as HTMLElement)` (sintaxe TS). **LICAO: `define:vars` => `is:inline` => o
+Astro NAO compila/strip TS** — o script vai CRU pro navegador, e o `as HTMLElement`
+estoura SyntaxError que mata o script INTEIRO. Efeito: o menu lateral do portal so
+mostrava "Inicio/Minha Conta" (itens area-gated comecam display:none e o JS que os
+revela nao rodava), "Carregando..." travado no rodape, avatares "?", notificacoes
+mortas. O build do Astro NAO pega isso (inline passa direto). Fix: removidos os casts ->
+JS puro. **REGRA: nunca por TS (`as`, `!.`, `: tipo`) dentro de `<script define:vars>`
+nem de `is:inline` — so JS puro.** (Varredura: o unico arquivo afetado era o Portal.astro;
+ativos/[id].astro tem casts mas num `<script>` normal compilado, ok; paginas publicas
+com define:vars — clima/teste/proposta/admissao — foram E2E e estao limpas.)
+
+**Perfis FRESCOS (mesmo commit):** `permissoesDoUsuario(claims)` em src/lib/permissoes.ts
+agora le role/roles direto do `portal_profiles` por `claims.sub` (fallback no token) —
+assim mudar o perfil de alguem em /admin/membros REFLETE no portal SEM precisar relogar.
+Retorna `perfis` tambem. `/api/portal/permissoes` devolve `{areas, categorias_kb, perfis,
+role}`. A home `/portal` agora busca esse endpoint e libera os cards por AREA (igual a
+matriz) + welcome com o perfil fresco (fallback no localStorage). Sidebar ja usava o
+endpoint. NOTA: o ROTULO "Seu acesso" e o nome no topo ainda vem do localStorage do login
+(cosmetico) — fica certo no proximo login; as AREAS/cards ja sao frescas.
+
+**Fonte do menu lateral:** 12.5px -> 14.5px, padding 11px (pedido da Adriana).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
