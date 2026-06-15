@@ -273,6 +273,35 @@ export async function exigirEdicao(claims: AdminClaims, moduloKey: string): Prom
   }
 }
 
+/** Mapeia uma rota /api/admin/<...> para a KEY do módulo (ou null se não for um módulo gated).
+ *  Usado pelo middleware para a trava central de "somente-leitura". */
+export function moduloDaRotaApi(pathname: string): string | null {
+  const m = pathname.match(/^\/api\/admin\/([^/]+)(?:\/(.*))?$/);
+  if (!m) return null;
+  const seg = m[1].replace(/\.ts$/, "");
+  const rest = m[2] || "";
+  // endpoints de auth não são módulos
+  if (["login", "logout", "forgot-senha"].includes(seg)) return null;
+  // especiais (a pasta não bate com a key do módulo)
+  if (seg === "fin") return "financeiro";
+  if (seg === "d4sign" || seg === "termos") return "assinaturas";
+  if (seg === "permissoes" || seg === "permissoes-usuarios") return "permissoes";
+  if (seg === "portal") {
+    const sub = (rest.split("/")[0] || "").replace(/\.ts$/, "");
+    const map: Record<string, string> = { comunicados: "portal-comunicados", integracao: "portal-integracao", kb: "portal-kb", onboarding: "portal-onboarding", treinamentos: "portal-treinamentos", "upload-url": "portal-comunicados" };
+    return map[sub] || "membros";
+  }
+  if (seg === "rh") {
+    const sub = (rest.split("/")[0] || "").replace(/\.ts$/, "");
+    if (["vagas", "candidatos", "cargos"].includes(sub)) return "recrutamento";
+    if (sub === "avaliacoes") return "avaliacoes";
+    if (sub === "clima") return "clima";
+    return "rh";
+  }
+  // demais: o 1º segmento já é a key do módulo (ativos, obras, clientes, leads, ...)
+  return MODULO_GRUPO[seg] ? seg : null;
+}
+
 /** Guard de MUTAÇÃO que retorna uma Response 403 (ou null se pode editar).
  *  Uso no topo do handler:  const b = await bloqueioSeSoLeitura(admin, "ativos"); if (b) return b;
  *  Mais limpo que throw — não depende do catch do endpoint para o status correto. */

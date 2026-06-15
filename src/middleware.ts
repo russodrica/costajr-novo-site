@@ -1,5 +1,7 @@
 import { defineMiddleware } from "astro:middleware";
 import { supabaseAdmin } from "./lib/supabase";
+import { getAdminTokenFromCookie, verifyToken, type AdminClaims } from "./lib/auth";
+import { moduloDaRotaApi, nivelModuloUsuario, MODULO_LABEL } from "./lib/permissoes";
 import {
   isBot,
   parseUserAgent,
@@ -11,7 +13,41 @@ import {
   getGeo,
 } from "./lib/analytics";
 
+const MUTACOES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export const onRequest = defineMiddleware(async (context, next) => {
+  // ── Trava central "somente-leitura" por usuário ──
+  // Recusa QUALQUER edição em /api/admin/<modulo> quando o nível efetivo do usuário
+  // naquele módulo não é "editar" (ou seja, "ver" ou "nenhum"). Cobre TODOS os
+  // módulos de uma vez (não depende de marcar endpoint por endpoint). GET passa.
+  try {
+    const req = context.request;
+    if (MUTACOES.has(req.method)) {
+      const path = new URL(req.url).pathname;
+      if (path.startsWith("/api/admin/")) {
+        const modulo = moduloDaRotaApi(path);
+        if (modulo) {
+          const tok = getAdminTokenFromCookie(req);
+          if (tok) {
+            try {
+              const claims = await verifyToken<AdminClaims>(tok);
+              if (claims.tipo === "admin") {
+                const nivel = await nivelModuloUsuario(claims, modulo);
+                if (nivel !== "editar") {
+                  const rotulo = MODULO_LABEL[modulo] || modulo;
+                  return new Response(
+                    JSON.stringify({ error: `Você tem acesso somente de leitura em "${rotulo}". Fale com o administrador.` }),
+                    { status: 403, headers: { "content-type": "application/json" } },
+                  );
+                }
+              }
+            } catch { /* token inválido/expirado -> deixa o endpoint tratar a auth (401) */ }
+          }
+        }
+      }
+    }
+  } catch { /* nunca derruba a request por causa do guard de permissão */ }
+
   const response = await next();
 
   // Headers de segurança em todas as respostas
