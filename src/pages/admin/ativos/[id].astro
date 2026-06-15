@@ -17,9 +17,12 @@ const [{ data: ativo }, { data: movimentos }, { data: termos }, { data: manutenc
   db.from("ativos_termos").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
   db.from("ativos_manutencoes").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
   db.from("ativos_ocorrencias").select("*").eq("ativo_id", id).order("created_at", { ascending: false }),
-  // Entrega de equipamento: só colaboradores ATIVOS (exclui desligado, congelado/
-  // jurídico e o registro de teste). Inativos continuam no histórico do equipamento.
-  db.from("rh_colaboradores").select("id, nome, email, profile_id").eq("status", "ativo").not("nome", "ilike", "%teste%").order("nome"),
+  // Entrega de equipamento: só colaboradores ATIVOS, na MESMA definição do RH
+  // (CLT/PJ ativos; diaristas são esporádicos e NÃO contam como ativos — têm aba
+  // própria). Exclui desligado, congelado/jurídico, diarista e o registro de teste.
+  // Para um caso pontual (ex.: diarista), use a opção "Outro (digitar nome)".
+  // Inativos continuam no histórico de movimentação do equipamento.
+  db.from("rh_colaboradores").select("id, nome, email, profile_id").eq("status", "ativo").neq("regime", "diarista").not("nome", "ilike", "%teste%").order("nome"),
   db.from("obras").select("id, nome, status").neq("status", "cancelada").order("nome"),
   db.from("ativos_manutencao_planos").select("*").eq("ativo_id", id).eq("ativo", true).order("proxima_em"),
   db.from("depositos").select("id, nome").eq("ativo", true).order("nome"),
