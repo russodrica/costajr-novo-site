@@ -1197,8 +1197,23 @@ estados em `telegram_sessoes`, migration 060). Item 2 das pendencias = CONCLUIDO
 **Privacidade BotFather:** NAO precisa mexer — no chat PRIVADO o bot recebe tudo. O
 webhook tambem recebe updates do grupo, mas onMessage ignora chat.type!='private'.
 **Sem env var nova:** usa TELEGRAM_BOT_TOKEN + INTEGRA_TELEGRAM_SECRET (ja na Vercel).
-**Setup pendente da Adriana:** abrir /admin/telegram e clicar "Ativar" 1x. Depois o time
-manda /start pro @cjr_ativo_bot.
+**Webhook JA ATIVADO (14/06/2026)** via /admin/telegram (getWebhookInfo: url
+costajr.com.br/api/telegram/webhook, sem erros). O time pode usar: manda /start pro
+@cjr_ativo_bot e compartilha o telefone.
+
+**E2E VERIFICADO em producao** (via updates simulados no webhook): identificacao por
+telefone (casa Jose pelo DDI 55), fluxo completo (menu->busca->eq->devolver->ok) gravou
+status em_estoque + ativos_movimentos com feito_por "Nome <email> (via Telegram)" +
+notificou o grupo. Seguranca: sem o secret header -> 403.
+
+**FIX de seguranca (commit 36711d4):** o match de telefone foi apertado — exige DDD
+(>=10 digitos) e rejeita numeros triviais (00000000…) p/ NAO casar com telefone-lixo do
+cadastro (evita personificacao). chaveTel = DDD(2)+numero local(8) (tolera o 9 do celular).
+
+**DADO A CORRIGIR (Adriana):** 7 colaboradores ATIVOS tem telefone SEM DDD na ficha
+(Renata 97686-5023, Samyria 95151-0762, Givanildo, Lysnor, Patricia, Higor + o
+funcionario teste) — esses NAO conseguem usar o bot ate o telefone ser corrigido com DDD
+no /admin/rh. Provavel DDD 11 (SP), mas confirmar antes de bulk-fix.
 
 ## Convencoes desta pasta para o Claude Code
 
