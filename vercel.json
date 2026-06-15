@@ -46,6 +46,10 @@
         {
           "key": "Cache-Control",
           "value": "no-store"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'self' https://costajr.com.br https://www.costajr.com.br"
         }
       ]
     },

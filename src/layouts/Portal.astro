@@ -659,7 +659,10 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
     localStorage.removeItem(tokenKey);
     localStorage.removeItem(userKey);
     // Limpa o cookie-ponte do RH embutido (se existir), para não deixar acesso residual ao admin.
-    if (tipo === "colaborador") document.cookie = "admin_token=; path=/; max-age=0";
+    if (tipo === "colaborador") {
+      document.cookie = "admin_token=; path=/; max-age=0";
+      if (location.hostname.indexOf("costajr.com.br") !== -1) document.cookie = "admin_token=; path=/; domain=.costajr.com.br; max-age=0";
+    }
     window.location.replace(loginHref);
   });
 
