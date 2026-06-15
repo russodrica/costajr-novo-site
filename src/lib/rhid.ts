@@ -295,7 +295,8 @@ async function mapLimite<T, R>(itens: T[], limite: number, fn: (x: T) => Promise
 }
 
 export async function montarDia(dataISO: string): Promise<DiaPonto> {
-  const pessoas = (await listarPessoas()).filter((p) => p.pis);
+  // precisa de PIS; ignora contas de teste (ex.: "Adriana (teste)").
+  const pessoas = (await listarPessoas()).filter((p) => p.pis && !/teste/i.test(p.nome));
   const apur = await mapLimite(pessoas, 12, (p) => apuracaoDia(p.id, dataISO));
   const dias: PessoaDia[] = pessoas.map((pessoa, idx) => ({ pessoa, ...apur[idx] }));
   return { dataISO, dias };
