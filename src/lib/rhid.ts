@@ -370,6 +370,24 @@ export async function diagnostico(dataISO: string): Promise<any> {
     out.afdPorEquip.push(row);
   }
 
+  // Fonte ALTERNATIVA: apuracao_ponto (ponto apurado/live). Pode ter dados
+  // recentes mesmo que o AFD baixável esteja parado. Testa 1 pessoa ativa em
+  // 2 datas: a alvo e uma com dados conhecidos (2025-05-20).
+  try {
+    const pessoas = await listarPessoas();
+    const p = pessoas.find((x) => x.ativo && x.pis);
+    out.apuracao = [];
+    if (p) {
+      for (const dt of [dataISO, "2025-05-20"]) {
+        try {
+          const raw = String(await apiGet("/apuracao_ponto", { idPerson: p.id, dataIni: dt, dataFinal: dt }, true));
+          let s = raw; if (s.startsWith('"')) { try { s = JSON.parse(s); } catch {} }
+          out.apuracao.push({ data: dt, idPerson: p.id, len: s.length, head: s.slice(0, 280) });
+        } catch (e: any) { out.apuracao.push({ data: dt, erro: String(e?.message || e) }); }
+      }
+    }
+  } catch (e: any) { out.apuracaoErro = String(e?.message || e); }
+
   // Pipeline real de batidas (como os alertas usam).
   try {
     const batidas = await coletarBatidasDoDia(dataISO, equips);
