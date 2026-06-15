@@ -36,20 +36,26 @@ const tirarTeclado = { remove_keyboard: true };
 function inline(linhas: { text: string; callback_data: string }[][]) { return { inline_keyboard: linhas }; }
 const btnCancelar = [{ text: "❌ Cancelar", callback_data: "cancel" }];
 
-// ── Telefone: normalização e match tolerante ────────────────────────────
+// ── Telefone: normalização e match tolerante (mas SEGURO) ───────────────
 function soDigitos(s: unknown): string { return String(s ?? "").replace(/\D/g, ""); }
 function normalizaTel(s: unknown): string {
   let d = soDigitos(s);
   if (d.startsWith("55") && d.length > 11) d = d.slice(2); // tira DDI Brasil
-  d = d.replace(/^0+/, "");
-  return d;
+  return d.replace(/^0+/, "");
+}
+// Chave canônica = DDD(2) + número local(8). Tolera o 9 extra do celular
+// (compara só os últimos 8 do número), MAS exige DDD e rejeita números triviais
+// (00000000, 11111111…) para não casar com telefones-lixo do cadastro.
+function chaveTel(s: unknown): string {
+  const d = normalizaTel(s);
+  if (d.length < 10) return "";                 // sem DDD → não identifica
+  const local = d.slice(-8);
+  if (/^(\d)\1{7}$/.test(local)) return "";     // 8 dígitos repetidos = lixo
+  return d.slice(0, 2) + local;                 // DDD + número local
 }
 function telBate(a: unknown, b: unknown): boolean {
-  const x = normalizaTel(a), y = normalizaTel(b);
-  if (!x || !y) return false;
-  if (x === y) return true;
-  const ux = x.slice(-8), uy = y.slice(-8); // últimos 8 (número local) como fallback
-  return ux.length === 8 && ux === uy;
+  const x = chaveTel(a), y = chaveTel(b);
+  return !!x && x === y;
 }
 
 // ── Sessão (telegram_sessoes) ───────────────────────────────────────────
