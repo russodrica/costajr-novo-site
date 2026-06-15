@@ -340,32 +340,46 @@ export function relatorioSaida(dia: DiaPonto): { bateuSaida: { p: Pessoa; ultima
 export type Anomalia = { p: Pessoa; locais: { nome: string; horas: string[] }[] };
 export function auditarLocais(_dia: DiaPonto): Anomalia[] { return []; }
 
-// Sonda: tenta ler as marcações REP-P (com GPS) do servidor (customerdb/afd_mobile).
-// Testa combinações de corpo/auth p/ ver se o token de login serve fora do SPA.
-export async function probeAfdMobile(dataIni: string, dataFinal: string): Promise<any> {
+// Lê as marcações REP-P (app, com GPS) do servidor via customerdb/afd_mobile.
+// O token de login (Bearer) é aceito aqui também. Resposta é grande -> normalizamos.
+async function rawAfdMobile(dataIni: string, dataFinal: string): Promise<any> {
   const tok = await obterToken();
-  const url = `${CDB}/afd.svc/afd_mobile`;
-  const bodies: { label: string; body: any }[] = [
-    { label: "datas+token+pag", body: { token: tok, dataInicial: dataIni, dataFinal: dataFinal, start: 0, length: 50 } },
-    { label: "datatables", body: { dataInicial: dataIni, dataFinal: dataFinal, draw: 1, start: 0, length: 50, columns: [], order: [], search: { value: "", regex: false } } },
-    { label: "iso-curto", body: { dataIni, dataFinal, token: tok } },
-  ];
-  const auths: { label: string; h: Record<string, string> }[] = [
-    { label: "bearer", h: { Authorization: `Bearer ${tok}` } },
-    { label: "token-puro", h: { Authorization: tok } },
-    { label: "sem", h: {} },
-  ];
-  const tentativas: any[] = [];
-  for (const b of bodies) for (const a of auths) {
-    try {
-      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json", Accept: "application/json", ...a.h }, body: JSON.stringify(b.body) });
-      const t = await r.text();
-      const hasLat = /latitude/i.test(t);
-      tentativas.push({ body: b.label, auth: a.label, status: r.status, hasLat, head: t.slice(0, 140) });
-      if (r.ok && hasLat) return { ok: true, body: b.label, auth: a.label, len: t.length, tentativas };
-    } catch (e: any) { tentativas.push({ body: b.label, auth: a.label, erro: String(e?.message || e) }); }
+  const r = await fetch(`${CDB}/afd.svc/afd_mobile`, {
+    method: "POST",
+    headers: { "content-type": "application/json", Accept: "application/json", Authorization: `Bearer ${tok}` },
+    body: JSON.stringify({ token: tok, dataInicial: dataIni, dataFinal: dataFinal, start: 0, length: 100000 }),
+  });
+  if (!r.ok) throw new Error(`afd_mobile -> ${r.status}`);
+  return r.json();
+}
+
+// Sonda de estrutura (p/ montar o relatório): devolve um resumo, não os 16MB.
+export async function probeAfdMobile(dataIni: string, dataFinal: string): Promise<any> {
+  const j = await rawAfdMobile(dataIni, dataFinal);
+  const top = Array.isArray(j) ? j : [j];
+  const grupos = top.slice(0, 4).map((g: any) => ({
+    keys: g && typeof g === "object" ? Object.keys(g) : typeof g,
+    qtdMarc: Array.isArray(g?.listAfdMobilePerson) ? g.listAfdMobilePerson.length : null,
+    pessoa: g?.name ?? g?.nome ?? g?.personName ?? g?.namePerson,
+  }));
+  let total = 0; let sample: any = null;
+  for (const g of top) {
+    const l = g?.listAfdMobilePerson;
+    if (Array.isArray(l)) {
+      total += l.length;
+      if (!sample && l[0]) {
+        const m = l[0];
+        sample = {
+          campos: Object.keys(m),
+          latitude: m.latitude, longitude: m.longitude,
+          address: typeof m.address === "string" ? m.address.slice(0, 50) : m.address,
+          geofence: m._classificacaoGeofence,
+          camposData: Object.keys(m).filter((k) => /date|data|hora|time/i.test(k)).map((k) => `${k}=${String(m[k]).slice(0, 22)}`),
+        };
+      }
+    }
   }
-  return { ok: false, tentativas };
+  return { topLen: top.length, totalMarc: total, grupos, sample };
 }
 
 // ─── Diagnóstico ────────────────────────────────────────────────────────────
