@@ -3,6 +3,7 @@ import { supabaseAdmin } from "~/lib/supabase";
 import { gerarCupomRenovacao } from "~/lib/manut/clientes";
 import { enviarEmailCupomRenovacao } from "~/lib/mailer";
 import { enviarDigestVencimentosRh, enviarAniversariantesDoMes } from "~/lib/rhVencimentos";
+import { enviarDigestVencimentosDocEmpresa } from "~/lib/docEmpresaVencimentos";
 import { enviarLembretesFerias, garantirPeriodoAtual } from "~/lib/ferias";
 import { expurgarLixeira } from "~/lib/auditoria";
 import { enviarAlertasEpi } from "~/lib/epi";
@@ -94,6 +95,14 @@ export const GET: APIRoute = async ({ request, url }) => {
     console.warn("[cron][rh-vencimentos] falhou:", e?.message);
   }
 
+  // ── Piggyback: alertas de vencimento de Documentos da Empresa (30/15/7 + no dia) ──
+  let docEmpresaDigest: any = { total: 0, enviados: 0 };
+  try {
+    docEmpresaDigest = await enviarDigestVencimentosDocEmpresa(db, { modo: "marcos" });
+  } catch (e: any) {
+    console.warn("[cron][doc-empresa-vencimentos] falhou:", e?.message);
+  }
+
   // ── Piggyback: auto-avanço do período aquisitivo (cria o do ciclo vigente) ──
   try {
     const adv = await garantirPeriodoAtual(db);
@@ -148,7 +157,7 @@ export const GET: APIRoute = async ({ request, url }) => {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, ferias: feriasDigest, lixeira, aniversariantes, epi, avaliacoes, clima }), {
+  return new Response(JSON.stringify({ ok: true, processados: resultados.length, resultados, rh_vencimentos: rhDigest, doc_empresa_vencimentos: docEmpresaDigest, ferias: feriasDigest, lixeira, aniversariantes, epi, avaliacoes, clima }), {
     headers: { "content-type": "application/json" },
   });
 };
