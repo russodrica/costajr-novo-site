@@ -5,7 +5,8 @@ export default defineConfig({
   site: "https://costajr.com.br",
   output: "server",
   adapter: vercel({
-    webAnalytics: { enabled: true }
+    webAnalytics: { enabled: true },
+    maxDuration: 60 // relatório de localização busca AFD mobile + mapas + PDF
   }),
   server: { port: 4321 },
   vite: {

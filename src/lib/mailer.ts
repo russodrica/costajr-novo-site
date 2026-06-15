@@ -11,6 +11,28 @@ export async function enviarEmailSimples(payload: { to: string; subject: string;
   return sendOrThrow(payload);
 }
 
+// Envio com anexo(s) — ex.: relatório mensal em PDF para o RH.
+export async function enviarEmailComAnexo(payload: {
+  to: string | string[];
+  subject: string;
+  html: string;
+  anexos: Array<{ filename: string; content: Uint8Array | Buffer | string }>;
+}) {
+  if (!resend) throw new Error("RESEND_API_KEY ausente — configure no .env / Vercel");
+  const { data, error } = await resend.emails.send({
+    from: `Costa Júnior <${FROM}>`,
+    to: payload.to as any,
+    subject: payload.subject,
+    html: payload.html,
+    attachments: payload.anexos.map((a) => ({
+      filename: a.filename,
+      content: typeof a.content === "string" ? a.content : Buffer.from(a.content),
+    })),
+  });
+  if (error) throw new Error(`Resend: ${error.message || JSON.stringify(error)}`);
+  return data;
+}
+
 async function sendOrThrow(payload: { to: string; subject: string; html: string }) {
   if (!resend) throw new Error("RESEND_API_KEY ausente — configure no .env / Vercel");
   const { data, error } = await resend.emails.send({

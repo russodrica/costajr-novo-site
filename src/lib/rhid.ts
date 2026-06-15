@@ -379,6 +379,56 @@ export async function probeAfdMobile(dataIni: string, dataFinal: string): Promis
   return { pessoas: top.length, totalMarc: total, comAddress, distGeo, distGeofence, distSusp, distAprov, amostras };
 }
 
+// ─── Marcações REP-P (app, com GPS) — para o relatório mensal de localização ─
+export type MarcacaoMobile = {
+  data: Date; dataStr: string; lat: number; lng: number;
+  temGps: boolean; suspeita: string; gpsDesligado: boolean; status: number;
+};
+export type PessoaMarcacoes = { nome: string; idPerson: number; marcacoes: MarcacaoMobile[] };
+
+// "01/09/2023 09:17" -> Date (UTC com os mesmos números; formatamos sempre em UTC)
+function parseDataStr(s: any): Date | null {
+  const m = String(s || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const [, d, mo, y, h, mi] = m;
+  return new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi));
+}
+
+// Busca as marcações REP-P no intervalo (a API ignora o filtro de data, então
+// baixamos tudo e filtramos aqui) e agrupa por pessoa.
+export async function buscarMarcacoesMobile(dataIni: string, dataFinal: string): Promise<PessoaMarcacoes[]> {
+  const j = await rawAfdMobile(dataIni, dataFinal);
+  const top = Array.isArray(j) ? j : [j];
+  const saida: PessoaMarcacoes[] = [];
+  for (const g of top) {
+    const l = g?.listAfdMobilePerson;
+    if (!Array.isArray(l)) continue;
+    const p = g?.person || {};
+    const nome = String(p.name ?? p.nome ?? p.personName ?? l[0]?.personName ?? `#${p.id ?? "?"}`).trim();
+    const idPerson = Number(p.id ?? p.idPerson ?? 0);
+    const marcacoes: MarcacaoMobile[] = [];
+    for (const m of l) {
+      const data = parseDataStr(m.dateTimeStr);
+      if (!data) continue;
+      const iso = fmtDataISO(data);
+      if (iso < dataIni || iso > dataFinal) continue;
+      const lat = Number(m.latitude), lng = Number(m.longitude);
+      const temGps = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
+      const suspeita = String(m.suspectStr || "").trim();
+      marcacoes.push({
+        data, dataStr: String(m.dateTimeStr), lat, lng, temGps,
+        suspeita, gpsDesligado: !temGps || /gps/i.test(suspeita), status: Number(m.approvalStatus),
+      });
+    }
+    if (marcacoes.length) {
+      marcacoes.sort((a, b) => a.data.getTime() - b.data.getTime());
+      saida.push({ nome, idPerson, marcacoes });
+    }
+  }
+  saida.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  return saida;
+}
+
 // ─── Diagnóstico ────────────────────────────────────────────────────────────
 // Foca em UMA pessoa (por nome) numa data: despeja a apuração dela, revelando
 // as batidas do app (horário/tipo/idAfd e GPS, se houver). É assim que vamos
