@@ -1438,6 +1438,39 @@ deve "espelhar" o modulo de RH DENTRO do portal do colaborador (um login so).
   forjado): referer /portal/rh sozinho ativa embed+RH; admin tentando Financeiro no
   embed -> Acesso restrito.
 
+## Atualizacao 15/06/2026 (parte 2) — Aba "Acessos a sistemas" na ficha do colaborador
+
+**Pedido da Adriana:** registrar na ficha quais PROGRAMAS cada colaborador tem
+acesso, para saber o que revogar em desligamento ou troca de funcao.
+
+- **Migration 063_rh_acessos RODADA** (via Management API/Chrome): tabela
+  `rh_acessos` (colaborador_id, sistema, categoria, usuario, observacao, status
+  ativo|revogado, concedido_em, revogado_em; unique colaborador+sistema; RLS
+  service-role). **Mantem HISTORICO** — revogar nao apaga, so marca revogado.
+- **`src/lib/sistemas.ts`**: catalogo agrupado (`SISTEMAS_CATALOGO`) com 30
+  programas em 7 categorias (Sistemas/Gestao: PortalCJR/Vobi/Rotaexata/ControlID/
+  D4Sign; Bancos: BB/Bradesco/Caixa/Itau/Nubank/Santander/Sicoob; Beneficios/VT:
+  Alelo/Caixa VT/Coopcerto; Pedagio/Frota: Veloe/Semparar/Localiza/Movida;
+  Telefonia: Tim/Vivo; Mobilidade: Uber/Lalamove/Logi; Compras: Trilogo/Aquanima/
+  Ariba/Carrefour/Kalunga/CAU). Para adicionar fixo, editar a lib; a ficha tambem
+  aceita "adicionar fora da lista" por colaborador.
+- **API `/api/admin/rh/acessos`** (GET catalogo+acessos por colaborador; POST
+  upsert com auditoria). POST: tem_acesso=true => ativo (concedido_em no 1o); 
+  tem_acesso=false em algo que era ativo => revogado + revogado_em (historico).
+- **Aba "🔐 Acessos"** na ficha (rh.astro, tab 'acessos' no fichaTab): catalogo
+  por categoria com checkbox + login + observacao, badge de ativos, botao
+  "adicionar fora da lista", e secao de Historico (revogados). Funcoes
+  carregarAcessos/salvarAcessos/addLinhaAcessoCustom expostas ao window (script
+  TS compilado normal, nao define:vars).
+- **Desligamento integrado:** `posse.ts` retorna `acessos` ativos; o modal de
+  desligamento mostra "Acessos a revogar pela TI"; `finalizar.ts` REVOGA todos os
+  acessos ativos ao concluir e os LISTA no e-mail de cancelamentos pra TI
+  (RH_ALERT_EMAIL). Acessos NAO travam o desligamento (sao informativos; quem
+  trava e ativo/EPI fisico).
+- E2E verificado contra o banco real (dev + token forjado): GET catalogo, POST
+  ativo, revogar (historico preservado com concedido_em/revogado_em), limpeza.
+  tsc + astro build limpos.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
