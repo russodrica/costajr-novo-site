@@ -1103,18 +1103,26 @@ redesenhado (cards maiores, JunIA em destaque, sem Base de Conhecimento — vira
 `<style is:global>` (estilos scoped do Astro NAO alcancam innerHTML); sw.js cjr-v2;
 vinculo RH↔membros↔equipamentos consolidado (parte 9).
 
+**Migration 060 RODADA (14/06/2026):** criou `telegram_sessoes` (base do bot de volta) +
+`rh_colaboradores.email_pessoal`. Rodada pela Management API (token do dashboard via
+Chrome) — status 201, schema recarregado, coluna confirmada no PostgREST.
+
+**FEITO — item 3 (commit c008f51):** e-mail corporativo x pessoal SEPARADOS na ficha do
+colaborador. Form agrupa "E-mail corporativo* + Tel. empresa*" e "E-mail pessoal + Tel.
+pessoal*" (corporativo obrigatorio; pessoal opcional). camposColab + APIs POST/PATCH +
+import/export de planilha aceitam email_pessoal. Validado E2E na producao via sessao
+logada da Adriana (campos email + email_pessoal presentes no #formColab).
+
 **PENDENTE p/ proxima sessao (pedidos da Adriana ainda nao feitos):**
 1. **Onda Perfis** — em /admin/membros renomear "cargo"→"perfis" = as 8 AREAS (ADMIN,
    MANUTENÇÃO-OPERAÇÃO, MANUTENÇÃO-ADMINISTRATIVO, OPERAÇÃO, RH, FINANCEIRO, COMERCIAL,
    JURÍDICO; REMOVER COORDENADOR). Usuario inativo sai automaticamente de Membros.
-   Area habilitada = modulo aparece. (NAO comecado — mexe em permissoes do portal todo.)
+   Area habilitada = modulo aparece. (NAO comecado — mexe em permissoes do portal todo;
+   ATENCAO: "coordenador" e usado como gate em /admin/logs e /admin/lixeira — tratar.)
 2. **Bot Telegram de VOLTA (inbound)** — alguem do grupo de Ativos manda no PRIVADO do
    bot "movimentei X" e o sistema registra. Identifica a pessoa pelo TELEFONE registrado
-   no sistema. Precisa migration 060 (telegram_sessoes) + webhook + setWebhook do bot.
-3. **Ficha: e-mail corporativo x pessoal SEPARADOS** — telefone ja esta separado
-   (telefone/telefone_pessoal); falta `email_pessoal` (na migration 060, NAO rodada).
-**Migration 060 (telegram_sessoes + rh_colaboradores.email_pessoal) ESCRITA mas NAO
-RODADA.** (As 3 estao entrelacadas: 060 destrava a 2 e a 3.)
+   no sistema. telegram_sessoes JA CRIADA (060); falta webhook + setWebhook do bot +
+   parser de conversa + casar telefone→colaborador.
 
 ## Convencoes desta pasta para o Claude Code
 
