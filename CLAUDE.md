@@ -1240,6 +1240,51 @@ endpoint. NOTA: o ROTULO "Seu acesso" e o nome no topo ainda vem do localStorage
 
 **Fonte do menu lateral:** 12.5px -> 14.5px, padding 11px (pedido da Adriana).
 
+## Atualizacao 14/06/2026 (parte 14) — Visual do portal + JunIA + bot Telegram guiado
+
+**Referencia visual: portalcjr.vip (Manus antigo).** Adriana quer o visual limpo dele.
+Assinatura: cards CENTRALIZADOS coloridos (barra colorida no topo + circulo grande +
+titulo MAIUSCULO + descricao central, 1 cor por modulo) e paginas de area com TITULO
+GRANDE COLORIDO + subtitulo + "Voltar".
+
+**Home redesenhada (commit do dia):** /portal/index.astro — 9 cards centralizados, cada
+um com cor propria (JunIA vermelho, Onboarding azul, Treinamentos roxo, Forum rosa,
+Documentos teal, Equipamentos laranja, Comercial verde, Manutencao ambar, Minha Conta
+slate). Barra no topo (border-top 5px) + circulo solido da cor + emoji.
+
+**Hero reutilizavel nas areas (commit do dia):** Portal.astro ganhou props `subtitle` e
+`accent` -> renderiza um hero (titulo grande colorido + subtitulo) no topo de
+.portal-content. Aplicado em documentos/onboarding/forum/meus-equipamentos/gestao-
+comercial/gestao-manutencao/minha-conta/treinamentos (cor por area). O titulo duplicado
+de cada pagina foi removido. Fonte do menu lateral 12.5->14.5px.
+
+**ARQUIVOS FALTANTES (conteudo) — levantamento:** portal_docs=**0** (area Documentos
+VAZIA), portal_treinamentos_videos=2 + pdfs=1 (so os do Santander; faltam categorias
+Administrativo/Financeiro/Comercial). Onboarding (12 etapas + 8 PDFs) e KB JunIA (36)
+estao OK. **Pendente: a Adriana fornecer os arquivos-fonte** p/ popular Documentos e
+Treinamentos.
+
+**JunIA (fix commit do dia):** (1) logo gigante — .jn-mascote 150px/60% -> 92px/28%.
+(2) "nao interage" — o motor (src/lib/junia.ts, busca por palavra-chave threshold 6,
+SEM LLM) RESPONDE quando a pergunta bate com a base (Santander prazo=score 12). Uma das
+3 sugestoes prontas ("EPIs obrigatorios") NAO estava na base -> caia em pendencia;
+troquei pelas que existem (Santander, nomenclatura de obras, IPVA) -> respondem na hora.
+NOTA p/ Adriana: JunIA (/portal/junia) = chat de IA (funciona); Forum (/portal/forum) =
+quadro de topicos separado. No Manus era 1 coisa so ("Forum CJR = JunIA"). Avaliar
+unificar/renomear se ela quiser.
+
+**Bot Telegram inbound REFORMULADO p/ fluxo GUIADO (pedido da Adriana; commit do dia):**
+src/lib/telegramBot.ts reescrito. Fluxo: identifica pelo telefone -> "Quer registrar uma
+movimentacao?" [Sim/Nao] -> "Qual o tipo?" [Telefone/Veiculo/Equip. de obra/Informatica]
+(= ativos.categoria telefonia/veiculo/equipamento_obra/informatica) -> digita p/ achar o
+item DENTRO da categoria (telefonia tem 56, equip_obra 105 — botao p/ cada seria inviavel)
+-> "Para onde?" [Pessoa/Obra/Estoque/Defeito] -> (pessoa/obra: digita e escolhe) ->
+confirma -> "✅ Equipamento movimentado com sucesso!" + atualiza base + avisa o grupo.
+Inclui ENTREGA a pessoa (status alocado). Maquina de estados em telegram_sessoes
+(estados: pronto/esc_categoria/busca_equip/esc_destino/busca_pessoa/busca_obra/
+mov_confirma). E2E VERIFICADO em producao (fluxo completo Sim->Telefone->equip->devolver->
+ok grava em_estoque + movimento por Jose). Webhook ja ativo (URL inalterada).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
