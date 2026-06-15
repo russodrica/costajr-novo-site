@@ -29,6 +29,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Atualiza last_login
     await db.from("portal_profiles").update({ last_login_at: new Date().toISOString() }).eq("id", perfil.id);
 
+    // Remove um possível cookie-ponte antigo (escopo de domínio, do RH embutido no
+    // portal) para que ele não sombreie esta sessão de admin recém-criada.
+    cookies.delete("admin_token", { path: "/", domain: ".costajr.com.br" });
+
     cookies.set("admin_token", token, {
       path: "/",
       httpOnly: true,

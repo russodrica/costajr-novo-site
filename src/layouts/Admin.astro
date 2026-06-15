@@ -265,6 +265,12 @@ const semAcessoPagina = embedRhLock
 
   <script>
     function logout() {
+      // Limpa o cookie-ponte do RH embutido (domínio, não-HttpOnly) no cliente —
+      // o /api/admin/logout limpa o host-only + domínio no servidor.
+      if (location.hostname.indexOf("costajr.com.br") !== -1) {
+        document.cookie = "admin_token=; path=/; domain=.costajr.com.br; max-age=0";
+      }
+      document.cookie = "admin_token=; path=/; max-age=0";
       fetch("/api/admin/logout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).finally(() => {
         window.location.href = "/admin/login";
       });

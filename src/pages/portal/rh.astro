@@ -60,6 +60,16 @@ import Portal from "~/layouts/Portal.astro";
         perfis = perfis || [];
         return perfis.indexOf("rh") !== -1 || perfis.indexOf("admin") !== -1;
       }
+      function limparPonte() {
+        var dom = location.hostname.indexOf("costajr.com.br") !== -1 ? "; domain=.costajr.com.br" : "";
+        document.cookie = "admin_token=; path=/" + dom + "; max-age=0";
+      }
+      // Ao SAIR desta página (navegação para fora do portal/rh, fechar a aba), remove
+      // o cookie-ponte para NÃO deixar a sessão "emprestada" do RH grudada no /admin.
+      // (Navegar DENTRO do iframe não dispara isto — só o unload desta página.)
+      window.addEventListener("pagehide", limparPonte);
+      // Se a página voltar do cache do navegador (bfcache), recarrega para re-montar a ponte.
+      window.addEventListener("pageshow", function (e) { if (e.persisted) location.reload(); });
 
       // Confere o perfil FRESCO no servidor antes de abrir.
       fetch("/api/portal/permissoes", { headers: { "x-portal-auth": token } })
