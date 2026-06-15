@@ -1,0 +1,43 @@
+name: RHiD Ponto - Alertas Telegram
+
+# Agendador (grátis) que chama os alertas de ponto no costajr.com.br.
+# A Vercel Hobby só permite 2 crons (já usados), por isso usamos o GitHub Actions.
+# Brasil = UTC-3 (sem horário de verão) -> 10h BRT = 13h UTC, 18h BRT = 21h UTC.
+# Seg-sáb = dias 1-6 (domingo = 0, excluído). Minuto 7 reduz o atraso de fila.
+on:
+  schedule:
+    - cron: "7 13 * * 1-6" # ~10h BRT (entrada) seg-sáb
+    - cron: "7 21 * * 1-6" # ~18h BRT (saída)  seg-sáb
+  workflow_dispatch:
+    inputs:
+      fase:
+        description: "forçar fase (entrada/saida); vazio = decide pela hora"
+        required: false
+        default: ""
+
+jobs:
+  ponto:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar alerta de ponto
+        env:
+          KEY: ${{ secrets.INTEGRA_TELEGRAM_SECRET }}
+        run: |
+          set -e
+          if [ -z "$KEY" ]; then
+            echo "ERRO: secret INTEGRA_TELEGRAM_SECRET não configurado no repositório."
+            echo "Adicione em: Settings -> Secrets and variables -> Actions -> New repository secret."
+            exit 1
+          fi
+          FASE="${{ github.event.inputs.fase }}"
+          if [ -z "$FASE" ]; then
+            HOUR=$(TZ=America/Sao_Paulo date +%H)
+            if [ "$HOUR" -lt 14 ]; then FASE=entrada; else FASE=saida; fi
+          fi
+          echo "Disparando fase=$FASE (BRT $(TZ=America/Sao_Paulo date '+%H:%M %a'))"
+          code=$(curl -sS -m 90 -L -o resp.json -w "%{http_code}" \
+            "https://www.costajr.com.br/api/integra/rhid-$FASE?key=$KEY")
+          echo "HTTP $code"
+          cat resp.json || true
+          echo
+          test "$code" = "200"
