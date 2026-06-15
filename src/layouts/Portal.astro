@@ -132,9 +132,9 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
     }
     .sidebar-nav { flex: 1; padding: 10px 10px; display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }
     .sidebar-nav a {
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 12px; border-radius: 8px;
-      font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 12.5px;
+      display: flex; align-items: center; gap: 11px;
+      padding: 11px 13px; border-radius: 8px;
+      font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 14.5px;
       color: #64748B; transition: var(--transition); position: relative;
       text-decoration: none;
     }
@@ -545,7 +545,7 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
         const ok = basicas.includes(area || "") ||
           (area === "comercial" && userRoles.some(r => ["admin","comercial"].includes(r))) ||
           (area === "gestao" && userRoles.some(r => ["admin","operacional","manutencao_operacao","manutencao_administrativo"].includes(r)));
-        if (ok) (el as HTMLElement).style.display = "";
+        if (ok) el.style.display = "";
       });
     };
     if (tk) {
@@ -555,7 +555,7 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
           const areas = d.areas || [];
           document.querySelectorAll(".area-gated").forEach(el => {
             const area = el.getAttribute("data-area");
-            if (!area || areas.includes(area)) (el as HTMLElement).style.display = "";
+            if (!area || areas.includes(area)) el.style.display = "";
           });
         })
         .catch(aplicarFallback);

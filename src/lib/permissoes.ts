@@ -75,15 +75,25 @@ const TODAS_AREAS = AREAS_PORTAL.map((a) => a.id);
 
 /** Permissões efetivas do usuário (união de todos os seus perfis).
  *  Admin sempre tem tudo. Se a tabela não existir/estiver vazia, libera o padrão seguro. */
-export async function permissoesDoUsuario(claims: AdminClaims): Promise<{ areas: string[]; categoriasKb: string[] }> {
-  const perfis = perfisDe(claims);
-  if (perfis.includes("admin")) return { areas: [...TODAS_AREAS], categoriasKb: [...CATEGORIAS_KB] };
-
+export async function permissoesDoUsuario(claims: AdminClaims): Promise<{ areas: string[]; categoriasKb: string[]; perfis: string[] }> {
   const db = supabaseAdmin();
+  // Perfis FRESCOS do banco — refletem mudança de perfil SEM o usuário precisar relogar.
+  // (fallback nos perfis do token se a consulta falhar)
+  let perfis = perfisDe(claims);
+  try {
+    const { data: prof } = await db.from("portal_profiles").select("role, roles").eq("id", claims.sub).maybeSingle();
+    if (prof) {
+      const fresh = ((prof.roles && prof.roles.length) ? prof.roles : [prof.role]).filter(Boolean);
+      if (fresh.length) perfis = fresh;
+    }
+  } catch { /* mantém os perfis do token */ }
+
+  if (perfis.includes("admin")) return { areas: [...TODAS_AREAS], categoriasKb: [...CATEGORIAS_KB], perfis };
+
   const { data, error } = await db.from("portal_permissoes").select("perfil, areas, categorias_kb").in("perfil", perfis);
   if (error || !data?.length) {
-    // fallback (tabela ausente): áreas básicas, sem comercial/gestão
-    return { areas: ["onboarding", "treinamentos", "forum", "documentos", "meus-equipamentos"], categoriasKb: ["Geral"] };
+    // fallback (sem linha na matriz): áreas básicas, sem comercial/gestão
+    return { areas: ["onboarding", "treinamentos", "forum", "documentos", "meus-equipamentos"], categoriasKb: ["Geral"], perfis };
   }
   const areas = new Set<string>();
   const cats = new Set<string>();
@@ -91,7 +101,7 @@ export async function permissoesDoUsuario(claims: AdminClaims): Promise<{ areas:
     for (const a of p.areas || []) areas.add(a);
     for (const c of p.categorias_kb || []) cats.add(c);
   }
-  return { areas: [...areas], categoriasKb: [...cats] };
+  return { areas: [...areas], categoriasKb: [...cats], perfis };
 }
 
 /** Lança erro 403 amigável quando o usuário não tem a área liberada. */

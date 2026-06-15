@@ -102,51 +102,62 @@ import Portal from "~/layouts/Portal.astro";
     if (!token) { window.location.replace("/portal/login"); throw 0; }
 
     const userData = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
-    const role = userData.role || "operacional";
     const nome = userData.nome || userData.email || "colaborador";
-
     document.getElementById("welcomeName")!.textContent = nome.split(" ")[0];
-    document.getElementById("welcomeRole")!.textContent = {
-      admin: "Administrador",
-      manutencao_operacao: "Manutenção - Operação",
-      manutencao_administrativo: "Manutenção - Administrativo",
-      operacional: "Operação",
-      rh: "RH / DP",
-      financeiro: "Financeiro",
-      comercial: "Comercial",
-      juridico: "Jurídico",
-    }[role] || role;
 
-    // Módulos disponíveis por role
+    const ROTULO: Record<string, string> = {
+      admin: "Administrador", manutencao_operacao: "Manutenção - Operação",
+      manutencao_administrativo: "Manutenção - Administrativo", operacional: "Operação",
+      rh: "RH / DP", financeiro: "Financeiro", comercial: "Comercial", juridico: "Jurídico",
+    };
+    const AREAS_BASICAS = ["onboarding", "treinamentos", "forum", "documentos", "meus-equipamentos"];
+
+    // Módulos liberados por ÁREA (bate com a matriz de /admin/permissoes). area:null = sempre.
     const modules = [
-      { icon: '<img src="/junia-mascote.png" alt="JunIA" style="width:50px;height:50px;object-fit:contain">', title: "JunIA", desc: "Pergunte aqui — a inteligência da Costa Júnior responde na hora", href: "/portal/junia", roles: "all", destaque: true },
-      { icon: "✅", title: "Onboarding", desc: "Sua integração e boas-vindas", href: "/portal/onboarding", roles: "all" },
-      { icon: "🎬", title: "Treinamentos", desc: "Vídeos e materiais do seu setor", href: "/portal/treinamentos", roles: "all" },
-      { icon: "💬", title: "Fórum", desc: "Troca de ideias com a equipe", href: "/portal/forum", roles: "all" },
-      { icon: "📄", title: "Documentos", desc: "Manuais e procedimentos técnicos", href: "/portal/documentos", roles: "all" },
-      { icon: "🎒", title: "Meus Equipamentos", desc: "Equipamentos sob sua responsabilidade", href: "/portal/meus-equipamentos", roles: "all" },
-      { icon: "💰", title: "Gest. Comercial", desc: "Leads, contratos e metas", href: "/portal/gestao-comercial", roles: "admin,comercial" },
-      { icon: "🔧", title: "Gest. Manutenção", desc: "Clientes, chamados e técnicos", href: "/portal/gestao-manutencao", roles: "admin,operacional,manutencao_operacao,manutencao_administrativo" },
-      { icon: "🙍", title: "Minha Conta", desc: "Editar nome e trocar senha", href: "/portal/minha-conta", roles: "all" },
+      { icon: '<img src="/junia-mascote.png" alt="JunIA" style="width:50px;height:50px;object-fit:contain">', title: "JunIA", desc: "Pergunte aqui — a inteligência da Costa Júnior responde na hora", href: "/portal/junia", area: null, destaque: true },
+      { icon: "✅", title: "Onboarding", desc: "Sua integração e boas-vindas", href: "/portal/onboarding", area: "onboarding" },
+      { icon: "🎬", title: "Treinamentos", desc: "Vídeos e materiais do seu setor", href: "/portal/treinamentos", area: "treinamentos" },
+      { icon: "💬", title: "Fórum", desc: "Troca de ideias com a equipe", href: "/portal/forum", area: "forum" },
+      { icon: "📄", title: "Documentos", desc: "Manuais e procedimentos técnicos", href: "/portal/documentos", area: "documentos" },
+      { icon: "🎒", title: "Meus Equipamentos", desc: "Equipamentos sob sua responsabilidade", href: "/portal/meus-equipamentos", area: "meus-equipamentos" },
+      { icon: "💰", title: "Gest. Comercial", desc: "Leads, contratos e metas", href: "/portal/gestao-comercial", area: "comercial" },
+      { icon: "🔧", title: "Gest. Manutenção", desc: "Clientes, chamados e técnicos", href: "/portal/gestao-manutencao", area: "gestao" },
+      { icon: "🙍", title: "Minha Conta", desc: "Editar nome e trocar senha", href: "/portal/minha-conta", area: null },
     ];
 
-    const grid = document.getElementById("modules-grid")!;
-    modules.forEach(m => {
-      if (m.roles !== "all" && !m.roles.split(",").includes(role)) return;
-      const a = document.createElement("a");
-      a.className = "module-card" + ((m as any).destaque ? " destaque" : "");
-      a.href = m.href;
-      a.innerHTML = `
-        <div class="module-icon">${m.icon}</div>
-        <div class="module-body">
-          <h3>${m.title}${(m as any).destaque ? '<span class="mod-tag">💬 chat</span>' : ""}</h3>
-          <p>${m.desc}</p>
-        </div>`;
-      grid.appendChild(a);
-    });
+    function renderHub(areas: string[], role: string) {
+      document.getElementById("welcomeRole")!.textContent = ROTULO[role] || role || "—";
+      const grid = document.getElementById("modules-grid")!;
+      grid.innerHTML = "";
+      modules.forEach((m: any) => {
+        if (m.area && !areas.includes(m.area)) return;
+        const a = document.createElement("a");
+        a.className = "module-card" + (m.destaque ? " destaque" : "");
+        a.href = m.href;
+        a.innerHTML = `
+          <div class="module-icon">${m.icon}</div>
+          <div class="module-body">
+            <h3>${m.title}${m.destaque ? '<span class="mod-tag">💬 chat</span>' : ""}</h3>
+            <p>${m.desc}</p>
+          </div>`;
+        grid.appendChild(a);
+      });
+      document.getElementById("hub-loading")!.style.display = "none";
+      document.getElementById("hub-content")!.style.display = "";
+    }
 
-    document.getElementById("hub-loading")!.style.display = "none";
-    document.getElementById("hub-content")!.style.display = "";
+    // Busca perfis/áreas FRESCOS do servidor (refletem mudança de perfil sem relogar).
+    fetch("/api/portal/permissoes", { headers: { "x-portal-auth": token } })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => renderHub(d.areas?.length ? d.areas : AREAS_BASICAS, d.role || userData.role))
+      .catch(() => {
+        // fallback: deriva as áreas dos perfis salvos no localStorage
+        const roles = (userData.roles && userData.roles.length ? userData.roles : [userData.role]).filter(Boolean);
+        const areas = [...AREAS_BASICAS];
+        if (roles.some((r: string) => ["admin", "comercial"].includes(r))) areas.push("comercial");
+        if (roles.some((r: string) => ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"].includes(r))) areas.push("gestao");
+        renderHub(areas, userData.role || "operacional");
+      });
 
     // Comunicados
     fetch("/api/portal/comunicados", { headers: { "x-portal-auth": token } })

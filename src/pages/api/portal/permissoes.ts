@@ -8,8 +8,8 @@ export const prerender = false;
 export const GET: APIRoute = async ({ request }) => {
   try {
     const claims = await requireAdmin(request);
-    const { areas, categoriasKb } = await permissoesDoUsuario(claims);
-    return jsonOk({ areas, categorias_kb: categoriasKb });
+    const { areas, categoriasKb, perfis } = await permissoesDoUsuario(claims);
+    return jsonOk({ areas, categorias_kb: categoriasKb, perfis, role: perfis[0] || claims.role });
   } catch {
     return jsonErr(401, "Não autenticado.");
   }
