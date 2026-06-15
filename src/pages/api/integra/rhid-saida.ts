@@ -45,7 +45,7 @@ async function handle(request: Request, url: URL): Promise<Response> {
   const dia = (d: string) => new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
   if (url.searchParams.get("diag") === "1") {
-    try { return J({ ok: true, diag: await diagnostico(dataISO) }); }
+    try { return J({ ok: true, diag: await diagnostico(dataISO, url.searchParams.get("nome") || undefined) }); }
     catch (e: any) { return J({ ok: false, error: String(e?.message || e) }, 502); }
   }
 

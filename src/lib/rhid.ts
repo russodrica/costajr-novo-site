@@ -325,90 +325,42 @@ export function auditarLocais(dia: DiaPonto): Anomalia[] {
   return anomalias;
 }
 
-// ─── Diagnóstico de conexão (para validar credenciais e formatos) ───────────
-export async function diagnostico(dataISO: string): Promise<any> {
+// ─── Diagnóstico ────────────────────────────────────────────────────────────
+// Foca em UMA pessoa (por nome) numa data: despeja a apuração dela, revelando
+// as batidas do app (horário/tipo/idAfd e GPS, se houver). É assim que vamos
+// confirmar a fonte certa das batidas feitas pelo aplicativo.
+export async function diagnostico(dataISO: string, nome?: string): Promise<any> {
   const out: any = { base: BASE, data: dataISO };
   try { const tok = await obterToken(); out.login = { ok: true, tokenLen: tok.length }; }
   catch (e: any) { out.login = { ok: false, erro: String(e?.message || e) }; return out; }
 
-  // Funcionários + distribuição de status (p/ confirmar qual status = ativo).
+  let pessoas: Pessoa[] = [];
+  try { pessoas = await listarPessoas(); out.pessoas = pessoas.length; out.pessoasAtivas = pessoas.filter((p) => p.ativo).length; }
+  catch (e: any) { out.pessoasErro = String(e?.message || e); }
+
+  const alvo = nome
+    ? pessoas.find((p) => p.nome.toLowerCase().includes(nome.toLowerCase()))
+    : pessoas.find((p) => p.ativo && p.pis && !/teste|test/i.test(p.nome));
+  if (!alvo) { out.pessoaAlvo = "não encontrada"; return out; }
+  out.pessoaAlvo = { id: alvo.id, nome: alvo.nome, ativo: alvo.ativo, temPis: !!alvo.pis };
+
   try {
-    const pessoas = await listarPessoas();
-    const dist: Record<string, number> = {};
-    for (const p of pessoas) dist[String(p.statusRaw)] = (dist[String(p.statusRaw)] || 0) + 1;
-    out.pessoas = pessoas.length;
-    out.pessoasAtivas = pessoas.filter((p) => p.ativo).length;
-    out.ativasComPis = pessoas.filter((p) => p.ativo && p.pis).length;
-    out.distribuicaoStatus = dist;
-  } catch (e: any) { out.pessoasErro = String(e?.message || e); }
-
-  // Equipamentos.
-  let equips: Equipamento[] = [];
-  try { equips = await listarEquipamentos(); out.equipamentos = equips.map((e) => e.nome); }
-  catch (e: any) { out.equipErro = String(e?.message || e); }
-
-  // AFD de CADA equipamento, com e sem limit — p/ achar onde estão as batidas
-  // recentes e se a API trunca (devolve só os registros mais antigos).
-  out.afdPorEquip = [];
-  for (const eq of equips) {
-    const row: any = { eq: eq.nome };
-    for (const [lbl, params] of [["sem", {}], ["limit", { limit: 999999 }]] as [string, Record<string, any>][]) {
-      try {
-        const raw = String(await apiGet("/report/afd/download", { idEquipamento: eq.id, ...params }, true));
-        let s = raw; if (s.startsWith('"')) { try { s = JSON.parse(s); } catch {} }
-        const recs = parseAfd(s);
-        const datas = recs.map((r) => fmtDataISO(r.ts)).sort();
-        row[lbl] = {
-          parsed: recs.length,
-          dataMin: datas[0],
-          dataMax: datas[datas.length - 1],
-          naDataAlvo: recs.filter((r) => fmtDataISO(r.ts) === dataISO).length,
-          maxNsr: recs.reduce((m, r) => Math.max(m, Number(r.nsr) || 0), 0),
-        };
-      } catch (e: any) { row[lbl] = { erro: String(e?.message || e) }; }
-    }
-    out.afdPorEquip.push(row);
-  }
-
-  // Fonte ALTERNATIVA: apuracao_ponto (ponto apurado/live). Pode ter dados
-  // recentes mesmo que o AFD baixável esteja parado. Testa 1 pessoa ativa em
-  // 2 datas: a alvo e uma com dados conhecidos (2025-05-20).
-  try {
-    const pessoas = await listarPessoas();
-    const ativos = pessoas.filter((x) => x.ativo && x.pis);
-    async function apur(idPerson: number, dt: string): Promise<any> {
-      const raw = String(await apiGet("/apuracao_ponto", { idPerson, dataIni: dt, dataFinal: dt }, true));
-      let parsed: any = null; try { parsed = JSON.parse(raw); if (typeof parsed === "string") parsed = JSON.parse(parsed); } catch {}
-      const d0 = Array.isArray(parsed) ? parsed[0] : parsed;
-      const arrays: Record<string, number> = {};
-      if (d0 && typeof d0 === "object") for (const k of Object.keys(d0)) if (Array.isArray(d0[k])) arrays[k] = d0[k].length;
-      return { d0, rawLen: raw.length, arrays };
-    }
-    // Amostra de até 10 ativos reais: quantos têm apuração não-vazia na data alvo.
-    out.apuracaoAmostra = [];
-    for (const p of ativos.slice(0, 10)) {
-      try { const r = await apur(p.id, dataISO); out.apuracaoAmostra.push({ id: p.id, rawLen: r.rawLen, arrays: r.arrays }); }
-      catch (e: any) { out.apuracaoAmostra.push({ id: p.id, erro: String(e?.message || e) }); }
-    }
-    // Formato detalhado do 1º que tiver objeto (achar o campo de batidas).
-    for (const p of ativos.slice(0, 15)) {
-      try {
-        const r = await apur(p.id, dataISO);
-        if (r.d0 && typeof r.d0 === "object") {
-          out.apuracaoExemplo = { id: p.id, campos: Object.keys(r.d0), arrays: r.arrays };
-          for (const k of Object.keys(r.d0)) if (Array.isArray(r.d0[k]) && r.d0[k].length) out.apuracaoExemplo["amostra_" + k] = r.d0[k].slice(0, 6);
-          break;
+    const raw = String(await apiGet("/apuracao_ponto", { idPerson: alvo.id, dataIni: dataISO, dataFinal: dataISO }, true));
+    let parsed: any = null; try { parsed = JSON.parse(raw); if (typeof parsed === "string") parsed = JSON.parse(parsed); } catch {}
+    const d0 = Array.isArray(parsed) ? parsed[0] : parsed;
+    out.apur = { rawLen: raw.length, campos: d0 && typeof d0 === "object" ? Object.keys(d0).length : null };
+    if (d0 && typeof d0 === "object") {
+      for (const k of Object.keys(d0)) {
+        if (Array.isArray(d0[k]) && d0[k].length) {
+          out.apur["arr_" + k] = d0[k].slice(0, 12).map((it: any) =>
+            it && typeof it === "object"
+              ? { dateTime: it.dateTime, hora: it.hora, idAfd: it.idAfd, tReg: it._typeRegister, tCls: it._typeClassification, reason: typeof it.reason === "string" ? it.reason.slice(0, 36) : it.reason, lat: it.latitude ?? it.lat ?? it.gpsLatitude, lng: it.longitude ?? it.lng ?? it.gpsLongitude }
+              : it,
+          );
         }
-      } catch {}
+      }
     }
-  } catch (e: any) { out.apuracaoErro = String(e?.message || e); }
-
-  // Pipeline real de batidas (como os alertas usam).
-  try {
-    const batidas = await coletarBatidasDoDia(dataISO, equips);
-    out.batidasNoDia = batidas.length;
-    out.amostraBatidas = batidas.slice(0, 6).map((b) => ({ hora: hhmm(b.ts), equipamento: b.deviceNome, pisCasou: !!b.pis }));
-  } catch (e: any) { out.batidasErro = String(e?.message || e); }
+  } catch (e: any) { out.apurErro = String(e?.message || e); }
 
   return out;
 }
