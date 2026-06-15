@@ -150,10 +150,15 @@ export async function listarEquipamentos(): Promise<Equipamento[]> {
 // ─── AFD (batidas) ──────────────────────────────────────────────────────────
 export type Batida = { pis: string; ts: Date; nsr: string; deviceId: number; deviceNome: string };
 
-// Baixa o AFD de um equipamento no intervalo (datas em ISO yyyy-mm-dd).
-async function baixarAfd(idEquipamento: number, dataIni: string, dataFinal: string): Promise<string> {
-  const txt = await apiGet("/report/afd/download", { idEquipamento, dataIni, dataFinal, limit: 100000 }, true);
-  return typeof txt === "string" ? txt : String(txt ?? "");
+// Baixa o AFD completo de um equipamento e o normaliza.
+// IMPORTANTE: a API devolve o AFD como STRING JSON (entre aspas, com \r\n
+// escapados). E o filtro por data via parâmetro retorna vazio — então
+// baixamos tudo e filtramos a data no cliente (coletarBatidasDoDia).
+async function baixarAfd(idEquipamento: number): Promise<string> {
+  const raw = await apiGet("/report/afd/download", { idEquipamento }, true);
+  let s = typeof raw === "string" ? raw : String(raw ?? "");
+  if (s.startsWith('"')) { try { s = JSON.parse(s); } catch { /* mantém cru */ } }
+  return s;
 }
 
 // Parser de AFD tolerante: lê registros de marcação (tipo 3).
@@ -206,7 +211,7 @@ export async function coletarBatidasDoDia(dataISO: string, equipamentos?: Equipa
   for (const eq of equips) {
     let texto = "";
     try {
-      texto = await baixarAfd(eq.id, dataISO, dataISO);
+      texto = await baixarAfd(eq.id);
     } catch {
       continue; // equipamento sem AFD / sem acesso — ignora
     }
@@ -342,23 +347,24 @@ export async function diagnostico(dataISO: string): Promise<any> {
   try { equips = await listarEquipamentos(); out.equipamentos = equips.map((e) => e.nome); }
   catch (e: any) { out.equipErro = String(e?.message || e); }
 
-  // AFD CRU do 1º equipamento real — várias variações p/ achar data/limite certo.
+  // AFD do 1º equipamento real — confirma desempacote JSON + cobertura de datas.
   if (equips.length) {
     const eq = equips.find((e) => !/teste/i.test(e.nome)) || equips[0];
-    const toBR = (iso: string) => iso.split("-").reverse().join("/");
-    const primeiroDoMes = dataISO.slice(0, 8) + "01";
-    async function afdRaw(label: string, p: Record<string, any>) {
-      try {
-        const txt = String(await apiGet("/report/afd/download", { idEquipamento: eq.id, ...p }, true));
-        return { label, equip: eq.nome, bytes: txt.length, linhas: txt.split(/\r?\n/).filter(Boolean).length, parsed: parseAfd(txt).length, head: txt.slice(0, 220) };
-      } catch (e: any) { return { label, erro: String(e?.message || e) }; }
-    }
-    out.afdDebug = [
-      await afdRaw("iso_dia", { dataIni: dataISO, dataFinal: dataISO }),
-      await afdRaw("br_dia", { dataIni: toBR(dataISO), dataFinal: toBR(dataISO) }),
-      await afdRaw("iso_range_mes", { dataIni: primeiroDoMes, dataFinal: dataISO }),
-      await afdRaw("sem_data", {}),
-    ];
+    try {
+      const s = await baixarAfd(eq.id);
+      const recs = parseAfd(s);
+      const datas = recs.map((r) => fmtDataISO(r.ts)).sort();
+      out.afdDebug = {
+        equip: eq.nome,
+        bytes: s.length,
+        linhas: s.split(/\r?\n/).filter(Boolean).length,
+        parsed: recs.length,
+        dataMin: datas[0],
+        dataMax: datas[datas.length - 1],
+        naDataAlvo: recs.filter((r) => fmtDataISO(r.ts) === dataISO).length,
+        amostra: recs.slice(0, 4).map((r) => ({ d: fmtDataISO(r.ts), h: hhmm(r.ts), pisLen: r.pis.length })),
+      };
+    } catch (e: any) { out.afdDebug = { erro: String(e?.message || e) }; }
   }
 
   // Pipeline real de batidas (como os alertas usam).
