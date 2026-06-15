@@ -7,8 +7,24 @@ import { verifyToken, perfisDe, type AdminClaims } from "../lib/auth";
 const { title, current = "" } = Astro.props;
 
 // Modo "embed": esconde a moldura do admin (menu + topo) para ser embutido
-// dentro do portal do colaborador (ex.: /portal/rh embute /admin/rh?embed=1).
-const embed = Astro.url.searchParams.get("embed") === "1";
+// dentro do portal do colaborador (ex.: /portal/rh embute /admin/rh).
+// Detectado por 3 sinais INDEPENDENTES (qualquer um ativa) — robusto mesmo se a
+// query "?embed=1" se perder em cache/redirect, pois os headers sao regenerados
+// a cada requisicao:
+//   1) query ?embed=1 (sinal explicito)
+//   2) Sec-Fetch-Dest: iframe (toda navegacao DENTRO do iframe — inclui cliques)
+//   3) Referer contendo /portal/rh (same-origin envia o path completo)
+const _hdr = Astro.request.headers;
+const _sfDest = (_hdr.get("sec-fetch-dest") || "").toLowerCase();
+const _referer = _hdr.get("referer") || "";
+let _qEmbed = Astro.url.searchParams.get("embed") === "1";
+try { if (!_qEmbed) _qEmbed = new URL(Astro.request.url).searchParams.get("embed") === "1"; } catch { /* noop */ }
+const _viaPortalRh = _referer.includes("/portal/rh");
+// Esconde a moldura (chrome). Tolerante: qualquer iframe interno fica sem moldura (inofensivo).
+const embed = _qEmbed || _sfDest === "iframe" || _viaPortalRh;
+// TRAVA no RH: so dispara pelo embed deliberado do portal (query OU referer /portal/rh),
+// NUNCA so por sec-fetch-dest — evita travar um iframe interno qualquer do admin.
+const embedRhLock = _qEmbed || _viaPortalRh;
 
 // Perfis do usuário (lidos do token) — para liberar os módulos do admin POR PERFIL.
 let perfisUser: string[] = [];
@@ -31,7 +47,11 @@ const GRUPO_ROLES: Record<string, string[]> = {
   institucional: ["admin"],
   sistema:    ["admin"],
 };
-const podeGrupo = (id: string) => !temPerfis || ehAdminUser || !GRUPO_ROLES[id] || GRUPO_ROLES[id].some((r) => perfisUser.includes(r));
+const podeGrupo = (id: string) => {
+  // No embed do portal (Gestão de RH), trava TUDO no grupo "rh" — inclusive admin.
+  if (embedRhLock) return id === "rh";
+  return !temPerfis || ehAdminUser || !GRUPO_ROLES[id] || GRUPO_ROLES[id].some((r) => perfisUser.includes(r));
+};
 
 type NavItem = { href: string; label: string; icon: string; key: string };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
@@ -144,7 +164,10 @@ const gruposVisiveis = grupos.filter(g => podeGrupo(g.id));
 const grupoDaPagina = grupos.find(g => g.items.some(i => i.key === current));
 // Bloqueio REAL de acesso: o redirect NÃO funciona dentro de um layout, então
 // o conteúdo da página (slot) só é renderizado se o perfil tiver permissão.
-const semAcessoPagina = !!(temPerfis && current && grupoDaPagina && !podeGrupo(grupoDaPagina.id));
+const semAcessoPagina = embedRhLock
+  // No embed do portal: so o grupo "rh" passa (vale ate p/ admin); bloqueia o resto.
+  ? !!(grupoDaPagina && grupoDaPagina.id !== "rh")
+  : !!(temPerfis && current && grupoDaPagina && !podeGrupo(grupoDaPagina.id));
 ---
 <!doctype html>
 <html lang="pt-BR">
@@ -163,14 +186,14 @@ const semAcessoPagina = !!(temPerfis && current && grupoDaPagina && !podeGrupo(g
   <meta name="robots" content="noindex,nofollow" />
 </head>
 <body>
-  {embed && (
-    <style is:inline>{`
-      .shell.embed .sidebar, .shell.embed .topbar { display: none !important; }
-      .shell.embed .main-wrap { margin-left: 0 !important; width: 100% !important; }
-      .shell.embed .main-content { padding-top: 18px !important; }
-      html, body { background: #fff !important; }
-    `}</style>
-  )}
+  <style is:inline>{`
+    /* Regras do modo embed — SEMPRE presentes; so valem quando o shell tem a classe .embed.
+       (Isso evita depender de renderizacao condicional do bloco de estilo.) */
+    .shell.embed .sidebar, .shell.embed .topbar { display: none !important; }
+    .shell.embed .main-wrap { margin-left: 0 !important; width: 100% !important; }
+    .shell.embed .main-content { padding-top: 18px !important; }
+    .shell.embed { background: #fff !important; }
+  `}</style>
   {embed && (
     <script is:inline>{`
       // Modo embed: mantém a navegação interna do admin DENTRO do portal (sem moldura).
