@@ -59,12 +59,12 @@ async function apiGet(path: string, params: Record<string, any> = {}, asText = f
   const tok = await obterToken();
   const u = new URL(BASE + path);
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
-  const r = await fetch(u.toString(), { headers: { Authorization: tok, Accept: asText ? "text/plain, */*" : "application/json" } });
+  const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${tok}`, Accept: asText ? "text/plain, */*" : "application/json" } });
   if (r.status === 401) {
     // token pode ter expirado entre as chamadas — renova uma vez
     _token = ""; _tokenExp = 0;
     const tok2 = await obterToken();
-    const r2 = await fetch(u.toString(), { headers: { Authorization: tok2, Accept: asText ? "text/plain, */*" : "application/json" } });
+    const r2 = await fetch(u.toString(), { headers: { Authorization: `Bearer ${tok2}`, Accept: asText ? "text/plain, */*" : "application/json" } });
     if (!r2.ok) throw new Error(`RHiD GET ${path} -> ${r2.status}`);
     return asText ? r2.text() : r2.json().catch(() => null);
   }
@@ -308,76 +308,31 @@ export function auditarLocais(dia: DiaPonto): Anomalia[] {
   return anomalias;
 }
 
-// ─── Diagnóstico de conexão (para validar credenciais/formatos) ─────────────
-
-// Sonda crua de um endpoint: NÃO lança. Em sucesso mostra só a estrutura
-// (sem valores, p/ privacidade); em erro mostra o corpo (p/ depurar 400 etc.).
-async function probe(path: string, params: Record<string, any> = {}): Promise<any> {
-  try {
-    const tok = await obterToken();
-    const u = new URL(BASE + path);
-    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
-    const r = await fetch(u.toString(), { headers: { Authorization: tok, Accept: "application/json" } });
-    const txt = await r.text();
-    let j: any = null; try { j = JSON.parse(txt); } catch {}
-    if (!r.ok) return { status: r.status, ok: false, bodyHead: txt.slice(0, 300) };
-    const arr = j ? comoLista(j) : [];
-    return {
-      status: r.status,
-      ok: true,
-      envelope: Array.isArray(j) ? "(array)" : j && typeof j === "object" ? Object.keys(j) : typeof j,
-      itens: arr.length,
-      primeiroItemCampos: arr[0] ? Object.keys(arr[0]) : [],
-    };
-  } catch (e: any) {
-    return { erro: String(e?.message || e) };
-  }
-}
-
+// ─── Diagnóstico de conexão (para validar credenciais e formatos) ───────────
 export async function diagnostico(dataISO: string): Promise<any> {
-  const out: any = { base: BASE };
+  const out: any = { base: BASE, data: dataISO };
+  try { const tok = await obterToken(); out.login = { ok: true, tokenLen: tok.length }; }
+  catch (e: any) { out.login = { ok: false, erro: String(e?.message || e) }; return out; }
 
-  // 1) login CRU (sem cache) — p/ ver a estrutura da resposta e o token.
-  const lbody: Record<string, string> = { email: EMAIL, password: SENHA };
-  if (DOMINIO) lbody.domain = DOMINIO;
-  let token = "";
+  // Funcionários + distribuição de status (p/ confirmar qual status = ativo).
   try {
-    const lr = await fetch(`${BASE}/login`, { method: "POST", headers: { "content-type": "application/json", Accept: "application/json" }, body: JSON.stringify(lbody) });
-    const lt = await lr.text();
-    let lj: any = null; try { lj = JSON.parse(lt); } catch {}
-    token = lj?.accessToken || lj?.access_token || lj?.token || "";
-    out.login = {
-      status: lr.status,
-      campos: lj ? Object.keys(lj) : "(não-json)",
-      tokenLen: token.length,
-      tokenPrefixo: token.slice(0, 4),
-      code: lj?.code,
-      error: lj?.error,
-      expiredPassword: lj?.expiredPassword,
-      isPerson: lj?.isPerson,
-      qtdCustomers: Array.isArray(lj?.listCustomer) ? lj.listCustomer.length : undefined,
-      customers: Array.isArray(lj?.listCustomer)
-        ? lj.listCustomer.slice(0, 6).map((c: any) => ({ id: c?.id ?? c?.idCustomer, nome: c?.name ?? c?.nome ?? c?.fantasyName, dominio: c?.domain ?? c?.dominio ?? c?.subdomain, campos: c && typeof c === "object" ? Object.keys(c) : typeof c }))
-        : undefined,
-      data: typeof lj?.data === "string" ? lj.data.slice(0, 40) : lj?.data,
-    };
-  } catch (e: any) { out.login = { erro: String(e?.message || e) }; return out; }
-  if (!token) return out;
+    const pessoas = await listarPessoas();
+    const dist: Record<string, number> = {};
+    for (const p of pessoas) dist[String(p.statusRaw)] = (dist[String(p.statusRaw)] || 0) + 1;
+    out.pessoas = pessoas.length;
+    out.pessoasAtivas = pessoas.filter((p) => p.ativo).length;
+    out.ativasComPis = pessoas.filter((p) => p.ativo && p.pis).length;
+    out.distribuicaoStatus = dist;
+  } catch (e: any) { out.pessoasErro = String(e?.message || e); }
 
-  // 2) tenta variações de autenticação em /person p/ achar a aceita (200).
-  async function tryAuth(label: string, headers: Record<string, string>, extra = ""): Promise<any> {
-    try {
-      const r = await fetch(`${BASE}/person?start=0&length=10${extra}`, { headers });
-      const t = await r.text();
-      return { label, status: r.status, len: t.length, head: r.ok ? "(ok)" : t.slice(0, 160) };
-    } catch (e: any) { return { label, erro: String(e?.message || e) }; }
-  }
-  out.variantesAuth = [
-    await tryAuth("Authorization: token", { Authorization: token, Accept: "application/json" }),
-    await tryAuth("Authorization: Bearer token", { Authorization: `Bearer ${token}`, Accept: "application/json" }),
-    await tryAuth("header access_token", { access_token: token, Accept: "application/json" }),
-    await tryAuth("header token", { token, Accept: "application/json" }),
-    await tryAuth("query access_token", { Accept: "application/json" }, `&access_token=${encodeURIComponent(token)}`),
-  ];
+  // Equipamentos + batidas lidas no dia (valida download/parse do AFD).
+  try {
+    const equips = await listarEquipamentos();
+    out.equipamentos = equips.map((e) => e.nome);
+    const batidas = await coletarBatidasDoDia(dataISO, equips);
+    out.batidasNoDia = batidas.length;
+    out.amostraBatidas = batidas.slice(0, 6).map((b) => ({ hora: hhmm(b.ts), equipamento: b.deviceNome, pisCasou: !!b.pis }));
+  } catch (e: any) { out.equipBatidasErro = String(e?.message || e); }
+
   return out;
 }
