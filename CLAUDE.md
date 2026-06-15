@@ -1508,8 +1508,23 @@ nao pode acessar algo). Escolhas dela: tela propria (MATRIZ) + tudo junto
 - **PENDENTE (polimento, nao critico):** esconder os botoes de edicao nas paginas
   em modo leitura (hoje o banner avisa + o servidor recusa 403 com msg amigavel;
   marcar os botoes com `data-requer-edicao` esconde-os — falta taguear por pagina).
-  E mapear conciliacao(`fin-conciliacao`) e sub-modulos RH com chave propria no
-  ENFORCEMENT fino se quiser (hoje fin inteiro=`financeiro`).
+
+**Refinamentos (15/06/2026, mesma feature):**
+- UI da aba "Por usuario" REFEITA estilo Vobi (a matriz densa confundiu a Adriana):
+  um colaborador por vez (seletor), departamentos com switch liga/desliga + expandir
+  (▸) p/ ajustar modulo a modulo com 👁 Ver / ✎ Editar. `#permEditor` gerado por JS.
+- BUG de estilo: o `<style>` do Astro e SCOPED -> HTML gerado por innerHTML nao
+  recebia o hash -> switches/cards apareciam crus. FIX: `<style is:global>` na pagina.
+  (Regra geral: estilo que precisa valer p/ innerHTML tem que ser is:global.)
+- Editor compactado: `#permEditor` max-width 760px + zebra + hover (estava largo
+  demais, dificil seguir a linha).
+- **TRAVA CENTRAL de "Ver=so-leitura" no MIDDLEWARE** (substitui o guard por-endpoint
+  dos 5 modulos, que deixava "Ver" editar nos demais): `src/middleware.ts` recusa 403
+  TODA mutacao em `/api/admin/<modulo>` quando o nivel != editar, usando
+  `moduloDaRotaApi()` (lib) p/ mapear rota->modulo. Cobre TODOS os modulos. Admin
+  nunca trava; GET passa. E2E: Ver em modulo fora dos 5 (clientes) bloqueia edicao.
+- **"Removi e ainda abre" era CACHE:** o SW servia HTML antigo do admin. FIX: sw.js
+  /admin/* SEMPRE rede, nunca cache (cjr-v3 -> **cjr-v4**). Apos deploy, hard refresh.
 
 ## Convencoes desta pasta para o Claude Code
 
