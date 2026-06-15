@@ -64,6 +64,14 @@ export const POST: APIRoute = async ({ request }) => {
       enviarTelegram(`↩️ <b>Devolução no desligamento</b>\n${escTg(colab.nome)} devolveu ${ativos.length} ativo(s) ao estoque.\nPor ${escTg(admin.email)}`).catch(() => { /* best-effort */ });
     }
 
+    // Revoga os acessos a sistemas que ainda estavam ativos (mantém histórico) e
+    // monta a lista para o e-mail/checklist da TI.
+    const { data: acessosAtivos } = await db.from("rh_acessos").select("id, sistema, usuario").eq("colaborador_id", colaborador_id).eq("status", "ativo");
+    const acessosLista = (acessosAtivos || []).map((a: any) => a.sistema + (a.usuario ? ` (${a.usuario})` : ""));
+    if (acessosAtivos && acessosAtivos.length) {
+      await db.from("rh_acessos").update({ status: "revogado", revogado_em: hoje, updated_at: new Date().toISOString() }).eq("colaborador_id", colaborador_id).eq("status", "ativo");
+    }
+
     const { data: desl, error } = await db.from("rh_desligamentos").insert({
       colaborador_id, data_desligamento: body.data_desligamento || hoje, tipo: tipo || null, motivo: motivo || null,
       entrevista: entrevista || null, checklist, status: "concluido", criado_por: admin.email,
@@ -96,6 +104,7 @@ export const POST: APIRoute = async ({ request }) => {
         <h2 style="color:#C41E3A;margin-bottom:4px">🚪 Desligamento concluído — ${colab.nome}</h2>
         <p style="color:#5B5F6B">Regime: <strong>${(colab.regime || "—").toUpperCase()}</strong> · Data: ${body.data_desligamento || hoje}. O acesso ao portal já foi revogado. Providencie os cancelamentos abaixo:</p>
         <ul style="font-size:14px;line-height:1.9">${tarefas.map((t) => `<li>${t}</li>`).join("")}</ul>
+        ${acessosLista.length ? `<p style="font-weight:700;margin:14px 0 4px;color:#2D2F36">🔐 Acessos cadastrados a revogar/conferir (${acessosLista.length}):</p><ul style="font-size:14px;line-height:1.8">${acessosLista.map((s) => `<li>${s}</li>`).join("")}</ul>` : ""}
         <p style="margin-top:16px"><a href="${SITE_DESL}/admin/rh" style="background:#C41E3A;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700">Abrir o RH</a></p>
         <p style="color:#9CA3AF;font-size:12px;margin-top:24px">Aviso automático — Costa Júnior Engenharia.</p>
       </div>`;

@@ -509,6 +509,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <button type="button" class="ficha-tab active" data-ft="dados" onclick="fichaTab('dados')">📋 Dados gerais</button>
         <button type="button" class="ficha-tab" data-ft="docs" onclick="fichaTab('docs')">📎 Documentos <span id="fichaTabDocsCount" style="opacity:.75"></span></button>
         <button type="button" class="ficha-tab" data-ft="epi" onclick="fichaTab('epi')">🦺 EPIs</button>
+        <button type="button" class="ficha-tab" data-ft="acessos" onclick="fichaTab('acessos')">🔐 Acessos <span id="fichaTabAcessosCount" style="opacity:.85"></span></button>
         <button type="button" class="ficha-tab" data-ft="pendencias" onclick="fichaTab('pendencias')">⚠️ Pendências <span id="fichaTabPendCount" style="opacity:.85"></span></button>
       </div>
       <div id="fichaPaneDados">
@@ -609,6 +610,18 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <p style="font-size:12px;color:#9CA3AF;margin-top:8px">A ficha sai sempre completa, com todos os EPIs. Preencha CA, tamanho e validade; a entrega vem com a data de hoje. Alerta automático 15 dias antes do vencimento para rh@ e engenharia@. Gere o PDF, imprima, colha a assinatura e anexe o documento assinado no histórico.</p>
         <div id="epiFichas" style="margin-top:14px"></div>
         <div id="epiAnexos" style="margin-top:16px;border-top:1px solid #F0F1F4;padding-top:12px"></div>
+      </div>
+
+      <!-- Aba Acessos a sistemas -->
+      <div id="fichaPaneAcessos" style="display:none">
+        <div class="section-header" style="margin-bottom:10px">
+          <span class="section-title" style="font-size:15px">🔐 Acessos a sistemas <span id="acessosResumo" style="color:#9CA3AF;font-weight:600"></span></span>
+          <button type="button" class="btn btn-primary btn-sm" onclick="salvarAcessos()" id="btnSalvarAcessos">💾 Salvar</button>
+        </div>
+        <p style="font-size:12px;color:#9CA3AF;margin:0 0 12px">Marque os programas que o colaborador tem acesso (login/observação são opcionais). Ao desligar, esta lista mostra o que precisa ser revogado. Desmarcar um acesso ativo o move para o <strong>histórico</strong> (revogado) — nada é apagado.</p>
+        <div id="acessosMsg"></div>
+        <div id="acessosLista"><div class="loading"><div class="spinner"></div> Carregando acessos...</div></div>
+        <div id="acessosHistorico" style="margin-top:16px"></div>
       </div>
 
       <div id="fichaPanePendencias" style="display:none">
@@ -1194,10 +1207,11 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     const camposColab = ["nome","email","email_pessoal","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
 
     function fichaTab(qual: string) {
-      const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi", pendencias: "fichaPanePendencias" };
+      const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi", acessos: "fichaPaneAcessos", pendencias: "fichaPanePendencias" };
       for (const [k, id] of Object.entries(panes)) { const el = document.getElementById(id); if (el) (el as any).style.display = (k === qual ? "" : "none"); }
       document.querySelectorAll(".ficha-tab").forEach((t) => t.classList.toggle("active", (t as any).dataset.ft === qual));
       if (qual === "epi" && (window as any).__fichaColabId) carregarEpi((window as any).__fichaColabId);
+      if (qual === "acessos" && (window as any).__fichaColabId) carregarAcessos((window as any).__fichaColabId);
       if (qual === "pendencias" && (window as any).__fichaColabId) carregarPendencias((window as any).__fichaColabId);
     }
     (window as any).fichaTab = fichaTab;
@@ -1614,6 +1628,123 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).gerarFichaEpi = gerarFichaEpi;
     (window as any).anexarAssinadoEpi = anexarAssinadoEpi;
 
+    // ── Acessos a sistemas (aba) ──
+    const escAc = (v: any) => String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    async function carregarAcessos(colabId: string) {
+      const wrap = document.getElementById("acessosLista")!;
+      const hist = document.getElementById("acessosHistorico")!;
+      wrap.innerHTML = '<div class="loading"><div class="spinner"></div> Carregando acessos...</div>';
+      hist.innerHTML = "";
+      try {
+        const res = await fetch(`/api/admin/rh/acessos?colaborador_id=${encodeURIComponent(colabId)}`);
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Erro");
+        const catalogo: { categoria: string; itens: string[] }[] = d.catalogo || [];
+        const acessos: any[] = d.acessos || [];
+        const porSis: Record<string, any> = {};
+        for (const a of acessos) porSis[a.sistema] = a;
+
+        const linha = (sistema: string, cat: string, custom: boolean) => {
+          const a = porSis[sistema];
+          const ativo = a && a.status === "ativo";
+          const nomeCol = custom
+            ? `<input class="acesso-nome" value="${escAc(sistema)}" placeholder="Nome do sistema" style="font-weight:600;border:1px solid #E5E7EB;border-radius:6px;padding:5px 8px;font-size:13px;min-width:150px">`
+            : `<span class="acesso-nome-fix" style="font-weight:600;font-size:13.5px;min-width:150px">${escAc(sistema)}</span>`;
+          return `<div class="acesso-item" data-sistema="${escAc(sistema)}" data-cat="${escAc(cat)}" style="display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid #F3F4F6;flex-wrap:wrap">
+            <input type="checkbox" class="acesso-chk" ${ativo ? "checked" : ""} style="width:18px;height:18px;flex-shrink:0;cursor:pointer">
+            ${nomeCol}
+            <input class="acesso-user" value="${escAc(a?.usuario)}" placeholder="login / usuário" style="border:1px solid #E5E7EB;border-radius:6px;padding:5px 8px;font-size:12.5px;flex:1;min-width:120px">
+            <input class="acesso-obs" value="${escAc(a?.observacao)}" placeholder="observação" style="border:1px solid #E5E7EB;border-radius:6px;padding:5px 8px;font-size:12.5px;flex:1;min-width:120px">
+            ${custom ? '<button type="button" class="btn btn-ghost btn-sm" onclick="this.closest(\'.acesso-item\').remove()" title="Remover">✕</button>' : ""}
+          </div>`;
+        };
+
+        let html = "";
+        const noCatalogo = new Set<string>();
+        for (const g of catalogo) {
+          html += `<div style="margin:14px 0 4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF">${escAc(g.categoria)}</div>`;
+          for (const s of g.itens) { noCatalogo.add(s); html += linha(s, g.categoria, false); }
+        }
+        const extras = acessos.filter((a) => !noCatalogo.has(a.sistema) && a.status === "ativo");
+        if (extras.length) {
+          html += `<div style="margin:14px 0 4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF">Outros</div>`;
+          for (const a of extras) html += linha(a.sistema, a.categoria || "Outros", true);
+        }
+        html += `<button type="button" class="btn btn-outline btn-sm" style="margin-top:12px" onclick="addLinhaAcessoCustom()">+ Adicionar sistema (fora da lista)</button>`;
+        wrap.innerHTML = html;
+
+        const nAtivos = acessos.filter((a) => a.status === "ativo").length;
+        const resumo = document.getElementById("acessosResumo"); if (resumo) resumo.textContent = nAtivos ? `(${nAtivos} ativo${nAtivos > 1 ? "s" : ""})` : "";
+        const badge = document.getElementById("fichaTabAcessosCount"); if (badge) badge.textContent = nAtivos ? `(${nAtivos})` : "";
+
+        const revogados = acessos.filter((a) => a.status === "revogado");
+        if (revogados.length) {
+          hist.innerHTML = `<div style="border-top:1px solid #F0F1F4;padding-top:12px"><div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF;margin-bottom:8px">📜 Histórico — acessos revogados (${revogados.length})</div>`
+            + revogados.map((a) => `<div style="font-size:12.5px;color:#6B7280;padding:4px 0;display:flex;gap:8px;flex-wrap:wrap"><span style="font-weight:600;color:#374151">${escAc(a.sistema)}</span>${a.usuario ? `<span>· ${escAc(a.usuario)}</span>` : ""}<span style="color:#9CA3AF">· revogado em ${a.revogado_em ? new Date(a.revogado_em + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</span></div>`).join("")
+            + `</div>`;
+        }
+      } catch (e: any) {
+        wrap.innerHTML = `<div class="alert alert-error">Erro ao carregar acessos: ${escAc(e.message)}</div>`;
+      }
+    }
+
+    function addLinhaAcessoCustom() {
+      const wrap = document.getElementById("acessosLista")!;
+      const btn = wrap.querySelector("button");
+      const div = document.createElement("div");
+      div.className = "acesso-item";
+      div.style.cssText = "display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid #F3F4F6;flex-wrap:wrap";
+      div.innerHTML = `<input type="checkbox" class="acesso-chk" checked style="width:18px;height:18px;flex-shrink:0;cursor:pointer">
+        <input class="acesso-nome" placeholder="Nome do sistema" style="font-weight:600;border:1px solid #E5E7EB;border-radius:6px;padding:5px 8px;font-size:13px;min-width:150px">
+        <input class="acesso-user" placeholder="login / usuário" style="border:1px solid #E5E7EB;border-radius:6px;padding:5px 8px;font-size:12.5px;flex:1;min-width:120px">
+        <input class="acesso-obs" placeholder="observação" style="border:1px solid #E5E7EB;border-radius:6px;padding:5px 8px;font-size:12.5px;flex:1;min-width:120px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.acesso-item').remove()" title="Remover">✕</button>`;
+      if (btn) wrap.insertBefore(div, btn); else wrap.appendChild(div);
+      (div.querySelector(".acesso-nome") as HTMLInputElement)?.focus();
+    }
+
+    function coletarAcessos() {
+      return Array.from(document.querySelectorAll("#acessosLista .acesso-item")).map((el) => {
+        const nomeInput = el.querySelector(".acesso-nome") as HTMLInputElement | null;
+        const sistema = (nomeInput ? nomeInput.value : (el as any).dataset.sistema || "").trim();
+        if (!sistema) return null;
+        return {
+          sistema,
+          tem_acesso: (el.querySelector(".acesso-chk") as HTMLInputElement).checked,
+          usuario: (el.querySelector(".acesso-user") as HTMLInputElement).value.trim() || null,
+          observacao: (el.querySelector(".acesso-obs") as HTMLInputElement).value.trim() || null,
+        };
+      }).filter(Boolean);
+    }
+
+    async function salvarAcessos() {
+      const colabId = (window as any).__fichaColabId;
+      if (!colabId) return;
+      const msg = document.getElementById("acessosMsg")!;
+      const btn = document.getElementById("btnSalvarAcessos") as HTMLButtonElement;
+      if (btn) { btn.disabled = true; btn.textContent = "Salvando..."; }
+      try {
+        const res = await fetch("/api/admin/rh/acessos", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ colaborador_id: colabId, itens: coletarAcessos() }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Erro");
+        msg.innerHTML = `<div class="alert alert-success">Acessos salvos: ${d.ativos} ativo(s)${d.revogados ? `, ${d.revogados} revogado(s)` : ""}.</div>`;
+        setTimeout(() => { msg.innerHTML = ""; }, 3500);
+        carregarAcessos(colabId);
+      } catch (e: any) {
+        msg.innerHTML = `<div class="alert alert-error">Erro ao salvar: ${escAc(e.message)}</div>`;
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "💾 Salvar"; }
+      }
+    }
+    (window as any).carregarAcessos = carregarAcessos;
+    (window as any).salvarAcessos = salvarAcessos;
+    (window as any).addLinhaAcessoCustom = addLinhaAcessoCustom;
+
     // ── Acesso ao portal (vínculo RH ↔ Membros) ──
     function renderAcesso(colabId: string, nome: string, membro: any, email: string) {
       const box = document.getElementById("fichaAcessoLista")!;
@@ -1687,13 +1818,21 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         const r = await fetch(`/api/admin/rh/desligamentos/posse?colaborador_id=${id}`);
         const d = await r.json();
         const itens = d.itens || [];
-        posseBox.innerHTML = itens.length
+        const acessos = d.acessos || [];
+        let h = itens.length
           ? itens.map((it: any) => `<div data-it-tipo="${escD(it.tipo)}" data-it-id="${escD(it.id)}" style="display:flex;align-items:center;gap:10px;border:1px solid #ECEFF3;border-radius:8px;padding:8px 10px;margin-bottom:6px;flex-wrap:wrap">
               <span style="flex:1;min-width:140px;font-size:13px"><strong>${escD(it.nome)}</strong> <span style="color:#9CA3AF;font-size:11px">${escD(it.categoria || it.tipo)}</span></span>
               <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" class="it-dev" /> Devolvido</label>
               <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" class="it-ok" /> Perfeito estado</label>
             </div>`).join("")
           : '<p style="font-size:13px;color:#16A34A">✅ Nada pendente em posse (Ativos/EPIs).</p>';
+        if (acessos.length) {
+          h += `<div style="margin-top:12px;border-top:1px dashed #E5E7EB;padding-top:10px">
+            <div style="font-size:12.5px;font-weight:700;color:#B45309;margin-bottom:6px">🔐 Acessos a revogar pela TI (${acessos.length}) — serão marcados como revogados ao concluir:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">${acessos.map((a: any) => `<span style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:6px;padding:2px 8px;font-size:12px;color:#92400E">${escD(a.sistema)}${a.usuario ? ` · ${escD(a.usuario)}` : ""}</span>`).join("")}</div>
+          </div>`;
+        }
+        posseBox.innerHTML = h;
       } catch { posseBox.innerHTML = '<div class="alert alert-error">Erro ao verificar posse.</div>'; }
     }
     function regimeStepsHtml(regime: string) {

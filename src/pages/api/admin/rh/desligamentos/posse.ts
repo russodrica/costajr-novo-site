@@ -37,7 +37,12 @@ export const GET: APIRoute = async ({ request, url }) => {
     const epiPendentes = (epis || []).filter((e: any) => !e.data_devolucao)
       .map((e: any) => ({ tipo: "epi", id: e.id, nome: e.epi + (e.ca ? ` (CA ${e.ca})` : ""), categoria: "EPI/Uniforme" }));
 
-    return jsonOk({ colaborador: { id: colab.id, nome: colab.nome, regime: colab.regime }, itens: [...ativos, ...epiPendentes] });
+    // Acessos a sistemas ainda ATIVOS — informativo (TI revoga; NÃO trava o desligamento).
+    const { data: acessosRows } = await db.from("rh_acessos")
+      .select("sistema, categoria, usuario").eq("colaborador_id", cid).eq("status", "ativo").order("categoria");
+    const acessos = (acessosRows || []).map((a: any) => ({ sistema: a.sistema, categoria: a.categoria || "Outros", usuario: a.usuario || null }));
+
+    return jsonOk({ colaborador: { id: colab.id, nome: colab.nome, regime: colab.regime }, itens: [...ativos, ...epiPendentes], acessos });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
