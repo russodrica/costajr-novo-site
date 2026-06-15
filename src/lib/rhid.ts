@@ -336,30 +336,48 @@ async function probe(path: string, params: Record<string, any> = {}): Promise<an
 
 export async function diagnostico(dataISO: string): Promise<any> {
   const out: any = { base: BASE };
-  // 1) login (confirma credenciais)
-  try { const tok = await obterToken(); out.login = { ok: true, tokenLen: tok.length }; }
-  catch (e: any) { out.login = { ok: false, erro: String(e?.message || e) }; return out; }
-  // 2) sondas cruas (não lançam) — mostram status + corpo p/ depurar
-  out.person = await probe("/person", { start: 0, length: 50 });
-  out.personSemParams = await probe("/person", {});
-  out.device = await probe("/device", { start: 0, length: 50 });
-  // 3) se /person ok, calcula distribuição de status + batidas do dia
-  if (out.person?.ok) {
+
+  // 1) login CRU (sem cache) — p/ ver a estrutura da resposta e o token.
+  const lbody: Record<string, string> = { email: EMAIL, password: SENHA };
+  if (DOMINIO) lbody.domain = DOMINIO;
+  let token = "";
+  try {
+    const lr = await fetch(`${BASE}/login`, { method: "POST", headers: { "content-type": "application/json", Accept: "application/json" }, body: JSON.stringify(lbody) });
+    const lt = await lr.text();
+    let lj: any = null; try { lj = JSON.parse(lt); } catch {}
+    token = lj?.accessToken || lj?.access_token || lj?.token || "";
+    out.login = {
+      status: lr.status,
+      campos: lj ? Object.keys(lj) : "(não-json)",
+      tokenLen: token.length,
+      tokenPrefixo: token.slice(0, 4),
+      code: lj?.code,
+      error: lj?.error,
+      expiredPassword: lj?.expiredPassword,
+      isPerson: lj?.isPerson,
+      qtdCustomers: Array.isArray(lj?.listCustomer) ? lj.listCustomer.length : undefined,
+      customers: Array.isArray(lj?.listCustomer)
+        ? lj.listCustomer.slice(0, 6).map((c: any) => ({ id: c?.id ?? c?.idCustomer, nome: c?.name ?? c?.nome ?? c?.fantasyName, dominio: c?.domain ?? c?.dominio ?? c?.subdomain, campos: c && typeof c === "object" ? Object.keys(c) : typeof c }))
+        : undefined,
+      data: typeof lj?.data === "string" ? lj.data.slice(0, 40) : lj?.data,
+    };
+  } catch (e: any) { out.login = { erro: String(e?.message || e) }; return out; }
+  if (!token) return out;
+
+  // 2) tenta variações de autenticação em /person p/ achar a aceita (200).
+  async function tryAuth(label: string, headers: Record<string, string>, extra = ""): Promise<any> {
     try {
-      const pessoas = await listarPessoas();
-      const dist: Record<string, number> = {};
-      for (const p of pessoas) dist[String(p.statusRaw)] = (dist[String(p.statusRaw)] || 0) + 1;
-      out.distribuicaoStatus = dist;
-      out.pessoas = pessoas.length;
-      out.pessoasAtivas = pessoas.filter((p) => p.ativo).length;
-    } catch (e: any) { out.pessoasErro = String(e?.message || e); }
-    try {
-      const equips = await listarEquipamentos();
-      out.equipamentos = equips.map((e) => e.nome);
-      const batidas = await coletarBatidasDoDia(dataISO, equips);
-      out.batidasNoDia = batidas.length;
-      out.amostraBatidas = batidas.slice(0, 5).map((b) => ({ hora: hhmm(b.ts), equipamento: b.deviceNome, pisCasou: !!b.pis }));
-    } catch (e: any) { out.batidasErro = String(e?.message || e); }
+      const r = await fetch(`${BASE}/person?start=0&length=10${extra}`, { headers });
+      const t = await r.text();
+      return { label, status: r.status, len: t.length, head: r.ok ? "(ok)" : t.slice(0, 160) };
+    } catch (e: any) { return { label, erro: String(e?.message || e) }; }
   }
+  out.variantesAuth = [
+    await tryAuth("Authorization: token", { Authorization: token, Accept: "application/json" }),
+    await tryAuth("Authorization: Bearer token", { Authorization: `Bearer ${token}`, Accept: "application/json" }),
+    await tryAuth("header access_token", { access_token: token, Accept: "application/json" }),
+    await tryAuth("header token", { token, Accept: "application/json" }),
+    await tryAuth("query access_token", { Accept: "application/json" }, `&access_token=${encodeURIComponent(token)}`),
+  ];
   return out;
 }
