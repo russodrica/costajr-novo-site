@@ -1352,6 +1352,26 @@ ganhou `aplicarRoles(perfis)` p/ revelar itens `.role-gated` (JS PURO — define
 compila TS!). LICAO reforcada: /portal e /admin sao logins SEPARADOS (portal_colab_token vs
 admin_token); o atalho cruza os dois (o profissional loga nos dois ou so no admin).
 
+## Atualizacao 15/06/2026 (parte 3) — FIX critico: bloqueio de acesso por perfil
+
+**BUG GRAVE (a Adriana pegou):** o gating por perfil do admin (parte 15) ESCONDIA os grupos
+do menu, mas o perfil acessava modulos de outros por URL DIRETA. CAUSA RAIZ: **`return
+Astro.redirect()` dentro de um LAYOUT (Admin.astro) NAO funciona** — so funciona no
+frontmatter da PAGINA top-level; o retorno de um componente/layout e ignorado, a pagina
+renderiza normal. LICAO: nunca confiar em redirect feito num layout p/ controle de acesso.
+FIX: em vez de redirect, o Admin.astro calcula `semAcessoPagina` e o `<slot/>` so renderiza
+se tiver permissao — senao mostra "Acesso restrito" (o conteudo/dados da pagina NAO vao pro
+HTML). Tambem: `GRUPO_ROLES.portal` voltou a ser SO admin (RH nao precisa de Membros/
+Permissoes — "RH so ve RH"). VERIFICADO no dev server com tokens forjados (perfis rh/
+financeiro/admin): perfil RH ve so [geral, rh, conta] e /admin/financeiro -> "Acesso
+restrito"; financeiro ve [financeiro, juridico, conta] e abre o Financeiro; admin ve tudo.
+NOTA: o frontmatter da pagina AINDA roda (busca dados) mesmo bloqueado — os dados nao vazam
+pro cliente (slot nao renderiza), mas a query roda server-side. P/ blindar de vez, gate
+por-pagina (30 telas) fica de melhoria futura. DICA DE TESTE: dev server `npx astro dev
+--port 4330` + forjar admin_token com role unico (jose, JWT_SECRET do .env, issuer
+costajr.com.br) -> curl com cookie; conferir `data-group=` no HTML + presenca de "Acesso
+restrito" em /admin/<modulo>.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
