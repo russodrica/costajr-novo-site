@@ -50,35 +50,33 @@ import Portal from "~/layouts/Portal.astro";
       color: var(--ink); margin: 0 0 16px;
     }
 
-    /* ─── Cards de módulo (atalhos) ─── */
-    #modules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px,1fr)); gap: 18px; }
+    /* ─── Cards de módulo (atalhos) — limpo e colorido, centralizado ─── */
+    #modules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap: 22px; }
     .module-card {
-      background: #fff; border: 1.5px solid var(--border); border-radius: 18px;
-      padding: 26px 24px; cursor: pointer; text-decoration: none; color: inherit;
-      display: flex; align-items: center; gap: 18px;
-      transition: all .2s ease; position: relative; overflow: hidden;
+      background: #fff; border: 1px solid var(--border); border-top: 5px solid var(--brand);
+      border-radius: 16px; padding: 32px 22px 28px; cursor: pointer; text-decoration: none; color: inherit;
+      display: flex; flex-direction: column; align-items: center; text-align: center;
+      transition: all .2s ease; box-shadow: 0 2px 6px rgba(16,24,40,.05);
     }
-    .module-card:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,.12); border-color: rgba(196,30,58,.3); }
+    .module-card:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,.14); }
     .module-icon {
-      width: 62px; height: 62px; border-radius: 16px; flex-shrink: 0;
-      background: var(--brand-light); color: var(--brand);
-      display: flex; align-items: center; justify-content: center; font-size: 30px;
+      width: 78px; height: 78px; border-radius: 50%; flex-shrink: 0;
+      background: var(--brand); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 37px; margin-bottom: 20px;
+      box-shadow: 0 8px 20px rgba(16,24,40,.16);
     }
-    .module-icon img { width: 50px; height: 50px; object-fit: contain; }
-    .module-body { min-width: 0; }
+    .module-icon img { width: 48px; height: 48px; object-fit: contain; }
     .module-card h3 {
-      font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 800;
-      margin: 0 0 4px; color: var(--ink); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      font-family: 'Montserrat', sans-serif; font-size: 17px; font-weight: 800; letter-spacing: .03em;
+      margin: 0 0 9px; color: var(--ink); text-transform: uppercase;
+      display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;
     }
-    .module-card p { font-size: 14.5px; color: var(--ink-mid); margin: 0; line-height: 1.45; }
+    .module-card p { font-size: 14px; color: var(--ink-mid); margin: 0; line-height: 1.5; }
     .mod-tag {
-      font-family: 'Open Sans', sans-serif; font-size: 11px; font-weight: 700;
+      font-family: 'Open Sans', sans-serif; font-size: 10.5px; font-weight: 700;
       background: var(--brand); color: #fff; border-radius: 100px; padding: 2px 9px;
       text-transform: none; letter-spacing: 0;
     }
-    /* Destaque do JunIA (substitui a base de conhecimento) */
-    .module-card.destaque { border-color: rgba(196,30,58,.4); background: linear-gradient(135deg,#fff 60%,#FFF5F6); }
-    .module-card.destaque .module-icon { background: var(--brand); color: #fff; }
 
     /* ─── Comunicados ─── */
     .avisos-card { padding: 22px 26px; }
@@ -114,15 +112,15 @@ import Portal from "~/layouts/Portal.astro";
 
     // Módulos liberados por ÁREA (bate com a matriz de /admin/permissoes). area:null = sempre.
     const modules = [
-      { icon: '<img src="/junia-mascote.png" alt="JunIA" style="width:50px;height:50px;object-fit:contain">', title: "JunIA", desc: "Pergunte aqui — a inteligência da Costa Júnior responde na hora", href: "/portal/junia", area: null, destaque: true },
-      { icon: "✅", title: "Onboarding", desc: "Sua integração e boas-vindas", href: "/portal/onboarding", area: "onboarding" },
-      { icon: "🎬", title: "Treinamentos", desc: "Vídeos e materiais do seu setor", href: "/portal/treinamentos", area: "treinamentos" },
-      { icon: "💬", title: "Fórum", desc: "Troca de ideias com a equipe", href: "/portal/forum", area: "forum" },
-      { icon: "📄", title: "Documentos", desc: "Manuais e procedimentos técnicos", href: "/portal/documentos", area: "documentos" },
-      { icon: "🎒", title: "Meus Equipamentos", desc: "Equipamentos sob sua responsabilidade", href: "/portal/meus-equipamentos", area: "meus-equipamentos" },
-      { icon: "💰", title: "Gest. Comercial", desc: "Leads, contratos e metas", href: "/portal/gestao-comercial", area: "comercial" },
-      { icon: "🔧", title: "Gest. Manutenção", desc: "Clientes, chamados e técnicos", href: "/portal/gestao-manutencao", area: "gestao" },
-      { icon: "🙍", title: "Minha Conta", desc: "Editar nome e trocar senha", href: "/portal/minha-conta", area: null },
+      { icon: '<img src="/junia-mascote.png" alt="JunIA">', title: "JunIA", desc: "Pergunte aqui — a inteligência da Costa Júnior responde na hora", href: "/portal/junia", area: null, destaque: true, color: "#C41E3A" },
+      { icon: "✅", title: "Onboarding", desc: "Sua integração e boas-vindas", href: "/portal/onboarding", area: "onboarding", color: "#2563EB" },
+      { icon: "🎬", title: "Treinamentos", desc: "Vídeos e materiais do seu setor", href: "/portal/treinamentos", area: "treinamentos", color: "#7C3AED" },
+      { icon: "💬", title: "Fórum", desc: "Troca de ideias com a equipe", href: "/portal/forum", area: "forum", color: "#DB2777" },
+      { icon: "📄", title: "Documentos", desc: "Manuais e procedimentos técnicos", href: "/portal/documentos", area: "documentos", color: "#0D9488" },
+      { icon: "🎒", title: "Meus Equipamentos", desc: "Equipamentos sob sua responsabilidade", href: "/portal/meus-equipamentos", area: "meus-equipamentos", color: "#EA580C" },
+      { icon: "💰", title: "Gest. Comercial", desc: "Leads, contratos e metas", href: "/portal/gestao-comercial", area: "comercial", color: "#16A34A" },
+      { icon: "🔧", title: "Gest. Manutenção", desc: "Clientes, chamados e técnicos", href: "/portal/gestao-manutencao", area: "gestao", color: "#D97706" },
+      { icon: "🙍", title: "Minha Conta", desc: "Editar nome e trocar senha", href: "/portal/minha-conta", area: null, color: "#475569" },
     ];
 
     function renderHub(areas: string[], role: string) {
@@ -134,12 +132,11 @@ import Portal from "~/layouts/Portal.astro";
         const a = document.createElement("a");
         a.className = "module-card" + (m.destaque ? " destaque" : "");
         a.href = m.href;
+        a.style.borderTopColor = m.color || "#C41E3A";
         a.innerHTML = `
-          <div class="module-icon">${m.icon}</div>
-          <div class="module-body">
-            <h3>${m.title}${m.destaque ? '<span class="mod-tag">💬 chat</span>' : ""}</h3>
-            <p>${m.desc}</p>
-          </div>`;
+          <div class="module-icon" style="background:${m.color || "#C41E3A"}">${m.icon}</div>
+          <h3>${m.title}${m.destaque ? '<span class="mod-tag">💬 chat</span>' : ""}</h3>
+          <p>${m.desc}</p>`;
         grid.appendChild(a);
       });
       document.getElementById("hub-loading")!.style.display = "none";
