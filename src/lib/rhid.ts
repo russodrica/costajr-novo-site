@@ -347,24 +347,27 @@ export async function diagnostico(dataISO: string): Promise<any> {
   try { equips = await listarEquipamentos(); out.equipamentos = equips.map((e) => e.nome); }
   catch (e: any) { out.equipErro = String(e?.message || e); }
 
-  // AFD do 1º equipamento real — confirma desempacote JSON + cobertura de datas.
-  if (equips.length) {
-    const eq = equips.find((e) => !/teste/i.test(e.nome)) || equips[0];
-    try {
-      const s = await baixarAfd(eq.id);
-      const recs = parseAfd(s);
-      const datas = recs.map((r) => fmtDataISO(r.ts)).sort();
-      out.afdDebug = {
-        equip: eq.nome,
-        bytes: s.length,
-        linhas: s.split(/\r?\n/).filter(Boolean).length,
-        parsed: recs.length,
-        dataMin: datas[0],
-        dataMax: datas[datas.length - 1],
-        naDataAlvo: recs.filter((r) => fmtDataISO(r.ts) === dataISO).length,
-        amostra: recs.slice(0, 4).map((r) => ({ d: fmtDataISO(r.ts), h: hhmm(r.ts), pisLen: r.pis.length })),
-      };
-    } catch (e: any) { out.afdDebug = { erro: String(e?.message || e) }; }
+  // AFD de CADA equipamento, com e sem limit — p/ achar onde estão as batidas
+  // recentes e se a API trunca (devolve só os registros mais antigos).
+  out.afdPorEquip = [];
+  for (const eq of equips) {
+    const row: any = { eq: eq.nome };
+    for (const [lbl, params] of [["sem", {}], ["limit", { limit: 999999 }]] as [string, Record<string, any>][]) {
+      try {
+        const raw = String(await apiGet("/report/afd/download", { idEquipamento: eq.id, ...params }, true));
+        let s = raw; if (s.startsWith('"')) { try { s = JSON.parse(s); } catch {} }
+        const recs = parseAfd(s);
+        const datas = recs.map((r) => fmtDataISO(r.ts)).sort();
+        row[lbl] = {
+          parsed: recs.length,
+          dataMin: datas[0],
+          dataMax: datas[datas.length - 1],
+          naDataAlvo: recs.filter((r) => fmtDataISO(r.ts) === dataISO).length,
+          maxNsr: recs.reduce((m, r) => Math.max(m, Number(r.nsr) || 0), 0),
+        };
+      } catch (e: any) { row[lbl] = { erro: String(e?.message || e) }; }
+    }
+    out.afdPorEquip.push(row);
   }
 
   // Pipeline real de batidas (como os alertas usam).
