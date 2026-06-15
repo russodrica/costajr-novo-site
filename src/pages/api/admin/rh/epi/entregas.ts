@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -13,6 +14,7 @@ const isData = (s: any) => !s || /^\d{4}-\d{2}-\d{2}$/.test(String(s));
 export const POST: APIRoute = async ({ request }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const body = await request.json();
     const { colaborador_id, itens } = body;
     if (!colaborador_id || !Array.isArray(itens)) return jsonErr(400, "Informe colaborador_id e itens.");

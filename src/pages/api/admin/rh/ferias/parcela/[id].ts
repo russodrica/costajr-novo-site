@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../../lib/auth"
 import { supabaseAdmin } from "../../../../../../lib/supabase";
 import { addMonths, addDays } from "../../../../../../lib/ferias";
 import { excluirComLixeira, registrarAcao } from "../../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -11,6 +12,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const parcelaId = params.id!;
     const db = supabaseAdmin();
 
@@ -53,6 +55,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const parcelaId = params.id!;
     const db = supabaseAdmin();
     const { data: parcela } = await db.from("rh_ferias_parcelas").select("*").eq("id", parcelaId).maybeSingle();

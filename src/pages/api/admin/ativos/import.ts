@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
 import { enviarTelegram, escTg } from "../../../../lib/telegram";
+import { bloqueioSeSoLeitura } from "../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -88,6 +89,7 @@ export const POST: APIRoute = async ({ request }) => {
   catch { return jsonErr(401, "Não autenticado."); }
 
   try {
+    const _ro = await bloqueioSeSoLeitura(admin, "ativos"); if (_ro) return _ro;
     const { csv, confirmar } = await request.json();
     if (!csv || typeof csv !== "string") return jsonErr(400, "Envie o conteúdo do arquivo CSV.");
 

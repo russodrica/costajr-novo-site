@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -57,6 +58,7 @@ export const POST: APIRoute = async ({ request }) => {
   try { admin = await requireAdminCookie(request); } catch { return jsonErr(401, "Não autenticado."); }
 
   try {
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const { csv: texto, confirmar } = await request.json();
     if (!texto || typeof texto !== "string") return jsonErr(400, "Envie o conteúdo do arquivo CSV.");
     const rows = parseCsv(texto).filter((r) => !(r.length === 1 && r[0].trim() === "") && !String(r[0]).trim().startsWith("#"));

@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
 
@@ -26,7 +27,8 @@ export const GET: APIRoute = async ({ request, params }) => {
 // POST — cria tarefa
 export const POST: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "obras"); if (_ro) return _ro;
     const b = await request.json();
     if (!b.titulo?.trim()) return jsonErr(400, "Informe o título da tarefa.");
     if (b.status && !STATUS.includes(b.status)) return jsonErr(400, "Status inválido.");
@@ -53,6 +55,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 export const PATCH: APIRoute = async ({ request, params, url }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "obras"); if (_ro) return _ro;
     const tarefaId = url.searchParams.get("tarefa");
     if (!tarefaId) return jsonErr(400, "Informe ?tarefa=ID.");
     const b = await request.json();
@@ -76,6 +79,7 @@ export const PATCH: APIRoute = async ({ request, params, url }) => {
 export const DELETE: APIRoute = async ({ request, params, url }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "obras"); if (_ro) return _ro;
     const tarefaId = url.searchParams.get("tarefa");
     if (!tarefaId) return jsonErr(400, "Informe ?tarefa=ID.");
     const db = supabaseAdmin();

@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -9,6 +10,7 @@ export const prerender = false;
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "recrutamento"); if (_ro) return _ro;
     const body = await request.json();
     const patch: Record<string, unknown> = {};
     if (body.nome !== undefined) patch.nome = String(body.nome).trim();
@@ -29,6 +31,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "recrutamento"); if (_ro) return _ro;
     const db = supabaseAdmin();
     const { data: c } = await db.from("rh_cargos").select("nome").eq("id", params.id!).maybeSingle();
     const { error } = await db.from("rh_cargos").update({ ativo: false }).eq("id", params.id!);

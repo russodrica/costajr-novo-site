@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -10,6 +11,7 @@ export const prerender = false;
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "financeiro"); if (_ro) return _ro;
     const id = params.id!;
     const body = await request.json();
 
@@ -49,6 +51,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "financeiro"); if (_ro) return _ro;
     const id = params.id!;
     const db = supabaseAdmin();
     const { data, error } = await db.from("fin_lancamentos")

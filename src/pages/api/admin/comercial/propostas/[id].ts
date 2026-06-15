@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -10,7 +11,8 @@ const CAMPOS = ["lead_id", "cliente_nome", "titulo", "valor", "status", "url_pdf
 // PATCH /api/admin/comercial/propostas/:id — atualiza proposta
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "comercial"); if (_ro) return _ro;
     const body = await request.json();
 
     if (body.status !== undefined && !STATUS.includes(body.status)) return jsonErr(400, "Status inválido");

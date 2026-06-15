@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
+import { bloqueioSeSoLeitura } from "../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -68,7 +69,8 @@ export const GET: APIRoute = async ({ request, url }) => {
 // PUT /api/admin/comercial/metas — upsert da meta do mês (chave: referencia)
 export const PUT: APIRoute = async ({ request }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "comercial"); if (_ro) return _ro;
     const body = await request.json();
     const ref = body.referencia || refAtual();
     if (!/^\d{4}-\d{2}$/.test(ref)) return jsonErr(400, "Referência inválida (use YYYY-MM)");

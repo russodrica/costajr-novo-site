@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -13,6 +14,7 @@ const TIPOS_OK: Record<string, string> = {
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "ativos"); if (_ro) return _ro;
     const id = params.id!;
     const { arquivo_base64, content_type } = await request.json();
     const ext = TIPOS_OK[content_type];
@@ -45,6 +47,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "ativos"); if (_ro) return _ro;
     const id = params.id!;
     const db = supabaseAdmin();
     const { data: ativo } = await db.from("ativos").select("id, nota_fiscal_path").eq("id", id).maybeSingle();

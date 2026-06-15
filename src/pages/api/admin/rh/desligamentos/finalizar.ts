@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { enviarEmailSimples } from "../../../../../lib/mailer";
 import { enviarTelegram, escTg } from "../../../../../lib/telegram";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -18,6 +19,7 @@ const SITE_DESL = import.meta.env.SITE_BASE_URL || "https://costajr.com.br";
 export const POST: APIRoute = async ({ request }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const body = await request.json();
     const { colaborador_id, checklist = {}, tipo, motivo, entrevista } = body;
     if (!colaborador_id) return jsonErr(400, "colaborador_id é obrigatório.");

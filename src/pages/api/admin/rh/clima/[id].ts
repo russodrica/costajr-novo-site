@@ -2,12 +2,14 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "clima"); if (_ro) return _ro;
     const body = await request.json();
     const patch: Record<string, unknown> = {};
     if (typeof body.ativa === "boolean") patch.ativa = body.ativa;
@@ -27,6 +29,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "clima"); if (_ro) return _ro;
     const db = supabaseAdmin();
     const r = await excluirComLixeira(db, { req: request, admin }, { tabela: "rh_clima_pesquisas", id: params.id!, entidade: "rh_clima_pesquisas", descricao: `Excluiu pesquisa de clima ${params.id}` });
     if (!r.ok) return jsonErr(400, r.error || "Falha ao excluir");

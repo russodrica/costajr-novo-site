@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { ETAPAS, CAND_CAMPOS, coagirBooleans } from "./index";
 
 export const prerender = false;
@@ -10,6 +11,7 @@ export const prerender = false;
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "recrutamento"); if (_ro) return _ro;
     const id = params.id!;
     const body = await request.json();
     if (body.etapa && !ETAPAS.includes(body.etapa)) return jsonErr(400, "Etapa inválida.");
@@ -30,6 +32,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "recrutamento"); if (_ro) return _ro;
     const db = supabaseAdmin();
     const { data: c } = await db.from("rh_candidatos").select("nome").eq("id", params.id!).maybeSingle();
     const r = await excluirComLixeira(db, { req: request, admin }, { tabela: "rh_candidatos", id: params.id!, entidade: "rh_candidatos", descricao: c ? `Excluiu candidato "${c.nome}"` : `Excluiu candidato ${params.id}` });

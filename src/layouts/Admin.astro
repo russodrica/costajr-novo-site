@@ -3,7 +3,8 @@ export interface Props {
   title: string;
   current?: string;
 }
-import { verifyToken, perfisDe, type AdminClaims } from "../lib/auth";
+import { verifyToken, type AdminClaims } from "../lib/auth";
+import { MODULO_GRUPO, nivelEfetivo, carregarOverridesUsuario, perfisFrescos, type NivelPerm } from "../lib/permissoes";
 const { title, current = "" } = Astro.props;
 
 // Modo "embed": esconde a moldura do admin (menu + topo) para ser embutido
@@ -26,31 +27,28 @@ const embed = _qEmbed || _sfDest === "iframe" || _viaPortalRh;
 // NUNCA so por sec-fetch-dest — evita travar um iframe interno qualquer do admin.
 const embedRhLock = _qEmbed || _viaPortalRh;
 
-// Perfis do usuário (lidos do token) — para liberar os módulos do admin POR PERFIL.
+// Perfis + overrides FRESCOS do usuário — para liberar os módulos do admin POR USUÁRIO
+// (override do perfil, com nível ver/editar). Lidos do banco a cada request.
+// A FONTE dos módulos/grupos-padrão é src/lib/permissoes.ts (a matriz e o enforcement
+// usam a mesma lógica). O array `grupos` abaixo continua sendo a fonte do MENU.
 let perfisUser: string[] = [];
-try { const tk = Astro.cookies.get("admin_token")?.value; if (tk) perfisUser = perfisDe(await verifyToken<AdminClaims>(tk)); } catch { /* sem perfis -> nao filtra; a propria pagina ja autentica */ }
+let overridesUser: Record<string, NivelPerm> = {};
+try {
+  const tk = Astro.cookies.get("admin_token")?.value;
+  if (tk) {
+    const c = await verifyToken<AdminClaims>(tk);
+    perfisUser = await perfisFrescos(c);
+    overridesUser = await carregarOverridesUsuario(c.sub);
+  }
+} catch { /* sem perfis -> nao filtra; a propria pagina ja autentica */ }
 const temPerfis = perfisUser.length > 0;
-const ehAdminUser = perfisUser.includes("admin");
 
-// Quais perfis veem cada GRUPO do menu (espelha o Doc 07 do portal antigo). Admin vê tudo.
-// Grupos sem entrada aqui (geral/conta) ficam visíveis para todos os perfis do painel.
-const GRUPO_ROLES: Record<string, string[]> = {
-  // Dashboard/Análise: oculto para quem só tem RH ou Jurídico (não veem KPIs financeiros/comerciais).
-  geral:      ["admin", "financeiro", "comercial", "operacional", "manutencao_operacao", "manutencao_administrativo"],
-  manutencao: ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
-  operacoes:  ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
-  rh:         ["admin", "rh"],
-  financeiro: ["admin", "financeiro"],
-  comercial:  ["admin", "comercial"],
-  juridico:   ["admin", "juridico", "financeiro"],
-  portal:     ["admin"],
-  institucional: ["admin"],
-  sistema:    ["admin"],
-};
-const podeGrupo = (id: string) => {
-  // No embed do portal (Gestão de RH), trava TUDO no grupo "rh" — inclusive admin.
-  if (embedRhLock) return id === "rh";
-  return !temPerfis || ehAdminUser || !GRUPO_ROLES[id] || GRUPO_ROLES[id].some((r) => perfisUser.includes(r));
+// Nível efetivo (nenhum|ver|editar) de um módulo p/ este usuário; acessível se != nenhum.
+const nivelDe = (key: string): NivelPerm => nivelEfetivo(key, perfisUser, overridesUser);
+const podeModulo = (key: string): boolean => {
+  if (embedRhLock) return MODULO_GRUPO[key] === "rh"; // embed do portal: só módulos do RH
+  if (!temPerfis) return true;                        // sem perfis lidos -> não filtra (a página autentica)
+  return nivelDe(key) !== "nenhum";
 };
 
 type NavItem = { href: string; label: string; icon: string; key: string };
@@ -159,15 +157,21 @@ const grupos: NavGroup[] = [
 // grupo que contém a página atual (abre por padrão)
 const grupoAtivo = grupos.find(g => g.items.some(i => i.key === current))?.id ?? "geral";
 
-// Liberação por perfil: esconde grupos sem permissão e bloqueia acesso direto à página.
-const gruposVisiveis = grupos.filter(g => podeGrupo(g.id));
-const grupoDaPagina = grupos.find(g => g.items.some(i => i.key === current));
-// Bloqueio REAL de acesso: o redirect NÃO funciona dentro de um layout, então
-// o conteúdo da página (slot) só é renderizado se o perfil tiver permissão.
+// Liberação POR MÓDULO/USUÁRIO: cada grupo mostra só os módulos acessíveis; grupo
+// sem nenhum módulo acessível some. O bloqueio de acesso é por MÓDULO (não por grupo).
+const gruposVisiveis = grupos
+  .map(g => ({ ...g, items: g.items.filter(i => podeModulo(i.key)) }))
+  .filter(g => g.items.length);
+const moduloDaPagina = current ? grupos.flatMap(g => g.items).find(i => i.key === current) : null;
+// Bloqueio REAL de acesso: o slot só renderiza se o módulo da página é acessível
+// (o redirect NÃO funciona dentro de um layout).
 const semAcessoPagina = embedRhLock
-  // No embed do portal: so o grupo "rh" passa (vale ate p/ admin); bloqueia o resto.
-  ? !!(grupoDaPagina && grupoDaPagina.id !== "rh")
-  : !!(temPerfis && current && grupoDaPagina && !podeGrupo(grupoDaPagina.id));
+  ? !!(moduloDaPagina && MODULO_GRUPO[current] !== "rh")
+  : !!(temPerfis && current && moduloDaPagina && !podeModulo(current));
+
+// Modo SOMENTE-LEITURA: o usuário tem nível "ver" neste módulo (acessa, mas não edita).
+const nivelPaginaAtual: NivelPerm = current ? nivelDe(current) : "editar";
+const somenteLeitura = temPerfis && !embedRhLock && !semAcessoPagina && nivelPaginaAtual === "ver";
 ---
 <!doctype html>
 <html lang="pt-BR">
@@ -193,6 +197,8 @@ const semAcessoPagina = embedRhLock
     .shell.embed .main-wrap { margin-left: 0 !important; width: 100% !important; }
     .shell.embed .main-content { padding-top: 18px !important; }
     .shell.embed { background: #fff !important; }
+    /* Modo somente-leitura: esconde controles marcados como edição. */
+    .ro-mode [data-requer-edicao] { display: none !important; }
   `}</style>
   {embed && (
     <script is:inline>{`
@@ -250,7 +256,7 @@ const semAcessoPagina = embedRhLock
         <h1 class="page-title">{title}</h1>
         <span class="topbar-brand">Costa Júnior Engenharia</span>
       </header>
-      <main class="main-content">
+      <main class={somenteLeitura ? "main-content ro-mode" : "main-content"}>
         {semAcessoPagina ? (
           <div style="text-align:center;padding:80px 24px;color:#5B5F6B">
             <div style="font-size:48px;margin-bottom:12px">🔒</div>
@@ -258,7 +264,17 @@ const semAcessoPagina = embedRhLock
             <p style="margin:0 0 18px">Seu perfil não tem acesso a este módulo. Fale com o administrador.</p>
             <a href="/admin" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:10px 22px;border-radius:8px;font-weight:700">Voltar ao início</a>
           </div>
-        ) : <slot />}
+        ) : (
+          <Fragment>
+            {somenteLeitura && (
+              <div style="display:flex;align-items:center;gap:10px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13.5px">
+                <span style="font-size:18px">👁</span>
+                <span><strong>Somente leitura.</strong> Você pode visualizar este módulo, mas não editar. Para alterar, fale com o administrador.</span>
+              </div>
+            )}
+            <slot />
+          </Fragment>
+        )}
       </main>
     </div>
   </div>

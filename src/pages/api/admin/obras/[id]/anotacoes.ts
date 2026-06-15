@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { excluirComLixeira } from "../../../../../lib/auditoria";
 
@@ -24,6 +25,7 @@ export const GET: APIRoute = async ({ request, params }) => {
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const claims = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(claims, "obras"); if (_ro) return _ro;
     const b = await request.json();
     if (!b.texto?.trim()) return jsonErr(400, "Escreva a anotação.");
     const db = supabaseAdmin();
@@ -41,6 +43,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params, url }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "obras"); if (_ro) return _ro;
     const anotId = url.searchParams.get("anotacao");
     if (!anotId) return jsonErr(400, "Informe ?anotacao=ID.");
     const db = supabaseAdmin();

@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { EPI_CATALOGO } from "../../../../../lib/epi";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -13,6 +14,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const { colaborador_id, tipo = "completa", epis } = await request.json();
     if (!colaborador_id) return jsonErr(400, "Informe colaborador_id.");
     if (!["completa", "reposicao"].includes(tipo)) return jsonErr(400, "Tipo inválido.");

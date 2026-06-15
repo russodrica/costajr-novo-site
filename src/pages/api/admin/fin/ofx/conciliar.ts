@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -12,6 +13,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "financeiro"); if (_ro) return _ro;
     const body = await request.json();
     const { extrato_id, lancamento_id, acao, criar_lancamento } = body || {};
     if (!extrato_id) return jsonErr(400, "extrato_id é obrigatório");

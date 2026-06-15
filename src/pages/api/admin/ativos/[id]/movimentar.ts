@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { enviarEmailSimples } from "../../../../../lib/mailer";
 import { enviarTelegram, escTg } from "../../../../../lib/telegram";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -34,6 +35,7 @@ const TIPOS_OCORRENCIA = ["extravio", "roubo", "furto", "dano", "quebra", "sinis
 export const POST: APIRoute = async ({ request, params, clientAddress }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "ativos"); if (_ro) return _ro;
     const id = params.id!;
     const body = await request.json();
     const acao = body.acao as string;

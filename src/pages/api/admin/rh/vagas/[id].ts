@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { VAGA_CAMPOS } from "./index";
 
 export const prerender = false;
@@ -9,6 +10,7 @@ export const prerender = false;
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "recrutamento"); if (_ro) return _ro;
     const id = params.id!;
     const body = await request.json();
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -26,6 +28,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "recrutamento"); if (_ro) return _ro;
     const db = supabaseAdmin();
     const { data: v } = await db.from("rh_vagas").select("titulo").eq("id", params.id!).maybeSingle();
     const r = await excluirComLixeira(db, { req: request, admin }, { tabela: "rh_vagas", id: params.id!, entidade: "rh_vagas", descricao: v ? `Excluiu vaga "${v.titulo}"` : `Excluiu vaga ${params.id}` });

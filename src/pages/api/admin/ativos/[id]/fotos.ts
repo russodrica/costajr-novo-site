@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -9,6 +10,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "ativos"); if (_ro) return _ro;
     const id = params.id!;
     const { imagem_base64, content_type } = await request.json();
     if (!imagem_base64 || !String(content_type || "").startsWith("image/")) {
@@ -41,6 +43,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params, url }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "ativos"); if (_ro) return _ro;
     const id = params.id!;
     const fotoUrl = url.searchParams.get("url");
     if (!fotoUrl) return jsonErr(400, "Informe ?url=");

@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { parseOfx } from "../../../../../lib/ofx";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -10,6 +11,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "financeiro"); if (_ro) return _ro;
     const body = await request.json();
     const conteudo = body?.conteudo;
     if (!conteudo || typeof conteudo !== "string")

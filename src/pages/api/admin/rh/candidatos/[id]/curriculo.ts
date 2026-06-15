@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -20,6 +21,7 @@ const EXT_POR_MIME: Record<string, string> = {
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "recrutamento"); if (_ro) return _ro;
     const db = supabaseAdmin();
     const id = params.id!;
     const { data: cand } = await db.from("rh_candidatos").select("id, nome, curriculo_path").eq("id", id).maybeSingle();
@@ -75,6 +77,7 @@ export const GET: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "recrutamento"); if (_ro) return _ro;
     const db = supabaseAdmin();
     const id = params.id!;
     const { data: cand } = await db.from("rh_candidatos").select("nome, curriculo_path").eq("id", id).maybeSingle();

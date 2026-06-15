@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 
@@ -40,6 +41,7 @@ export const GET: APIRoute = async ({ request, params }) => {
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "obras"); if (_ro) return _ro;
     const body = await request.json();
     if (!body.data) return jsonErr(400, "Data do RDO é obrigatória");
     if (!body.atividades || !String(body.atividades).trim()) return jsonErr(400, "Descreva as atividades do dia");
@@ -81,7 +83,8 @@ export const POST: APIRoute = async ({ request, params }) => {
 // PATCH /api/admin/obras/[id]/rdo — body: { id, ...campos }
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "obras"); if (_ro) return _ro;
     const body = await request.json();
     if (!body.id) return jsonErr(400, "Informe o id do RDO");
     if (body.atividades !== undefined && !String(body.atividades).trim()) return jsonErr(400, "Atividades não pode ficar vazio");

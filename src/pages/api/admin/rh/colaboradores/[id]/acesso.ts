@@ -3,6 +3,7 @@ import { requireAdminCookie, hashSenha, gerarSenhaInicial, jsonOk, jsonErr } fro
 import { supabaseAdmin } from "../../../../../../lib/supabase";
 import { enviarSenhaTemporaria } from "../../../../../../lib/mailer";
 import { registrarAcao } from "../../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -16,6 +17,7 @@ const ROLES = ["admin", "manutencao_operacao", "manutencao_administrativo", "ope
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const { role } = await request.json();
     if (!role || !ROLES.includes(role)) return jsonErr(400, "Perfil inválido.");
 
@@ -78,6 +80,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const id = params.id!;
     const db = supabaseAdmin();
     const { data: colab } = await db.from("rh_colaboradores").select("nome, profile_id").eq("id", id).maybeSingle();

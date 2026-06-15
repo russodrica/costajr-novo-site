@@ -112,3 +112,176 @@ export async function exigirArea(claims: AdminClaims, area: string): Promise<voi
     throw Object.assign(new Error(`Seu perfil não tem acesso a ${rotulo}. Fale com o administrador.`), { http: 403 });
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PERMISSÃO GRANULAR POR USUÁRIO (módulos do admin) — ver/editar, sobrescreve perfil
+// ════════════════════════════════════════════════════════════════════════════
+
+export type NivelPerm = "nenhum" | "ver" | "editar";
+export type ModuloAdmin = { key: string; label: string; icon: string; href: string };
+export type GrupoAdmin = { id: string; label: string | null; itens: ModuloAdmin[] };
+
+// FONTE ÚNICA do menu/módulos do admin (Admin.astro, a matriz e o enforcement importam daqui).
+export const GRUPOS_ADMIN: GrupoAdmin[] = [
+  { id: "geral", label: null, itens: [
+    { key: "dashboard", label: "Dashboard", icon: "📊", href: "/admin" },
+    { key: "analytics", label: "Análise do Site", icon: "📈", href: "/admin/analytics" },
+  ] },
+  { id: "manutencao", label: "Manutenção", itens: [
+    { key: "clientes", label: "Clientes", icon: "👥", href: "/admin/clientes" },
+    { key: "tecnicos", label: "Técnicos", icon: "🔧", href: "/admin/tecnicos" },
+    { key: "chamados", label: "Chamados", icon: "📋", href: "/admin/chamados" },
+    { key: "preventivas", label: "Preventivas", icon: "🗓️", href: "/admin/preventivas" },
+    { key: "pagamentos", label: "Pagamentos", icon: "💰", href: "/admin/pagamentos" },
+    { key: "materiais", label: "Materiais", icon: "🔩", href: "/admin/materiais" },
+    { key: "estoque-alteracoes", label: "Alt. Preço Estoque", icon: "💲", href: "/admin/estoque-alteracoes" },
+    { key: "leads", label: "Pré-cadastros", icon: "📣", href: "/admin/leads" },
+    { key: "cupons", label: "Cupons & Cashback", icon: "🎁", href: "/admin/cupons" },
+    { key: "representantes", label: "Representantes", icon: "🤝", href: "/admin/representantes" },
+    { key: "materiais-representante", label: "Materiais Indique", icon: "📚", href: "/admin/materiais-representante" },
+    { key: "parametrizacao", label: "Parametrização", icon: "⚙️", href: "/admin/parametrizacao" },
+  ] },
+  { id: "operacoes", label: "Operações & Obras", itens: [
+    { key: "ativos", label: "Ativos Patrimoniais", icon: "🏷️", href: "/admin/ativos" },
+    { key: "obras", label: "Obras & Projetos", icon: "🏗️", href: "/admin/obras" },
+    { key: "depositos", label: "Depósitos", icon: "📦", href: "/admin/depositos" },
+    { key: "orcamentos", label: "Orçamentos", icon: "🧮", href: "/admin/orcamentos" },
+  ] },
+  { id: "rh", label: "RH & Pessoas", itens: [
+    { key: "rh", label: "RH — Pessoas", icon: "🧑‍💼", href: "/admin/rh" },
+    { key: "recrutamento", label: "Recrutamento (R&S)", icon: "🧲", href: "/admin/recrutamento" },
+    { key: "avaliacoes", label: "Avaliação de Desempenho", icon: "📊", href: "/admin/avaliacoes" },
+    { key: "clima", label: "Pesquisa de Clima", icon: "🌡️", href: "/admin/clima" },
+    { key: "rh-analytics", label: "People Analytics (RH)", icon: "📈", href: "/admin/rh-analytics" },
+  ] },
+  { id: "financeiro", label: "Financeiro", itens: [
+    { key: "financeiro", label: "Financeiro", icon: "🏦", href: "/admin/financeiro" },
+    { key: "fin-conciliacao", label: "Conciliação (OFX)", icon: "🔄", href: "/admin/fin-conciliacao" },
+  ] },
+  { id: "comercial", label: "Comercial", itens: [
+    { key: "comercial", label: "Comercial (CRM)", icon: "📊", href: "/admin/comercial" },
+  ] },
+  { id: "juridico", label: "Jurídico & Documentos", itens: [
+    { key: "doc-empresa", label: "Documentos da Empresa", icon: "📑", href: "/admin/doc-empresa" },
+    { key: "assinaturas", label: "Assinaturas (D4Sign)", icon: "✍️", href: "/admin/assinaturas" },
+  ] },
+  { id: "portal", label: "Portal Colaborador", itens: [
+    { key: "membros", label: "Membros", icon: "🪪", href: "/admin/membros" },
+    { key: "permissoes", label: "Permissões de Acesso", icon: "🔐", href: "/admin/permissoes" },
+    { key: "portal-comunicados", label: "Comunicados", icon: "📢", href: "/admin/portal-comunicados" },
+    { key: "portal-kb", label: "Base de Conhecimento", icon: "🔍", href: "/admin/portal-kb" },
+    { key: "perguntas", label: "Perguntas (JunIA)", icon: "🤖", href: "/admin/perguntas" },
+    { key: "portal-onboarding", label: "Onboarding", icon: "✅", href: "/admin/portal-onboarding" },
+    { key: "portal-treinamentos", label: "Treinamentos", icon: "🎬", href: "/admin/portal-treinamentos" },
+    { key: "portal-integracao", label: "Docs Integração", icon: "📄", href: "/admin/portal-integracao" },
+  ] },
+  { id: "institucional", label: "Institucional", itens: [
+    { key: "suporte", label: "Suporte", icon: "💬", href: "/admin/suporte" },
+    { key: "blog", label: "Blog", icon: "📝", href: "/admin/blog" },
+  ] },
+  { id: "sistema", label: "Sistema", itens: [
+    { key: "logs", label: "Auditoria (Logs)", icon: "🧾", href: "/admin/logs" },
+    { key: "lixeira", label: "Lixeira", icon: "🗑️", href: "/admin/lixeira" },
+    { key: "telegram", label: "Bot Telegram", icon: "🤖", href: "/admin/telegram" },
+  ] },
+  { id: "conta", label: "Conta", itens: [
+    { key: "minha-conta", label: "Minha Conta", icon: "🙍", href: "/admin/minha-conta" },
+  ] },
+];
+
+// Quais perfis veem cada GRUPO por PADRÃO (espelha o Doc 07). Admin vê tudo.
+// Grupos sem entrada (conta) ficam liberados para todos. O override por usuário ajusta.
+export const GRUPO_ROLES: Record<string, string[]> = {
+  geral:      ["admin", "financeiro", "comercial", "operacional", "manutencao_operacao", "manutencao_administrativo"],
+  manutencao: ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
+  operacoes:  ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
+  rh:         ["admin", "rh"],
+  financeiro: ["admin", "financeiro"],
+  comercial:  ["admin", "comercial"],
+  juridico:   ["admin", "juridico", "financeiro"],
+  portal:     ["admin"],
+  institucional: ["admin"],
+  sistema:    ["admin"],
+};
+
+// Mapa key do módulo -> id do grupo.
+export const MODULO_GRUPO: Record<string, string> = Object.fromEntries(
+  GRUPOS_ADMIN.flatMap((g) => g.itens.map((m) => [m.key, g.id])),
+);
+// Mapa key do módulo -> label (para mensagens).
+export const MODULO_LABEL: Record<string, string> = Object.fromEntries(
+  GRUPOS_ADMIN.flatMap((g) => g.itens.map((m) => [m.key, m.label])),
+);
+
+/** Nível padrão de um módulo conforme os perfis (sem override do usuário):
+ *  'editar' se o grupo do módulo é liberado para algum perfil; senão 'nenhum'. */
+export function nivelPadraoPerfil(grupoId: string, perfis: string[]): NivelPerm {
+  if (perfis.includes("admin")) return "editar";
+  const roles = GRUPO_ROLES[grupoId];
+  const liberado = !roles || roles.some((r) => perfis.includes(r));
+  return liberado ? "editar" : "nenhum";
+}
+
+/** Nível EFETIVO de um módulo: override do usuário, senão padrão do perfil.
+ *  Admin nunca é travado (sempre 'editar'). */
+export function nivelEfetivo(moduloKey: string, perfis: string[], overrides: Record<string, NivelPerm>): NivelPerm {
+  if (perfis.includes("admin")) return "editar";
+  const ov = overrides[moduloKey];
+  if (ov === "nenhum" || ov === "ver" || ov === "editar") return ov;
+  return nivelPadraoPerfil(MODULO_GRUPO[moduloKey] || "", perfis);
+}
+
+/** Perfis FRESCOS do usuário (lidos do banco; fallback no token). */
+export async function perfisFrescos(claims: AdminClaims): Promise<string[]> {
+  let perfis = perfisDe(claims);
+  try {
+    const db = supabaseAdmin();
+    const { data: prof } = await db.from("portal_profiles").select("role, roles").eq("id", claims.sub).maybeSingle();
+    if (prof) {
+      const fresh = ((prof.roles && prof.roles.length) ? prof.roles : [prof.role]).filter(Boolean);
+      if (fresh.length) perfis = fresh;
+    }
+  } catch { /* mantém os perfis do token */ }
+  return perfis;
+}
+
+/** Overrides por-usuário de um profile_id -> { moduloKey: nivel }. */
+export async function carregarOverridesUsuario(profileId: string): Promise<Record<string, NivelPerm>> {
+  const map: Record<string, NivelPerm> = {};
+  try {
+    const db = supabaseAdmin();
+    const { data } = await db.from("portal_perm_usuario").select("modulo, nivel").eq("profile_id", profileId);
+    for (const r of data || []) map[r.modulo] = r.nivel as NivelPerm;
+  } catch { /* tabela ausente -> sem overrides (herda perfil) */ }
+  return map;
+}
+
+/** Nível efetivo do usuário logado em um módulo (lê perfis + overrides frescos do banco). */
+export async function nivelModuloUsuario(claims: AdminClaims, moduloKey: string): Promise<NivelPerm> {
+  const perfis = await perfisFrescos(claims);
+  if (perfis.includes("admin")) return "editar";
+  const overrides = await carregarOverridesUsuario(claims.sub);
+  return nivelEfetivo(moduloKey, perfis, overrides);
+}
+
+/** Guard para endpoints de MUTAÇÃO: lança 403 se o usuário não tem 'editar' no módulo. */
+export async function exigirEdicao(claims: AdminClaims, moduloKey: string): Promise<void> {
+  const nivel = await nivelModuloUsuario(claims, moduloKey);
+  if (nivel !== "editar") {
+    const rotulo = MODULO_LABEL[moduloKey] || moduloKey;
+    throw Object.assign(new Error(`Você tem acesso somente de leitura em "${rotulo}". Fale com o administrador.`), { http: 403 });
+  }
+}
+
+/** Guard de MUTAÇÃO que retorna uma Response 403 (ou null se pode editar).
+ *  Uso no topo do handler:  const b = await bloqueioSeSoLeitura(admin, "ativos"); if (b) return b;
+ *  Mais limpo que throw — não depende do catch do endpoint para o status correto. */
+export async function bloqueioSeSoLeitura(claims: AdminClaims, moduloKey: string): Promise<Response | null> {
+  const nivel = await nivelModuloUsuario(claims, moduloKey);
+  if (nivel === "editar") return null;
+  const rotulo = MODULO_LABEL[moduloKey] || moduloKey;
+  return new Response(
+    JSON.stringify({ error: `Você tem acesso somente de leitura em "${rotulo}". Fale com o administrador.` }),
+    { status: 403, headers: { "content-type": "application/json" } },
+  );
+}

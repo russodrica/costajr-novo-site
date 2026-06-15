@@ -2,12 +2,14 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { excluirComLixeira } from "../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
 export const DELETE: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "avaliacoes"); if (_ro) return _ro;
     const db = supabaseAdmin();
     const r = await excluirComLixeira(db, { req: request, admin }, { tabela: "rh_avaliacoes", id: params.id!, entidade: "rh_avaliacoes", descricao: `Excluiu avaliação ${params.id}` });
     if (!r.ok) return jsonErr(400, r.error || "Falha ao excluir");

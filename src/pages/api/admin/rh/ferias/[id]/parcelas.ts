@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../../lib/auth"
 import { supabaseAdmin } from "../../../../../../lib/supabase";
 import { addDays, fmtBR, MAX_PARCELAS, MIN_DIAS_PARCELA } from "../../../../../../lib/ferias";
 import { registrarAcao } from "../../../../../../lib/auditoria";
+import { bloqueioSeSoLeitura } from "../../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -14,6 +15,7 @@ const isData = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && !is
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "rh"); if (_ro) return _ro;
     const periodoId = params.id!;
     const body = await request.json();
     const entrada = Array.isArray(body.parcelas) ? body.parcelas : [];

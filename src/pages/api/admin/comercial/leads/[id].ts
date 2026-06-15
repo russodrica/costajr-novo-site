@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -25,7 +26,8 @@ function colunaInexistente(error: { code?: string; message?: string }): boolean 
 // PATCH /api/admin/comercial/leads/:id — atualiza campos do lead no funil
 export const PATCH: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const _ro = await bloqueioSeSoLeitura(admin, "comercial"); if (_ro) return _ro;
     const body = await request.json();
 
     if (body.etapa !== undefined && !ETAPAS.includes(body.etapa)) {
