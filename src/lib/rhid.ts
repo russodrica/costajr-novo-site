@@ -110,14 +110,15 @@ export type Pessoa = {
   ativo: boolean;
 };
 
-// status do RHiD: 0 = ativo / 1 = demitido (confirmado via diag; ver pessoaAtiva)
+// status do RHiD: 1 = ATIVO / 0 = inativo/demitido. (Confirmado pela Adriana:
+// 3 ativos = exatamente os 3 com status 1; os demais 50 são status 0.)
 function pessoaAtiva(statusRaw: any): boolean {
   const s = Number(statusRaw);
   if (Number.isNaN(s)) {
     const t = String(statusRaw || "").toLowerCase();
     return !(t.includes("demit") || t.includes("inativ") || t.includes("deslig"));
   }
-  return s === 0; // 0 = ativo
+  return s === 1; // 1 = ativo
 }
 
 const soDigitos = (v: any): string => String(v ?? "").replace(/\D/g, "");
@@ -297,8 +298,8 @@ async function mapLimite<T, R>(itens: T[], limite: number, fn: (x: T) => Promise
 }
 
 export async function montarDia(dataISO: string): Promise<DiaPonto> {
-  // precisa de PIS; ignora contas de teste (ex.: "Adriana (teste)").
-  const pessoas = (await listarPessoas()).filter((p) => p.pis && !/teste/i.test(p.nome));
+  // SÓ colaboradores ATIVOS, com PIS; ignora contas de teste.
+  const pessoas = (await listarPessoas()).filter((p) => p.ativo && p.pis && !/teste/i.test(p.nome));
   const apur = await mapLimite(pessoas, 12, (p) => apuracaoDia(p.id, dataISO));
   const dias: PessoaDia[] = pessoas.map((pessoa, idx) => ({ pessoa, ...apur[idx] }));
   return { dataISO, dias };
@@ -397,6 +398,11 @@ function parseDataStr(s: any): Date | null {
 // Busca as marcações REP-P no intervalo (a API ignora o filtro de data, então
 // baixamos tudo e filtramos aqui) e agrupa por pessoa.
 export async function buscarMarcacoesMobile(dataIni: string, dataFinal: string): Promise<PessoaMarcacoes[]> {
+  // SÓ colaboradores ATIVOS (decisão da Adriana). Casa por id e por nome.
+  const ativos = (await listarPessoas()).filter((x) => x.ativo);
+  const idsAtivos = new Set(ativos.map((x) => x.id));
+  const nomesAtivos = new Set(ativos.map((x) => x.nome.toLowerCase().trim()));
+
   const j = await rawAfdMobile(dataIni, dataFinal);
   const top = Array.isArray(j) ? j : [j];
   const saida: PessoaMarcacoes[] = [];
@@ -406,6 +412,7 @@ export async function buscarMarcacoesMobile(dataIni: string, dataFinal: string):
     const p = g?.person || {};
     const nome = String(p.name ?? p.nome ?? p.personName ?? l[0]?.personName ?? `#${p.id ?? "?"}`).trim();
     const idPerson = Number(p.id ?? p.idPerson ?? 0);
+    if (!idsAtivos.has(idPerson) && !nomesAtivos.has(nome.toLowerCase())) continue; // só ativos
     const marcacoes: MarcacaoMobile[] = [];
     for (const m of l) {
       const data = parseDataStr(m.dateTimeStr);
@@ -439,8 +446,12 @@ export async function diagnostico(dataISO: string, nome?: string): Promise<any> 
   catch (e: any) { out.login = { ok: false, erro: String(e?.message || e) }; return out; }
 
   let pessoas: Pessoa[] = [];
-  try { pessoas = await listarPessoas(); out.pessoas = pessoas.length; out.pessoasAtivas = pessoas.filter((p) => p.ativo).length; }
-  catch (e: any) { out.pessoasErro = String(e?.message || e); }
+  try {
+    pessoas = await listarPessoas();
+    out.pessoas = pessoas.length;
+    out.pessoasAtivas = pessoas.filter((p) => p.ativo).length;
+    out.ativosNomes = pessoas.filter((p) => p.ativo).map((p) => p.nome);
+  } catch (e: any) { out.pessoasErro = String(e?.message || e); }
 
   const alvo = nome
     ? pessoas.find((p) => p.nome.toLowerCase().includes(nome.toLowerCase()))
