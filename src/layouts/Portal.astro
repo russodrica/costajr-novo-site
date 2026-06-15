@@ -3,8 +3,10 @@ interface Props {
   title?: string;
   tipo: "cliente" | "tecnico" | "admin" | "colaborador";
   activePage?: string;
+  subtitle?: string;   // mostra um "hero" (título grande colorido + subtítulo) no topo do conteúdo
+  accent?: string;     // cor do hero (hex). Padrão = vermelho da marca.
 }
-const { title = "Portal", tipo, activePage = "" } = Astro.props;
+const { title = "Portal", tipo, activePage = "", subtitle = "", accent = "" } = Astro.props;
 
 const icons: Record<string, string> = {
   home:         `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
@@ -260,6 +262,15 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
     }
     .portal-content { padding: 28px 32px; flex: 1; max-width: 1280px; }
 
+    /* Hero de página (título grande colorido + subtítulo) — visual limpo das áreas */
+    .page-hero { margin: 2px 0 26px; }
+    .page-hero-title {
+      font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 30px; line-height: 1.1;
+      color: var(--accent, var(--brand)); margin: 0 0 7px;
+    }
+    .page-hero-sub { font-size: 16px; color: var(--ink-mid); margin: 0; max-width: 720px; }
+    @media (max-width: 640px) { .page-hero-title { font-size: 24px; } .page-hero-sub { font-size: 14px; } }
+
     /* ─── Cards ────────────────────────────────────────────────────── */
     .card {
       background: #fff; border-radius: var(--radius-lg);
@@ -497,6 +508,12 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
       </div>
     </header>
     <main class="portal-content">
+      {subtitle && (
+        <div class="page-hero" style={accent ? `--accent:${accent}` : ""}>
+          <h2 class="page-hero-title">{title}</h2>
+          <p class="page-hero-sub">{subtitle}</p>
+        </div>
+      )}
       <slot />
     </main>
   </div>

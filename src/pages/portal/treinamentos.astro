@@ -2,9 +2,8 @@
 export const prerender = false;
 import Portal from "~/layouts/Portal.astro";
 ---
-<Portal title="Treinamentos" tipo="colaborador" activePage="treinamentos">
-  <div class="section-header">
-    <h2>Treinamentos</h2>
+<Portal title="Treinamentos" tipo="colaborador" activePage="treinamentos" subtitle="Vídeos e materiais de treinamento organizados por área" accent="#7C3AED">
+  <div class="section-header" style="justify-content:flex-end">
     <div style="display:flex;gap:8px;align-items:center">
       <select id="filtro-cat" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Open Sans',sans-serif;outline:none;background:#fff;color:var(--ink)">
         <option value="">Todas as categorias</option>
