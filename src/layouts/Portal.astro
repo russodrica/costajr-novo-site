@@ -42,7 +42,7 @@ const navs: Record<string, { href: string; label: string; id: string; badge?: bo
     { href: "/portal/gestao-comercial",   label: "Gest. Comercial",  id: "comercial",   area: "comercial" },
     { href: "/portal/gestao-manutencao",  label: "Gest. Manutenção", id: "gestao",      area: "gestao" },
     { href: "/portal/meus-equipamentos",  label: "Meus Equipamentos", id: "meus-equipamentos", area: "meus-equipamentos" },
-    { href: "/admin/rh",                  label: "Gestão de RH",     id: "gestao-rh", roles: ["rh"] },
+    { href: "/portal/rh",                 label: "Gestão de RH",     id: "gestao-rh", roles: ["rh"] },
     { href: "/portal/minha-conta",        label: "Minha Conta",      id: "minha-conta"  },
   ],
   cliente: [
@@ -658,6 +658,8 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
   document.getElementById("logoutBtn")?.addEventListener("click", () => {
     localStorage.removeItem(tokenKey);
     localStorage.removeItem(userKey);
+    // Limpa o cookie-ponte do RH embutido (se existir), para não deixar acesso residual ao admin.
+    if (tipo === "colaborador") document.cookie = "admin_token=; path=/; max-age=0";
     window.location.replace(loginHref);
   });
 

@@ -1,0 +1,75 @@
+---
+export const prerender = false;
+import Portal from "~/layouts/Portal.astro";
+---
+<Portal title="Gestão de RH" tipo="colaborador" activePage="gestao-rh">
+  <!-- Estado de carregamento -->
+  <div id="rh-loading" class="loading">
+    <div class="spinner"></div> Abrindo a Gestão de RH...
+  </div>
+
+  <!-- Sem acesso (perfil não é RH) -->
+  <div id="rh-negado" style="display:none">
+    <div style="text-align:center;padding:70px 24px;color:var(--ink-mid)">
+      <div style="font-size:48px;margin-bottom:12px">🔒</div>
+      <h2 style="font-family:'Montserrat',sans-serif;font-size:20px;color:var(--ink);margin:0 0 8px">Acesso restrito</h2>
+      <p style="margin:0 0 18px">Esta área é exclusiva para o perfil de <strong>RH</strong>. Fale com o administrador se precisar de acesso.</p>
+      <a href="/portal" class="btn btn-primary">Voltar ao início</a>
+    </div>
+  </div>
+
+  <!-- RH embutido -->
+  <iframe id="rh-frame" title="Gestão de RH" style="display:none"></iframe>
+
+  <style is:global>
+    /* Página de RH embutida ocupa toda a área de conteúdo, sem moldura dupla */
+    .portal-content { padding: 0 !important; max-width: none !important; }
+    #rh-frame {
+      width: 100%; height: calc(100vh - 62px); border: 0; display: block; background: #fff;
+    }
+    @media (max-width: 900px) { #rh-frame { height: calc(100vh - 62px); } }
+  </style>
+
+  <script is:inline>
+    (function () {
+      var token = localStorage.getItem("portal_colab_token");
+      if (!token) { window.location.replace("/portal/login"); return; }
+
+      var loadingEl = document.getElementById("rh-loading");
+      var negadoEl = document.getElementById("rh-negado");
+      var frame = document.getElementById("rh-frame");
+
+      function abrirRh() {
+        // Ponte de login: o token do portal É um token tipo:"admin", então serve
+        // para autenticar /admin/rh. Setamos o cookie ANTES de carregar o iframe.
+        document.cookie = "admin_token=" + token + "; path=/; SameSite=Lax";
+        if (loadingEl) loadingEl.style.display = "none";
+        if (frame) {
+          frame.style.display = "block";
+          frame.src = "/admin/rh?embed=1";
+        }
+      }
+      function negar() {
+        if (loadingEl) loadingEl.style.display = "none";
+        if (negadoEl) negadoEl.style.display = "block";
+      }
+      function temRh(perfis) {
+        perfis = perfis || [];
+        return perfis.indexOf("rh") !== -1 || perfis.indexOf("admin") !== -1;
+      }
+
+      // Confere o perfil FRESCO no servidor antes de abrir.
+      fetch("/api/portal/permissoes", { headers: { "x-portal-auth": token } })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (d) { if (temRh(d.perfis)) abrirRh(); else negar(); })
+        .catch(function () {
+          // Fallback: usa os perfis salvos no login
+          try {
+            var u = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
+            var perfis = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
+            if (temRh(perfis)) abrirRh(); else negar();
+          } catch (e) { negar(); }
+        });
+    })();
+  </script>
+</Portal>

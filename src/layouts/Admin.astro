@@ -6,6 +6,10 @@ export interface Props {
 import { verifyToken, perfisDe, type AdminClaims } from "../lib/auth";
 const { title, current = "" } = Astro.props;
 
+// Modo "embed": esconde a moldura do admin (menu + topo) para ser embutido
+// dentro do portal do colaborador (ex.: /portal/rh embute /admin/rh?embed=1).
+const embed = Astro.url.searchParams.get("embed") === "1";
+
 // Perfis do usuário (lidos do token) — para liberar os módulos do admin POR PERFIL.
 let perfisUser: string[] = [];
 try { const tk = Astro.cookies.get("admin_token")?.value; if (tk) perfisUser = perfisDe(await verifyToken<AdminClaims>(tk)); } catch { /* sem perfis -> nao filtra; a propria pagina ja autentica */ }
@@ -15,6 +19,8 @@ const ehAdminUser = perfisUser.includes("admin");
 // Quais perfis veem cada GRUPO do menu (espelha o Doc 07 do portal antigo). Admin vê tudo.
 // Grupos sem entrada aqui (geral/conta) ficam visíveis para todos os perfis do painel.
 const GRUPO_ROLES: Record<string, string[]> = {
+  // Dashboard/Análise: oculto para quem só tem RH ou Jurídico (não veem KPIs financeiros/comerciais).
+  geral:      ["admin", "financeiro", "comercial", "operacional", "manutencao_operacao", "manutencao_administrativo"],
   manutencao: ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
   operacoes:  ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
   rh:         ["admin", "rh"],
@@ -157,7 +163,27 @@ const semAcessoPagina = !!(temPerfis && current && grupoDaPagina && !podeGrupo(g
   <meta name="robots" content="noindex,nofollow" />
 </head>
 <body>
-  <div class="shell">
+  {embed && (
+    <style is:inline>{`
+      .shell.embed .sidebar, .shell.embed .topbar { display: none !important; }
+      .shell.embed .main-wrap { margin-left: 0 !important; width: 100% !important; }
+      .shell.embed .main-content { padding-top: 18px !important; }
+      html, body { background: #fff !important; }
+    `}</style>
+  )}
+  {embed && (
+    <script is:inline>{`
+      // Modo embed: mantém a navegação interna do admin DENTRO do portal (sem moldura).
+      document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll('a[href^="/admin/"]').forEach(function (a) {
+          var href = a.getAttribute("href");
+          if (!href || href.indexOf("embed=") !== -1) return;
+          a.setAttribute("href", href + (href.indexOf("?") !== -1 ? "&" : "?") + "embed=1");
+        });
+      });
+    `}</script>
+  )}
+  <div class={embed ? "shell embed" : "shell"}>
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
