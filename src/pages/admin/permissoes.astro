@@ -107,20 +107,17 @@ const perfilLabel: Record<string, string> = {
   <div id="tab-usuario" style="display:none">
     <div class="section-header">
       <div>
-        <span class="section-title">Permissões por usuário</span>
-        <p style="font-size:13px;color:var(--ink-mid);margin:4px 0 0">Ajuste fino: por pessoa, o acesso a cada módulo do admin. <strong>Herdar</strong> = padrão do perfil · <strong>Ver</strong> = só leitura · <strong>Editar</strong> = completo · <strong>Nenhum</strong> = bloqueia mesmo que o perfil libere. (Admin sempre tem acesso total.)</p>
+        <span class="section-title">Permissão por colaborador</span>
+        <p style="font-size:13px;color:var(--ink-mid);margin:4px 0 0">Escolha a pessoa e defina o que ela acessa. Ligue o <strong>departamento inteiro</strong> ou abra (▸) pra ajustar <strong>módulo a módulo</strong> — em cada um escolha <strong>👁 Ver</strong> (só leitura) ou <strong>✎ Editar</strong>. O que você não mexer <strong>segue o perfil</strong> da pessoa.</p>
       </div>
-      <button class="btn btn-primary" onclick="salvarMatriz()" id="btnSalvarMatriz">💾 Salvar</button>
+      <button class="btn btn-primary" id="btnSalvarPU" onclick="salvarPU()" style="display:none">💾 Salvar permissões</button>
     </div>
-    <div id="msgMatriz"></div>
-    <div class="perm-legenda">
-      <span><b class="lg lg-herdar">Herdar</b> padrão do perfil</span>
-      <span><b class="lg lg-ver">👁 Ver</b> só leitura</span>
-      <span><b class="lg lg-editar">✎ Editar</b> completo</span>
-      <span><b class="lg lg-nenhum">✕ Nenhum</b> bloqueado</span>
-      <span style="color:var(--ink-light)">Clique na célula p/ alternar.</span>
+    <div class="pu-bar">
+      <label style="font-size:13px;font-weight:600;color:var(--ink-mid)">Colaborador:</label>
+      <select id="puUser" onchange="puSelecionar()"><option value="">— Selecione —</option></select>
     </div>
-    <div id="matrizUsuarios"><div class="loading"><div class="spinner"></div> Carregando…</div></div>
+    <div id="msgPU"></div>
+    <div id="permEditor"><p style="color:var(--ink-light);font-size:14px;padding:8px 0">Selecione um colaborador acima para configurar as permissões.</p></div>
   </div>
 
   <style>
@@ -135,28 +132,33 @@ const perfilLabel: Record<string, string> = {
     .perm-tabs { display:flex; gap:6px; margin-bottom:18px; border-bottom:2px solid var(--border); }
     .perm-tab { background:none; border:0; padding:10px 16px; font-family:'Montserrat',sans-serif; font-weight:700; font-size:14px; color:var(--ink-light); cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; }
     .perm-tab.active { color:var(--brand); border-bottom-color:var(--brand); }
-    .perm-legenda { display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-mid); margin:0 0 14px; align-items:center; }
-    .perm-legenda .lg { padding:2px 8px; border-radius:6px; font-weight:700; }
-    .lg-herdar { background:#F1F5F9; color:#64748B; }
-    .lg-ver { background:#EFF6FF; color:#1D4ED8; }
-    .lg-editar { background:#F0FDF4; color:#15803D; }
-    .lg-nenhum { background:#FEF2F2; color:#B91C1C; }
-    .matriz-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:10px; max-height:72vh; }
-    .matriz { border-collapse:separate; border-spacing:0; font-size:13px; }
-    .matriz th, .matriz td { border-bottom:1px solid var(--border-light); border-right:1px solid var(--border-light); }
-    .matriz thead th { position:sticky; top:0; z-index:3; }
-    .mtx-corner { position:sticky; left:0; z-index:4; background:#F1F3F7; text-align:left; padding:8px 12px; min-width:210px; font-size:11.5px; }
-    .mtx-user { padding:8px 6px; font-size:11px; white-space:nowrap; background:#F1F3F7; min-width:88px; text-align:center; color:var(--ink-mid); }
-    .mtx-grp td { background:#E8ECF3; font-weight:800; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:#475569; padding:6px 12px; }
-    .mtx-mod { position:sticky; left:0; z-index:1; background:#fff; padding:5px 12px; white-space:nowrap; font-size:12.5px; }
-    .matriz tbody tr:hover .mtx-mod { background:#FAFBFC; }
-    .mtx-cel { text-align:center; padding:3px; }
-    .cel { width:30px; height:27px; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:13px; font-weight:700; line-height:1; }
-    .cel:disabled { opacity:.55; cursor:not-allowed; }
-    .cel-herdar { background:#F1F5F9; color:#94A3B8; }
-    .cel-ver { background:#DBEAFE; color:#1D4ED8; }
-    .cel-editar { background:#DCFCE7; color:#15803D; }
-    .cel-nenhum { background:#FEE2E2; color:#B91C1C; }
+    /* Editor por colaborador (estilo Vobi) */
+    .pu-bar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+    .pu-bar select { min-width:300px; max-width:420px; padding:9px 12px; border:1.5px solid var(--border); border-radius:8px; font-size:14px; background:#fff; }
+    .pu-perfil { font-size:13px; color:var(--ink-mid); margin-bottom:14px; }
+    .pu-admin-nota { background:#F0FDF4; border:1px solid #BBF7D0; color:#15803D; border-radius:8px; padding:12px 14px; font-size:14px; }
+    .pu-dep { border:1px solid var(--border); border-radius:10px; margin-bottom:10px; overflow:hidden; }
+    .pu-dep-head { display:flex; align-items:center; gap:10px; padding:12px 16px; cursor:pointer; background:#FAFBFC; user-select:none; }
+    .pu-dep-head:hover { background:#F2F5F9; }
+    .pu-chev { color:var(--ink-light); font-size:12px; transition:transform .15s; display:inline-block; }
+    .pu-chev.open { transform:rotate(90deg); }
+    .pu-dep-nome { font-family:'Montserrat',sans-serif; font-weight:700; font-size:14.5px; flex:1; }
+    .pu-dep-resumo { font-size:12px; color:var(--ink-light); margin-right:4px; }
+    .pu-dep-body { border-top:1px solid var(--border-light); }
+    .pu-mod { display:flex; align-items:center; gap:12px; padding:10px 16px 10px 40px; border-bottom:1px solid var(--border-light); }
+    .pu-mod:last-child { border-bottom:0; }
+    .pu-mod-nome { flex:1; font-size:13.5px; color:var(--ink); }
+    .pu-mod-ctrl { display:flex; align-items:center; gap:12px; }
+    .pu-ve { display:inline-flex; border:1px solid var(--border); border-radius:7px; overflow:hidden; }
+    .pu-ve-btn { background:#fff; border:0; padding:5px 11px; font-size:12px; cursor:pointer; color:var(--ink-mid); font-weight:600; font-family:'Open Sans',sans-serif; }
+    .pu-ve-btn:hover { background:#F4F6F9; }
+    .pu-ve-btn.on { background:var(--brand); color:#fff; }
+    .pu-switch { position:relative; display:inline-block; width:40px; height:22px; flex-shrink:0; }
+    .pu-switch input { opacity:0; width:0; height:0; }
+    .pu-slider { position:absolute; cursor:pointer; inset:0; background:#CBD5E1; border-radius:22px; transition:.2s; }
+    .pu-slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+    .pu-switch input:checked + .pu-slider { background:#2563EB; }
+    .pu-switch input:checked + .pu-slider:before { transform:translateX(18px); }
   </style>
 
   <script>
@@ -186,90 +188,128 @@ const perfilLabel: Record<string, string> = {
   </script>
 
   <script>
-    // ── Matriz de permissões por usuário ──
-    let MTX: any = null;
-    const CICLO = ["herdar", "ver", "editar", "nenhum"];
+    // ── Permissão por colaborador (estilo Vobi: departamento liga/desliga + abrir p/ módulos) ──
+    let PUDATA: any = null, PUUID: string = "", PUSTATE: Record<string, string> = {}, PUOPEN = new Set<string>();
     const escP = (s: any) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const ROTULO: Record<string, string> = {
+      admin: "Administrador", manutencao_operacao: "Manutenção - Operação", manutencao_administrativo: "Manutenção - Administrativo",
+      operacional: "Operação", rh: "RH / DP", financeiro: "Financeiro", comercial: "Comercial", juridico: "Jurídico", coordenador: "Coordenador",
+    };
+    const rotulo = (p: string) => ROTULO[p] || p;
 
     function trocarTabPerm(t: string) {
       document.getElementById("tab-perfil")!.style.display = t === "perfil" ? "" : "none";
       document.getElementById("tab-usuario")!.style.display = t === "usuario" ? "" : "none";
       document.querySelectorAll(".perm-tab").forEach((b: any) => b.classList.toggle("active", b.dataset.tab === t));
-      if (t === "usuario" && !MTX) carregarMatriz();
+      if (t === "usuario" && !PUDATA) carregarPU();
     }
 
-    async function carregarMatriz() {
-      const box = document.getElementById("matrizUsuarios")!;
+    async function carregarPU() {
       try {
         const r = await fetch("/api/admin/permissoes-usuarios");
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || "Erro");
-        MTX = d;
-        renderMatriz();
-      } catch (e: any) { box.innerHTML = `<div class="alert alert-error">Erro ao carregar: ${escP(e.message)}</div>`; }
+        PUDATA = d;
+        const sel = document.getElementById("puUser") as HTMLSelectElement;
+        sel.innerHTML = '<option value="">— Selecione —</option>' +
+          d.usuarios.map((u: any) => `<option value="${u.id}">${escP(u.nome)}${u.perfis.includes("admin") ? " (admin)" : ""}</option>`).join("");
+      } catch (e: any) { document.getElementById("permEditor")!.innerHTML = `<div class="alert alert-error">Erro ao carregar: ${escP(e.message)}</div>`; }
     }
 
-    function celInfo(nivel: string, pad: string): [string, string, string] {
-      if (nivel === "ver") return ["👁", "cel-ver", "Ver (só leitura)"];
-      if (nivel === "editar") return ["✎", "cel-editar", "Editar (completo)"];
-      if (nivel === "nenhum") return ["✕", "cel-nenhum", "Nenhum (bloqueado)"];
-      return [pad === "editar" ? "✓" : "·", "cel-herdar", pad === "editar" ? "Herda do perfil — TEM acesso" : "Herda do perfil — sem acesso"];
+    function nivelInicial(uid: string, key: string): string {
+      const ov = PUDATA.overrides[uid] && PUDATA.overrides[uid][key];
+      if (ov) return ov;
+      return (PUDATA.padrao[uid] || {})[key] || "nenhum";
     }
 
-    function renderMatriz() {
-      const { usuarios, grupos, overrides, padrao } = MTX;
-      const ehAdmin = (u: any) => u.perfis.includes("admin");
-      let h = '<div class="matriz-wrap"><table class="matriz"><thead><tr><th class="mtx-corner">Módulo</th>';
-      for (const u of usuarios) h += `<th class="mtx-user" title="${escP(u.email)}">${escP(u.nome.split(" ").slice(0, 2).join(" "))}${ehAdmin(u) ? '<br><span class="badge badge-gray">admin</span>' : ""}</th>`;
-      h += "</tr></thead><tbody>";
-      for (const g of grupos) {
-        if (g.label) h += `<tr class="mtx-grp"><td colspan="${usuarios.length + 1}">${escP(g.label)}</td></tr>`;
-        for (const m of g.itens) {
-          h += `<tr><td class="mtx-mod">${m.icon || ""} ${escP(m.label)}</td>`;
-          for (const u of usuarios) {
-            if (ehAdmin(u)) { h += `<td class="mtx-cel"><button type="button" class="cel cel-editar" disabled title="Admin tem acesso total">✎</button></td>`; continue; }
-            const niv = (overrides[u.id] && overrides[u.id][m.key]) || "herdar";
-            const pad = (padrao[u.id] || {})[m.key] || "nenhum";
-            const [txt, cls, tip] = celInfo(niv, pad);
-            h += `<td class="mtx-cel"><button type="button" class="cel ${cls}" data-uid="${u.id}" data-mod="${m.key}" data-niv="${niv}" data-pad="${pad}" title="${tip}" onclick="cicloCel(this)">${txt}</button></td>`;
+    function puSelecionar() {
+      PUUID = (document.getElementById("puUser") as HTMLSelectElement).value;
+      document.getElementById("msgPU")!.innerHTML = "";
+      const ed = document.getElementById("permEditor")!;
+      const btn = document.getElementById("btnSalvarPU")!;
+      if (!PUUID) { ed.innerHTML = `<p style="color:var(--ink-light);font-size:14px;padding:8px 0">Selecione um colaborador acima para configurar as permissões.</p>`; btn.style.display = "none"; PUSTATE = {}; return; }
+      PUSTATE = {};
+      for (const g of PUDATA.grupos) for (const m of g.itens) PUSTATE[m.key] = nivelInicial(PUUID, m.key);
+      PUOPEN = new Set();
+      btn.style.display = "";
+      renderPU();
+    }
+
+    function renderPU() {
+      const u = PUDATA.usuarios.find((x: any) => x.id === PUUID);
+      const ed = document.getElementById("permEditor")!;
+      const isAdmin = u.perfis.includes("admin");
+      let h = `<div class="pu-perfil">Perfil base: <strong>${escP(u.perfis.map(rotulo).join(", ") || "—")}</strong></div>`;
+      if (isAdmin) { ed.innerHTML = h + `<p class="pu-admin-nota">🛡️ Administrador tem acesso total a tudo — não há o que restringir aqui.</p>`; document.getElementById("btnSalvarPU")!.style.display = "none"; return; }
+      for (const g of PUDATA.grupos) {
+        const gl = g.label || "Geral";
+        const nAcesso = g.itens.filter((m: any) => PUSTATE[m.key] !== "nenhum").length;
+        const aberto = PUOPEN.has(g.id);
+        h += `<div class="pu-dep">
+          <div class="pu-dep-head" onclick="puToggleDep('${g.id}')">
+            <span class="pu-chev ${aberto ? "open" : ""}">▸</span>
+            <span class="pu-dep-nome">${escP(gl)}</span>
+            <span class="pu-dep-resumo">${nAcesso ? nAcesso + "/" + g.itens.length + " liberado(s)" : "nenhum"}</span>
+            <label class="pu-switch" onclick="event.stopPropagation()"><input type="checkbox" ${nAcesso ? "checked" : ""} onchange="puMaster('${g.id}', this.checked)"><span class="pu-slider"></span></label>
+          </div>`;
+        if (aberto) {
+          h += `<div class="pu-dep-body">`;
+          for (const m of g.itens) {
+            const niv = PUSTATE[m.key];
+            h += `<div class="pu-mod">
+              <span class="pu-mod-nome">${m.icon || ""} ${escP(m.label)}</span>
+              <div class="pu-mod-ctrl">
+                <div class="pu-ve" style="${niv === "nenhum" ? "visibility:hidden" : ""}">
+                  <button type="button" class="pu-ve-btn ${niv === "ver" ? "on" : ""}" onclick="puVE('${m.key}','ver')">👁 Ver</button>
+                  <button type="button" class="pu-ve-btn ${niv === "editar" ? "on" : ""}" onclick="puVE('${m.key}','editar')">✎ Editar</button>
+                </div>
+                <label class="pu-switch"><input type="checkbox" ${niv !== "nenhum" ? "checked" : ""} onchange="puModSw('${m.key}', this.checked)"><span class="pu-slider"></span></label>
+              </div>
+            </div>`;
           }
-          h += "</tr>";
+          h += `</div>`;
         }
+        h += `</div>`;
       }
-      h += "</tbody></table></div>";
-      document.getElementById("matrizUsuarios")!.innerHTML = h;
+      ed.innerHTML = h;
     }
 
-    function cicloCel(btn: any) {
-      const i = CICLO.indexOf(btn.dataset.niv);
-      const prox = CICLO[(i + 1) % CICLO.length];
-      btn.dataset.niv = prox;
-      const [txt, cls, tip] = celInfo(prox, btn.dataset.pad);
-      btn.className = "cel " + cls; btn.textContent = txt; btn.title = tip;
+    function puToggleDep(g: string) { if (PUOPEN.has(g)) PUOPEN.delete(g); else PUOPEN.add(g); renderPU(); }
+    function puMaster(g: string, on: boolean) {
+      const grp = PUDATA.grupos.find((x: any) => x.id === g);
+      for (const m of grp.itens) PUSTATE[m.key] = on ? (PUSTATE[m.key] === "nenhum" ? "editar" : PUSTATE[m.key]) : "nenhum";
+      if (on) PUOPEN.add(g);
+      renderPU();
     }
+    function puModSw(key: string, on: boolean) { PUSTATE[key] = on ? (PUSTATE[key] === "nenhum" ? "editar" : PUSTATE[key]) : "nenhum"; renderPU(); }
+    function puVE(key: string, v: string) { PUSTATE[key] = v; renderPU(); }
 
-    async function salvarMatriz() {
-      if (!MTX) return;
-      const usuarios = MTX.usuarios.filter((u: any) => !u.perfis.includes("admin")).map((u: any) => u.id);
+    async function salvarPU() {
+      if (!PUUID) return;
+      const padrao = PUDATA.padrao[PUUID] || {};
       const overrides: any[] = [];
-      document.querySelectorAll("#matrizUsuarios .cel[data-uid]").forEach((b: any) => {
-        if (b.dataset.niv !== "herdar") overrides.push({ profile_id: b.dataset.uid, modulo: b.dataset.mod, nivel: b.dataset.niv });
-      });
-      const btn = document.getElementById("btnSalvarMatriz") as HTMLButtonElement;
+      for (const k in PUSTATE) { if (PUSTATE[k] !== (padrao[k] || "nenhum")) overrides.push({ profile_id: PUUID, modulo: k, nivel: PUSTATE[k] }); }
+      const btn = document.getElementById("btnSalvarPU") as HTMLButtonElement;
       btn.disabled = true; btn.textContent = "Salvando...";
       try {
-        const r = await fetch("/api/admin/permissoes-usuarios", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ usuarios, overrides }) });
+        const r = await fetch("/api/admin/permissoes-usuarios", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ usuarios: [PUUID], overrides }) });
         const d = await r.json();
-        document.getElementById("msgMatriz")!.innerHTML = r.ok
-          ? `<div class="alert alert-success">✅ Salvo! ${d.regras} regra(s) específica(s). Cada pessoa vê o efeito no próximo carregamento da página.</div>`
+        if (r.ok) { PUDATA.overrides[PUUID] = {}; for (const o of overrides) PUDATA.overrides[PUUID][o.modulo] = o.nivel; }
+        const nome = PUDATA.usuarios.find((x: any) => x.id === PUUID).nome;
+        document.getElementById("msgPU")!.innerHTML = r.ok
+          ? `<div class="alert alert-success">✅ Permissões de <strong>${escP(nome)}</strong> salvas! A pessoa vê o efeito no próximo carregamento da página.</div>`
           : `<div class="alert alert-error">${escP(d.error || "Erro")}</div>`;
         window.scrollTo({ top: 0, behavior: "smooth" });
-      } catch (e: any) { document.getElementById("msgMatriz")!.innerHTML = `<div class="alert alert-error">${escP(e.message)}</div>`; }
-      finally { btn.disabled = false; btn.textContent = "💾 Salvar"; }
+      } catch (e: any) { document.getElementById("msgPU")!.innerHTML = `<div class="alert alert-error">${escP(e.message)}</div>`; }
+      finally { btn.disabled = false; btn.textContent = "💾 Salvar permissões"; }
     }
 
     (window as any).trocarTabPerm = trocarTabPerm;
-    (window as any).cicloCel = cicloCel;
-    (window as any).salvarMatriz = salvarMatriz;
+    (window as any).puSelecionar = puSelecionar;
+    (window as any).puToggleDep = puToggleDep;
+    (window as any).puMaster = puMaster;
+    (window as any).puModSw = puModSw;
+    (window as any).puVE = puVE;
+    (window as any).salvarPU = salvarPU;
   </script>
 </Admin>
