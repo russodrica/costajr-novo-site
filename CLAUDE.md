@@ -1409,6 +1409,35 @@ deve "espelhar" o modulo de RH DENTRO do portal do colaborador (um login so).
   basta `/portal/<x>` com a ponte de cookie + iframe `/admin/<x>?embed=1` gated por
   perfil. (Decisao: iframe + ponte em vez de reescrever a UID gigante do modulo.)
 
+**FIX (mesma data) — a moldura do admin aparecia no embed (Adriana pegou):**
+- **CAUSA RAIZ: o site redireciona apex (`costajr.com.br`) -> `www`.** Se o portal
+  esta no apex e o iframe vira www, ficam em ORIGENS diferentes -> o cookie-ponte
+  (setado no apex) nao ia pro www e o `X-Frame-Options: SAMEORIGIN` bloqueava;
+  e o `?embed=1` por si so nao ativava o embed de forma confiavel.
+- **Deteccao de embed agora por 3 sinais redundantes** (Admin.astro, qualquer um
+  ativa): query `?embed=1`, header `Sec-Fetch-Dest: iframe` (sobrevive ao
+  cross-origin e a TODA navegacao dentro do iframe), e `Referer` contendo
+  `/portal/rh` (same-origin manda o path por causa de strict-origin-when-cross-origin).
+  Os headers sao regenerados a cada request -> nao dependem da query sobreviver.
+- **CSS que esconde a moldura agora SEMPRE presente** (so a classe `.shell.embed`
+  e condicional) — sem fragilidade de render condicional do `<style>`.
+- **TRAVA no grupo "rh" dentro do embed do portal, ATE para admin** (`embedRhLock`
+  disparado por query OU referer /portal/rh): abrir Financeiro/Dashboard/etc dentro
+  do embed -> "Acesso restrito". (NUNCA dispara so por sec-fetch-dest, p/ nao travar
+  um iframe interno qualquer do admin.)
+- **Cross-origin apex<->www resolvido:** `vercel.json` ganhou
+  `Content-Security-Policy: frame-ancestors 'self' apex www` em `/admin/(.*)` (em
+  Chrome, frame-ancestors tem precedencia sobre X-Frame-Options) + o cookie-ponte
+  agora e `domain=.costajr.com.br` (vale apex E www; host-only no localhost). Logout
+  limpa os 2 escopos. **Assim funciona tanto no apex quanto no www, sem relogin.**
+- `sw.js` cjr-v2 -> **cjr-v3** (limpa cache antigo nos navegadores). **Apos deploy,
+  o usuario precisa de UM hard refresh (Ctrl+Shift+R) p/ o SW novo trocar.**
+- LICAO: o redirect apex->www fragmenta cookie/localStorage entre 2 origens; iframe
+  same-origin do admin so funciona se a pagina e o iframe estiverem no MESMO host —
+  por isso o CSP frame-ancestors + cookie de dominio. Validado E2E no dev (admin
+  forjado): referer /portal/rh sozinho ativa embed+RH; admin tentando Financeiro no
+  embed -> Acesso restrito.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
