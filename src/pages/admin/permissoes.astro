@@ -137,17 +137,21 @@ const perfilLabel: Record<string, string> = {
     .pu-bar select { min-width:300px; max-width:420px; padding:9px 12px; border:1.5px solid var(--border); border-radius:8px; font-size:14px; background:#fff; }
     .pu-perfil { font-size:13px; color:var(--ink-mid); margin-bottom:14px; }
     .pu-admin-nota { background:#F0FDF4; border:1px solid #BBF7D0; color:#15803D; border-radius:8px; padding:12px 14px; font-size:14px; }
+    /* largura confortável de leitura: nome e controles ficam pertinho */
+    #permEditor, .pu-bar, .pu-perfil { max-width: 760px; }
     .pu-dep { border:1px solid var(--border); border-radius:10px; margin-bottom:10px; overflow:hidden; }
-    .pu-dep-head { display:flex; align-items:center; gap:10px; padding:12px 16px; cursor:pointer; background:#FAFBFC; user-select:none; }
-    .pu-dep-head:hover { background:#F2F5F9; }
+    .pu-dep-head { display:flex; align-items:center; gap:10px; padding:11px 14px; cursor:pointer; background:#F4F6F9; user-select:none; }
+    .pu-dep-head:hover { background:#EBEFF4; }
     .pu-chev { color:var(--ink-light); font-size:12px; transition:transform .15s; display:inline-block; }
     .pu-chev.open { transform:rotate(90deg); }
-    .pu-dep-nome { font-family:'Montserrat',sans-serif; font-weight:700; font-size:14.5px; flex:1; }
-    .pu-dep-resumo { font-size:12px; color:var(--ink-light); margin-right:4px; }
+    .pu-dep-nome { font-family:'Montserrat',sans-serif; font-weight:700; font-size:14px; flex:1; }
+    .pu-dep-resumo { font-size:11.5px; color:var(--ink-light); margin-right:4px; white-space:nowrap; }
     .pu-dep-body { border-top:1px solid var(--border-light); }
-    .pu-mod { display:flex; align-items:center; gap:12px; padding:10px 16px 10px 40px; border-bottom:1px solid var(--border-light); }
+    .pu-mod { display:flex; align-items:center; gap:12px; padding:9px 14px 9px 32px; border-bottom:1px solid var(--border-light); }
     .pu-mod:last-child { border-bottom:0; }
-    .pu-mod-nome { flex:1; font-size:13.5px; color:var(--ink); }
+    .pu-mod:nth-child(even) { background:#FAFBFC; }
+    .pu-mod:hover { background:#EEF3F9; }
+    .pu-mod-nome { flex:1; font-size:13px; color:var(--ink); }
     .pu-mod-ctrl { display:flex; align-items:center; gap:12px; }
     .pu-ve { display:inline-flex; border:1px solid var(--border); border-radius:7px; overflow:hidden; }
     .pu-ve-btn { background:#fff; border:0; padding:5px 11px; font-size:12px; cursor:pointer; color:var(--ink-mid); font-weight:600; font-family:'Open Sans',sans-serif; }
