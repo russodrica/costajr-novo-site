@@ -84,6 +84,18 @@ function comoLista(j: any): any[] {
   return (arr as any[]) || [];
 }
 
+// A API limita o tamanho da página (length grande -> 400/500). Paginamos.
+async function coletarPaginado(path: string, pageSize = 100, maxPages = 60): Promise<any[]> {
+  const todos: any[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const j = await apiGet(path, { start: page * pageSize, length: pageSize });
+    const arr = comoLista(j);
+    todos.push(...arr);
+    if (arr.length < pageSize) break; // última página
+  }
+  return todos;
+}
+
 // ─── Funcionários ───────────────────────────────────────────────────────────
 export type Pessoa = {
   id: number;
@@ -109,8 +121,8 @@ function pessoaAtiva(statusRaw: any): boolean {
 const soDigitos = (v: any): string => String(v ?? "").replace(/\D/g, "");
 
 export async function listarPessoas(): Promise<Pessoa[]> {
-  const j = await apiGet("/person", { start: 0, length: 5000 });
-  return comoLista(j).map((p: any) => ({
+  const lista = await coletarPaginado("/person", 100);
+  return lista.map((p: any) => ({
     id: Number(p.id),
     nome: String(p.name ?? p.nome ?? "").trim(),
     pis: soDigitos(p.pis),
@@ -126,8 +138,8 @@ export async function listarPessoas(): Promise<Pessoa[]> {
 export type Equipamento = { id: number; nome: string };
 
 export async function listarEquipamentos(): Promise<Equipamento[]> {
-  const j = await apiGet("/device", { start: 0, length: 1000 });
-  return comoLista(j)
+  const lista = await coletarPaginado("/device", 100);
+  return lista
     .map((d: any) => ({
       id: Number(d.id ?? d.idDevice ?? d.deviceId),
       nome: String(d.name ?? d.description ?? d.nome ?? d.alias ?? `Equip. ${d.id}`).trim(),
