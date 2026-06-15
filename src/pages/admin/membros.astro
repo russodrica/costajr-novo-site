@@ -54,7 +54,7 @@ const nInativo = (membros || []).length - ativos.length;
   </div>
 
   <div class="pills" style="margin-bottom:14px">
-    <button class="pill active" data-tipo="todos" onclick="filtrarTipo('todos', this)">Todos <span class="count">{membros?.length ?? 0}</span></button>
+    <button class="pill active" data-tipo="todos" onclick="filtrarTipo('todos', this)">Todos <span class="count">{ativos.length}</span></button>
     <button class="pill" data-tipo="colaborador" onclick="filtrarTipo('colaborador', this)">🧑‍💼 Colaboradores <span class="count">{nColab}</span></button>
     <button class="pill" data-tipo="terceiro" onclick="filtrarTipo('terceiro', this)">🤝 Terceiros <span class="count">{nTerceiro}</span></button>
     <button class="pill" data-tipo="inativo" onclick="filtrarTipo('inativo', this)">🚫 Inativos <span class="count">{nInativo}</span></button>
