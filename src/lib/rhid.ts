@@ -22,6 +22,8 @@ function env(name: string): string {
 }
 
 const BASE = (env("RHID_BASE") || "https://rhid.com.br/v2/api.svc").replace(/\/+$/, "");
+// API interna (usada pela tela "Marcações REP-P"); base diferente da api.svc.
+const CDB = "https://rhid.com.br/v2/customerdb";
 const EMAIL = env("RHID_EMAIL");
 const SENHA = env("RHID_SENHA");
 const DOMINIO = env("RHID_DOMINIO"); // opcional (multi-cliente)
@@ -337,6 +339,34 @@ export function relatorioSaida(dia: DiaPonto): { bateuSaida: { p: Pessoa; ultima
 // Desabilitada por ora — retorna vazio (não dispara alerta).
 export type Anomalia = { p: Pessoa; locais: { nome: string; horas: string[] }[] };
 export function auditarLocais(_dia: DiaPonto): Anomalia[] { return []; }
+
+// Sonda: tenta ler as marcações REP-P (com GPS) do servidor (customerdb/afd_mobile).
+// Testa combinações de corpo/auth p/ ver se o token de login serve fora do SPA.
+export async function probeAfdMobile(dataIni: string, dataFinal: string): Promise<any> {
+  const tok = await obterToken();
+  const url = `${CDB}/afd.svc/afd_mobile`;
+  const bodies: { label: string; body: any }[] = [
+    { label: "datas+token+pag", body: { token: tok, dataInicial: dataIni, dataFinal: dataFinal, start: 0, length: 50 } },
+    { label: "datatables", body: { dataInicial: dataIni, dataFinal: dataFinal, draw: 1, start: 0, length: 50, columns: [], order: [], search: { value: "", regex: false } } },
+    { label: "iso-curto", body: { dataIni, dataFinal, token: tok } },
+  ];
+  const auths: { label: string; h: Record<string, string> }[] = [
+    { label: "bearer", h: { Authorization: `Bearer ${tok}` } },
+    { label: "token-puro", h: { Authorization: tok } },
+    { label: "sem", h: {} },
+  ];
+  const tentativas: any[] = [];
+  for (const b of bodies) for (const a of auths) {
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json", Accept: "application/json", ...a.h }, body: JSON.stringify(b.body) });
+      const t = await r.text();
+      const hasLat = /latitude/i.test(t);
+      tentativas.push({ body: b.label, auth: a.label, status: r.status, hasLat, head: t.slice(0, 140) });
+      if (r.ok && hasLat) return { ok: true, body: b.label, auth: a.label, len: t.length, tentativas };
+    } catch (e: any) { tentativas.push({ body: b.label, auth: a.label, erro: String(e?.message || e) }); }
+  }
+  return { ok: false, tentativas };
+}
 
 // ─── Diagnóstico ────────────────────────────────────────────────────────────
 // Foca em UMA pessoa (por nome) numa data: despeja a apuração dela, revelando

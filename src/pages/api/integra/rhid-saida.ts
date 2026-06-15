@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { enviarTelegram, escTg } from "~/lib/telegram";
-import { rhidConfigurado, agoraSP, montarDia, relatorioSaida, auditarLocais, trabalhamHoje, diagnostico } from "~/lib/rhid";
+import { rhidConfigurado, agoraSP, montarDia, relatorioSaida, auditarLocais, trabalhamHoje, diagnostico, probeAfdMobile } from "~/lib/rhid";
 
 export const prerender = false;
 
@@ -46,6 +46,12 @@ async function handle(request: Request, url: URL): Promise<Response> {
 
   if (url.searchParams.get("diag") === "1") {
     try { return J({ ok: true, diag: await diagnostico(dataISO, url.searchParams.get("nome") || undefined) }); }
+    catch (e: any) { return J({ ok: false, error: String(e?.message || e) }, 502); }
+  }
+  if (url.searchParams.get("afdmobile") === "1") {
+    const di = url.searchParams.get("di") || dataISO;
+    const df = url.searchParams.get("df") || dataISO;
+    try { return J({ ok: true, afdmobile: await probeAfdMobile(di, df) }); }
     catch (e: any) { return J({ ok: false, error: String(e?.message || e) }, 502); }
   }
 
