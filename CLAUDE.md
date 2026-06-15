@@ -1372,6 +1372,43 @@ por-pagina (30 telas) fica de melhoria futura. DICA DE TESTE: dev server `npx as
 costajr.com.br) -> curl com cookie; conferir `data-group=` no HTML + presenca de "Acesso
 restrito" em /admin/<modulo>.
 
+## Atualizacao 15/06/2026 — Gestao de RH ESPELHADA dentro do portal do colaborador
+
+**Pedido da Adriana:** o atalho "Gestao de RH" NAO deve redirecionar para o /admin;
+deve "espelhar" o modulo de RH DENTRO do portal do colaborador (um login so).
+
+**Solucao (commit 0ab1745, sem reescrever o RH):**
+- **CHAVE:** o token do portal (`portal_colab_token`, gerado em `/api/portal/login`)
+  e `tipo:"admin"` (mesmo esquema do admin) — so muda onde mora (localStorage no
+  portal x cookie HttpOnly no admin). Entao da pra autenticar o /admin com ele.
+- **Nova pagina `/portal/rh`** (layout Portal): faz uma PONTE de login — seta o
+  cookie `admin_token` = token do portal (via `document.cookie`, ANTES de carregar
+  o iframe) e embute `/admin/rh?embed=1` num `<iframe>` same-origin
+  (X-Frame-Options=SAMEORIGIN permite). Gating client-side: so perfil rh/admin abre;
+  senao "Acesso restrito". Script e `is:inline` JS PURO (garante delivery; nao
+  depende de bundle). `/admin/rh` autentica por `claims.tipo==="admin"` -> o token
+  do portal passa; o gating por perfil (grupo "rh") libera o conteudo.
+- **Admin.astro modo `?embed=1`:** esconde a moldura (menu lateral + topbar) via
+  CSS (`.shell.embed`), e um script reescreve os links internos `/admin/*` para
+  carregar `embed=1` (a navegacao do RH — Recrutamento/Avaliacoes/etc — fica
+  DENTRO do portal, sem moldura dupla).
+- **Least-privilege:** grupo "geral" (Dashboard/Analise do Site) ganhou GRUPO_ROLES
+  = [admin,financeiro,comercial,operacional,manutencao_*] — um perfil SO-RH nao ve
+  KPIs financeiros/comerciais nem digitando a URL. Financeiro/comercial/admin
+  continuam vendo o dashboard.
+- **Portal.astro:** atalho "Gestao de RH" aponta p/ `/portal/rh`; logout do portal
+  limpa o cookie-ponte (`admin_token=; max-age=0`). **portal/index.astro:** card
+  "Gestao de RH" -> `/portal/rh`.
+- **Validado E2E (dev + token forjado):** embed esconde moldura, RH renderiza sem
+  "Acesso restrito", dashboard bloqueado p/ so-RH, financeiro/admin veem dashboard,
+  script rewrite-embed presente, `/portal/rh` em prod com o script inline correto.
+  Caveat: o teste forjado em PROD cai no login porque o JWT_SECRET local do .env !=
+  o da Vercel — esperado; o fluxo real (RH loga no portal -> token assinado pelo
+  segredo de prod) verifica certo. tsc + astro build limpos.
+- **PADRAO reusavel:** para espelhar QUALQUER modulo do admin dentro do portal,
+  basta `/portal/<x>` com a ponte de cookie + iframe `/admin/<x>?embed=1` gated por
+  perfil. (Decisao: iframe + ponte em vez de reescrever a UID gigante do modulo.)
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
