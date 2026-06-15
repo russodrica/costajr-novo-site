@@ -1330,6 +1330,20 @@ tabela. **Migration 062_doc_empresa RODADA** (doc_empresa + doc_empresa_arquivos
 PRIVADO `doc-empresa` criado (service role). Agora a pagina lista (vazia) sem erro; falta a
 Adriana importar os docs do Monday (board 6803034312) se quiser.
 
+## Atualizacao 15/06/2026 (parte 2) — "Meu RH" no portal do colaborador (autoatendimento)
+
+A Adriana queria o RH no **portal do COLABORADOR** (nao o admin) — autoatendimento.
+FEITO: `/portal/meu-rh` (card 🪪 + item no menu, visivel a todos os logins) mostra os
+PROPRIOS dados da pessoa: dados da ficha (nome/cargo/regime/admissao/contato), Documentos
+(rh_documentos, download seguro via URL assinada do bucket privado `rh`), Ferias
+(rh_ferias_periodos + parcelas), EPIs (epi_entregas ativos). API `/api/portal/meu-rh`
+resolve login (portal_profiles.id=claims.sub) -> pessoa do RH via `profile_id` (mesmo
+padrao do meus-equipamentos). Download: `/api/portal/meu-rh/documento/[id]` so libera doc
+do proprio colaborador (URL assinada 10min). Quem nao tem ficha vinculada ve aviso
+"vincular com o RH". **9 logins estao vinculados** hoje (veem dados); os demais veem vazio.
+Usa o hero do layout (accent #0EA5E9). NAO mostra salario/banco (minimizacao). ADIADO:
+holerite (nao temos), avaliacoes do colaborador, edicao dos proprios dados.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
