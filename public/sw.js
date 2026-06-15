@@ -1,6 +1,6 @@
 // Service worker do CJR Manutenção (PWA)
 // Estratégia: network-first para HTML/API, cache-first para estáticos
-const CACHE_VERSION = "cjr-v3";
+const CACHE_VERSION = "cjr-v4";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -44,6 +44,10 @@ self.addEventListener("fetch", (event) => {
 
   // APIs e webhook: sempre rede, nunca cache
   if (url.pathname.startsWith("/api/")) return;
+
+  // Páginas do ADMIN: SEMPRE rede, nunca cache (são sensíveis e gated por perfil/embed;
+  // servir HTML antigo do cache pode mostrar módulos a quem não deve — ex.: embed do RH).
+  if (url.pathname.startsWith("/admin/") || url.pathname === "/admin") return;
 
   // Assets versionados (Astro) → cache-first agressivo
   if (url.pathname.startsWith("/_astro/")) {
