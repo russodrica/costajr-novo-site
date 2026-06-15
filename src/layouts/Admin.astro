@@ -3,7 +3,29 @@ export interface Props {
   title: string;
   current?: string;
 }
+import { verifyToken, perfisDe, type AdminClaims } from "../lib/auth";
 const { title, current = "" } = Astro.props;
+
+// Perfis do usuário (lidos do token) — para liberar os módulos do admin POR PERFIL.
+let perfisUser: string[] = [];
+try { const tk = Astro.cookies.get("admin_token")?.value; if (tk) perfisUser = perfisDe(await verifyToken<AdminClaims>(tk)); } catch { /* sem perfis -> nao filtra; a propria pagina ja autentica */ }
+const temPerfis = perfisUser.length > 0;
+const ehAdminUser = perfisUser.includes("admin");
+
+// Quais perfis veem cada GRUPO do menu (espelha o Doc 07 do portal antigo). Admin vê tudo.
+// Grupos sem entrada aqui (geral/conta) ficam visíveis para todos os perfis do painel.
+const GRUPO_ROLES: Record<string, string[]> = {
+  manutencao: ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
+  operacoes:  ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
+  rh:         ["admin", "rh"],
+  financeiro: ["admin", "financeiro"],
+  comercial:  ["admin", "comercial"],
+  juridico:   ["admin", "juridico"],
+  portal:     ["admin", "rh"],
+  institucional: ["admin"],
+  sistema:    ["admin"],
+};
+const podeGrupo = (id: string) => !temPerfis || ehAdminUser || !GRUPO_ROLES[id] || GRUPO_ROLES[id].some((r) => perfisUser.includes(r));
 
 type NavItem = { href: string; label: string; icon: string; key: string };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
@@ -110,6 +132,13 @@ const grupos: NavGroup[] = [
 
 // grupo que contém a página atual (abre por padrão)
 const grupoAtivo = grupos.find(g => g.items.some(i => i.key === current))?.id ?? "geral";
+
+// Liberação por perfil: esconde grupos sem permissão e bloqueia acesso direto à página.
+const gruposVisiveis = grupos.filter(g => podeGrupo(g.id));
+const grupoDaPagina = grupos.find(g => g.items.some(i => i.key === current));
+if (temPerfis && current && grupoDaPagina && !podeGrupo(grupoDaPagina.id)) {
+  return Astro.redirect("/admin");
+}
 ---
 <!doctype html>
 <html lang="pt-BR">
@@ -136,7 +165,7 @@ const grupoAtivo = grupos.find(g => g.items.some(i => i.key === current))?.id ??
         <span class="logo-sub">Admin</span>
       </div>
       <nav class="sidebar-nav">
-        {grupos.map(g => (
+        {gruposVisiveis.map(g => (
           g.label === null
             ? g.items.map(item => (
                 <a href={item.href} class={`nav-item ${current === item.key ? "active" : ""}`}>

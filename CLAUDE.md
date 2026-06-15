@@ -1285,6 +1285,37 @@ Inclui ENTREGA a pessoa (status alocado). Maquina de estados em telegram_sessoes
 mov_confirma). E2E VERIFICADO em producao (fluxo completo Sim->Telefone->equip->devolver->
 ok grava em_estoque + movimento por Jose). Webhook ja ativo (URL inalterada).
 
+## Atualizacao 14/06/2026 (parte 15) — Forum=JunIA + admin gated por perfil + docs Manus
+
+**Forum unificado com JunIA (commit do dia):** /portal/forum.astro agora REDIRECIONA
+para /portal/junia (o "Forum" e o chat de IA, como no Manus). Sidebar: removido o item
+"Forum" separado, o item de IA virou "Forum / JunIA 🤖". Home: card unico "Fórum / JunIA"
+(removido o card "Forum" de topicos). portal_forum_topicos continua existindo mas sem
+entrada na UI.
+
+**Documentos do portal antigo (3 arquivos que a Adriana salvou na raiz):**
+Portal_CJR_Documentacao_Completa.pdf/.docx + portal-cjr-documentacao.zip (mesmo conteudo).
+**ATENCAO: e a doc do modulo de MANUTENCAO PREVENTIVA** (clientes/tecnicos/visitas
+preventivas/orcamentos do portalcjr.vip) — 11 docs + diagramas. **NAO contem a JunIA**
+(a JunIA/intranet colaborador era outro projeto Manus). Util p/ completar a Gestao de
+Manutencao. **Doc 07 (Usuarios e Permissoes)** = modelo de liberacao POR PERFIL do antigo
+(matriz Acao x Role por modulo: admin tudo, financeiro so financeiro, etc.). Extrai o
+texto em D:/temp/portal_doc.txt e o zip em D:/temp/pcjr_zip2 (unpdf via node; nao ha
+python no Windows desta maquina). NAO commitei esses arquivos no git (grandes; ficam na
+raiz local, gitignorados de fato por nao estarem em src/db).
+
+**ERRO corrigido — admin NAO filtrava modulos por perfil (commit do dia):** o painel
+admin mostrava TODOS os grupos do menu p/ qualquer um que entrasse (RH/Financeiro/etc.).
+Espelhei o Doc 07: `src/layouts/Admin.astro` agora le os perfis do token (verifyToken +
+perfisDe) e: (1) ESCONDE grupos do menu sem permissao, (2) BLOQUEIA acesso direto (se a
+pagina do `current` esta num grupo sem permissao -> Astro.redirect("/admin")). Mapa
+GRUPO_ROLES: manutencao/operacoes=admin+operacional+manutencao_*; rh=admin+rh; financeiro=
+admin+financeiro; comercial=admin+comercial; juridico=admin+juridico; portal=admin+rh;
+institucional/sistema=admin; geral/conta=todos. **Admin ve tudo.** Seguranca: se o token
+nao for lido (temPerfis=false) NAO filtra (a propria pagina ja autentica) — evita lockout.
+Ajustar GRUPO_ROLES em Admin.astro se a Adriana quiser outro mapeamento. NOTA: o portal do
+COLABORADOR e gated pela matriz /admin/permissoes (areas por perfil) — coisa diferente.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
