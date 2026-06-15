@@ -309,20 +309,57 @@ export function auditarLocais(dia: DiaPonto): Anomalia[] {
 }
 
 // ─── Diagnóstico de conexão (para validar credenciais/formatos) ─────────────
+
+// Sonda crua de um endpoint: NÃO lança. Em sucesso mostra só a estrutura
+// (sem valores, p/ privacidade); em erro mostra o corpo (p/ depurar 400 etc.).
+async function probe(path: string, params: Record<string, any> = {}): Promise<any> {
+  try {
+    const tok = await obterToken();
+    const u = new URL(BASE + path);
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") u.searchParams.set(k, String(v));
+    const r = await fetch(u.toString(), { headers: { Authorization: tok, Accept: "application/json" } });
+    const txt = await r.text();
+    let j: any = null; try { j = JSON.parse(txt); } catch {}
+    if (!r.ok) return { status: r.status, ok: false, bodyHead: txt.slice(0, 300) };
+    const arr = j ? comoLista(j) : [];
+    return {
+      status: r.status,
+      ok: true,
+      envelope: Array.isArray(j) ? "(array)" : j && typeof j === "object" ? Object.keys(j) : typeof j,
+      itens: arr.length,
+      primeiroItemCampos: arr[0] ? Object.keys(arr[0]) : [],
+    };
+  } catch (e: any) {
+    return { erro: String(e?.message || e) };
+  }
+}
+
 export async function diagnostico(dataISO: string): Promise<any> {
-  const pessoas = await listarPessoas();
-  const equips = await listarEquipamentos();
-  // distribuição de status (para confirmar qual valor = ativo)
-  const distStatus: Record<string, number> = {};
-  for (const p of pessoas) distStatus[String(p.statusRaw)] = (distStatus[String(p.statusRaw)] || 0) + 1;
-  const batidas = await coletarBatidasDoDia(dataISO, equips);
-  return {
-    base: BASE,
-    pessoas: pessoas.length,
-    pessoasAtivas: pessoas.filter((p) => p.ativo).length,
-    distribuicaoStatus: distStatus,
-    equipamentos: equips.map((e) => e.nome),
-    batidasNoDia: batidas.length,
-    amostraBatidas: batidas.slice(0, 5).map((b) => ({ hora: hhmm(b.ts), equipamento: b.deviceNome, pisCasou: !!b.pis })),
-  };
+  const out: any = { base: BASE };
+  // 1) login (confirma credenciais)
+  try { const tok = await obterToken(); out.login = { ok: true, tokenLen: tok.length }; }
+  catch (e: any) { out.login = { ok: false, erro: String(e?.message || e) }; return out; }
+  // 2) sondas cruas (não lançam) — mostram status + corpo p/ depurar
+  out.person = await probe("/person", { start: 0, length: 50 });
+  out.personSemParams = await probe("/person", {});
+  out.device = await probe("/device", { start: 0, length: 50 });
+  // 3) se /person ok, calcula distribuição de status + batidas do dia
+  if (out.person?.ok) {
+    try {
+      const pessoas = await listarPessoas();
+      const dist: Record<string, number> = {};
+      for (const p of pessoas) dist[String(p.statusRaw)] = (dist[String(p.statusRaw)] || 0) + 1;
+      out.distribuicaoStatus = dist;
+      out.pessoas = pessoas.length;
+      out.pessoasAtivas = pessoas.filter((p) => p.ativo).length;
+    } catch (e: any) { out.pessoasErro = String(e?.message || e); }
+    try {
+      const equips = await listarEquipamentos();
+      out.equipamentos = equips.map((e) => e.nome);
+      const batidas = await coletarBatidasDoDia(dataISO, equips);
+      out.batidasNoDia = batidas.length;
+      out.amostraBatidas = batidas.slice(0, 5).map((b) => ({ hora: hhmm(b.ts), equipamento: b.deviceNome, pisCasou: !!b.pis }));
+    } catch (e: any) { out.batidasErro = String(e?.message || e); }
+  }
+  return out;
 }

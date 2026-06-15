@@ -5,7 +5,7 @@ import { rhidConfigurado, agoraSP, montarDia, relatorioEntrada, diagnostico } fr
 export const prerender = false;
 
 // GET/POST /api/integra/rhid-entrada
-// Alerta de ENTRADA (rodar ~9h, seg-sáb): lista os colaboradores ativos que
+// Alerta de ENTRADA (rodar ~10h, seg-sáb): lista os colaboradores ativos que
 // ainda NÃO bateram nenhum ponto no dia. Envia ao Telegram do grupo CJR Ativos.
 //
 // Acionado por gatilho externo (Power Automate / cron-job.org), pois a Vercel
