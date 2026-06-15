@@ -1,0 +1,71 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (claims.role !== "admin") return Astro.redirect("/admin");
+---
+<Admin title="Bot Telegram" current="telegram">
+  <div class="toolbar"><span class="toolbar-title">🤖 Bot de Ativos no Telegram</span></div>
+
+  <div class="card" style="padding:20px;max-width:760px">
+    <p style="margin:0 0 6px;font-size:1.02rem"><strong>Caminho de volta</strong> — qualquer pessoa do time pode registrar a movimentação de um equipamento pelo Telegram, no <strong>privado do bot</strong> <code>@cjr_ativo_bot</code>.</p>
+    <p style="margin:0 0 16px;color:var(--ink-light);font-size:.92rem">A pessoa é identificada pelo <strong>telefone cadastrado na ficha do RH</strong> (empresa ou pessoal). Sem telefone na ficha, não consegue usar.</p>
+
+    <div style="background:#F4F6F9;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <strong style="font-size:.92rem">Como o time usa (passe esse passo a passo):</strong>
+      <ol style="margin:8px 0 0;padding-left:20px;font-size:.92rem;line-height:1.8;color:var(--ink-mid)">
+        <li>Abrir o Telegram e procurar <strong>@cjr_ativo_bot</strong></li>
+        <li>Enviar <code>/start</code> e tocar em <strong>"Compartilhar meu telefone"</strong></li>
+        <li>Tocar em <strong>📦 Registrar movimentação</strong>, buscar o equipamento e escolher: <em>Devolvi ao estoque · Levei para uma obra · Está com defeito</em></li>
+      </ol>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary" id="btnAtivar" onclick="ativar()">⚡ Ativar / Reativar bot</button>
+      <button class="btn btn-secondary" id="btnStatus" onclick="verStatus()">🔍 Ver status</button>
+    </div>
+    <div id="msg" style="margin-top:14px"></div>
+    <pre id="out" style="margin-top:10px;background:#0F172A;color:#E2E8F0;border-radius:8px;padding:12px;font-size:12px;overflow:auto;display:none"></pre>
+
+    <p style="margin:18px 0 0;color:var(--ink-light);font-size:.85rem">Obs.: "Ativar" registra o webhook do bot no Telegram (faça 1x; refaça só se mudar o domínio). Entregas formais com termo de responsabilidade continuam no painel de Ativos.</p>
+  </div>
+
+  <script>
+    function show(html, ok) {
+      const m = document.getElementById("msg");
+      m.innerHTML = `<div class="alert ${ok ? "alert-success" : "alert-error"}">${html}</div>`;
+    }
+    function dump(obj) {
+      const o = document.getElementById("out");
+      o.style.display = "block"; o.textContent = JSON.stringify(obj, null, 2);
+    }
+    async function ativar() {
+      const b = document.getElementById("btnAtivar"); b.disabled = true; b.textContent = "Ativando...";
+      try {
+        const r = await fetch("/api/admin/telegram/configurar", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        const d = await r.json();
+        if (r.ok && d.ok) show("✅ Bot ativado! O caminho de volta está no ar. Peça pro time mandar <strong>/start</strong> pro @cjr_ativo_bot.", true);
+        else show("⚠ Não ativou: " + (d.error || JSON.stringify(d.telegram?.description || d)), false);
+        dump(d);
+      } catch (e) { show("Erro: " + e, false); }
+      b.disabled = false; b.textContent = "⚡ Ativar / Reativar bot";
+    }
+    async function verStatus() {
+      try {
+        const r = await fetch("/api/admin/telegram/configurar");
+        const d = await r.json();
+        const info = d.info || {};
+        if (info.url) show(`Webhook ativo em <code>${info.url}</code>${info.pending_update_count ? ` · ${info.pending_update_count} pendentes` : ""}${info.last_error_message ? ` · último erro: ${info.last_error_message}` : ""}`, !info.last_error_message);
+        else show("Bot ainda <strong>não ativado</strong> (sem webhook). Toque em Ativar.", false);
+        dump(d);
+      } catch (e) { show("Erro: " + e, false); }
+    }
+    (window as any).ativar = ativar;
+    (window as any).verStatus = verStatus;
+  </script>
+</Admin>

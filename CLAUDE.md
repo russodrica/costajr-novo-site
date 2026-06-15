@@ -1115,10 +1115,7 @@ logada da Adriana (campos email + email_pessoal presentes no #formColab).
 
 **PENDENTE p/ proxima sessao (pedidos da Adriana ainda nao feitos):**
 1. ✅ **Onda Perfis FEITA** (14/06/2026) — ver "parte 11" abaixo.
-2. **Bot Telegram de VOLTA (inbound)** — alguem do grupo de Ativos manda no PRIVADO do
-   bot "movimentei X" e o sistema registra. Identifica a pessoa pelo TELEFONE registrado
-   no sistema. telegram_sessoes JA CRIADA (060); falta webhook + setWebhook do bot +
-   parser de conversa + casar telefone→colaborador.
+2. ✅ **Bot Telegram de VOLTA (inbound) FEITO** (14/06/2026) — ver "parte 12" abaixo.
 
 ## Atualizacao 14/06/2026 (parte 11) — Onda Perfis (8 perfis, sem Coordenador)
 
@@ -1167,6 +1164,41 @@ coluna role tinha CHECK constraint — adicionar valor de enum exige ALTER da co
 
 **Acessos finos ajustaveis pela Adriana em /admin/permissoes** (a matriz e a fonte do que
 cada perfil VE no portal; os defaults dos novos perfis foram semeados, ela refina la).
+
+## Atualizacao 14/06/2026 (parte 12) — Bot Telegram de VOLTA (inbound) FEITO
+
+**Caminho de volta do Telegram:** qualquer pessoa do time abre o PRIVADO do bot de
+Ativos (@cjr_ativo_bot), se identifica pelo TELEFONE cadastrado no RH e registra a
+movimentacao de um equipamento por um fluxo guiado por BOTOES (sem LLM — maquina de
+estados em `telegram_sessoes`, migration 060). Item 2 das pendencias = CONCLUIDO.
+
+**Arquivos:**
+- `src/lib/telegramBot.ts` — motor: `processarUpdate(update)` roteia message/callback.
+  Identificacao: `msg.contact` (botao request_contact) -> match tolerante de telefone
+  (`telBate`: tira DDI 55, compara ultimos 8 digitos no fallback) contra
+  rh_colaboradores.telefone/telefone_pessoal (status!=desligado). Guarda
+  colaborador_id/nome/email em telegram_sessoes.dados (persistente); `estado` controla o
+  passo. Acoes do MVP: **Devolvi ao estoque / Levei para uma obra / Esta com defeito**.
+  Aplica o movimento ESPELHANDO movimentar.ts (update ativos + insert ativos_movimentos
+  com de_*/para_*/status_novo; defeito tambem insere ativos_ocorrencias tipo=dano) e
+  dispara a notificacao OUTBOUND pro grupo de Ativos (enviarTelegram). feito_por =
+  "Nome <email> (via Telegram)". Token = TELEGRAM_BOT_TOKEN (bot Ativos).
+  ENTREGA FORMAL (com termo de responsabilidade) continua SO no admin de proposito.
+- `src/pages/api/telegram/webhook.ts` — recebedor; valida o header
+  `x-telegram-bot-api-secret-token` == INTEGRA_TELEGRAM_SECRET; responde 200 sempre.
+- `src/pages/api/admin/telegram/configurar.ts` — POST faz setWebhook (url=
+  SITE/api/telegram/webhook, secret_token=INTEGRA_TELEGRAM_SECRET, allowed_updates
+  message+callback_query, drop_pending_updates); GET = getWebhookInfo. **O token NUNCA
+  sai do servidor** — o admin so dispara. (Respeita a regra: eu nao digito o token em
+  sistema externo; o app chama o setWebhook com o token do proprio env.)
+- `/admin/telegram` (menu Sistema, gate role==admin) — botao "Ativar/Reativar bot" +
+  "Ver status" + passo a passo pro time. ATIVAR 1x (refazer so se mudar dominio).
+
+**Privacidade BotFather:** NAO precisa mexer — no chat PRIVADO o bot recebe tudo. O
+webhook tambem recebe updates do grupo, mas onMessage ignora chat.type!='private'.
+**Sem env var nova:** usa TELEGRAM_BOT_TOKEN + INTEGRA_TELEGRAM_SECRET (ja na Vercel).
+**Setup pendente da Adriana:** abrir /admin/telegram e clicar "Ativar" 1x. Depois o time
+manda /start pro @cjr_ativo_bot.
 
 ## Convencoes desta pasta para o Claude Code
 
