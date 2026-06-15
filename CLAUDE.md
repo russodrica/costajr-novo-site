@@ -1471,6 +1471,46 @@ acesso, para saber o que revogar em desligamento ou troca de funcao.
   ativo, revogar (historico preservado com concedido_em/revogado_em), limpeza.
   tsc + astro build limpos.
 
+## Atualizacao 15/06/2026 (parte 3) — Permissao GRANULAR POR USUARIO (ver/editar) + matriz
+
+**Pedido da Adriana:** alem do perfil, poder ticar POR USUARIO, modulo a modulo,
+o que cada um VE e o que pode EDITAR (as vezes dentro do mesmo perfil a pessoa
+nao pode acessar algo). Escolhas dela: tela propria (MATRIZ) + tudo junto
+(acesso + ver/editar nos modulos principais).
+
+- **Migration 064_perm_usuario RODADA** (Management API): tabela
+  `portal_perm_usuario` (profile_id, modulo, nivel `nenhum|ver|editar`; unique
+  profile+modulo; RLS). Ausencia de linha = "herda do perfil".
+- **`src/lib/permissoes.ts` virou a FONTE UNICA** dos modulos do admin:
+  `GRUPOS_ADMIN` (espelha o menu — 11 grupos/~45 modulos), `GRUPO_ROLES`
+  (perfis por grupo, padrao), `MODULO_GRUPO`/`MODULO_LABEL`, `nivelPadraoPerfil`,
+  `nivelEfetivo` (override do usuario > padrao do perfil; **admin nunca trava**),
+  `perfisFrescos`, `carregarOverridesUsuario`, `nivelModuloUsuario`,
+  `exigirEdicao` e **`bloqueioSeSoLeitura(claims, modulo)`** (retorna Response 403
+  se nivel != editar — guard limpo, nao depende do catch). Admin.astro IMPORTA daqui
+  (o array `grupos` inline continua sendo so a fonte do MENU; as chaves batem).
+- **Admin.astro: gating agora e POR MODULO/USUARIO** (nao por grupo):
+  `podeModulo(key)` usa nivelEfetivo; "nenhum" some do menu E bloqueia a pagina
+  (slot condicional). Banner **"👁 Somente leitura"** automatico quando o nivel do
+  modulo atual e "ver" (classe `.ro-mode` no main; CSS esconde `[data-requer-edicao]`).
+- **Tela `/admin/permissoes` ganhou aba "Por usuario"**: MATRIZ modulos×usuarios,
+  cada celula alterna **Herdar→Ver→Editar→Nenhum** (cor + base herdada do perfil
+  visivel; admin travado em "editar"). API `/api/admin/permissoes-usuarios`
+  (GET catalogo+overrides+padrao; PUT substitui overrides dos usuarios do payload).
+- **Enforcement Ver=so-leitura no SERVIDOR (via workflow de 5 agentes):** 70
+  endpoints de mutacao recusam edicao (403) quando o nivel e "ver" —
+  Ativos(10)/Obras(9)/Financeiro(6)/Comercial(4)/RH(41). No RH as chaves sao FINAS
+  por subpasta: vagas/candidatos/cargos=`recrutamento`, avaliacoes=`avaliacoes`,
+  clima=`clima`, resto=`rh`. (GETs nao tocados.)
+- **E2E verificado no banco real:** override ver -> abre+banner+POST 403; nenhum ->
+  Acesso restrito + some do menu; editar/admin -> completo; matriz GET/PUT ok.
+  tsc + astro build limpos.
+- **PENDENTE (polimento, nao critico):** esconder os botoes de edicao nas paginas
+  em modo leitura (hoje o banner avisa + o servidor recusa 403 com msg amigavel;
+  marcar os botoes com `data-requer-edicao` esconde-os — falta taguear por pagina).
+  E mapear conciliacao(`fin-conciliacao`) e sub-modulos RH com chave propria no
+  ENFORCEMENT fino se quiser (hoje fin inteiro=`financeiro`).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
