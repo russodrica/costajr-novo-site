@@ -375,22 +375,31 @@ export async function diagnostico(dataISO: string): Promise<any> {
   // 2 datas: a alvo e uma com dados conhecidos (2025-05-20).
   try {
     const pessoas = await listarPessoas();
-    const p = pessoas.find((x) => x.ativo && x.pis && !/teste|test/i.test(x.nome)) || pessoas.find((x) => x.ativo && x.pis);
-    out.apuracao = [];
-    if (p) {
-      for (const dt of [dataISO, "2025-05-20"]) {
-        try {
-          const raw = String(await apiGet("/apuracao_ponto", { idPerson: p.id, dataIni: dt, dataFinal: dt }, true));
-          let parsed: any = null; try { parsed = JSON.parse(raw); } catch {}
-          const dia0 = Array.isArray(parsed) ? parsed[0] : parsed;
-          const campos = dia0 && typeof dia0 === "object" ? Object.keys(dia0) : null;
-          const camposArray: Record<string, any> = {};
-          if (dia0 && typeof dia0 === "object") {
-            for (const k of Object.keys(dia0)) if (Array.isArray(dia0[k]) && dia0[k].length) camposArray[k] = dia0[k].slice(0, 8);
-          }
-          out.apuracao.push({ data: dt, idPerson: p.id, campos, camposComArray: camposArray });
-        } catch (e: any) { out.apuracao.push({ data: dt, erro: String(e?.message || e) }); }
-      }
+    const ativos = pessoas.filter((x) => x.ativo && x.pis);
+    async function apur(idPerson: number, dt: string): Promise<any> {
+      const raw = String(await apiGet("/apuracao_ponto", { idPerson, dataIni: dt, dataFinal: dt }, true));
+      let parsed: any = null; try { parsed = JSON.parse(raw); if (typeof parsed === "string") parsed = JSON.parse(parsed); } catch {}
+      const d0 = Array.isArray(parsed) ? parsed[0] : parsed;
+      const arrays: Record<string, number> = {};
+      if (d0 && typeof d0 === "object") for (const k of Object.keys(d0)) if (Array.isArray(d0[k])) arrays[k] = d0[k].length;
+      return { d0, rawLen: raw.length, arrays };
+    }
+    // Amostra de até 10 ativos reais: quantos têm apuração não-vazia na data alvo.
+    out.apuracaoAmostra = [];
+    for (const p of ativos.slice(0, 10)) {
+      try { const r = await apur(p.id, dataISO); out.apuracaoAmostra.push({ id: p.id, rawLen: r.rawLen, arrays: r.arrays }); }
+      catch (e: any) { out.apuracaoAmostra.push({ id: p.id, erro: String(e?.message || e) }); }
+    }
+    // Formato detalhado do 1º que tiver objeto (achar o campo de batidas).
+    for (const p of ativos.slice(0, 15)) {
+      try {
+        const r = await apur(p.id, dataISO);
+        if (r.d0 && typeof r.d0 === "object") {
+          out.apuracaoExemplo = { id: p.id, campos: Object.keys(r.d0), arrays: r.arrays };
+          for (const k of Object.keys(r.d0)) if (Array.isArray(r.d0[k]) && r.d0[k].length) out.apuracaoExemplo["amostra_" + k] = r.d0[k].slice(0, 6);
+          break;
+        }
+      } catch {}
     }
   } catch (e: any) { out.apuracaoErro = String(e?.message || e); }
 
