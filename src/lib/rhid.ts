@@ -337,14 +337,36 @@ export async function diagnostico(dataISO: string): Promise<any> {
     out.distribuicaoStatus = dist;
   } catch (e: any) { out.pessoasErro = String(e?.message || e); }
 
-  // Equipamentos + batidas lidas no dia (valida download/parse do AFD).
+  // Equipamentos.
+  let equips: Equipamento[] = [];
+  try { equips = await listarEquipamentos(); out.equipamentos = equips.map((e) => e.nome); }
+  catch (e: any) { out.equipErro = String(e?.message || e); }
+
+  // AFD CRU do 1º equipamento real — várias variações p/ achar data/limite certo.
+  if (equips.length) {
+    const eq = equips.find((e) => !/teste/i.test(e.nome)) || equips[0];
+    const toBR = (iso: string) => iso.split("-").reverse().join("/");
+    const primeiroDoMes = dataISO.slice(0, 8) + "01";
+    async function afdRaw(label: string, p: Record<string, any>) {
+      try {
+        const txt = String(await apiGet("/report/afd/download", { idEquipamento: eq.id, ...p }, true));
+        return { label, equip: eq.nome, bytes: txt.length, linhas: txt.split(/\r?\n/).filter(Boolean).length, parsed: parseAfd(txt).length, head: txt.slice(0, 220) };
+      } catch (e: any) { return { label, erro: String(e?.message || e) }; }
+    }
+    out.afdDebug = [
+      await afdRaw("iso_dia", { dataIni: dataISO, dataFinal: dataISO }),
+      await afdRaw("br_dia", { dataIni: toBR(dataISO), dataFinal: toBR(dataISO) }),
+      await afdRaw("iso_range_mes", { dataIni: primeiroDoMes, dataFinal: dataISO }),
+      await afdRaw("sem_data", {}),
+    ];
+  }
+
+  // Pipeline real de batidas (como os alertas usam).
   try {
-    const equips = await listarEquipamentos();
-    out.equipamentos = equips.map((e) => e.nome);
     const batidas = await coletarBatidasDoDia(dataISO, equips);
     out.batidasNoDia = batidas.length;
     out.amostraBatidas = batidas.slice(0, 6).map((b) => ({ hora: hhmm(b.ts), equipamento: b.deviceNome, pisCasou: !!b.pis }));
-  } catch (e: any) { out.equipBatidasErro = String(e?.message || e); }
+  } catch (e: any) { out.batidasErro = String(e?.message || e); }
 
   return out;
 }
