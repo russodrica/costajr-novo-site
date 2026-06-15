@@ -353,33 +353,30 @@ async function rawAfdMobile(dataIni: string, dataFinal: string): Promise<any> {
   return r.json();
 }
 
-// Sonda de estrutura (p/ montar o relatório): devolve um resumo, não os 16MB.
+// Sonda de estrutura/semântica (p/ montar o relatório): resumo, não os 16MB.
 export async function probeAfdMobile(dataIni: string, dataFinal: string): Promise<any> {
   const j = await rawAfdMobile(dataIni, dataFinal);
   const top = Array.isArray(j) ? j : [j];
-  const grupos = top.slice(0, 4).map((g: any) => ({
-    keys: g && typeof g === "object" ? Object.keys(g) : typeof g,
-    qtdMarc: Array.isArray(g?.listAfdMobilePerson) ? g.listAfdMobilePerson.length : null,
-    pessoa: g?.name ?? g?.nome ?? g?.personName ?? g?.namePerson,
-  }));
-  let total = 0; let sample: any = null;
+  const dist = (campo: string, m: any, acc: Record<string, number>) => { const v = String(m[campo]); acc[v] = (acc[v] || 0) + 1; };
+  const distGeo: Record<string, number> = {}, distSusp: Record<string, number> = {}, distAprov: Record<string, number> = {}, distGeofence: Record<string, number> = {};
+  let total = 0, comAddress = 0; const amostras: any[] = [];
   for (const g of top) {
     const l = g?.listAfdMobilePerson;
-    if (Array.isArray(l)) {
-      total += l.length;
-      if (!sample && l[0]) {
-        const m = l[0];
-        sample = {
-          campos: Object.keys(m),
-          latitude: m.latitude, longitude: m.longitude,
-          address: typeof m.address === "string" ? m.address.slice(0, 50) : m.address,
-          geofence: m._classificacaoGeofence,
-          camposData: Object.keys(m).filter((k) => /date|data|hora|time/i.test(k)).map((k) => `${k}=${String(m[k]).slice(0, 22)}`),
-        };
+    if (!Array.isArray(l)) continue;
+    for (const m of l) {
+      total++;
+      dist("classificacaoGeofence", m, distGeo);
+      dist("suspect", m, distSusp);
+      dist("approvalStatus", m, distAprov);
+      dist("geofence", m, distGeofence);
+      if (m.address) comAddress++;
+      // guarda amostras "interessantes" (geofence != 0 ou suspeita) + 1 normal
+      if (amostras.length < 6 && (String(m.classificacaoGeofence) !== "0" || m.suspect || amostras.length < 2)) {
+        amostras.push({ pessoa: m.personName, data: m.dateTimeStr, geo: m.classificacaoGeofence, geofence: m.geofence, idGeofence: m.idGeofence, susp: m.suspect, suspStr: m.suspectStr, aprov: m.approvalStatus, reportStr: typeof m.reportStr === "string" ? m.reportStr.slice(0, 40) : m.reportStr, text: typeof m.text === "string" ? m.text.slice(0, 30) : m.text, addr: typeof m.address === "string" ? m.address.slice(0, 40) : m.address, ll: [m.latitude, m.longitude] });
       }
     }
   }
-  return { topLen: top.length, totalMarc: total, grupos, sample };
+  return { pessoas: top.length, totalMarc: total, comAddress, distGeo, distGeofence, distSusp, distAprov, amostras };
 }
 
 // ─── Diagnóstico ────────────────────────────────────────────────────────────
