@@ -9,7 +9,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
-    if (!["admin", "coordenador"].includes(admin.role)) return jsonErr(403, "Sem permissão.");
+    if (!["admin"].includes(admin.role)) return jsonErr(403, "Sem permissão.");
     const db = supabaseAdmin();
     const r = await restaurarDaLixeira(db, { req: request, admin }, params.id!);
     if (!r.ok) return jsonErr(400, r.error || "Falha ao restaurar");

@@ -7,7 +7,7 @@ if (!token) return Astro.redirect("/admin/login");
 let claims: AdminClaims;
 try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
-if (!["admin", "coordenador"].includes(claims.role)) return Astro.redirect("/admin");
+if (!["admin"].includes(claims.role)) return Astro.redirect("/admin");
 ---
 <Admin title="Auditoria — Logs" current="logs">
   <div class="toolbar">
@@ -25,7 +25,7 @@ if (!["admin", "coordenador"].includes(claims.role)) return Astro.redirect("/adm
     <input type="date" class="filter-select" id="fDesde" onchange="carregar(1)" title="De" />
     <input type="date" class="filter-select" id="fAte" onchange="carregar(1)" title="Até" />
   </div>
-  <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 14px">Registro de toda inclusão, edição e exclusão feita por usuários do portal — para rastreio. Visível para admin e coordenador.</p>
+  <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 14px">Registro de toda inclusão, edição e exclusão feita por usuários do portal — para rastreio. Visível só para o administrador.</p>
 
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">

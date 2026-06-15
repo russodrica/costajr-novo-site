@@ -24,7 +24,7 @@ export const GET: APIRoute = async ({ request }) => {
 export const POST: APIRoute = async ({ request }) => {
   try {
     const claims = await requireAdmin(request);
-    if (!["admin", "coordenador", "rh"].includes(claims.role)) return jsonErr(403, "Sem permissão.");
+    if (!["admin", "rh"].includes(claims.role)) return jsonErr(403, "Sem permissão.");
     const body = await request.json();
     const { titulo, descricao, url, storage_path, categoria, access_roles, paginas, ordem } = body;
     if (!titulo || (!url && !storage_path)) return jsonErr(400, "Campos obrigatórios ausentes.");

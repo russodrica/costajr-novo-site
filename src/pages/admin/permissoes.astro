@@ -15,8 +15,9 @@ const mapa: Record<string, { areas: string[]; categorias_kb: string[] }> = {};
 for (const l of linhas || []) mapa[l.perfil] = { areas: l.areas || [], categorias_kb: l.categorias_kb || [] };
 
 const perfilLabel: Record<string, string> = {
-  admin: "Admin", coordenador: "Coordenador", financeiro: "Financeiro",
-  comercial: "Comercial", rh: "RH / DP", operacional: "Operacional",
+  admin: "Administrador", manutencao_operacao: "Manutenção - Operação",
+  manutencao_administrativo: "Manutenção - Administrativo", operacional: "Operação",
+  rh: "RH / DP", financeiro: "Financeiro", comercial: "Comercial", juridico: "Jurídico",
 };
 ---
 <Admin title="Permissões de Acesso" current="permissoes">

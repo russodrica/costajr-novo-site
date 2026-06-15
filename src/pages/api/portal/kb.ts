@@ -18,7 +18,7 @@ export const GET: APIRoute = async ({ request }) => {
       .order("category")
       .order("created_at");
     // conteúdo trabalhista só para quem tem a permissão (ou gestão)
-    const podeTrabalhista = claims.trabalhista || temPerfil(claims, ["admin", "coordenador", "rh"]);
+    const podeTrabalhista = claims.trabalhista || temPerfil(claims, ["admin", "rh"]);
     const { categoriasKb } = await permissoesDoUsuario(claims);
     const catsOk = new Set(categoriasKb.map((x) => x.toLowerCase()));
     const lista = (data || []).filter((kbe) => {

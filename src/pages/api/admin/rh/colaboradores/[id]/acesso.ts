@@ -6,12 +6,13 @@ import { registrarAcao } from "../../../../../../lib/auditoria";
 
 export const prerender = false;
 
-const ROLES = ["admin", "coordenador", "financeiro", "comercial", "rh", "operacional"];
+const ROLES = ["admin", "manutencao_operacao", "manutencao_administrativo", "operacional", "rh", "financeiro", "comercial", "juridico"];
 
 // POST /api/admin/rh/colaboradores/[id]/acesso
 // Dá acesso ao portal a um colaborador do RH: cria (ou vincula) um membro
 // (portal_profiles), define o perfil e envia a senha temporária por e-mail.
-// body: { role }  (perfil: admin, coordenador, financeiro, comercial, rh, operacional)
+// body: { role }  (um dos 8 perfis: admin, manutencao_operacao, manutencao_administrativo,
+//                  operacional, rh, financeiro, comercial, juridico)
 export const POST: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);

@@ -116,7 +116,8 @@ export async function requireAdmin(req: Request): Promise<AdminClaims> {
   }
   const claims = await verifyToken<AdminClaims>(tok);
   if (claims.tipo !== "admin") throw new Error("Token inválido");
-  if (!["admin","coordenador","financeiro","comercial","rh","operacional"].includes(claims.role)) {
+  // 8 perfis atuais + "coordenador" tolerado (legado) p/ não derrubar token ativo antigo.
+  if (!["admin","manutencao_operacao","manutencao_administrativo","operacional","rh","financeiro","comercial","juridico","coordenador"].includes(claims.role)) {
     throw new Error("Sem permissão");
   }
   return claims;

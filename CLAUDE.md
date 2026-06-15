@@ -1114,15 +1114,59 @@ import/export de planilha aceitam email_pessoal. Validado E2E na producao via se
 logada da Adriana (campos email + email_pessoal presentes no #formColab).
 
 **PENDENTE p/ proxima sessao (pedidos da Adriana ainda nao feitos):**
-1. **Onda Perfis** — em /admin/membros renomear "cargo"→"perfis" = as 8 AREAS (ADMIN,
-   MANUTENÇÃO-OPERAÇÃO, MANUTENÇÃO-ADMINISTRATIVO, OPERAÇÃO, RH, FINANCEIRO, COMERCIAL,
-   JURÍDICO; REMOVER COORDENADOR). Usuario inativo sai automaticamente de Membros.
-   Area habilitada = modulo aparece. (NAO comecado — mexe em permissoes do portal todo;
-   ATENCAO: "coordenador" e usado como gate em /admin/logs e /admin/lixeira — tratar.)
+1. ✅ **Onda Perfis FEITA** (14/06/2026) — ver "parte 11" abaixo.
 2. **Bot Telegram de VOLTA (inbound)** — alguem do grupo de Ativos manda no PRIVADO do
    bot "movimentei X" e o sistema registra. Identifica a pessoa pelo TELEFONE registrado
    no sistema. telegram_sessoes JA CRIADA (060); falta webhook + setWebhook do bot +
    parser de conversa + casar telefone→colaborador.
+
+## Atualizacao 14/06/2026 (parte 11) — Onda Perfis (8 perfis, sem Coordenador)
+
+**DECISAO/INVARIANTE (Adriana): os PERFIS do portal = as 8 AREAS da empresa.** Antes
+eram 6 (admin, coordenador, financeiro, comercial, rh, operacional). Agora 8:
+`admin`, `manutencao_operacao`, `manutencao_administrativo`, `operacional` (rotulo
+"Operação"), `rh`, `financeiro`, `comercial`, `juridico`. **"coordenador" REMOVIDO.**
+
+**Estrategia p/ minimizar risco:** as CHAVES internas dos perfis antigos foram MANTIDAS
+(`operacional` continua existindo, so o RÓTULO virou "Operação") — assim nao precisou
+renomear chave em ~30 arquivos nem migrar quem ja era operacional. So adicionei 3 chaves
+novas (manutencao_operacao, manutencao_administrativo, juridico) e removi coordenador.
+
+**Fonte unica de verdade: `src/lib/permissoes.ts`** — exporta `PERFIS` (8), `PERFIL_LABEL`
+(rotulos), `PERFIL_BADGE` (cores), `PERFIS_PAINEL`, `ehPerfilValido()`, `rotuloPerfil()`.
+A tela `/admin/permissoes` JA importa `PERFIS` e itera — entao a matriz lista os 8 sozinha.
+membros.astro, rh.astro (perfisMap), minha-conta (x2), portal/index, permissoes.astro e os
+dropdowns de publico-alvo (portal-comunicados/treinamentos/onboarding/kb/integracao) usam
+os rotulos novos.
+
+**Gates remapeados (coordenador saiu de TODOS):** Logs/Lixeira (paginas + 3 APIs) -> **so
+admin**. Conteudo (comunicados/onboarding/treinamentos/kb + trabalhista no junia/kb) ->
+**admin + rh**. documentos.ts -> admin + rh. gestao-manutencao (pagina + Portal.astro area
+"gestao" + card portal/index) -> **admin, operacional, manutencao_operacao,
+manutencao_administrativo**. comercial (Portal.astro + card) -> admin + comercial.
+
+**SEGURANCA — "coordenador" TOLERADO no login (nao quebra sessao ativa antiga):**
+auth.ts, login.ts, forgot-senha.ts ainda ACEITAM role 'coordenador' (alem dos 8), mas ele
+nao aparece em lugar nenhum da UI e nao ganha acesso em gate nenhum. acesso.ts (atribuir
+perfil a um login novo) oferece SO os 8 (sem coordenador).
+
+**Inativo sai de Membros (pedido da Adriana):** /admin/membros agora ESCONDE por padrao
+quem e "inativo" = approval_status='rejected' OU vinculado a colaborador do RH desligado.
+Aba/pill "🚫 Inativos" revela. Contadores (Todos/Colaboradores/Terceiros) contam so ativos.
+Coluna "Cargo" virou "Perfis"; badges mostram o ROTULO (nao a chave).
+
+**Migration 061_perfis.sql RODADA (14/06/2026, Management API):** ALTER da constraint
+`portal_profiles_role_check` (8 perfis + coordenador legado + pendente); remapeou os 4
+membros que tinham coordenador (Costa JR->admin+; Adriana Teste(desligada)->comercial;
+**Samyria(Coord.Administrativo)->RH/DP**; **Renata(Gestor de Manutencao)->manutencao_operacao
++ manutencao_administrativo** — decisao da Adriana); semeou portal_permissoes dos 3 perfis
+novos (manutencao_* veem "gestao"; juridico ve documentos/trabalhista). LICAO (de novo): a
+coluna role tinha CHECK constraint — adicionar valor de enum exige ALTER da constraint.
+**portal_permissoes NAO tem constraint em perfil** (insert livre). E2E confirmado no banco:
+0 membros com coordenador, matriz com os 8, novos perfis com areas certas.
+
+**Acessos finos ajustaveis pela Adriana em /admin/permissoes** (a matriz e a fonte do que
+cada perfil VE no portal; os defaults dos novos perfis foram semeados, ela refina la).
 
 ## Convencoes desta pasta para o Claude Code
 

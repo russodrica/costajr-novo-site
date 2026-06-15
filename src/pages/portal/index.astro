@@ -108,11 +108,13 @@ import Portal from "~/layouts/Portal.astro";
     document.getElementById("welcomeName")!.textContent = nome.split(" ")[0];
     document.getElementById("welcomeRole")!.textContent = {
       admin: "Administrador",
-      coordenador: "Coordenador",
+      manutencao_operacao: "Manutenção - Operação",
+      manutencao_administrativo: "Manutenção - Administrativo",
+      operacional: "Operação",
+      rh: "RH / DP",
       financeiro: "Financeiro",
       comercial: "Comercial",
-      rh: "Recursos Humanos",
-      operacional: "Operacional",
+      juridico: "Jurídico",
     }[role] || role;
 
     // Módulos disponíveis por role
@@ -123,8 +125,8 @@ import Portal from "~/layouts/Portal.astro";
       { icon: "💬", title: "Fórum", desc: "Troca de ideias com a equipe", href: "/portal/forum", roles: "all" },
       { icon: "📄", title: "Documentos", desc: "Manuais e procedimentos técnicos", href: "/portal/documentos", roles: "all" },
       { icon: "🎒", title: "Meus Equipamentos", desc: "Equipamentos sob sua responsabilidade", href: "/portal/meus-equipamentos", roles: "all" },
-      { icon: "💰", title: "Gest. Comercial", desc: "Leads, contratos e metas", href: "/portal/gestao-comercial", roles: "admin,coordenador,comercial" },
-      { icon: "🔧", title: "Gest. Manutenção", desc: "Clientes, chamados e técnicos", href: "/portal/gestao-manutencao", roles: "admin,coordenador,operacional" },
+      { icon: "💰", title: "Gest. Comercial", desc: "Leads, contratos e metas", href: "/portal/gestao-comercial", roles: "admin,comercial" },
+      { icon: "🔧", title: "Gest. Manutenção", desc: "Clientes, chamados e técnicos", href: "/portal/gestao-manutencao", roles: "admin,operacional,manutencao_operacao,manutencao_administrativo" },
       { icon: "🙍", title: "Minha Conta", desc: "Editar nome e trocar senha", href: "/portal/minha-conta", roles: "all" },
     ];
 

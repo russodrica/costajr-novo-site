@@ -73,7 +73,7 @@ export async function responderJunIA(claims: AdminClaims, pergunta: string): Pro
   const categoria = detectarCategoria(pergunta);
 
   // trava trabalhista individual
-  const podeTrabalhista = claims.trabalhista || temPerfil(claims, ["admin", "coordenador", "rh"]);
+  const podeTrabalhista = claims.trabalhista || temPerfil(claims, ["admin", "rh"]);
   if (categoria === "Trabalhista" && !podeTrabalhista) {
     return { resposta: "Olá! Para questões trabalhistas, procure o RH da empresa — esse conteúdo é restrito. 😊", categoria, precisaResposta: false, fonte: "redirecionamento" };
   }

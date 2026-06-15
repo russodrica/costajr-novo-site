@@ -16,7 +16,7 @@ const { data: comunicados } = await db
   .order("created_at", { ascending: false });
 
 function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
-const roleLabel: Record<string, string> = { all: "Todos", admin: "Admin", coordenador: "Coord.", financeiro: "Financeiro", comercial: "Comercial", rh: "RH", operacional: "Operacional" };
+const roleLabel: Record<string, string> = { all: "Todos", admin: "Administrador", manutencao_operacao: "Manutenção - Operação", manutencao_administrativo: "Manutenção - Administrativo", operacional: "Operação", rh: "RH / DP", financeiro: "Financeiro", comercial: "Comercial", juridico: "Jurídico" };
 ---
 <Admin title="Comunicados" current="portal-comunicados">
   <div class="toolbar">
@@ -75,12 +75,14 @@ const roleLabel: Record<string, string> = { all: "Todos", admin: "Admin", coorde
         <label>Público-alvo</label>
         <select id="f-target">
           <option value="all">Todos os colaboradores</option>
-          <option value="admin">Admin</option>
-          <option value="coordenador">Coordenador</option>
+          <option value="admin">Administrador</option>
+          <option value="manutencao_operacao">Manutenção - Operação</option>
+          <option value="manutencao_administrativo">Manutenção - Administrativo</option>
+          <option value="operacional">Operação</option>
+          <option value="rh">RH / DP</option>
           <option value="financeiro">Financeiro</option>
           <option value="comercial">Comercial</option>
-          <option value="rh">RH</option>
-          <option value="operacional">Operacional</option>
+          <option value="juridico">Jurídico</option>
         </select>
       </div>
       <div class="form-group">

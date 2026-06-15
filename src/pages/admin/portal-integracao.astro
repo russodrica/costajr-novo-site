@@ -102,9 +102,14 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
           <label>Acesso</label>
           <select id="f-roles" multiple style="height:80px">
             <option value="all" selected>Todos</option>
-            <option value="admin">Admin</option><option value="coordenador">Coordenador</option>
-            <option value="financeiro">Financeiro</option><option value="comercial">Comercial</option>
-            <option value="rh">RH</option><option value="operacional">Operacional</option>
+            <option value="admin">Administrador</option>
+            <option value="manutencao_operacao">Manutenção - Operação</option>
+            <option value="manutencao_administrativo">Manutenção - Administrativo</option>
+            <option value="operacional">Operação</option>
+            <option value="rh">RH / DP</option>
+            <option value="financeiro">Financeiro</option>
+            <option value="comercial">Comercial</option>
+            <option value="juridico">Jurídico</option>
           </select>
         </div>
         <div class="form-group">

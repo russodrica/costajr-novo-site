@@ -543,8 +543,8 @@ const tipoLabel = { cliente: "Portal do Cliente", tecnico: "Portal do Técnico",
         const area = el.getAttribute("data-area");
         const basicas = ["onboarding","treinamentos","forum","documentos","meus-equipamentos"];
         const ok = basicas.includes(area || "") ||
-          (area === "comercial" && userRoles.some(r => ["admin","coordenador","comercial"].includes(r))) ||
-          (area === "gestao" && userRoles.some(r => ["admin","coordenador","operacional"].includes(r)));
+          (area === "comercial" && userRoles.some(r => ["admin","comercial"].includes(r))) ||
+          (area === "gestao" && userRoles.some(r => ["admin","operacional","manutencao_operacao","manutencao_administrativo"].includes(r)));
         if (ok) (el as HTMLElement).style.display = "";
       });
     };

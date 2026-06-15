@@ -9,7 +9,7 @@ export const prerender = false;
 export const GET: APIRoute = async ({ request, url }) => {
   try {
     const admin = await requireAdminCookie(request);
-    if (!["admin", "coordenador"].includes(admin.role)) return jsonErr(403, "Sem permissão para ver os logs.");
+    if (!["admin"].includes(admin.role)) return jsonErr(403, "Sem permissão para ver os logs.");
     const db = supabaseAdmin();
 
     const pagina = Math.max(1, parseInt(url.searchParams.get("pagina") || "1", 10));

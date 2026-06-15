@@ -5,8 +5,8 @@ import { enviarSenhaReset } from "~/lib/mailer";
 
 export const prerender = false;
 
-// Cargos que podem acessar o painel administrativo.
-const ROLES_PAINEL = ["admin", "coordenador", "financeiro", "comercial", "rh", "operacional"];
+// Perfis que podem acessar o painel administrativo (+ coordenador legado tolerado).
+const ROLES_PAINEL = ["admin", "manutencao_operacao", "manutencao_administrativo", "operacional", "rh", "financeiro", "comercial", "juridico", "coordenador"];
 
 // Rate limit simples em memória (anti-abuso): 5 pedidos por e-mail a cada 15 min.
 const tentativas = new Map<string, { count: number; resetAt: number }>();

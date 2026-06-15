@@ -17,7 +17,57 @@ export const CATEGORIAS_KB = [
   "RH", "Recrutamento", "Comercial", "Operacional",
 ] as const;
 
-export const PERFIS = ["admin", "coordenador", "financeiro", "comercial", "rh", "operacional"] as const;
+// Os 8 PERFIS do portal (= as áreas da empresa). "operacional" é a chave histórica
+// do perfil rotulado "Operação" (mantida para não migrar dados). "coordenador" foi
+// REMOVIDO (decisão da Adriana, 14/06/2026) — só fica no mapa de rótulos p/ exibir
+// dados legados sem quebrar.
+export const PERFIS = [
+  "admin",
+  "manutencao_operacao",
+  "manutencao_administrativo",
+  "operacional",
+  "rh",
+  "financeiro",
+  "comercial",
+  "juridico",
+] as const;
+
+/** Rótulo amigável de cada perfil (o que aparece na tela). */
+export const PERFIL_LABEL: Record<string, string> = {
+  admin: "Administrador",
+  manutencao_operacao: "Manutenção - Operação",
+  manutencao_administrativo: "Manutenção - Administrativo",
+  operacional: "Operação",
+  rh: "RH / DP",
+  financeiro: "Financeiro",
+  comercial: "Comercial",
+  juridico: "Jurídico",
+  coordenador: "Coordenador (legado)", // só p/ exibir dados antigos
+};
+
+/** Classe de badge (cor) de cada perfil. */
+export const PERFIL_BADGE: Record<string, string> = {
+  admin: "badge-red",
+  manutencao_operacao: "badge-blue",
+  manutencao_administrativo: "badge-gray",
+  operacional: "badge-gray",
+  rh: "badge-green",
+  financeiro: "badge-yellow",
+  comercial: "badge-orange",
+  juridico: "badge-purple",
+  coordenador: "badge-gray",
+};
+
+/** Lista de perfis válidos para acessar o painel admin (= PERFIS). */
+export const PERFIS_PAINEL: string[] = [...PERFIS];
+/** true se a chave é um perfil válido do portal. */
+export function ehPerfilValido(role: string): boolean {
+  return (PERFIS as readonly string[]).includes(role);
+}
+/** Rótulo do perfil (cai na própria chave se desconhecido). */
+export function rotuloPerfil(role: string): string {
+  return PERFIL_LABEL[role] || role;
+}
 
 export interface PermissaoPerfil { perfil: string; areas: string[]; categorias_kb: string[] }
 

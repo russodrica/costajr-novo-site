@@ -59,7 +59,7 @@ import Portal from "~/layouts/Portal.astro";
     if (!token) { window.location.replace("/portal/login"); throw 0; }
     const userData = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
     const role = userData.role || "";
-    if (!["admin","coordenador","operacional"].includes(role)) {
+    if (!["admin","operacional","manutencao_operacao","manutencao_administrativo"].includes(role)) {
       document.getElementById("loading")!.innerHTML = '<div class="empty-state"><strong>Acesso restrito</strong><p>Esta área é exclusiva para a equipe de operações.</p></div>';
     } else { loadData(); }
 

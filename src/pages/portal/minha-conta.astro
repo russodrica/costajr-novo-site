@@ -49,7 +49,7 @@ import Portal from "~/layouts/Portal.astro";
   <script>
     const token = localStorage.getItem("portal_colab_token");
     if (!token) window.location.replace("/portal/login");
-    const ROLE_LABEL: Record<string,string> = { admin:"Administrador", coordenador:"Coordenador", financeiro:"Financeiro", comercial:"Comercial", rh:"Recursos Humanos", operacional:"Operacional" };
+    const ROLE_LABEL: Record<string,string> = { admin:"Administrador", manutencao_operacao:"Manutenção - Operação", manutencao_administrativo:"Manutenção - Administrativo", operacional:"Operação", rh:"RH / DP", financeiro:"Financeiro", comercial:"Comercial", juridico:"Jurídico" };
     const $ = (id: string) => document.getElementById(id) as HTMLElement;
     function show(el: HTMLElement, t: string, ok: boolean) {
       el.textContent = t;

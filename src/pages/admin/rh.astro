@@ -1245,7 +1245,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     const em30Str = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
     const escD = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const tiposDocMap: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Documento" };
-    const perfisMap: Record<string, string> = { admin: "Administrador", coordenador: "Coordenador", financeiro: "Financeiro", comercial: "Comercial", rh: "RH / DP", operacional: "Operacional" };
+    const perfisMap: Record<string, string> = { admin: "Administrador", manutencao_operacao: "Manutenção - Operação", manutencao_administrativo: "Manutenção - Administrativo", operacional: "Operação", rh: "RH / DP", financeiro: "Financeiro", comercial: "Comercial", juridico: "Jurídico" };
 
     // ── Slots fixos de anexo (espelham as colunas do Monday) ──
     const normD = (s: string) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
