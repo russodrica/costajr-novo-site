@@ -1330,19 +1330,27 @@ tabela. **Migration 062_doc_empresa RODADA** (doc_empresa + doc_empresa_arquivos
 PRIVADO `doc-empresa` criado (service role). Agora a pagina lista (vazia) sem erro; falta a
 Adriana importar os docs do Monday (board 6803034312) se quiser.
 
-## Atualizacao 15/06/2026 (parte 2) — "Meu RH" no portal do colaborador (autoatendimento)
+## Atualizacao 15/06/2026 (parte 2) — RH por perfil: acesso TOTAL via /admin + atalho no portal
 
-A Adriana queria o RH no **portal do COLABORADOR** (nao o admin) — autoatendimento.
-FEITO: `/portal/meu-rh` (card 🪪 + item no menu, visivel a todos os logins) mostra os
-PROPRIOS dados da pessoa: dados da ficha (nome/cargo/regime/admissao/contato), Documentos
-(rh_documentos, download seguro via URL assinada do bucket privado `rh`), Ferias
-(rh_ferias_periodos + parcelas), EPIs (epi_entregas ativos). API `/api/portal/meu-rh`
-resolve login (portal_profiles.id=claims.sub) -> pessoa do RH via `profile_id` (mesmo
-padrao do meus-equipamentos). Download: `/api/portal/meu-rh/documento/[id]` so libera doc
-do proprio colaborador (URL assinada 10min). Quem nao tem ficha vinculada ve aviso
-"vincular com o RH". **9 logins estao vinculados** hoje (veem dados); os demais veem vazio.
-Usa o hero do layout (accent #0EA5E9). NAO mostra salario/banco (minimizacao). ADIADO:
-holerite (nao temos), avaliacoes do colaborador, edicao dos proprios dados.
+**DECISAO FINAL da Adriana:** quem tem perfil RH deve EDITAR TUDO no RH (profissional da
+area), NAO autoatendimento. Isso JA FUNCIONA: o gate de /admin (dashboard) e de /admin/rh
+so checa `claims.tipo==='admin'` (qualquer perfil do painel passa, nao exige role admin),
+e o gating do menu (parte 15) mostra o grupo "RH & Pessoas" p/ quem tem perfil `rh`. Entao
+um membro perfil RH (ex.: Samyria) loga em /admin/login -> dashboard -> RH & Pessoas ->
+/admin/rh -> edita TODOS os colaboradores/docs/ferias/EPIs. **Acesso total ja garantido.**
+
+**Eu havia feito um "Meu RH" (autoatendimento, so dados proprios) — REMOVIDO** (a Adriana
+nao queria autoatendimento). Apagados /portal/meu-rh.astro + /api/portal/meu-rh*.
+
+**Atalho "Gestao de RH" no portal do colaborador (commit do dia):** card 🧑‍💼 + item no
+menu do /portal que aponta p/ /admin/rh, VISIVEL so p/ perfil admin/rh (gate por PERFIL,
+nao por area). Assim o profissional de RH acha o caminho pelo portal (clicar leva pro
+/admin/rh; se nao tiver admin_token, cai no /admin/login). Implementacao: modules[].perfilGate
+na home (renderHub recebe `perfis` da resposta de /api/portal/permissoes que ja devolve
+`perfis`); no Portal.astro o item de menu tem `roles:["admin","rh"]` e o script de gating
+ganhou `aplicarRoles(perfis)` p/ revelar itens `.role-gated` (JS PURO — define:vars nao
+compila TS!). LICAO reforcada: /portal e /admin sao logins SEPARADOS (portal_colab_token vs
+admin_token); o atalho cruza os dois (o profissional loga nos dois ou so no admin).
 
 ## Convencoes desta pasta para o Claude Code
 

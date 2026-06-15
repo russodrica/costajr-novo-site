@@ -119,16 +119,17 @@ import Portal from "~/layouts/Portal.astro";
       { icon: "🎒", title: "Meus Equipamentos", desc: "Equipamentos sob sua responsabilidade", href: "/portal/meus-equipamentos", area: "meus-equipamentos", color: "#EA580C" },
       { icon: "💰", title: "Gest. Comercial", desc: "Leads, contratos e metas", href: "/portal/gestao-comercial", area: "comercial", color: "#16A34A" },
       { icon: "🔧", title: "Gest. Manutenção", desc: "Clientes, chamados e técnicos", href: "/portal/gestao-manutencao", area: "gestao", color: "#D97706" },
-      { icon: "🪪", title: "Meu RH", desc: "Seus documentos, férias e EPIs", href: "/portal/meu-rh", area: null, color: "#0EA5E9" },
+      { icon: "🧑‍💼", title: "Gestão de RH", desc: "Editar colaboradores, férias e documentos (acesso de RH)", href: "/admin/rh", area: null, perfilGate: ["admin", "rh"], color: "#0EA5E9" },
       { icon: "🙍", title: "Minha Conta", desc: "Editar nome e trocar senha", href: "/portal/minha-conta", area: null, color: "#475569" },
     ];
 
-    function renderHub(areas: string[], role: string) {
+    function renderHub(areas: string[], role: string, perfis: string[]) {
       document.getElementById("welcomeRole")!.textContent = ROTULO[role] || role || "—";
       const grid = document.getElementById("modules-grid")!;
       grid.innerHTML = "";
       modules.forEach((m: any) => {
         if (m.area && !areas.includes(m.area)) return;
+        if (m.perfilGate && !m.perfilGate.some((p: string) => (perfis || []).includes(p))) return;
         const a = document.createElement("a");
         a.className = "module-card" + (m.destaque ? " destaque" : "");
         a.href = m.href;
@@ -146,14 +147,14 @@ import Portal from "~/layouts/Portal.astro";
     // Busca perfis/áreas FRESCOS do servidor (refletem mudança de perfil sem relogar).
     fetch("/api/portal/permissoes", { headers: { "x-portal-auth": token } })
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(d => renderHub(d.areas?.length ? d.areas : AREAS_BASICAS, d.role || userData.role))
+      .then(d => renderHub(d.areas?.length ? d.areas : AREAS_BASICAS, d.role || userData.role, d.perfis?.length ? d.perfis : (userData.roles?.length ? userData.roles : [userData.role]).filter(Boolean)))
       .catch(() => {
         // fallback: deriva as áreas dos perfis salvos no localStorage
         const roles = (userData.roles && userData.roles.length ? userData.roles : [userData.role]).filter(Boolean);
         const areas = [...AREAS_BASICAS];
         if (roles.some((r: string) => ["admin", "comercial"].includes(r))) areas.push("comercial");
         if (roles.some((r: string) => ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"].includes(r))) areas.push("gestao");
-        renderHub(areas, userData.role || "operacional");
+        renderHub(areas, userData.role || "operacional", roles);
       });
 
     // Comunicados
