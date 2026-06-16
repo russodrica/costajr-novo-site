@@ -49,7 +49,9 @@ import Portal from "~/layouts/Portal.astro";
         if (loadingEl) loadingEl.style.display = "none";
         if (frame) {
           frame.style.display = "block";
-          frame.src = "/admin/rh?embed=1";
+          // URL única a cada abertura -> fura o cache do service worker (nunca serve
+          // uma versão antiga sem embed). embed=1 e a deteccao por headers seguem valendo.
+          frame.src = "/admin/rh?embed=1&_=" + Date.now();
         }
       }
       function negar() {

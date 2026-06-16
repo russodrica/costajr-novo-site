@@ -46,7 +46,8 @@ const temPerfis = perfisUser.length > 0;
 // Nível efetivo (nenhum|ver|editar) de um módulo p/ este usuário; acessível se != nenhum.
 const nivelDe = (key: string): NivelPerm => nivelEfetivo(key, perfisUser, overridesUser);
 const podeModulo = (key: string): boolean => {
-  if (embedRhLock) return MODULO_GRUPO[key] === "rh"; // embed do portal: só módulos do RH
+  // embed do portal: só módulos do grupo "rh" E respeitando o que foi tirado do usuário.
+  if (embedRhLock) return MODULO_GRUPO[key] === "rh" && nivelDe(key) !== "nenhum";
   if (!temPerfis) return true;                        // sem perfis lidos -> não filtra (a página autentica)
   return nivelDe(key) !== "nenhum";
 };
@@ -166,7 +167,7 @@ const moduloDaPagina = current ? grupos.flatMap(g => g.items).find(i => i.key ==
 // Bloqueio REAL de acesso: o slot só renderiza se o módulo da página é acessível
 // (o redirect NÃO funciona dentro de um layout).
 const semAcessoPagina = embedRhLock
-  ? !!(moduloDaPagina && MODULO_GRUPO[current] !== "rh")
+  ? !!(moduloDaPagina && (MODULO_GRUPO[current] !== "rh" || nivelDe(current) === "nenhum"))
   : !!(temPerfis && current && moduloDaPagina && !podeModulo(current));
 
 // Modo SOMENTE-LEITURA: o usuário tem nível "ver" neste módulo (acessa, mas não edita).
