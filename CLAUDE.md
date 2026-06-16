@@ -1526,6 +1526,53 @@ nao pode acessar algo). Escolhas dela: tela propria (MATRIZ) + tudo junto
 - **"Removi e ainda abre" era CACHE:** o SW servia HTML antigo do admin. FIX: sw.js
   /admin/* SEMPRE rede, nunca cache (cjr-v3 -> **cjr-v4**). Apos deploy, hard refresh.
 
+## Atualizacao 16/06/2026 — UNIFICACAO: um painel so (fim do espelho) + identidade no admin
+
+**DECISAO ARQUITETURAL DA ADRIANA (definitiva):** em vez de "espelhar" modulos do
+admin dentro do portal do colaborador (iframe/embed) e ter logins/paineis separados,
+**o /admin vira o PAINEL UNICO de TODOS, com restricoes de visualizacao/edicao por
+usuario** — "como qualquer aplicativo: o mesmo painel, porem com restricoes". Isso
+elimina a fonte dos bugs recorrentes do espelho ("abre o indice todo", cache,
+dual-cookie apex/www). Ela escolheu fazer em fases: **"Espelho + visual primeiro"**.
+
+**Fase 1a — espelho/iframe APOSENTADO (commit 01f7d03):** removida TODA a logica de
+embed do `src/layouts/Admin.astro` (deteccao por query/sec-fetch-dest/referer,
+`embedRhLock`, CSS `.shell.embed`, script de reescrita de links, classe condicional do
+shell). O gating POR USUARIO (`podeModulo`/`semAcessoPagina`/banner somente-leitura +
+middleware) PERMANECE — e o que faz "o mesmo painel com restricoes". `/portal/rh`
+deixou de ser iframe; virou uma **ponte leve** (JS puro): le `portal_colab_token` do
+localStorage, seta `admin_token` (cookie, dominio `.costajr.com.br`) e abre `/admin/rh`
+em PAGINA CHEIA. O `vercel.json` ainda tem o CSP `frame-ancestors` de `/admin/*` (era
+do embed; inofensivo, limpar depois).
+
+**Fase 1b — identidade do usuario no painel (commit 81f8867):** como o admin vira a
+interface de todos, ele agora mostra QUEM esta logado. `Admin.astro` busca
+`display_name/full_name/avatar_url` de `portal_profiles` pelo `sub` do token
+(best-effort, fallback no local-part do e-mail) e renderiza **avatar + nome + perfil**
+no topo a direita (`.topbar-user`) e num chip no rodape da sidebar (`.user-chip`, acima
+do Sair). Mobile mantem o avatar e esconde so o texto. Resolve de quebra a confusao
+recorrente de "logado como qual usuario" (adriana@ x costajr@). O perfil exibido e so o
+PRIMEIRO (`perfisUser[0]`) — se a pessoa tem varios perfis, mostra um (melhoria futura:
+juntar/“+N”). VERIFICADO ao vivo (Chrome, sessao Costa JR/Manutencao-Operacao): menu
+enxuto pelo perfil, "Acesso restrito" no Dashboard (sem acesso), Ativos abre completo
+com a identidade — sem nenhum residuo de embed.
+
+**PROXIMAS FASES da unificacao (NAO feitas — escolha da Adriana p/ quando os testes da
+base atual fecharem):** (Fase 2) trazer os modulos voltados ao colaborador
+(onboarding, meus-equipamentos, JunIA/forum, documentos) PARA o /admin; (Fase 3) login
+unico (aposentar `portal_colab_token` -> tudo via `admin_token`/`/admin/login`); (Fase
+4) `/portal` redireciona p/ `/admin` e e desativado; depois reativar os acessos.
+**MELHORIA UX pendente (boa, pequena):** quem cai em `/admin` (Dashboard) sem acesso ao
+modulo dashboard ve "Acesso restrito" de cara — melhor REDIRECIONAR p/ o primeiro
+modulo acessivel do usuario no login/landing.
+
+**ACESSOS BLOQUEADOS p/ teste (lembrete da sessao anterior — reativar quando a Adriana
+pedir "reativa os acessos"):** 7 `portal_profiles` estao com `approval_status='pending'`
+(+ `portal_sessoes` apagadas): contato@ (5383fd57), aline.martiniano@ (91ecad9f),
+renata.peres@ (d37f96e4), higor.pelicho@ (39859869), samyria.almeida@ (89195493),
+russodrica@gmail.com (d0ce2a1b), jessica.cruz@ (3b28894b). ATIVOS de proposito:
+adriana@ (admin) e costajr@.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
