@@ -1,6 +1,6 @@
 // Service worker do CJR Manutenção (PWA)
 // Estratégia: network-first para HTML/API, cache-first para estáticos
-const CACHE_VERSION = "cjr-v4";
+const CACHE_VERSION = "cjr-v5";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -77,20 +77,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML / navegação → network-first com fallback
+  // HTML / navegação → SEMPRE rede, nunca cache. Servir HTML antigo do cache causava
+  // ver versões desatualizadas (ex.: o embed do RH mostrando o admin inteiro, módulos
+  // a quem não deve). Em falha de rede, mostra um aviso simples em vez de página obsoleta.
+  // (Assets versionados /_astro/ e imagens continuam em cache — o app carrega rápido.)
   if (request.mode === "navigate" || request.destination === "document") {
     event.respondWith(
-      fetch(request)
-        .then((res) => {
-          const cp = res.clone();
-          caches.open(RUNTIME_CACHE).then((c) => c.put(request, cp));
-          return res;
-        })
-        .catch(async () => {
-          const hit = await caches.match(request);
-          if (hit) return hit;
-          return caches.match("/manutencao") || new Response("Sem conexão", { status: 503 });
-        })
+      fetch(request).catch(() => new Response(
+        "<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;padding:48px;text-align:center;color:#333'><h2>Sem conexão</h2><p>Verifique a internet e recarregue a página.</p>",
+        { status: 503, headers: { "content-type": "text/html; charset=utf-8" } },
+      ))
     );
     return;
   }
