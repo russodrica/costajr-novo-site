@@ -1634,6 +1634,24 @@ estilizado; sino com badge. Commits 01f7d03..6131382. tsc + astro build limpos e
 - Trava read-only (middleware) so cobre `/api/admin/*`; os 5 modulos novos usam
   `/api/portal/*` (autoatendimento) — fora da trava DE PROPOSITO.
 
+## Atualizacao 16/06/2026 (parte 3) — Ferias: lancar periodo anterior (historico, sem alertas)
+
+Pedido da Adriana: poder incluir periodos de ferias ANTERIORES (ja gozados) so para
+o historico do colaborador, SEM gerar alertas. **Commit 0217133.**
+- API `POST /api/admin/rh/ferias` ganhou o ramo `{ historico:true, colaborador_id,
+  inicio_aquisitivo?, dias_abono?, observacoes?, parcelas:[{data_inicio,dias}] }`:
+  cria o periodo com `status="concluido"` e as parcelas como `confirmada`
+  (confirmada_em/por). Aquisitivo derivado (~12m antes do 1o gozo) se nao informado.
+- **Garantia de ZERO alertas:** `enviarLembretesFerias` (ferias.ts) ja exclui
+  `status=concluido` (.neq) E pula parcelas confirmadas — entao periodo historico nao
+  dispara e-mail/telegram. Tambem nao aparece no painel principal (mesmo filtro),
+  so no "📜 Historico".
+- UI: `/admin/rh` aba Ferias -> botao "➕ Periodo anterior" + modal (colaborador CLT/PJ
+  do SSR via #dadosRH, inicio aquisitivo opcional, abono opcional, 1-3 parcelas
+  data+dias, obs). Funcoes expostas ao window (script do rh.astro e modulo).
+- E2E VERIFICADO ao vivo (funcionario teste, depois limpo via Supabase REST): POST 201,
+  2 parcelas confirmadas, aparece no historico, NAO aparece no painel principal.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
