@@ -124,7 +124,7 @@ export type GrupoAdmin = { id: string; label: string | null; itens: ModuloAdmin[
 // FONTE ÚNICA do menu/módulos do admin (Admin.astro, a matriz e o enforcement importam daqui).
 export const GRUPOS_ADMIN: GrupoAdmin[] = [
   { id: "geral", label: null, itens: [
-    { key: "dashboard", label: "Dashboard", icon: "📊", href: "/admin" },
+    { key: "dashboard", label: "Dashboard", icon: "📊", href: "/admin/dashboard" },
     { key: "analytics", label: "Análise do Site", icon: "📈", href: "/admin/analytics" },
   ] },
   { id: "manutencao", label: "Manutenção", itens: [

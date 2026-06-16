@@ -102,7 +102,10 @@ export async function requireRepresentante(req: Request): Promise<RepresentanteC
 }
 
 export async function requireAdmin(req: Request): Promise<AdminClaims> {
-  const tok = getPortalToken(req);
+  // Login único: aceita o token pelo header x-portal-auth (portal antigo, localStorage)
+  // OU pelo cookie admin_token (painel unificado). Os dois tokens são idênticos
+  // (tipo:"admin", sub=portal_profiles.id), então o mesmo helper serve aos dois mundos.
+  const tok = getPortalToken(req) || getAdminTokenFromCookie(req);
   if (!tok) throw new Error("Não autenticado");
   // Bypass APENAS em desenvolvimento e somente se o token enviado for EXATAMENTE
   // o valor da chave secreta (não apenas a palavra "bypass"). Em produção é

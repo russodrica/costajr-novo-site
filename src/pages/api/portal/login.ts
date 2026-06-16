@@ -4,7 +4,7 @@ import { signToken, hashSenha, jsonOk, jsonErr } from "~/lib/auth";
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, cookies }) => {
   try {
     const { email, senha } = await request.json();
     if (!email || !senha) return jsonErr(400, "E-mail e senha são obrigatórios.");
@@ -33,6 +33,18 @@ export const POST: APIRoute = async ({ request }) => {
     });
 
     await sb.from("portal_profiles").update({ last_login_at: new Date().toISOString() }).eq("id", profile.id);
+
+    // Login único: além de devolver o token (compat com o localStorage antigo), seta o
+    // cookie admin_token — o mesmo do /admin/login. Assim quem entra pela tela do portal
+    // já sai autenticado no painel unificado /admin (mesmo token, tipo:"admin").
+    cookies.delete("admin_token", { path: "/", domain: ".costajr.com.br" });
+    cookies.set("admin_token", token, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 8,
+      secure: import.meta.env.PROD,
+    });
 
     return jsonOk({
       token,
