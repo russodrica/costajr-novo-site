@@ -1,0 +1,196 @@
+---
+export const prerender = false;
+import Admin from "~/layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "~/lib/auth";
+const _t = Astro.cookies.get("admin_token")?.value;
+if (!_t) return Astro.redirect("/admin/login");
+try { const _c = await verifyToken<AdminClaims>(_t); if (_c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+---
+<Admin title="Fórum / JunIA" current="junia">
+  <div class="jn-wrap">
+    <!-- Conversas -->
+    <aside class="jn-side" id="jnSide">
+      <button class="jn-nova" onclick="novaConversa()">＋ Nova conversa</button>
+      <div class="jn-convs" id="jnConvs"></div>
+    </aside>
+
+    <!-- Chat -->
+    <section class="jn-chat">
+      <header class="jn-head">
+        <button class="jn-menu" onclick="document.getElementById('jnSide').classList.toggle('aberta')">☰</button>
+        <div class="jn-avatar"><img src="/junia-mascote.png" alt="JunIA" /></div>
+        <div>
+          <div class="jn-titulo">JunIA</div>
+          <div class="jn-sub">Inteligência da Costa Júnior — pergunte sobre processos, normas e rotinas</div>
+        </div>
+      </header>
+
+      <div class="jn-msgs" id="jnMsgs">
+        <div class="jn-vazio" id="jnVazio">
+          <img src="/junia-mascote.png" alt="JunIA" class="jn-mascote" />
+          <h3>Olá! Eu sou a JunIA.</h3>
+          <p>Tiro dúvidas com base no conhecimento da Costa Júnior.<br/>Se eu não souber, encaminho para um gestor e te aviso quando a resposta chegar.</p>
+          <div class="jn-sugestoes">
+            <button onclick="perguntar('Qual prazo de pagamento do Santander?')">Prazo de pagamento do Santander</button>
+            <button onclick="perguntar('Como deve ser feita a nomenclatura de obras?')">Nomenclatura de obras</button>
+            <button onclick="perguntar('Como deve ser feito o pagamento do IPVA?')">Pagamento do IPVA</button>
+          </div>
+        </div>
+      </div>
+
+      <footer class="jn-input">
+        <textarea id="jnTexto" rows="1" placeholder="Escreva sua pergunta..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviar();}"></textarea>
+        <button class="jn-enviar" id="jnEnviar" onclick="enviar()">➤</button>
+      </footer>
+    </section>
+  </div>
+
+  <style>
+    .jn-wrap { display: flex; gap: 0; height: calc(100vh - 150px); min-height: 480px; background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+    .jn-side { width: 240px; flex: none; border-right: 1px solid var(--border); background: #FAFBFC; display: flex; flex-direction: column; }
+    .jn-nova { margin: 12px; background: var(--brand); color: #fff; border: 0; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: 'Open Sans', sans-serif; }
+    .jn-nova:hover { opacity: .9; }
+    .jn-convs { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+    .jn-conv { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 9px; padding: 9px 11px; font-size: 12.5px; color: var(--ink-mid); cursor: pointer; margin-bottom: 2px; font-family: 'Open Sans', sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .jn-conv:hover { background: #F0F1F5; }
+    .jn-conv.ativa { background: var(--brand); color: #fff; font-weight: 700; }
+    .jn-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .jn-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, #1A1C20, #3A1419); color: #fff; }
+    .jn-menu { display: none; background: none; border: 0; color: #fff; font-size: 18px; cursor: pointer; }
+    .jn-avatar { width: 44px; height: 44px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; flex: none; overflow: hidden; border: 2px solid rgba(255,255,255,.35); box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+    .jn-avatar img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+    .jn-mascote { width: 92px; max-width: 28%; filter: drop-shadow(0 8px 18px rgba(196,30,58,.18)); animation: jn-flutua 3.2s ease-in-out infinite; }
+    @keyframes jn-flutua { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .jn-linha { display: flex; align-items: flex-end; gap: 8px; align-self: flex-start; max-width: 78%; }
+    .jn-linha .jn-msg { max-width: 100%; }
+    .jn-mini { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 1px solid var(--border); flex: none; object-fit: cover; object-position: top; }
+    .jn-titulo { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px; }
+    .jn-sub { font-size: 11px; opacity: .75; }
+    .jn-msgs { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; background: #F7F8FA; }
+    .jn-msg { max-width: 78%; padding: 11px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+    .jn-msg.user { align-self: flex-end; background: var(--brand); color: #fff; border-bottom-right-radius: 4px; }
+    .jn-msg.junia { align-self: flex-start; background: #fff; border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+    .jn-msg.pendente { border-left: 3px solid #D9A406; }
+    .jn-msg .meta { font-size: 10px; color: #9CA3AF; margin-top: 6px; }
+    .jn-vazio { margin: auto; text-align: center; color: var(--ink-mid); max-width: 420px; }
+    .jn-vazio h3 { font-family: 'Montserrat', sans-serif; margin: 10px 0 6px; color: var(--ink); }
+    .jn-vazio p { font-size: 13px; line-height: 1.6; }
+    .jn-sugestoes { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .jn-sugestoes button { background: #fff; border: 1.5px solid var(--border); border-radius: 99px; padding: 9px 16px; font-size: 12.5px; cursor: pointer; transition: .15s; font-family: 'Open Sans', sans-serif; color: var(--ink-mid); }
+    .jn-sugestoes button:hover { border-color: var(--brand); color: var(--brand); }
+    .jn-input { display: flex; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--border); background: #fff; align-items: flex-end; }
+    .jn-input textarea { flex: 1; border: 1.5px solid #D1D5DB; border-radius: 12px; padding: 11px 14px; font-size: 14px; font-family: 'Open Sans', sans-serif; resize: none; outline: none; max-height: 120px; }
+    .jn-input textarea:focus { border-color: var(--brand); }
+    .jn-enviar { width: 44px; height: 44px; border-radius: 50%; background: var(--brand); color: #fff; border: 0; font-size: 17px; cursor: pointer; flex: none; transition: .15s; }
+    .jn-enviar:hover { transform: scale(1.06); }
+    .jn-enviar:disabled { opacity: .5; }
+    @media (max-width: 760px) {
+      .jn-side { position: absolute; z-index: 50; height: 100%; transform: translateX(-105%); transition: .2s; box-shadow: 4px 0 20px rgba(0,0,0,.12); }
+      .jn-side.aberta { transform: translateX(0); }
+      .jn-menu { display: block; }
+      .jn-wrap { position: relative; height: calc(100vh - 120px); }
+      .jn-msg, .jn-linha { max-width: 90%; }
+    }
+  </style>
+
+  <script>
+    const token = localStorage.getItem("portal_colab_token") || "";
+    const H = { "x-portal-auth": token, "content-type": "application/json" };
+    let conversaAtual: string | null = new URLSearchParams(location.search).get("conversa");
+    let enviando = false;
+
+    function esc(s: any) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    function md(s: string) { return esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br/>"); }
+
+    async function carregarConversas() {
+      const res = await fetch("/api/portal/junia", { headers: { "x-portal-auth": token } });
+      if (res.status === 403) {
+        document.getElementById("jnMsgs")!.innerHTML = '<div class="jn-vazio"><div style="font-size:40px">🔒</div><p>' + esc((await res.json()).error || "Sem acesso.") + '</p></div>';
+        return;
+      }
+      const convs = await res.json();
+      document.getElementById("jnConvs")!.innerHTML = convs.map((c: any) =>
+        `<button class="jn-conv ${c.id === conversaAtual ? "ativa" : ""}" onclick="abrirConversa('${c.id}')">${esc(c.title || "Conversa")}</button>`
+      ).join("");
+    }
+
+    async function abrirConversa(id: string) {
+      conversaAtual = id;
+      document.getElementById("jnSide")!.classList.remove("aberta");
+      history.replaceState(null, "", `/admin/junia?conversa=${id}`);
+      const res = await fetch(`/api/portal/junia?conversa=${id}`, { headers: { "x-portal-auth": token } });
+      if (!res.ok) return;
+      const msgs = await res.json();
+      renderMsgs(msgs.map((m: any) => ({ papel: m.role === "user" ? "user" : "junia", texto: m.content, pendente: m.role === "assistant" && m.was_answered === false })));
+      carregarConversas();
+    }
+
+    function renderMsgs(msgs: { papel: string; texto: string; pendente?: boolean }[]) {
+      const box = document.getElementById("jnMsgs")!;
+      box.innerHTML = msgs.map(m =>
+        m.papel === "user"
+          ? `<div class="jn-msg user">${md(m.texto)}</div>`
+          : `<div class="jn-linha"><img class="jn-mini" src="/junia-mascote.png" alt="JunIA"/><div class="jn-msg junia ${m.pendente ? "pendente" : ""}">${md(m.texto)}${m.pendente ? '<div class="meta">⏳ aguardando resposta do gestor</div>' : ""}</div></div>`
+      ).join("");
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function novaConversa() {
+      conversaAtual = null;
+      history.replaceState(null, "", "/admin/junia");
+      document.getElementById("jnSide")!.classList.remove("aberta");
+      location.reload();
+    }
+
+    function perguntar(t: string) {
+      (document.getElementById("jnTexto") as HTMLTextAreaElement).value = t;
+      enviar();
+    }
+
+    async function enviar() {
+      if (enviando) return;
+      const ta = document.getElementById("jnTexto") as HTMLTextAreaElement;
+      const texto = ta.value.trim();
+      if (!texto) return;
+      enviando = true;
+      (document.getElementById("jnEnviar") as HTMLButtonElement).disabled = true;
+      ta.value = "";
+
+      const box = document.getElementById("jnMsgs")!;
+      document.getElementById("jnVazio")?.remove();
+      box.insertAdjacentHTML("beforeend", `<div class="jn-msg user">${md(texto)}</div><div class="jn-linha" id="jnLinhaDig"><img class="jn-mini" src="/junia-mascote.png" alt="JunIA"/><div class="jn-msg junia" id="jnDigitando">…</div></div>`);
+      box.scrollTop = box.scrollHeight;
+
+      try {
+        const res = await fetch("/api/portal/junia", { method: "POST", headers: H, body: JSON.stringify({ conversa_id: conversaAtual, pergunta: texto }) });
+        const d = await res.json();
+        const dig = document.getElementById("jnDigitando")!;
+        if (res.ok) {
+          conversaAtual = d.conversa_id;
+          history.replaceState(null, "", `/admin/junia?conversa=${conversaAtual}`);
+          dig.outerHTML = `<div class="jn-msg junia ${d.precisa_resposta ? "pendente" : ""}">${md(d.resposta)}${d.precisa_resposta ? '<div class="meta">⏳ aguardando resposta do gestor</div>' : ""}</div>`;
+          carregarConversas();
+        } else {
+          dig.outerHTML = `<div class="jn-msg junia">${esc(d.error || "Erro ao enviar. Tente novamente.")}</div>`;
+        }
+      } catch {
+        const dig2 = document.getElementById("jnDigitando");
+        if (dig2) dig2.outerHTML = '<div class="jn-msg junia">Erro de conexão. Tente novamente.</div>';
+      } finally {
+        enviando = false;
+        (document.getElementById("jnEnviar") as HTMLButtonElement).disabled = false;
+        ta.focus();
+        box.scrollTop = box.scrollHeight;
+      }
+    }
+
+    (window as any).novaConversa = novaConversa;
+    (window as any).abrirConversa = abrirConversa;
+    (window as any).perguntar = perguntar;
+    (window as any).enviar = enviar;
+
+    carregarConversas();
+    if (conversaAtual) abrirConversa(conversaAtual);
+  </script>
+</Admin>

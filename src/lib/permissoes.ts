@@ -127,6 +127,14 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     { key: "dashboard", label: "Dashboard", icon: "📊", href: "/admin/dashboard" },
     { key: "analytics", label: "Análise do Site", icon: "📈", href: "/admin/analytics" },
   ] },
+  // "Meu Espaço" — módulos colaborador-facing (cada um vê os SEUS dados). SEM entrada
+  // em GRUPO_ROLES de propósito => liberado para todo usuário logado (autoatendimento).
+  { id: "meu-espaco", label: "Meu Espaço", itens: [
+    { key: "meu-onboarding", label: "Onboarding", icon: "✅", href: "/admin/meu-onboarding" },
+    { key: "junia", label: "Fórum / JunIA", icon: "🤖", href: "/admin/junia" },
+    { key: "documentos-portal", label: "Documentos", icon: "📄", href: "/admin/documentos-portal" },
+    { key: "meus-equipamentos", label: "Meus Equipamentos", icon: "🎒", href: "/admin/meus-equipamentos" },
+  ] },
   { id: "manutencao", label: "Manutenção", itens: [
     { key: "clientes", label: "Clientes", icon: "👥", href: "/admin/clientes" },
     { key: "tecnicos", label: "Técnicos", icon: "🔧", href: "/admin/tecnicos" },
