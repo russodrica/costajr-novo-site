@@ -1573,6 +1573,67 @@ renata.peres@ (d37f96e4), higor.pelicho@ (39859869), samyria.almeida@ (89195493)
 russodrica@gmail.com (d0ce2a1b), jessica.cruz@ (3b28894b). ATIVOS de proposito:
 adriana@ (admin) e costajr@.
 
+## Atualizacao 16/06/2026 (parte 2) — UNIFICACAO COMPLETA: portal colaborador dentro do /admin
+
+**ESTADO FINAL (decisao da Adriana executada): UM painel so (`/admin`) para TODOS,
+com restricoes por usuario. O portal do colaborador (`/portal/*`) foi APOSENTADO —
+tudo redireciona p/ `/admin`.** Mapeamento previo por workflow multi-agente
+(understand-portal-unify). Executado em 4 fases, cada uma buildada/deployada/verificada
+ao vivo (sessao Costa JR / Manutencao-Operacao). INSIGHT-CHAVE: os tokens do admin e do
+portal SEMPRE foram identicos (tipo:"admin", sub=portal_profiles.id) — entao "login
+unico" foi basicamente fazer o `requireAdmin` aceitar o cookie.
+
+**Fase 0 — login unico (base, invisivel):**
+- `src/lib/auth.ts` `requireAdmin(req)` agora le `getPortalToken(req) || getAdminTokenFromCookie(req)`
+  — UMA linha que destrava TODOS os 24 `/api/portal/*` no cookie `admin_token`, sem tocar
+  nos endpoints. (Header `x-portal-auth` continua aceito p/ retrocompat.)
+- `/api/portal/login.ts` passou a SETAR o cookie `admin_token` (igual `/admin/login`).
+
+**Fase 1 — `/admin` virou o HUB de entrada (nao mais o Dashboard):**
+- `src/pages/admin/index.astro` = HUB de cards amigavel (visual do portal), mostra 1 card
+  por modulo acessivel (`nivelEfetivo != nenhum`), agrupado por area, banner "Olá, <nome>"
+  + perfil. Cards do "Meu Espaco" tem cor propria (MODULO_COR no hub).
+- Dashboard MOVIDO p/ `src/pages/admin/dashboard.astro` (git mv); virou so mais um card.
+  Hrefs atualizados (Admin.astro menu + GRUPOS_ADMIN key dashboard -> /admin/dashboard).
+
+**Fase 2 — modulos do colaborador trazidos p/ `/admin` (grupo "Meu Espaco"):**
+- 5 paginas novas reusando as APIs `/api/portal/*` (cookie auth): `/admin/meu-onboarding`,
+  `/admin/junia`, `/admin/documentos-portal`, `/admin/treinamentos-portal`,
+  `/admin/meus-equipamentos`. Port das `/portal/*`: layout Admin + guard de cookie no
+  frontmatter; tirado o redirect p/ /portal/login; `<style is:global>` (scoped NAO alcanca
+  innerHTML — cards ficavam crus); token = `localStorage... || ""` (cai no cookie).
+- Grupo "meu-espaco" adicionado em Admin.astro (`items`) E permissoes.ts (`GRUPOS_ADMIN`,
+  `itens`) com as MESMAS keys. **SEM entrada em GRUPO_ROLES => liberado a TODO logado**
+  (autoatendimento; cada um ve os SEUS dados). MODULO_GRUPO/MODULO_LABEL se derivam sozinhos.
+- **Sino de notificacoes portado p/ Admin.astro** (topbar): badge + dropdown + polling 60s,
+  mesmo backend `/api/portal/notificacoes` (cookie auth). Verificado ao vivo (badge "1").
+
+**Fase 3 — `/portal/*` redireciona p/ `/admin` (login unico final):**
+- TODAS as paginas colaborador do `/portal` viraram stub de redirect 302: index->/admin,
+  login->/admin/login, onboarding->/admin/meu-onboarding, meus-equipamentos, junia,
+  documentos->/admin/documentos-portal, treinamentos->/admin/treinamentos-portal,
+  forum->/admin/junia, gestao-comercial->/admin/comercial, gestao-manutencao->/admin,
+  minha-conta->/admin/minha-conta, rh->/admin/rh.
+- MANTIDOS: `/portal/trocar-senha` (troca de senha standalone, dual-token — funciona) e
+  `/portal/meu-rh` (codigo morto, sem link). `Portal.astro` NAO foi removido (ainda serve
+  cliente/tecnico/admin-manutencao — so o ramo colaborador ficou orfao).
+
+**VERIFICADO AO VIVO (Chrome, sessao Costa JR):** hub com 5 cards coloridos de Meu Espaco +
+areas por permissao; `/admin/meus-equipamentos` carrega dados reais via cookie (prova da
+Fase 0); `/portal/onboarding` -> redireciona p/ `/admin/meu-onboarding` e renderiza
+estilizado; sino com badge. Commits 01f7d03..6131382. tsc + astro build limpos em todas as fases.
+
+**PENDENTE / proximos passos (limpeza, NAO critico):**
+- `/admin/login` NAO inclui `roles[]` no token (so `role`) — inofensivo (perfis sao lidos
+  FRESCOS do banco via perfisFrescos/permissoesDoUsuario), mas podia incluir p/ consistencia.
+- Limpeza futura: remover ramo colaborador do Portal.astro; remover `/portal/meu-rh*`;
+  remover fallback `x-portal-auth` do requireAdmin (so quando ninguem usar localStorage);
+  tirar o CSP `frame-ancestors` de /admin/* no vercel.json (era do embed). Atualizar links
+  do site publico (/intranet, rodape) de /portal p/ /admin/login (hoje funcionam via redirect).
+- **Reativar os 7 acessos** bloqueados quando a Adriana pedir (lista na parte 1 acima).
+- Trava read-only (middleware) so cobre `/api/admin/*`; os 5 modulos novos usam
+  `/api/portal/*` (autoatendimento) — fora da trava DE PROPOSITO.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
