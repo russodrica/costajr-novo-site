@@ -197,8 +197,8 @@ const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ve
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
-        <span class="logo-text">CJR</span>
-        <span class="logo-sub">Admin</span>
+        <img src="/logo-cjr.png" alt="Costa Júnior Engenharia" class="logo-img" />
+        <span class="logo-sub">Portal CJR</span>
       </div>
       <nav class="sidebar-nav">
         {gruposVisiveis.map(g => (
@@ -362,12 +362,12 @@ const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ve
       scrollbar-width: thin; scrollbar-color: #CBD5E1 transparent;
     }
     .sidebar-logo {
-      display: flex; align-items: baseline; gap: 6px;
-      padding: 20px 20px 16px;
+      display: flex; flex-direction: column; align-items: center; gap: 7px;
+      padding: 18px 16px 14px;
       border-bottom: 1px solid #EEF1F5;
     }
-    .logo-text { font-family: 'Montserrat', sans-serif; font-size: 1.6rem; font-weight: 800; color: var(--brand); letter-spacing: .5px; }
-    .logo-sub  { font-size: 0.74rem; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1.5px; }
+    .logo-img { width: 100%; max-width: 188px; height: auto; display: block; }
+    .logo-sub  { font-size: 0.72rem; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 1.5px; }
 
     .sidebar-nav { flex: 1; padding: 10px 10px 16px; }
     .nav-item {
