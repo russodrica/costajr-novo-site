@@ -50,6 +50,14 @@ const GRUPO_COR: Record<string, string> = {
 };
 const GRUPO_TITULO: Record<string, string> = { geral: "Geral" };
 
+// Cores individuais p/ os cards colaborador-facing (visual colorido como o portal antigo).
+const MODULO_COR: Record<string, string> = {
+  "meu-onboarding": "#2563EB",
+  junia: "#C41E3A",
+  "documentos-portal": "#0D9488",
+  "meus-equipamentos": "#EA580C",
+};
+
 // Seções visíveis: cada grupo com seus módulos acessíveis (nível != nenhum).
 const secoes = GRUPOS_ADMIN
   .map((g) => ({
@@ -85,12 +93,15 @@ const secoes = GRUPOS_ADMIN
     <section class="hub-sec">
       <p class="hub-sec-title">{s.titulo}</p>
       <div class="hub-grid">
-        {s.itens.map((m) => (
-          <a href={m.href} class="hub-card" style={`border-top-color:${s.cor}`}>
-            <div class="hub-icon" style={`background:${s.cor}`}>{m.icon}</div>
-            <h3>{m.label}</h3>
-          </a>
-        ))}
+        {s.itens.map((m) => {
+          const cor = MODULO_COR[m.key] || s.cor;
+          return (
+            <a href={m.href} class="hub-card" style={`border-top-color:${cor}`}>
+              <div class="hub-icon" style={`background:${cor}`}>{m.icon}</div>
+              <h3>{m.label}</h3>
+            </a>
+          );
+        })}
       </div>
     </section>
   ))}

@@ -22,7 +22,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
   <div id="docs-content"  style="display:none"></div>
   <div id="integ-content" style="display:none"></div>
 
-  <style>
+  <style is:global>
     .doc-tab {
       padding: 10px 20px; border: 0; background: transparent; cursor: pointer;
       font-family:'Montserrat',sans-serif; font-size:13px; font-weight:700;

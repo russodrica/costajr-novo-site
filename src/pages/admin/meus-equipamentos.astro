@@ -25,7 +25,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
     </div>
   </div>
 
-  <style>
+  <style is:global>
     .eq-card {
       background: #fff; border: 1px solid var(--border); border-radius: 12px;
       padding: 18px 22px; margin-bottom: 12px; display: flex; gap: 16px; align-items: flex-start;

@@ -20,7 +20,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 
   <div id="steps-list"><div class="loading"><div class="spinner"></div> Carregando etapas...</div></div>
 
-  <style>
+  <style is:global>
     .step-card {
       background: #fff; border: 1px solid var(--border); border-radius: 12px;
       padding: 24px 28px; margin-bottom: 16px;

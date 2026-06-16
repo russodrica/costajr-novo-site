@@ -46,7 +46,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
     </section>
   </div>
 
-  <style>
+  <style is:global>
     .jn-wrap { display: flex; gap: 0; height: calc(100vh - 150px); min-height: 480px; background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
     .jn-side { width: 240px; flex: none; border-right: 1px solid var(--border); background: #FAFBFC; display: flex; flex-direction: column; }
     .jn-nova { margin: 12px; background: var(--brand); color: #fff; border: 0; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: 'Open Sans', sans-serif; }
