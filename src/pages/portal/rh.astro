@@ -1,90 +1,21 @@
 ---
 export const prerender = false;
-import Portal from "~/layouts/Portal.astro";
+// O espelho/iframe do RH foi APOSENTADO (decisão de unificar tudo num painel só).
+// Esta página agora é só uma ponte: passa o login do portal para o admin e abre
+// o /admin/rh em PÁGINA CHEIA (sem iframe, sem embed — fim dos bugs do espelho).
 ---
-<Portal title="Gestão de RH" tipo="colaborador" activePage="gestao-rh">
-  <!-- Estado de carregamento -->
-  <div id="rh-loading" class="loading">
-    <div class="spinner"></div> Abrindo a Gestão de RH...
-  </div>
-
-  <!-- Sem acesso (perfil não é RH) -->
-  <div id="rh-negado" style="display:none">
-    <div style="text-align:center;padding:70px 24px;color:var(--ink-mid)">
-      <div style="font-size:48px;margin-bottom:12px">🔒</div>
-      <h2 style="font-family:'Montserrat',sans-serif;font-size:20px;color:var(--ink);margin:0 0 8px">Acesso restrito</h2>
-      <p style="margin:0 0 18px">Esta área é exclusiva para o perfil de <strong>RH</strong>. Fale com o administrador se precisar de acesso.</p>
-      <a href="/portal" class="btn btn-primary">Voltar ao início</a>
-    </div>
-  </div>
-
-  <!-- RH embutido -->
-  <iframe id="rh-frame" title="Gestão de RH" style="display:none"></iframe>
-
-  <style is:global>
-    /* Página de RH embutida ocupa toda a área de conteúdo, sem moldura dupla */
-    .portal-content { padding: 0 !important; max-width: none !important; }
-    #rh-frame {
-      width: 100%; height: calc(100vh - 62px); border: 0; display: block; background: #fff;
-    }
-    @media (max-width: 900px) { #rh-frame { height: calc(100vh - 62px); } }
-  </style>
-
-  <script is:inline>
-    (function () {
-      var token = localStorage.getItem("portal_colab_token");
-      if (!token) { window.location.replace("/portal/login"); return; }
-
-      var loadingEl = document.getElementById("rh-loading");
-      var negadoEl = document.getElementById("rh-negado");
-      var frame = document.getElementById("rh-frame");
-
-      function abrirRh() {
-        // Ponte de login: o token do portal É um token tipo:"admin", então serve
-        // para autenticar /admin/rh. Setamos o cookie ANTES de carregar o iframe.
-        // domain=.costajr.com.br => o cookie vale para apex E www (o site redireciona
-        // apex->www; sem isso o iframe perde o login ao trocar de host).
-        var dom = location.hostname.indexOf("costajr.com.br") !== -1 ? "; domain=.costajr.com.br" : "";
-        document.cookie = "admin_token=" + token + "; path=/" + dom + "; SameSite=Lax";
-        if (loadingEl) loadingEl.style.display = "none";
-        if (frame) {
-          frame.style.display = "block";
-          // URL única a cada abertura -> fura o cache do service worker (nunca serve
-          // uma versão antiga sem embed). embed=1 e a deteccao por headers seguem valendo.
-          frame.src = "/admin/rh?embed=1&_=" + Date.now();
-        }
-      }
-      function negar() {
-        if (loadingEl) loadingEl.style.display = "none";
-        if (negadoEl) negadoEl.style.display = "block";
-      }
-      function temRh(perfis) {
-        perfis = perfis || [];
-        return perfis.indexOf("rh") !== -1 || perfis.indexOf("admin") !== -1;
-      }
-      function limparPonte() {
-        var dom = location.hostname.indexOf("costajr.com.br") !== -1 ? "; domain=.costajr.com.br" : "";
-        document.cookie = "admin_token=; path=/" + dom + "; max-age=0";
-      }
-      // Ao SAIR desta página (navegação para fora do portal/rh, fechar a aba), remove
-      // o cookie-ponte para NÃO deixar a sessão "emprestada" do RH grudada no /admin.
-      // (Navegar DENTRO do iframe não dispara isto — só o unload desta página.)
-      window.addEventListener("pagehide", limparPonte);
-      // Se a página voltar do cache do navegador (bfcache), recarrega para re-montar a ponte.
-      window.addEventListener("pageshow", function (e) { if (e.persisted) location.reload(); });
-
-      // Confere o perfil FRESCO no servidor antes de abrir.
-      fetch("/api/portal/permissoes", { headers: { "x-portal-auth": token } })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-        .then(function (d) { if (temRh(d.perfis)) abrirRh(); else negar(); })
-        .catch(function () {
-          // Fallback: usa os perfis salvos no login
-          try {
-            var u = JSON.parse(localStorage.getItem("portal_colab_token_user") || "{}");
-            var perfis = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
-            if (temRh(perfis)) abrirRh(); else negar();
-          } catch (e) { negar(); }
-        });
-    })();
-  </script>
-</Portal>
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Abrindo Gestão de RH…</title>
+<style>body{font-family:'Open Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#5B5F6B}</style>
+</head><body>
+<p>Abrindo a Gestão de RH…</p>
+<script>
+  (function () {
+    var t = localStorage.getItem("portal_colab_token");
+    if (!t) { location.replace("/portal/login"); return; }
+    var dom = location.hostname.indexOf("costajr.com.br") !== -1 ? "; domain=.costajr.com.br" : "";
+    document.cookie = "admin_token=" + t + "; path=/" + dom + "; SameSite=Lax";
+    location.replace("/admin/rh");
+  })();
+</script>
+</body></html>
