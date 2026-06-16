@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
-import { calcularPeriodo, ciclosVencidos, resumoPeriodo } from "../../../../../lib/ferias";
+import { calcularPeriodo, ciclosVencidos, resumoPeriodo, addDays, addMonths } from "../../../../../lib/ferias";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
@@ -117,6 +117,65 @@ export const POST: APIRoute = async ({ request }) => {
         });
       }
       return jsonOk({ ok: true, criados, ja_existiam: (colabs || []).length - novos.length - semAdmissao, sem_admissao: semAdmissao });
+    }
+
+    // ── HISTÓRICO: lança um período de férias JÁ GOZADO (passado), só para registro.
+    //    Cria o período com status="concluido" e as parcelas como "confirmada" — então
+    //    NÃO dispara alerta nenhum (os lembretes excluem status=concluido e pulam parcelas
+    //    confirmadas). Vai direto para o "📜 Histórico" do colaborador.
+    if (body.historico) {
+      if (!body.colaborador_id) return jsonErr(400, "colaborador_id é obrigatório");
+      const isData = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && !isNaN(new Date(s + "T00:00:00Z").getTime());
+      const entrada = Array.isArray(body.parcelas) ? body.parcelas : [];
+      const norm: any[] = [];
+      for (const p of entrada) {
+        const dias = parseInt(p.dias, 10);
+        if (!isData(p.data_inicio)) return jsonErr(400, `Data de início inválida: "${p.data_inicio}"`);
+        if (isNaN(dias) || dias < 1 || dias > 30) return jsonErr(400, "Cada parcela precisa ter entre 1 e 30 dias gozados.");
+        norm.push({ data_inicio: p.data_inicio, dias, data_fim: addDays(p.data_inicio, dias - 1) });
+      }
+      if (!norm.length) return jsonErr(400, "Informe ao menos um período gozado (data e dias).");
+
+      // período aquisitivo: usa o informado ou deriva (~12 meses antes do 1º gozo)
+      let inicio_aquisitivo = body.inicio_aquisitivo;
+      if (!isData(inicio_aquisitivo)) {
+        const primeira = norm.map((p) => p.data_inicio).sort()[0];
+        inicio_aquisitivo = addMonths(primeira, -12);
+      }
+      const fim_aquisitivo = addDays(addMonths(inicio_aquisitivo, 12), -1);
+      const limite_concessivo = addMonths(fim_aquisitivo, 12);
+      const ABONOS = [0, 10, 15, 20, 30];
+      const abono = ABONOS.includes(parseInt(body.dias_abono, 10)) ? parseInt(body.dias_abono, 10) : 0;
+
+      const { data: per, error: ePer } = await db.from("rh_ferias_periodos").insert({
+        colaborador_id: body.colaborador_id,
+        inicio_aquisitivo, fim_aquisitivo, limite_concessivo,
+        dias_direito: 30, dias_abono: abono, status: "concluido",
+        observacoes: body.observacoes || "Período histórico (lançamento manual)",
+      }).select().single();
+      if (ePer) {
+        const dup = /duplicate|unique|23505/i.test(ePer.message || "");
+        return jsonErr(400, dup
+          ? "Já existe um período com esse início de aquisitivo para este colaborador — informe outra data de início do período aquisitivo."
+          : ePer.message);
+      }
+
+      const linhas = norm.map((p) => ({
+        periodo_id: per.id, colaborador_id: body.colaborador_id,
+        data_inicio: p.data_inicio, dias: p.dias, data_fim: p.data_fim,
+        status: "confirmada", confirmada_em: new Date().toISOString(), confirmada_por: admin.email,
+      }));
+      const { error: ePar } = await db.from("rh_ferias_parcelas").insert(linhas);
+      if (ePar) { await db.from("rh_ferias_periodos").delete().eq("id", per.id); return jsonErr(400, ePar.message); }
+
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar",
+        entidade: "rh_ferias_periodos",
+        registro_id: per.id,
+        descricao: `Lançou período de férias HISTÓRICO (concluído, sem alertas) — ${norm.length} parcela(s), aquisitivo ${inicio_aquisitivo}`,
+        dados: { periodo: per, parcelas: linhas },
+      });
+      return jsonOk({ ok: true, periodo_id: per.id, parcelas: linhas.length, historico: true }, 201);
     }
 
     if (!body.colaborador_id) return jsonErr(400, "colaborador_id é obrigatório");

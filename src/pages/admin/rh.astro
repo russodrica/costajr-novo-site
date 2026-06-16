@@ -438,6 +438,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           <option value="programado">Programados</option>
         </select>
         <button class="btn btn-outline btn-sm" onclick="abrirHistoricoFerias()" title="Períodos de férias já concluídos (mantidos fora do painel)">📜 Histórico</button>
+        <button class="btn btn-outline btn-sm" onclick="abrirLancarFeriasAnterior()" title="Registrar férias já gozadas no passado, só para o histórico — sem gerar alertas">➕ Período anterior</button>
         <button class="btn btn-outline btn-sm" onclick="semearFerias()" id="btnSemearFerias" title="Cria o período atual de cada CLT/PJ ativo a partir da data de admissão">⚙️ Gerar períodos</button>
       </span>
     </div>
@@ -476,6 +477,49 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       <p style="font-size:12.5px;color:#6B7280;margin:0 0 12px">Períodos já gozados na íntegra. Mantidos como registro — fora do painel principal.</p>
       <div id="feriasHistConteudo"><div class="loading"><div class="spinner"></div> Carregando…</div></div>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="fecharModal('modalFeriasHist')">Fechar</button></div>
+    </div>
+  </div>
+
+  <!-- ════════ MODAL LANÇAR PERÍODO ANTERIOR (HISTÓRICO) ════════ -->
+  <div class="modal-overlay" id="modalFeriasAnterior">
+    <div class="modal" style="max-width:600px;position:relative">
+      <button type="button" aria-label="Fechar" onclick="fecharModal('modalFeriasAnterior')" style="position:absolute;top:14px;right:16px;border:none;background:none;font-size:1.7rem;line-height:1;cursor:pointer;color:#9CA3AF;padding:0">×</button>
+      <div class="modal-title" style="padding-right:32px">➕ Lançar período anterior</div>
+      <p style="font-size:12.5px;color:#6B7280;margin:0 0 14px">Registre férias <strong>já gozadas no passado</strong>, só para o histórico do colaborador. Entra direto como <strong>concluído</strong> e <strong>não gera nenhum alerta</strong>.</p>
+      <div id="msgFeriasAnt"></div>
+      <div class="form-group">
+        <label>Colaborador *</label>
+        <select id="histColab" style="width:100%;padding:8px 10px;border:1px solid #E5E7EB;border-radius:8px">
+          <option value="">Selecione…</option>
+          {colaboradores.filter((c: any) => c.regime === "clt" || c.regime === "pj").map((c: any) => (
+            <option value={c.id}>{c.nome}{c.status === "desligado" ? " (desligado)" : ""}</option>
+          ))}
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Início do aquisitivo <span style="color:#9CA3AF;font-weight:400">(opcional)</span></label>
+          <input type="date" id="histAquis" style="width:100%;padding:8px 10px;border:1px solid #E5E7EB;border-radius:8px" />
+          <span style="font-size:11px;color:#9CA3AF">Se vazio, calculamos a partir das datas gozadas.</span>
+        </div>
+        <div class="form-group">
+          <label>Vendeu (abono) <span style="color:#9CA3AF;font-weight:400">(opcional)</span></label>
+          <select id="histAbono" style="width:100%;padding:8px 10px;border:1px solid #E5E7EB;border-radius:8px">
+            <option value="0">Não vendeu</option><option value="10">10 dias</option><option value="15">15 dias</option><option value="20">20 dias</option>
+          </select>
+        </div>
+      </div>
+      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin:4px 0 6px">Férias gozadas (datas e dias)</label>
+      <div id="histParcelasEdit"></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addLinhaParcelaHist()" style="margin-top:6px">+ Adicionar parcela</button>
+      <div class="form-group" style="margin-top:14px">
+        <label>Observações <span style="color:#9CA3AF;font-weight:400">(opcional)</span></label>
+        <input type="text" id="histObs" placeholder="Ex.: importado da planilha antiga" style="width:100%;padding:8px 10px;border:1px solid #E5E7EB;border-radius:8px" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModal('modalFeriasAnterior')">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="salvarFeriasAnterior()">Salvar no histórico</button>
+      </div>
     </div>
   </div>
 
@@ -1022,6 +1066,56 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).confirmarParcela = confirmarParcela;
     (window as any).removerParcela = removerParcela;
     (window as any).semearFerias = semearFerias;
+
+    // ── Lançar período anterior (histórico, sem alertas) ──
+    function abrirLancarFeriasAnterior() {
+      (document.getElementById("msgFeriasAnt") as any).innerHTML = "";
+      (document.getElementById("histColab") as HTMLSelectElement).value = "";
+      (document.getElementById("histAquis") as HTMLInputElement).value = "";
+      (document.getElementById("histAbono") as HTMLSelectElement).value = "0";
+      (document.getElementById("histObs") as HTMLInputElement).value = "";
+      const edit = document.getElementById("histParcelasEdit")!;
+      edit.innerHTML = "";
+      addLinhaParcelaHist();
+      document.getElementById("modalFeriasAnterior")!.classList.add("open");
+    }
+    function addLinhaParcelaHist(dataInicio = "", dias: number | string = 30) {
+      const edit = document.getElementById("histParcelasEdit")!;
+      if (edit.querySelectorAll(".parcela-linha-h").length >= 3) return;
+      const div = document.createElement("div");
+      div.className = "parcela-linha-h";
+      div.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:8px";
+      div.innerHTML = `
+        <input type="date" class="plh-inicio" value="${dataInicio}" style="flex:1;padding:7px 9px;border:1px solid #E5E7EB;border-radius:8px" />
+        <input type="number" class="plh-dias" value="${dias}" min="1" max="30" style="width:80px;padding:7px 9px;border:1px solid #E5E7EB;border-radius:8px" /> <span style="font-size:12px;color:#6B7280">dias</span>
+        <button type="button" title="Remover" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px" onclick="this.parentElement.remove()">✕</button>`;
+      edit.appendChild(div);
+    }
+    async function salvarFeriasAnterior() {
+      const colaborador_id = (document.getElementById("histColab") as HTMLSelectElement).value;
+      const msg = document.getElementById("msgFeriasAnt") as any;
+      if (!colaborador_id) { msg.innerHTML = '<div class="alert alert-error">Selecione o colaborador.</div>'; return; }
+      const linhas = Array.from(document.querySelectorAll("#histParcelasEdit .parcela-linha-h"));
+      const parcelas = linhas.map((l) => ({
+        data_inicio: (l.querySelector(".plh-inicio") as HTMLInputElement).value,
+        dias: parseInt((l.querySelector(".plh-dias") as HTMLInputElement).value, 10),
+      })).filter((p) => p.data_inicio && p.dias);
+      if (!parcelas.length) { msg.innerHTML = '<div class="alert alert-error">Informe ao menos uma data e os dias gozados.</div>'; return; }
+      const body = {
+        historico: true, colaborador_id,
+        inicio_aquisitivo: (document.getElementById("histAquis") as HTMLInputElement).value || undefined,
+        dias_abono: parseInt((document.getElementById("histAbono") as HTMLSelectElement).value, 10) || 0,
+        observacoes: (document.getElementById("histObs") as HTMLInputElement).value || undefined,
+        parcelas,
+      };
+      const res = await fetch("/api/admin/rh/ferias", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { fecharModal("modalFeriasAnterior"); alert("Período anterior lançado no histórico! ✅ (não gera alertas)"); carregarFerias(); }
+      else msg.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
+    }
+    (window as any).abrirLancarFeriasAnterior = abrirLancarFeriasAnterior;
+    (window as any).addLinhaParcelaHist = addLinhaParcelaHist;
+    (window as any).salvarFeriasAnterior = salvarFeriasAnterior;
 
     // ── Alertas de RH (vencimentos + compliance) ──
     const escA = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
