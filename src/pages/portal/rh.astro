@@ -1,21 +1,5 @@
 ---
 export const prerender = false;
-// O espelho/iframe do RH foi APOSENTADO (decisão de unificar tudo num painel só).
-// Esta página agora é só uma ponte: passa o login do portal para o admin e abre
-// o /admin/rh em PÁGINA CHEIA (sem iframe, sem embed — fim dos bugs do espelho).
+// A "Gestão de RH" agora é o módulo /admin/rh no painel único (sem ponte/iframe).
+return Astro.redirect("/admin/rh", 302);
 ---
-<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>Abrindo Gestão de RH…</title>
-<style>body{font-family:'Open Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#5B5F6B}</style>
-</head><body>
-<p>Abrindo a Gestão de RH…</p>
-<script>
-  (function () {
-    var t = localStorage.getItem("portal_colab_token");
-    if (!t) { location.replace("/portal/login"); return; }
-    var dom = location.hostname.indexOf("costajr.com.br") !== -1 ? "; domain=.costajr.com.br" : "";
-    document.cookie = "admin_token=" + t + "; path=/" + dom + "; SameSite=Lax";
-    location.replace("/admin/rh");
-  })();
-</script>
-</body></html>

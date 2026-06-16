@@ -133,6 +133,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     { key: "meu-onboarding", label: "Onboarding", icon: "✅", href: "/admin/meu-onboarding" },
     { key: "junia", label: "Fórum / JunIA", icon: "🤖", href: "/admin/junia" },
     { key: "documentos-portal", label: "Documentos", icon: "📄", href: "/admin/documentos-portal" },
+    { key: "treinamentos-portal", label: "Treinamentos", icon: "🎬", href: "/admin/treinamentos-portal" },
     { key: "meus-equipamentos", label: "Meus Equipamentos", icon: "🎒", href: "/admin/meus-equipamentos" },
   ] },
   { id: "manutencao", label: "Manutenção", itens: [

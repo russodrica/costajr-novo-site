@@ -1,6 +1,4 @@
 ---
 export const prerender = false;
-// Fórum unificado com a JunIA (decisão da Adriana): o "Fórum" é o chat de IA.
-// Mantemos a URL antiga funcionando, redirecionando para a JunIA.
-return Astro.redirect("/portal/junia", 307);
+return Astro.redirect("/admin/junia", 302);
 ---
