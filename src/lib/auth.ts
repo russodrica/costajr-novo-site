@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { supabaseAdmin } from "./supabase";
 
 // JWT_SECRET é obrigatório. Em produção, nunca cair no fallback de dev:
 // um secret previsível torna todos os tokens forjáveis (acesso total).
@@ -11,7 +12,7 @@ const ISSUER = "costajr.com.br";
 
 export type ClienteClaims = { sub: string; tipo: "cliente"; email: string; troca?: boolean };
 export type TecnicoClaims = { sub: string; tipo: "tecnico"; email: string; troca?: boolean };
-export type AdminClaims   = { sub: string; tipo: "admin"; email: string; role: string; roles?: string[]; trabalhista?: boolean };
+export type AdminClaims   = { sub: string; tipo: "admin"; email: string; role: string; roles?: string[]; trabalhista?: boolean; tv?: number };
 
 /** Perfis efetivos do usuário (múltiplos perfis com fallback no cargo único). */
 export function perfisDe(claims: AdminClaims): string[] {
@@ -38,6 +39,34 @@ export async function signToken(claims: AnyClaims, ttl: string = "7d"): Promise<
 export async function verifyToken<T extends AnyClaims = AnyClaims>(token: string): Promise<T> {
   const { payload } = await jwtVerify(token, SECRET, { issuer: ISSUER });
   return payload as unknown as T;
+}
+
+// ─── Revogação de sessão (token_version) ─────────────────────────────────────
+/** Incrementa o token_version do usuário -> invalida na hora TODOS os JWT já
+ *  emitidos dele. Chamar ao DESLIGAR ou ao RESETAR a senha. Best-effort (nunca
+ *  derruba o fluxo principal se falhar). Requer migration 066. */
+export async function invalidarSessoesPortal(profileId: string): Promise<void> {
+  if (!profileId) return;
+  try {
+    const db = supabaseAdmin();
+    const { data } = await db.from("portal_profiles").select("token_version").eq("id", profileId).maybeSingle();
+    const atual = typeof data?.token_version === "number" ? data.token_version : 0;
+    await db.from("portal_profiles").update({ token_version: atual + 1 }).eq("id", profileId);
+  } catch { /* best-effort */ }
+}
+
+/** Rejeita (lança "Não autenticado" -> 401) se a sessão foi revogada: o `tv` do
+ *  token difere do token_version atual no banco. FAIL-OPEN: erro de infra ou coluna
+ *  ausente NÃO derruba o acesso — só rejeita em divergência CONFIRMADA. */
+export async function assertSessaoValida(claims: AdminClaims): Promise<void> {
+  const tv = typeof claims.tv === "number" ? claims.tv : 0;
+  let revogada = false;
+  try {
+    const db = supabaseAdmin();
+    const { data } = await db.from("portal_profiles").select("token_version").eq("id", claims.sub).maybeSingle();
+    if (data && typeof data.token_version === "number" && data.token_version !== tv) revogada = true;
+  } catch { return; /* fail-open: não trava por erro de leitura */ }
+  if (revogada) throw new Error("Não autenticado");
 }
 
 // SHA-256 hash de senha com salt fixo (portado de manut.web.js)
@@ -123,6 +152,7 @@ export async function requireAdmin(req: Request): Promise<AdminClaims> {
   if (!["admin","manutencao_operacao","manutencao_administrativo","operacional","rh","financeiro","comercial","juridico","coordenador"].includes(claims.role)) {
     throw new Error("Sem permissão");
   }
+  await assertSessaoValida(claims);
   return claims;
 }
 
@@ -138,6 +168,7 @@ export async function requireAdminCookie(request: Request): Promise<AdminClaims>
   if (!tok) throw new Error("Não autenticado");
   const claims = await verifyToken<AdminClaims>(tok);
   if (claims.tipo !== "admin") throw new Error("Token inválido");
+  await assertSessaoValida(claims);
   return claims;
 }
 

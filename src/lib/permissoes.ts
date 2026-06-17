@@ -323,3 +323,19 @@ export async function bloqueioSeSoLeitura(claims: AdminClaims, moduloKey: string
     { status: 403, headers: { "content-type": "application/json" } },
   );
 }
+
+/** Guard de LEITURA que retorna Response 403 (ou null se pode ver) quando o usuário
+ *  NÃO tem nem "ver" no módulo (nível "nenhum"). Use no topo de GETs sensíveis —
+ *  download de documentos pessoais/financeiros, fichas, dados de RH — porque a trava
+ *  central do middleware só cobre MUTAÇÕES (a chave do IDOR/BFLA: um GET autenticado
+ *  por requireAdmin* passa para QUALQUER perfil; aqui exigimos acesso ao módulo).
+ *  Uso:  const ro = await bloqueioSeSemLeitura(admin, "rh"); if (ro) return ro;  */
+export async function bloqueioSeSemLeitura(claims: AdminClaims, moduloKey: string): Promise<Response | null> {
+  const nivel = await nivelModuloUsuario(claims, moduloKey);
+  if (nivel === "ver" || nivel === "editar") return null;
+  const rotulo = MODULO_LABEL[moduloKey] || moduloKey;
+  return new Response(
+    JSON.stringify({ error: `Você não tem acesso ao módulo "${rotulo}".` }),
+    { status: 403, headers: { "content-type": "application/json" } },
+  );
+}

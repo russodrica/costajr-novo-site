@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { signToken, hashSenha, jsonOk, jsonErr } from "~/lib/auth";
+import { clientIp, rateLimit } from "~/lib/ratelimit";
 
 export const prerender = false;
 
@@ -8,11 +9,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   try {
     const { email, senha } = await request.json();
     if (!email || !senha) return jsonErr(400, "E-mail e senha são obrigatórios.");
+    if (!(await rateLimit(`login:${clientIp(request)}`, 12, 600))) return jsonErr(429, "Muitas tentativas. Aguarde alguns minutos e tente novamente.");
 
     const sb = supabaseAdmin();
     const { data: profile, error } = await sb
       .from("portal_profiles")
-      .select("id, email, display_name, full_name, role, roles, tem_trabalhista, avatar_url, approval_status, senha_hash, senha_troca_obrigatoria")
+      .select("id, email, display_name, full_name, role, roles, tem_trabalhista, avatar_url, approval_status, senha_hash, senha_troca_obrigatoria, token_version")
       .eq("email", email.toLowerCase().trim())
       .single();
 
@@ -30,6 +32,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       role: profile.role,
       roles: perfis,
       trabalhista: !!profile.tem_trabalhista,
+      tv: typeof profile.token_version === "number" ? profile.token_version : 0,
     });
 
     await sb.from("portal_profiles").update({ last_login_at: new Date().toISOString() }).eq("id", profile.id);

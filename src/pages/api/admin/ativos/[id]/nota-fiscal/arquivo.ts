@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonErr } from "../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../lib/supabase";
+import { bloqueioSeSemLeitura } from "../../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -9,7 +10,8 @@ export const prerender = false;
 // assinada de curta duração (10 min). Sem cache.
 export const GET: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const ro = await bloqueioSeSemLeitura(admin, "ativos"); if (ro) return ro;
     const db = supabaseAdmin();
     const { data: ativo } = await db.from("ativos").select("id, nota_fiscal_path, nota_fiscal_url").eq("id", params.id!).maybeSingle();
     if (!ativo) return jsonErr(404, "Ativo não encontrado");

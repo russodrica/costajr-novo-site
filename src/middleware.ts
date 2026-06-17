@@ -56,7 +56,22 @@ export const onRequest = defineMiddleware(async (context, next) => {
     response.headers.set("X-Frame-Options", "SAMEORIGIN");
     response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     response.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self)");
-    response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+    // CSP em Report-Only (FASE 1): mede violações sem quebrar os ~29 scripts inline
+    // (define:vars/is:inline) do app. FASE 2 (futuro): migrar p/ nonce e tornar enforce
+    // — aí remove 'unsafe-inline' do script-src. Já protege com frame-ancestors/object-src.
+    response.headers.set(
+      "Content-Security-Policy-Report-Only",
+      "default-src 'self'; base-uri 'self'; form-action 'self'; " +
+      "frame-ancestors 'self' https://costajr.com.br https://www.costajr.com.br; " +
+      "img-src 'self' data: blob: https:; media-src 'self' https:; font-src 'self' data: https:; " +
+      "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; " +
+      "connect-src 'self' https:; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'"
+    );
+    // Não cachear respostas de API (podem conter dados sensíveis / URLs assinadas).
+    if (new URL(context.request.url).pathname.startsWith("/api/")) {
+      response.headers.set("Cache-Control", "no-store");
+    }
   } catch { /* respostas imutáveis (ex.: assets) podem recusar set — ignora */ }
 
   try {

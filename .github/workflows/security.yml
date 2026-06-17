@@ -1,0 +1,34 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  secret-scan:
+    name: gitleaks (segredos vazados)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rodar gitleaks
+        run: |
+          VER=8.18.4
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
+          # Falha o job se encontrar segredo commitado (a .env é gitignored; não deve achar nada).
+          ./gitleaks detect --source . --no-banner --redact --exit-code 1
+
+  npm-audit:
+    name: npm audit (deps vulneráveis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci || npm install
+      # Advisory: lista vulnerabilidades altas/críticas sem travar o build.
+      - run: npm audit --audit-level=high || true

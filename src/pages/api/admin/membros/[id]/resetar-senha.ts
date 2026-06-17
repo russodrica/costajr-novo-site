@@ -1,11 +1,13 @@
 import type { APIRoute } from "astro";
-import { requireAdminCookie, gerarSenhaInicial, hashSenha, jsonOk, jsonErr } from "../../../../../lib/auth";
+import { requireAdminCookie, gerarSenhaInicial, hashSenha, invalidarSessoesPortal, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { enviarSenhaReset } from "../../../../../lib/mailer";
 
 export const POST: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const ro = await bloqueioSeSoLeitura(admin, "membros"); if (ro) return ro;
     const senha = gerarSenhaInicial();
     const senha_hash = await hashSenha(senha);
     const db = supabaseAdmin();
@@ -16,6 +18,9 @@ export const POST: APIRoute = async ({ request, params }) => {
       .select("email,display_name,full_name")
       .single();
     if (error) return jsonErr(400, error.message);
+
+    // Reset de senha mata QUALQUER sessão ativa do usuário (ex.: conta comprometida).
+    await invalidarSessoesPortal(params.id!);
 
     const nome = mem.display_name || mem.full_name || "Colaborador";
     let emailEnviado = false;

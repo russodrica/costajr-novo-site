@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie } from "../../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../../lib/supabase";
+import { bloqueioSeSemLeitura } from "../../../../../../../lib/permissoes";
 import { gerarEpiFichaPdf } from "../../../../../../../lib/epiPdf";
 
 export const prerender = false;
@@ -8,7 +9,8 @@ export const prerender = false;
 // GET /api/admin/rh/epi/fichas/[id]/pdf — gera o PDF da ficha para impressão.
 export const GET: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const ro = await bloqueioSeSemLeitura(admin, "rh"); if (ro) return ro;
     const db = supabaseAdmin();
     const { data: ficha } = await db.from("epi_fichas").select("*").eq("id", params.id!).maybeSingle();
     if (!ficha) return new Response("Ficha não encontrada", { status: 404 });

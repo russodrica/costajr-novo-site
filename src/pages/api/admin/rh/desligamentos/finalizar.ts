@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
+import { requireAdminCookie, invalidarSessoesPortal, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { enviarEmailSimples } from "../../../../../lib/mailer";
@@ -86,6 +86,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (colab.profile_id) {
       await db.from("portal_profiles").update({ approval_status: "rejected" }).eq("id", colab.profile_id);
       await db.from("portal_sessoes").delete().eq("user_id", colab.profile_id);
+      await invalidarSessoesPortal(colab.profile_id); // mata o JWT já emitido na hora
     }
 
     await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "rh_colaboradores", registro_id: colaborador_id, descricao: `Desligou "${colab.nome}" (devolução conferida, ${ativos.length} ativo(s) + ${epiPend.length} EPI(s))`, dados: { desligamento_id: desl.id } });

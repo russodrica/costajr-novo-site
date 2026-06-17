@@ -1,16 +1,18 @@
 import type { APIRoute } from "astro";
 import { signToken, hashSenha, jsonOk, jsonErr } from "../../../lib/auth";
 import { supabaseAdmin } from "../../../lib/supabase";
+import { clientIp, rateLimit } from "../../../lib/ratelimit";
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   try {
     const { email, senha } = await request.json();
     if (!email || !senha) return jsonErr(400, "Email e senha obrigatórios");
+    if (!(await rateLimit(`login:${clientIp(request)}`, 12, 600))) return jsonErr(429, "Muitas tentativas. Aguarde alguns minutos e tente novamente.");
 
     const db = supabaseAdmin();
     const { data: perfil, error } = await db
       .from("portal_profiles")
-      .select("id, email, display_name, role, approval_status, senha_hash, senha_troca_obrigatoria")
+      .select("id, email, display_name, role, approval_status, senha_hash, senha_troca_obrigatoria, token_version")
       .eq("email", email.toLowerCase().trim())
       .single();
 
@@ -24,7 +26,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const inputHash = await hashSenha(senha);
     if (inputHash !== perfil.senha_hash) return jsonErr(401, "Credenciais inválidas");
 
-    const token = await signToken({ sub: perfil.id, tipo: "admin", email: perfil.email, role: perfil.role });
+    const token = await signToken({ sub: perfil.id, tipo: "admin", email: perfil.email, role: perfil.role, tv: typeof perfil.token_version === "number" ? perfil.token_version : 0 });
 
     // Atualiza last_login
     await db.from("portal_profiles").update({ last_login_at: new Date().toISOString() }).eq("id", perfil.id);

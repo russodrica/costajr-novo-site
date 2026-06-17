@@ -10,8 +10,9 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const claims = await requireAdmin(request);
     const { imagem_base64, content_type } = await request.json();
-    if (!imagem_base64 || !String(content_type || "").startsWith("image/")) {
-      return jsonErr(400, "Envie uma imagem válida.");
+    // Allow-list estrita: bloqueia image/svg+xml (XSS armazenado no bucket público) e outros.
+    if (!imagem_base64 || !["image/png", "image/jpeg", "image/webp"].includes(String(content_type || ""))) {
+      return jsonErr(400, "Envie uma imagem PNG, JPG ou WEBP.");
     }
     const buf = Buffer.from(imagem_base64, "base64");
     if (buf.length > 5 * 1024 * 1024) return jsonErr(400, "Imagem muito grande (máx. 5MB).");

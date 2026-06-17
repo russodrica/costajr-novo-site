@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../../../lib/auditoria";
-import { bloqueioSeSoLeitura } from "../../../../../../../lib/permissoes";
+import { bloqueioSeSoLeitura, bloqueioSeSemLeitura } from "../../../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -39,7 +39,8 @@ export const POST: APIRoute = async ({ request, params }) => {
 // GET .../assinado — baixa o documento assinado por URL assinada (10 min).
 export const GET: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const ro = await bloqueioSeSemLeitura(admin, "rh"); if (ro) return ro;
     const db = supabaseAdmin();
     const { data: ficha } = await db.from("epi_fichas").select("assinado_path").eq("id", params.id!).maybeSingle();
     if (!ficha?.assinado_path) return jsonErr(404, "Sem documento assinado.");

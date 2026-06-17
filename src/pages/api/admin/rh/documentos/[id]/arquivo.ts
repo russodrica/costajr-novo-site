@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonErr } from "../../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../../lib/supabase";
+import { bloqueioSeSemLeitura } from "../../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -9,7 +10,8 @@ export const prerender = false;
 // admin autenticado e redireciona para uma URL assinada de curta duração.
 export const GET: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const ro = await bloqueioSeSemLeitura(admin, "rh"); if (ro) return ro;
     const db = supabaseAdmin();
     const { data: doc } = await db.from("rh_documentos").select("id, url, storage_path").eq("id", params.id!).maybeSingle();
     if (!doc) return jsonErr(404, "Documento não encontrado");

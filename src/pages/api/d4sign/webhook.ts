@@ -7,8 +7,22 @@ export const prerender = false;
 // POST /api/d4sign/webhook — a D4Sign chama a cada evento do documento.
 // Payload (form ou json): uuid (do documento), type_post (1=finalizado,
 // 2=email, 3=visualizado, 4=cancelado...). Atualizamos o termo vinculado.
-export const POST: APIRoute = async ({ request }) => {
+//
+// SEGURANÇA: sem verificação, qualquer um que saiba um d4sign_uuid poderia POSTar
+// {uuid, type_post:1} e forjar "termo assinado". Exigimos um segredo compartilhado
+// (header x-d4sign-secret OU ?key= na URL do webhook configurada no painel D4Sign).
+// Rollout gradual: só passa a EXIGIR quando D4SIGN_WEBHOOK_SECRET estiver definido —
+// assim o webhook atual não quebra antes de você configurar o segredo na D4Sign.
+const WEBHOOK_SECRET = import.meta.env.D4SIGN_WEBHOOK_SECRET || process.env.D4SIGN_WEBHOOK_SECRET || "";
+
+export const POST: APIRoute = async ({ request, url }) => {
   try {
+    if (WEBHOOK_SECRET) {
+      const recebido = request.headers.get("x-d4sign-secret") || url.searchParams.get("key") || "";
+      if (recebido !== WEBHOOK_SECRET) {
+        return new Response(JSON.stringify({ ok: false, error: "não autorizado" }), { status: 401, headers: { "content-type": "application/json" } });
+      }
+    }
     let dados: Record<string, string> = {};
     const ct = request.headers.get("content-type") || "";
     if (ct.includes("json")) dados = await request.json();

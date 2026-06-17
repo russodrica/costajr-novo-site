@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { jsonOk, jsonErr } from "~/lib/auth";
+import { clientIp, rateLimit } from "~/lib/ratelimit";
 
 export const prerender = false;
 
@@ -23,6 +24,8 @@ const coagir = (v: any) => (v === true || v === "true" || v === "sim" ? true : (
 // vaga_id vazio = candidatura espontânea → Banco de Talentos.
 export const POST: APIRoute = async ({ request }) => {
   try {
+    // Anti-spam: público sem login — limita candidaturas por IP (8/hora).
+    if (!(await rateLimit(`candidatar:${clientIp(request)}`, 8, 3600))) return jsonErr(429, "Muitas candidaturas em pouco tempo. Tente novamente mais tarde.");
     const db = supabaseAdmin();
     const form = await request.formData().catch(() => null);
     if (!form) return jsonErr(400, "Envie o formulário (multipart/form-data).");

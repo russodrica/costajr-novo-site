@@ -1,15 +1,16 @@
 import type { APIRoute } from "astro";
-import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
+import { requireAdminCookie, invalidarSessoesPortal, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
-import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
+import { bloqueioSeSoLeitura, bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
 // GET /api/admin/rh/colaboradores/[id] — ficha completa (colaborador + ausências + documentos)
 export const GET: APIRoute = async ({ request, params }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const ro = await bloqueioSeSemLeitura(admin, "rh"); if (ro) return ro;
     const id = params.id!;
     const db = supabaseAdmin();
 
@@ -88,6 +89,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (desligando && data.profile_id) {
       await db.from("portal_profiles").update({ approval_status: "rejected" }).eq("id", data.profile_id);
       await db.from("portal_sessoes").delete().eq("user_id", data.profile_id);
+      await invalidarSessoesPortal(data.profile_id); // mata o JWT já emitido na hora
+
       await registrarAcao(db, { req: request, admin }, {
         acao: "editar", entidade: "acesso_portal", registro_id: data.profile_id,
         descricao: `Revogou acesso ao portal de "${data.nome}" (colaborador desligado)`,
