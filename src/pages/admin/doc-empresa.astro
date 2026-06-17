@@ -19,17 +19,15 @@ const docs: any[] = docsRaw || [];
 
 // Categorias (a "divisão atual" — espelha os grupos do board Monday). Também é a
 // ordem de exibição. O import grava estes mesmos rótulos.
-const CATEGORIAS = [
-  "Certidões Federal/Municipal/Estadual",
-  "Certidões e Declarações Jurídica",
-  "Documentos Diversos",
-  "Contratos – Clientes",
-  "Empresas Prestadoras de Serviços",
-  "Análise Patrimonial",
-  "Balancete",
-  "Integração",
-  "Modelos",
+// As 5 abas da plataforma (categorização macro). Também é a ordem de exibição.
+const ABAS = [
+  { nome: "Documento Fiscal", icon: "🧾" },
+  { nome: "Documentos Contábeis", icon: "📊" },
+  { nome: "Contrato com Cliente", icon: "🤝" },
+  { nome: "Empresas Fornecedoras", icon: "🏢" },
+  { nome: "Documentos Institucionais", icon: "🏛️" },
 ];
+const CATEGORIAS = ABAS.map((a) => a.nome);
 const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 
 const hoje = new Date().toISOString().slice(0, 10);
@@ -72,10 +70,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
   <div class="toolbar">
     <span class="toolbar-title">📑 Documentos da Empresa</span>
     <input class="search-input" id="busca" placeholder="Buscar documento…" oninput="filtrar()" />
-    <select class="filter-select" id="fCat" onchange="filtrar()">
-      <option value="">Todas as categorias</option>
-      {cats.map((c) => <option value={c}>{c}</option>)}
-    </select>
+    <!-- filtro de categoria virou abas (pills) logo abaixo -->
     <select class="filter-select" id="fSit" onchange="filtrar()">
       <option value="">Todas as situações</option>
       <option value="vencido">⛔ Vencidos</option>
@@ -91,6 +86,13 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
   <p style="color:var(--ink-mid);font-size:13px;margin:-4px 0 14px">
     Repositório de documentos institucionais (certidões, contrato social, seguros, contratos…). Documentos com <strong>data de validade</strong> geram alerta automático em 30/15/7 dias e no dia do vencimento. Quando o documento não tem validade, marque <strong>"não aplicável"</strong> e ele não cobra alerta.
   </p>
+
+  <div class="pills" id="abasPills" style="margin:2px 0 16px">
+    <button type="button" class="pill active" data-cat="" onclick="setAba(this)">📑 Todas</button>
+    {ABAS.map((a) => (
+      <button type="button" class="pill" data-cat={a.nome} onclick="setAba(this)">{a.icon} {a.nome} <span class="count">{(porCat.get(a.nome) || []).length}</span></button>
+    ))}
+  </div>
 
   <div class="card-grid">
     <div class="stat-card"><div class="stat-value">{kpi.total}</div><div class="stat-label">Documentos</div></div>
@@ -214,6 +216,13 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     const overlay = (id: string) => document.getElementById(id)!;
     const DOCS: any[] = JSON.parse((document.getElementById("docsData") as HTMLElement)?.textContent || "[]");
     const docById = (id: string) => DOCS.find((x: any) => x.id === id);
+    let abaAtiva = "";
+    function setAba(btn: HTMLElement) {
+      document.querySelectorAll("#abasPills .pill").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      abaAtiva = btn.dataset.cat || "";
+      filtrar();
+    }
 
     function fechar() { overlay("modalDoc").classList.remove("open"); }
     function fecharArq() { overlay("modalArq").classList.remove("open"); }
@@ -325,7 +334,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     // ── Filtro ──
     function filtrar() {
       const t = (document.getElementById("busca") as HTMLInputElement).value.toLowerCase().trim();
-      const cat = (document.getElementById("fCat") as HTMLSelectElement).value;
+      const cat = abaAtiva;
       const sit = (document.getElementById("fSit") as HTMLSelectElement).value;
       document.querySelectorAll(".doc-sec").forEach((secEl) => {
         const sec = secEl as HTMLElement;
@@ -342,7 +351,13 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         sec.style.display = visiveis ? "" : "none";
       });
     }
-    function setSit(s: string) { (document.getElementById("fSit") as HTMLSelectElement).value = s; filtrar(); window.scrollTo({ top: 260, behavior: "smooth" }); }
+    function setSit(s: string) {
+      (document.getElementById("fSit") as HTMLSelectElement).value = s;
+      abaAtiva = "";
+      document.querySelectorAll("#abasPills .pill").forEach((p) => (p as HTMLElement).classList.toggle("active", (p as HTMLElement).dataset.cat === ""));
+      filtrar();
+      window.scrollTo({ top: 260, behavior: "smooth" });
+    }
 
     async function enviarResumo(btn: HTMLButtonElement) {
       btn.disabled = true; const orig = btn.textContent; btn.textContent = "Enviando…";
@@ -354,6 +369,6 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       btn.disabled = false; btn.textContent = orig;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, filtrar, setSit, enviarResumo });
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, filtrar, setSit, setAba, enviarResumo });
   </script>
 </Admin>
