@@ -309,6 +309,63 @@ export function trabalhamHoje(dia: DiaPonto): number {
   return dia.dias.filter((d) => d.trabalhaHoje).length;
 }
 
+// ─── Apuração mensal (aba Ponto / Faltas) ────────────────────────────────────
+export type DiaResumo = {
+  data: string;       // YYYY-MM-DD
+  trabalhou: boolean; // ao menos 1 batida real (idAfd != null)
+  falta: boolean;     // horário esperado mas nenhuma batida real
+  horasMin: number;   // minutos trabalhados (pares entrada/saída)
+  semSaida: boolean;  // entrou mas não bateu saída
+};
+
+// Busca a apuração de um mês inteiro para UMA pessoa do RHiD.
+export async function apuracaoMensal(idPerson: number, anoMes: string): Promise<DiaResumo[]> {
+  const [ano, mes] = anoMes.split("-").map(Number);
+  const dataIni = `${anoMes}-01`;
+  const ultimoDia = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  const dataFinal = `${anoMes}-${String(ultimoDia).padStart(2, "0")}`;
+  try {
+    const raw = String(await apiGet("/apuracao_ponto", { idPerson, dataIni, dataFinal }, true));
+    let parsed: any = null;
+    try { parsed = JSON.parse(raw); if (typeof parsed === "string") parsed = JSON.parse(parsed); } catch { return []; }
+    if (!parsed) return [];
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    const byDate = new Map<string, DiaResumo>();
+    for (const d0 of arr) {
+      const lst: any[] = d0?.listAfdtManutencao ?? [];
+      const perDate: Record<string, any[]> = {};
+      for (const e of lst) {
+        const dt = parseApurDate(e.dateTime);
+        if (!dt) continue;
+        const iso = fmtDataISO(dt);
+        if (!iso.startsWith(anoMes)) continue;
+        (perDate[iso] = perDate[iso] || []).push(e);
+      }
+      for (const [iso, entries] of Object.entries(perDate)) {
+        const punches = entries
+          .filter((e) => e.idAfd != null)
+          .map((e) => parseApurDate(e.dateTime))
+          .filter((x): x is Date => !!x)
+          .sort((a, b) => a.getTime() - b.getTime());
+        const hasFalta = entries.some((e) => e._typeClassification === "F");
+        const semSaida = entries.some((e) => e._typeClassification === "X") || punches.length % 2 === 1;
+        let horasMin = 0;
+        for (let i = 0; i + 1 < punches.length; i += 2) {
+          horasMin += Math.round((punches[i + 1].getTime() - punches[i].getTime()) / 60000);
+        }
+        byDate.set(iso, {
+          data: iso,
+          trabalhou: punches.length > 0,
+          falta: punches.length === 0 && hasFalta,
+          horasMin,
+          semSaida,
+        });
+      }
+    }
+    return [...byDate.values()].sort((a, b) => a.data.localeCompare(b.data));
+  } catch { return []; }
+}
+
 // ─── Relatórios de negócio ──────────────────────────────────────────────────
 
 // ENTRADA: quem trabalha hoje e ainda não tem nenhuma batida real.

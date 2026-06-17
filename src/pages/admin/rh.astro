@@ -53,13 +53,15 @@ const docsVencendo = documentos.filter(d => d.validade && d.validade >= hoje && 
 // ── Blocos de colaboradores (estilo Monday): regime × ativo/inativo ──
 // "Ativo" = qualquer status diferente de "desligado". "Inativo" = desligado.
 // Diaristas NÃO entram aqui — têm aba própria (profissionais esporádicos).
-const regimeBloco = (c: any) => (c.regime === "clt" || c.regime === "pj") ? c.regime : "outros";
+const regimeBloco = (c: any) => (c.regime === "clt" || c.regime === "pj" || c.regime === "socio") ? c.regime : "outros";
 const blocosDef = [
+  { key: "socio_ativo", titulo: "🤝 Sócios", regime: "socio", ativo: true, aberto: true },
   { key: "clt_ativo", titulo: "CLT — Ativos", regime: "clt", ativo: true, aberto: true },
   { key: "pj_ativo", titulo: "PJ — Ativos", regime: "pj", ativo: true, aberto: true },
-  { key: "outros_ativo", titulo: "Estágio / Temporário / Sócio — Ativos", regime: "outros", ativo: true, aberto: true },
+  { key: "outros_ativo", titulo: "Estágio / Temporário — Ativos", regime: "outros", ativo: true, aberto: true },
   { key: "clt_inativo", titulo: "CLT — Inativos (desligados)", regime: "clt", ativo: false, aberto: false },
   { key: "pj_inativo", titulo: "PJ — Inativos (desligados)", regime: "pj", ativo: false, aberto: false },
+  { key: "socio_inativo", titulo: "Sócios — Inativos", regime: "socio", ativo: false, aberto: false },
   { key: "outros_inativo", titulo: "Outros — Inativos (desligados)", regime: "outros", ativo: false, aberto: false },
 ];
 const blocosTodos = blocosDef
@@ -150,6 +152,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     <button class="pill" data-aba="documentos" onclick="mostrarAba('documentos')">Documentos <span class="count">{documentos.length}</span></button>
     <button class="pill" data-aba="admissoes" onclick="mostrarAba('admissoes')">Admissões <span class="count">{admissoesAbertas}</span></button>
     <button class="pill" data-aba="aniversariantes" onclick="mostrarAba('aniversariantes')">Aniversariantes <span class="count">{aniversariantes.length}</span></button>
+    <button class="pill" data-aba="ponto" onclick="mostrarAba('ponto')">🕐 Ponto / Faltas</button>
   </div>
 
   <!-- ════════ ABA COLABORADORES ════════ -->
@@ -414,6 +417,47 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     </div>
   </section>
 
+  <!-- ════════ ABA PONTO / FALTAS ════════ -->
+  <section class="tab-section" id="aba-ponto" style="display:none">
+    <div class="toolbar">
+      <span class="toolbar-title">🕐 Ponto e Banco de Horas — ControlID</span>
+    </div>
+    <div class="card" style="padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+        <label style="font-weight:600">Mês:</label>
+        <input type="month" id="pontoMes" style="padding:6px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem" />
+        <button id="btnCarregarPonto" class="btn btn-primary" onclick="carregarPonto()">🔄 Carregar dados</button>
+        <span style="color:#6B7280;font-size:0.83rem">Busca ponto dos colaboradores CLT e sócios ativos via ControlID</span>
+      </div>
+      <div id="pontoLoading" style="display:none;text-align:center;padding:32px;color:#6B7280">
+        ⏳ Consultando ControlID… isso pode levar até 30 segundos.
+      </div>
+      <div id="pontoErro" style="display:none;background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;padding:12px;border-radius:6px;margin-bottom:12px"></div>
+      <div id="pontoResultado" style="display:none">
+        <div class="table-responsive">
+          <table class="tabela-colab">
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Regime</th>
+                <th style="text-align:center">Dias trabalhados</th>
+                <th style="text-align:center">Faltas</th>
+                <th style="text-align:center">Total horas</th>
+                <th style="text-align:center">Banco de horas</th>
+                <th>Situação</th>
+              </tr>
+            </thead>
+            <tbody id="pontoCorp"></tbody>
+          </table>
+        </div>
+        <p style="margin-top:12px;font-size:0.78rem;color:#9CA3AF">
+          * Banco de horas = horas trabalhadas − 8h × dias com escala. Negativo = débito.
+          "Não cadastrado" = CPF do colaborador não encontrado no ControlID.
+        </p>
+      </div>
+    </div>
+  </section>
+
   <!-- ════════ ABA ALERTAS ════════ -->
   <section class="tab-section" id="aba-alertas" style="display:none">
     <div class="toolbar">
@@ -563,7 +607,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <div class="form-group"><label>Nome <span style="color:#C41E3A">*</span></label><input name="nome" /></div>
         <div class="form-row">
           <div class="form-group"><label>E-mail corporativo <span style="color:#C41E3A">*</span></label><input name="email" type="email" placeholder="nome@costajr.com.br" /></div>
-          <div class="form-group"><label>Telefone (empresa) <span style="color:#C41E3A">*</span></label><input name="telefone" /></div>
+          <div class="form-group"><label>Telefone (empresa)</label><input name="telefone" /></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>E-mail pessoal</label><input name="email_pessoal" type="email" placeholder="pessoal@gmail.com" /></div>
@@ -885,6 +929,13 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       document.querySelectorAll(".pill[data-aba]").forEach((p) => p.classList.toggle("active", (p as any).dataset.aba === aba));
       if (aba === "alertas" && !(window as any).__alertasCarregados) carregarAlertas();
       if (aba === "ferias" && !(window as any).__feriasCarregados) carregarFerias();
+      if (aba === "ponto") {
+        const el = document.getElementById("pontoMes") as HTMLInputElement;
+        if (el && !el.value) {
+          const hoje = new Date();
+          el.value = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+        }
+      }
     }
     // abre a aba indicada por ?aba= (links de e-mail)
     (function () {
@@ -1610,7 +1661,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
     // ── Pendências consolidadas do colaborador ──
     const PEND_CAMPOS_OBRIG: [string, string][] = [
-      ["nome", "Nome"], ["email", "E-mail corporativo"], ["telefone", "Telefone (empresa)"], ["telefone_pessoal", "Telefone (pessoal)"],
+      ["nome", "Nome"], ["email", "E-mail corporativo"], ["telefone_pessoal", "Telefone (pessoal)"],
       ["cpf", "CPF"], ["rg", "RG"], ["data_nascimento", "Data de nascimento"], ["cargo", "Cargo"], ["data_admissao", "Admissão"],
       ["endereco", "Endereço"], ["contato_emergencia_nome", "Contato de emergência (nome)"], ["contato_emergencia_telefone", "Contato de emergência (telefone)"],
     ];
@@ -1975,7 +2026,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
     // campos obrigatórios da ficha (exceto diaristas, que são esporádicos)
     const OBRIGATORIOS: [string, string][] = [
-      ["nome", "Nome"], ["email", "E-mail corporativo"], ["telefone", "Telefone (empresa)"], ["telefone_pessoal", "Telefone (pessoal)"],
+      ["nome", "Nome"], ["email", "E-mail corporativo"], ["telefone_pessoal", "Telefone (pessoal)"],
       ["cpf", "CPF"], ["rg", "RG"], ["data_nascimento", "Nascimento"], ["cargo", "Cargo"],
       ["data_admissao", "Admissão"], ["endereco", "Endereço"],
       ["contato_emergencia_nome", "Contato de emergência (nome)"],
@@ -2233,6 +2284,74 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).verDocsAdmissao = verDocsAdmissao;
     (window as any).concluirAdmissao = concluirAdmissao;
     (window as any).cancelarAdmissao = cancelarAdmissao;
+
+    // ── Ponto / Faltas (ControlID / RHiD) ──
+    function fmtHorasMin(min: number): string {
+      const neg = min < 0;
+      const abs = Math.abs(min);
+      const h = Math.floor(abs / 60);
+      const m = abs % 60;
+      return `${neg ? "-" : ""}${h}h${String(m).padStart(2, "0")}min`;
+    }
+
+    async function carregarPonto() {
+      const mesEl = document.getElementById("pontoMes") as HTMLInputElement;
+      const mes = mesEl?.value;
+      if (!mes) { alert("Selecione o mês"); return; }
+
+      const loading = document.getElementById("pontoLoading")!;
+      const resultado = document.getElementById("pontoResultado")!;
+      const erroEl = document.getElementById("pontoErro")!;
+      const corp = document.getElementById("pontoCorp")!;
+      const btnCarregar = document.getElementById("btnCarregarPonto") as HTMLButtonElement;
+
+      loading.style.display = "";
+      resultado.style.display = "none";
+      erroEl.style.display = "none";
+      if (btnCarregar) { btnCarregar.disabled = true; btnCarregar.textContent = "⏳ Carregando…"; }
+
+      try {
+        const res = await fetch(`/api/admin/rh/ponto-mensal?mes=${mes}`);
+        const d = await res.json().catch(() => ({} as any));
+        if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
+
+        const colabs: any[] = d.colaboradores || [];
+        const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        corp.innerHTML = colabs.length ? colabs.map(c => {
+          if (!c.encontrado) {
+            return `<tr>
+              <td><strong>${esc(c.nome)}</strong></td>
+              <td><span class="badge badge-gray">${esc(c.regime?.toUpperCase() || "—")}</span></td>
+              <td colspan="4" style="text-align:center;color:#9CA3AF">—</td>
+              <td><span class="badge badge-gray" title="CPF não cadastrado no ControlID">Não cadastrado</span></td>
+            </tr>`;
+          }
+          const r = c.resumo;
+          const banco = r.saldoBancoMin;
+          const bancoCor = banco > 0 ? "#15803D" : banco < 0 ? "#B91C1C" : "#374151";
+          return `<tr>
+            <td><strong>${esc(c.nome)}</strong></td>
+            <td><span class="badge badge-blue">${esc(c.regime?.toUpperCase() || "CLT")}</span></td>
+            <td style="text-align:center;font-weight:700">${r.diasTrabalhados}</td>
+            <td style="text-align:center;font-weight:700;color:${r.faltas > 0 ? "#B91C1C" : "#374151"}">${r.faltas}</td>
+            <td style="text-align:center">${fmtHorasMin(r.horasMin)}</td>
+            <td style="text-align:center;font-weight:700;color:${bancoCor}">${banco >= 0 ? "+" : ""}${fmtHorasMin(banco)}</td>
+            <td><span class="badge badge-green">✓ ControlID</span></td>
+          </tr>`;
+        }).join("") : `<tr><td colspan="7" style="text-align:center;color:#9CA3AF;padding:24px">Nenhum colaborador CLT/sócio ativo encontrado</td></tr>`;
+
+        loading.style.display = "none";
+        resultado.style.display = "";
+      } catch(e: any) {
+        loading.style.display = "none";
+        erroEl.style.display = "";
+        erroEl.textContent = "Erro ao carregar dados do ControlID: " + (e.message || "falha desconhecida");
+      } finally {
+        if (btnCarregar) { btnCarregar.disabled = false; btnCarregar.textContent = "🔄 Carregar dados"; }
+      }
+    }
+
+    (window as any).carregarPonto = carregarPonto;
   </script>
 
   <style>
