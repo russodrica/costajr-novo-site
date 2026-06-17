@@ -58,6 +58,15 @@ if (token) {
         <a href="#" id="linkVoltar" style="font-size:0.8rem;color:#888;text-decoration:none">Voltar ao login</a>
       </div>
     </div>
+
+    <!-- Verificação de novo dispositivo (OTP) — escondido por padrão -->
+    <div id="otpBox" style="display:none;margin-top:18px;border-top:1px solid #eee;padding-top:18px">
+      <p style="font-size:0.85rem;color:#555;margin-bottom:12px">🔒 Novo dispositivo detectado. Enviamos um código para <b id="otpDestino"></b>. Digite-o abaixo (vale 10 minutos).</p>
+      <div class="error" id="otpErr"></div>
+      <label for="otpCode">Código de 6 dígitos</label>
+      <input type="text" id="otpCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="letter-spacing:6px;text-align:center;font-size:1.1rem" />
+      <button type="button" id="btnOtp">Verificar e entrar</button>
+    </div>
   </div>
   <script>
     document.getElementById("form")?.addEventListener("submit", async (e) => {
@@ -77,6 +86,15 @@ if (token) {
         });
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
+          if (data.step === "otp") {
+            challengeId = data.challenge_id || "";
+            ($("otpDestino")).textContent = data.destino || "seu e-mail";
+            formEl.style.display = "none";
+            otpBox.style.display = "block";
+            ($("otpCode") as HTMLInputElement).focus();
+            btn.disabled = false; btn.textContent = "Entrar";
+            return;
+          }
           window.location.href = data.troca ? "/admin/trocar-senha?forcado=1" : "/admin";
         } else {
           const data = await res.json();
@@ -97,6 +115,8 @@ if (token) {
     const $ = (id: string) => document.getElementById(id) as HTMLElement;
     const formEl = $("form");
     const forgotBox = $("forgotBox");
+    const otpBox = $("otpBox");
+    let challengeId = "";
     $("linkForgot")?.addEventListener("click", (e) => {
       e.preventDefault();
       formEl.style.display = "none";
@@ -134,6 +154,35 @@ if (token) {
         msg.style.cssText = "display:block;background:#FEE2E2;color:#991B1B;border-radius:7px;padding:10px 14px;font-size:0.85rem;margin-bottom:12px";
       } finally {
         btnF.disabled = false; btnF.textContent = "Enviar senha temporária";
+      }
+    });
+
+    // ─── Verificação de novo dispositivo (OTP) ─────────────────────────
+    $("btnOtp")?.addEventListener("click", async () => {
+      const b = $("btnOtp") as HTMLButtonElement;
+      const oe = $("otpErr");
+      const code = ($("otpCode") as HTMLInputElement).value.trim();
+      if (!/^\d{6}$/.test(code)) { oe.textContent = "Digite os 6 dígitos do código."; oe.style.display = "block"; return; }
+      b.disabled = true; b.textContent = "Verificando...";
+      oe.style.display = "none";
+      try {
+        const res = await fetch("/api/admin/login-otp", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ challenge_id: challengeId, code }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          window.location.href = data.troca ? "/admin/trocar-senha?forcado=1" : "/admin";
+        } else {
+          oe.textContent = data.error || "Código incorreto.";
+          oe.style.display = "block";
+          b.disabled = false; b.textContent = "Verificar e entrar";
+        }
+      } catch {
+        oe.textContent = "Erro de conexão. Tente novamente.";
+        oe.style.display = "block";
+        b.disabled = false; b.textContent = "Verificar e entrar";
       }
     });
   </script>

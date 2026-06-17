@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { signToken, hashSenha, jsonOk, jsonErr } from "../../../lib/auth";
 import { supabaseAdmin } from "../../../lib/supabase";
 import { clientIp, rateLimit } from "../../../lib/ratelimit";
+import { STEPUP_ATIVO, lerDeviceCookie, novoDeviceCookie, deviceConfiavel, tocarDevice, criarDesafioOtp, TD_COOKIE } from "../../../lib/stepup";
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   try {
@@ -25,6 +26,26 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     const inputHash = await hashSenha(senha);
     if (inputHash !== perfil.senha_hash) return jsonErr(401, "Credenciais inválidas");
+
+    // Verificação de novo dispositivo (step-up): só liga com STEPUP_ENABLED=1.
+    // FAIL-OPEN: qualquer erro aqui cai no login normal (nunca trava o acesso).
+    if (STEPUP_ATIVO) {
+      try {
+        let tdId = await lerDeviceCookie(request);
+        if (!(await deviceConfiavel(perfil.id, tdId))) {
+          if (!tdId) {
+            const nd = await novoDeviceCookie();
+            tdId = nd.tdId;
+            cookies.set(TD_COOKIE, nd.cookieValue, { path: "/", httpOnly: true, sameSite: "lax", maxAge: 400 * 24 * 3600, secure: import.meta.env.PROD });
+          }
+          const desafio = await criarDesafioOtp({ profileId: perfil.id, nome: perfil.display_name || perfil.email, email: perfil.email, tdId, ip: clientIp(request) });
+          return jsonOk({ step: "otp", challenge_id: desafio.challengeId, canal: desafio.canal, destino: desafio.destino });
+        }
+        await tocarDevice(perfil.id, tdId!, clientIp(request), "");
+      } catch (e: any) {
+        console.error("[stepup] fail-open admin/login:", e?.message);
+      }
+    }
 
     const token = await signToken({ sub: perfil.id, tipo: "admin", email: perfil.email, role: perfil.role, tv: typeof perfil.token_version === "number" ? perfil.token_version : 0 });
 
