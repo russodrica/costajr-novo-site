@@ -1652,6 +1652,14 @@ o historico do colaborador, SEM gerar alertas. **Commit 0217133.**
 - E2E VERIFICADO ao vivo (funcionario teste, depois limpo via Supabase REST): POST 201,
   2 parcelas confirmadas, aparece no historico, NAO aparece no painel principal.
 
+**Ferias — alerta SO do periodo aquisitivo vigente (commits 84c1f1f/0ec93a1):** pedido
+da Adriana. So o periodo de `inicio_aquisitivo` MAIS RECENTE de cada colaborador gera
+alerta. `enviarLembretesFerias` (ferias.ts) reduz a lista a 1 por colaborador (vigente)
+antes de montar os eventos. No painel (`renderFerias` em rh.astro), periodos nao-vigentes
+saem das contagens Falta programar/Vencidos e ganham badge neutro "Periodo anterior (nao
+cobra)". Preventivo: hoje cada colaborador tem 1 periodo (= vigente), entao e no-op
+visual; vale quando os ciclos aquisitivos se acumularem (1 novo por ano via auto-avanco).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
