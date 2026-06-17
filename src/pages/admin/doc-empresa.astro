@@ -223,6 +223,20 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       abaAtiva = btn.dataset.cat || "";
       filtrar();
     }
+    // Preserva a aba ativa ao recarregar a página após uma ação
+    function reloadComAba() {
+      const u = new URL(location.href);
+      if (abaAtiva) u.searchParams.set("aba", abaAtiva);
+      else u.searchParams.delete("aba");
+      location.replace(u.toString());
+    }
+    // Restaura a aba ativa a partir de ?aba= (setado pelo reloadComAba)
+    (function () {
+      const cat = new URLSearchParams(location.search).get("aba");
+      if (!cat) return;
+      const btn = document.querySelector(`#abasPills .pill[data-cat="${cat.replace(/"/g, '\\"')}"]`) as HTMLElement;
+      if (btn) setAba(btn);
+    })();
 
     function fechar() { overlay("modalDoc").classList.remove("open"); }
     function fecharArq() { overlay("modalArq").classList.remove("open"); }
@@ -273,14 +287,14 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const url = id ? `/api/admin/doc-empresa/${id}` : "/api/admin/doc-empresa";
       const method = id ? "PATCH" : "POST";
       const res = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) location.reload();
+      if (res.ok) reloadComAba();
       else document.getElementById("msg")!.innerHTML = `<div class="alert alert-error">${(await res.json()).error || "Erro ao salvar"}</div>`;
     });
 
     async function setArquivado(id: string, arquivado: boolean) {
       if (!confirm(arquivado ? "Arquivar este documento? Ele some do painel e para de gerar alertas (recuperável em 'Ver arquivados')." : "Reativar este documento?")) return;
       const res = await fetch(`/api/admin/doc-empresa/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ arquivado }) });
-      if (res.ok) location.reload(); else alert((await res.json()).error || "Erro");
+      if (res.ok) reloadComAba(); else alert((await res.json()).error || "Erro");
     }
 
     async function excluir(id: string) {
@@ -288,7 +302,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const nome = (d && d.nome) || "este documento";
       if (!confirm(`Excluir "${nome}"? Vai para a lixeira (recuperável por 30 dias).`)) return;
       const res = await fetch(`/api/admin/doc-empresa/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
-      if (res.ok) location.reload(); else alert((await res.json()).error || "Erro");
+      if (res.ok) reloadComAba(); else alert((await res.json()).error || "Erro");
     }
 
     // ── Anexos ──
@@ -316,7 +330,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       if (!confirm("Excluir este arquivo?")) return;
       btn.disabled = true;
       const res = await fetch(`/api/admin/doc-empresa/arquivos/${fid}`, { method: "DELETE", headers: { "content-type": "application/json" } });
-      if (res.ok) location.reload(); else { alert((await res.json()).error || "Erro"); btn.disabled = false; }
+      if (res.ok) reloadComAba(); else { alert((await res.json()).error || "Erro"); btn.disabled = false; }
     }
     document.getElementById("formUpload")!.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -327,7 +341,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const fd = new FormData();
       fd.append("arquivo", (f.querySelector("[name=arquivo]") as HTMLInputElement).files![0]);
       const res = await fetch(`/api/admin/doc-empresa/${id}/upload`, { method: "POST", body: fd });
-      if (res.ok) location.reload();
+      if (res.ok) reloadComAba();
       else { alert((await res.json()).error || "Erro no envio"); btn.disabled = false; btn.textContent = "Enviar"; }
     });
 
