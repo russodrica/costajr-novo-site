@@ -46,6 +46,7 @@ export const POST: APIRoute = async ({ request }) => {
     const row: Record<string, unknown> = {
       nome,
       categoria,
+      grupo: categoria === "Documento Fiscal" ? (String(body.grupo || "").trim() || "Diversos") : null,
       validade_na,
       validade,
       periodicidade: String(body.periodicidade || "").trim() || null,

@@ -6,7 +6,7 @@ import { excluirComLixeira, registrarAcao } from "../../../../lib/auditoria";
 export const prerender = false;
 
 const PERFIS = ["admin", "financeiro", "juridico"];
-const CAMPOS = ["nome", "categoria", "periodicidade", "validade", "validade_na", "site", "observacoes", "arquivado"];
+const CAMPOS = ["nome", "categoria", "grupo", "periodicidade", "validade", "validade_na", "site", "observacoes", "arquivado"];
 
 // PATCH /api/admin/doc-empresa/[id] → edita / arquiva / marca "não aplicável"
 export const PATCH: APIRoute = async ({ request, params }) => {

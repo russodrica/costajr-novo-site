@@ -24,10 +24,26 @@ const ABAS = [
   { nome: "Documentos Contábeis", icon: "📊" },
   { nome: "Contrato com Cliente", icon: "🤝" },
   { nome: "Empresas Fornecedoras", icon: "🏢" },
+  { nome: "Empreiteiros / Terceiros", icon: "👷" },
   { nome: "Documentos Institucionais", icon: "🏛️" },
 ];
 const CATEGORIAS = ABAS.map((a) => a.nome);
 const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
+
+// Sub-grupos de "Documento Fiscal"
+const GRUPOS_FISCAL = [
+  { key: "CND",          label: "CND — Federal, Estadual e Municipal" },
+  { key: "Trabalhistas", label: "Trabalhistas — FGTS, INSS e outros" },
+  { key: "Sócios",       label: "Sócios — RG, CNH, IR, Comprovante de Residência" },
+  { key: "Diversos",     label: "Diversos" },
+];
+const porGrupoFiscal = new Map<string, any[]>();
+for (const { key } of GRUPOS_FISCAL) porGrupoFiscal.set(key, []);
+for (const d of (porCat.get("Documento Fiscal") || [])) {
+  const gk = d.grupo || "Diversos";
+  if (!porGrupoFiscal.has(gk)) porGrupoFiscal.set(gk, []);
+  porGrupoFiscal.get(gk)!.push(d);
+}
 
 const hoje = new Date().toISOString().slice(0, 10);
 const em30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -65,7 +81,7 @@ const catsArq = [...CATEGORIAS.filter((c) => porCatArq.has(c)), ...[...porCatArq
 // JSON p/ o JS do cliente — inclui todos para que editar/arquivar/excluir funcione
 // em ambas as abas (passamos o id no onclick, o docById resolve pelo JSON).
 const docsJs = docs.map((d: any) => ({
-  id: d.id, categoria: d.categoria, nome: d.nome, periodicidade: d.periodicidade,
+  id: d.id, categoria: d.categoria, grupo: d.grupo || null, nome: d.nome, periodicidade: d.periodicidade,
   validade: d.validade, validade_na: d.validade_na, site: d.site, observacoes: d.observacoes,
   arquivado: d.arquivado,
   arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome })),
@@ -117,47 +133,94 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       <div class="card"><div class="empty-state" style="padding:40px"><strong>Nenhum documento ainda</strong><p>Cadastre no botão "+ Novo documento" ou rode a importação do Monday.</p></div></div>
     )}
 
-  {cats.map((c) => (
-    <div class="card doc-sec" data-cat={c} style="padding:0;overflow:hidden;margin-bottom:18px">
-      <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:#FAFBFC">
-        <span class="section-title" style="font-size:1rem">{c}</span>
-        <span class="badge badge-gray">{porCat.get(c)!.length}</span>
+  {cats.map((c) => {
+    const isFiscal = c === "Documento Fiscal";
+    const docsInCat = porCat.get(c)!;
+    return (
+      <div class="card doc-sec" data-cat={c} style="padding:0;overflow:hidden;margin-bottom:18px">
+        <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:#FAFBFC">
+          <span class="section-title" style="font-size:1rem">{c}</span>
+          <span class="badge badge-gray">{docsInCat.length}</span>
+        </div>
+        {isFiscal ? (
+          GRUPOS_FISCAL.map(({ key, label }) => {
+            const docsGrupo = porGrupoFiscal.get(key) || [];
+            return docsGrupo.length > 0 ? (
+              <div class="doc-subgrupo" data-grupo={key}>
+                <div style="padding:7px 18px;font-size:12.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.04em;background:#F5F5F7;border-bottom:1px solid var(--border)">{label}</div>
+                <div class="table-wrap">
+                  <table>
+                    <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
+                    <tbody>
+                      {docsGrupo.map((d: any) => {
+                        const b = badge(d);
+                        const nArq = (d.doc_empresa_arquivos || []).length;
+                        return (
+                          <tr class="doc-row" data-cat={c} data-sit={situacao(d)} data-nome={(d.nome || "").toLowerCase()}>
+                            <td>
+                              <strong>{d.nome}</strong>
+                              {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
+                              {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
+                            </td>
+                            <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
+                            <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
+                            <td>
+                              <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`}>📎 {nArq || 0}</button>
+                            </td>
+                            <td style="white-space:nowrap;text-align:right">
+                              <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
+                              {d.arquivado
+                                ? <button class="btn btn-success btn-sm" onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
+                                : <button class="btn btn-outline btn-sm" onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>}
+                              <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null;
+          })
+        ) : (
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
+              <tbody>
+                {docsInCat.map((d: any) => {
+                  const b = badge(d);
+                  const nArq = (d.doc_empresa_arquivos || []).length;
+                  return (
+                    <tr class="doc-row" data-cat={c} data-sit={situacao(d)} data-nome={(d.nome || "").toLowerCase()} style={d.arquivado ? "opacity:.55" : ""}>
+                      <td>
+                        <strong>{d.nome}</strong>
+                        {d.arquivado && <span class="badge badge-gray" style="margin-left:6px">Arquivado</span>}
+                        {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
+                        {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
+                      </td>
+                      <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
+                      <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
+                      <td>
+                        <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`}>📎 {nArq || 0}</button>
+                      </td>
+                      <td style="white-space:nowrap;text-align:right">
+                        <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
+                        {d.arquivado
+                          ? <button class="btn btn-success btn-sm" onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
+                          : <button class="btn btn-outline btn-sm" onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>}
+                        <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
-          <tbody>
-            {porCat.get(c)!.map((d: any) => {
-              const b = badge(d);
-              const nArq = (d.doc_empresa_arquivos || []).length;
-              return (
-                <tr class="doc-row" data-cat={c} data-sit={situacao(d)} data-nome={(d.nome || "").toLowerCase()} style={d.arquivado ? "opacity:.55" : ""}>
-                  <td>
-                    <strong>{d.nome}</strong>
-                    {d.arquivado && <span class="badge badge-gray" style="margin-left:6px">Arquivado</span>}
-                    {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
-                    {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
-                  </td>
-                  <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
-                  <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
-                  <td>
-                    <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`}>📎 {nArq || 0}</button>
-                  </td>
-                  <td style="white-space:nowrap;text-align:right">
-                    <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
-                    {d.arquivado
-                      ? <button class="btn btn-success btn-sm" onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
-                      : <button class="btn btn-outline btn-sm" onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>}
-                    <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  ))}
+    );
+  })}
   </div>{/* fim #secAtivos */}
 
   <!-- ── SEÇÃO: documentos arquivados ── -->
@@ -213,7 +276,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         <div class="form-row">
           <div class="form-group">
             <label>Categoria *</label>
-            <select name="categoria" required>
+            <select name="categoria" required onchange="toggleGrupo()">
               {CATEGORIAS.map((c) => <option value={c}>{c}</option>)}
             </select>
           </div>
@@ -221,6 +284,15 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
             <label>Periodicidade</label>
             <select name="periodicidade"><option value="">—</option>{PERIODICIDADES.map((p) => <option value={p}>{p}</option>)}</select>
           </div>
+        </div>
+        <div class="form-group" id="grupoRow" style="display:none">
+          <label>Sub-grupo (Documento Fiscal)</label>
+          <select name="grupo">
+            <option value="CND">CND — Federal, Estadual e Municipal</option>
+            <option value="Trabalhistas">Trabalhistas — FGTS, INSS e outros</option>
+            <option value="Sócios">Sócios — RG, CNH, IR, Comprovante de Residência</option>
+            <option value="Diversos">Diversos</option>
+          </select>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Validade (vencimento)</label><input type="date" name="validade" id="fldValidade" /></div>
@@ -301,12 +373,19 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       if (na.checked) val.value = "";
     }
 
+    function toggleGrupo() {
+      const catVal = (document.querySelector("[name=categoria]") as HTMLSelectElement)?.value || "";
+      const grupoRow = document.getElementById("grupoRow");
+      if (grupoRow) grupoRow.style.display = catVal === "Documento Fiscal" ? "" : "none";
+    }
+
     function abrirNovo() {
       const f = document.getElementById("formDoc") as HTMLFormElement;
       f.reset();
       (f.querySelector("[name=id]") as HTMLInputElement).value = "";
       (document.getElementById("fldValidade") as HTMLInputElement).disabled = false;
       document.getElementById("modalDocTitle")!.textContent = "Novo documento";
+      toggleGrupo();
       overlay("modalDoc").classList.add("open");
     }
 
@@ -326,6 +405,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       na.checked = !!d.validade_na;
       val.value = d.validade || "";
       val.disabled = na.checked;
+      toggleGrupo();
+      const grupoSel = f.querySelector("[name=grupo]") as HTMLSelectElement;
+      if (grupoSel) grupoSel.value = d.grupo || "Diversos";
       document.getElementById("modalDocTitle")!.textContent = "Editar documento";
       overlay("modalDoc").classList.add("open");
     }
@@ -336,6 +418,8 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const fd = new FormData(f);
       const body: Record<string, any> = Object.fromEntries(fd.entries());
       body.validade_na = (f.querySelector("[name=validade_na]") as HTMLInputElement).checked;
+      // grupo só faz sentido em "Documento Fiscal"; zera nas outras categorias
+      if (body.categoria !== "Documento Fiscal") body.grupo = null;
       const id = body.id; delete body.id;
       const url = id ? `/api/admin/doc-empresa/${id}` : "/api/admin/doc-empresa";
       const method = id ? "PATCH" : "POST";
@@ -416,6 +500,14 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           if (mostra) visiveis++;
         });
         sec.style.display = visiveis ? "" : "none";
+        // Esconde sub-grupos vazios dentro de "Documento Fiscal"
+        sec.querySelectorAll(".doc-subgrupo").forEach((grpEl) => {
+          const grp = grpEl as HTMLElement;
+          const anyVisible = Array.from(grp.querySelectorAll(".doc-row")).some(
+            (r) => (r as HTMLElement).style.display !== "none"
+          );
+          grp.style.display = anyVisible ? "" : "none";
+        });
       });
     }
     function setSit(s: string) {
@@ -436,6 +528,6 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       btn.disabled = false; btn.textContent = orig;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, filtrar, setSit, setAba, enviarResumo });
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo });
   </script>
 </Admin>
