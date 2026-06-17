@@ -254,6 +254,19 @@ export async function perfisFrescos(claims: AdminClaims): Promise<string[]> {
   return perfis;
 }
 
+/**
+ * Filtro PostgREST de `access_roles` para o conteúdo do portal (treinamentos,
+ * documentos, onboarding, KB...). Retorna `null` quando o usuário é ADMIN —
+ * admin vê TUDO, sempre, sem filtro de perfil. Caso contrário, libera o que
+ * estiver marcado `{all}` ou destinado a QUALQUER um dos perfis frescos do
+ * usuário (corrige quem tem vários perfis e via só o do cargo principal).
+ */
+export async function filtroAcessoConteudo(claims: AdminClaims): Promise<string | null> {
+  const perfis = await perfisFrescos(claims);
+  if (perfis.includes("admin")) return null;
+  return ["access_roles.cs.{all}", ...perfis.map((r) => `access_roles.cs.{${r}}`)].join(",");
+}
+
 /** Overrides por-usuário de um profile_id -> { moduloKey: nivel }. */
 export async function carregarOverridesUsuario(profileId: string): Promise<Record<string, NivelPerm>> {
   const map: Record<string, NivelPerm> = {};

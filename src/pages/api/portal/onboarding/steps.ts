@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { requireAdmin, jsonOk, jsonErr } from "~/lib/auth";
+import { filtroAcessoConteudo } from "~/lib/permissoes";
 
 export const prerender = false;
 
@@ -8,11 +9,10 @@ export const GET: APIRoute = async ({ request }) => {
   try {
     const claims = await requireAdmin(request);
     const sb = supabaseAdmin();
-    const { data } = await sb
-      .from("portal_onboarding_steps")
-      .select("*")
-      .or(`access_roles.cs.{all},access_roles.cs.{${claims.role}}`)
-      .order("ordem");
+    let q = sb.from("portal_onboarding_steps").select("*");
+    const filtro = await filtroAcessoConteudo(claims); // null = admin vê tudo
+    if (filtro) q = q.or(filtro);
+    const { data } = await q.order("ordem");
     return jsonOk(data || []);
   } catch {
     return jsonErr(401, "Não autenticado.");
