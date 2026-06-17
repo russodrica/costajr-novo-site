@@ -121,7 +121,17 @@ export async function enviarLembretesFerias(db: any, opts: { dry?: boolean; para
   });
   if (!lista.length) return { eventos: 0, enviados: 0 };
 
-  const ids = lista.map((p: any) => p.id);
+  // Só o período aquisitivo VIGENTE (o de inicio_aquisitivo MAIS RECENTE) de cada
+  // colaborador gera alerta. Períodos anteriores ainda não concluídos não cobram mais —
+  // evita ruído de ciclos antigos acumulados (decisão da Adriana, 16/06/2026).
+  const vigentePorColab: Record<string, any> = {};
+  for (const p of lista) {
+    const cur = vigentePorColab[p.colaborador_id];
+    if (!cur || p.inicio_aquisitivo > cur.inicio_aquisitivo) vigentePorColab[p.colaborador_id] = p;
+  }
+  const listaVigente: any[] = Object.values(vigentePorColab);
+
+  const ids = listaVigente.map((p: any) => p.id);
   const { data: todasParcelas } = await db.from("rh_ferias_parcelas").select("*").in("periodo_id", ids).limit(6000);
   const parcelasPorPeriodo: Record<string, any[]> = {};
   for (const pc of todasParcelas || []) (parcelasPorPeriodo[pc.periodo_id] = parcelasPorPeriodo[pc.periodo_id] || []).push(pc);
@@ -130,7 +140,7 @@ export async function enviarLembretesFerias(db: any, opts: { dry?: boolean; para
   const updPeriodo: { id: string; patch: any }[] = [];
   const updParcela: { id: string; patch: any }[] = [];
 
-  for (const p of lista) {
+  for (const p of listaVigente) {
     const nome = p.rh_colaboradores.nome;
     const parcelas = parcelasPorPeriodo[p.id] || [];
     const r = resumoPeriodo(p.dias_direito, parcelas, p.dias_abono);
