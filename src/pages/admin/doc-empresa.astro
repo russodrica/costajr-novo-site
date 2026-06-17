@@ -30,20 +30,13 @@ const ABAS = [
 const CATEGORIAS = ABAS.map((a) => a.nome);
 const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 
-// Sub-grupos de "Documento Fiscal"
+// Sub-grupos de "Documento Fiscal" (definidos aqui para usar no template; porGrupoFiscal calculado depois de porCat)
 const GRUPOS_FISCAL = [
   { key: "CND",          label: "CND — Federal, Estadual e Municipal" },
   { key: "Trabalhistas", label: "Trabalhistas — FGTS, INSS e outros" },
   { key: "Sócios",       label: "Sócios — RG, CNH, IR, Comprovante de Residência" },
   { key: "Diversos",     label: "Diversos" },
 ];
-const porGrupoFiscal = new Map<string, any[]>();
-for (const { key } of GRUPOS_FISCAL) porGrupoFiscal.set(key, []);
-for (const d of (porCat.get("Documento Fiscal") || [])) {
-  const gk = d.grupo || "Diversos";
-  if (!porGrupoFiscal.has(gk)) porGrupoFiscal.set(gk, []);
-  porGrupoFiscal.get(gk)!.push(d);
-}
 
 const hoje = new Date().toISOString().slice(0, 10);
 const em30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -72,6 +65,15 @@ for (const d of docsAtivos) { const s = situacao(d) as keyof typeof kpi; if (s i
 const porCat = new Map<string, any[]>();
 for (const d of docsAtivos) { const c = d.categoria || "Documentos Diversos"; if (!porCat.has(c)) porCat.set(c, []); porCat.get(c)!.push(d); }
 const cats = [...CATEGORIAS.filter((c) => porCat.has(c)), ...[...porCat.keys()].filter((c) => !CATEGORIAS.includes(c))];
+
+// porGrupoFiscal calculado APÓS porCat (depende de porCat.get)
+const porGrupoFiscal = new Map<string, any[]>();
+for (const { key } of GRUPOS_FISCAL) porGrupoFiscal.set(key, []);
+for (const d of (porCat.get("Documento Fiscal") || [])) {
+  const gk = d.grupo || "Diversos";
+  if (!porGrupoFiscal.has(gk)) porGrupoFiscal.set(gk, []);
+  porGrupoFiscal.get(gk)!.push(d);
+}
 
 // Agrupamento dos arquivados por categoria
 const porCatArq = new Map<string, any[]>();
