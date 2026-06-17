@@ -475,13 +475,49 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       e.preventDefault();
       const f = e.target as HTMLFormElement;
       const id = (f.querySelector("[name=doc_id]") as HTMLInputElement).value;
+      const fileInput = f.querySelector("[name=arquivo]") as HTMLInputElement;
+      const arquivo = fileInput.files && fileInput.files[0];
       const btn = document.getElementById("btnUpload") as HTMLButtonElement;
+      if (!arquivo) { alert("Selecione um arquivo."); return; }
+      if (arquivo.size > 45 * 1024 * 1024) { alert("Arquivo muito grande (máx. 45 MB)."); return; }
       btn.disabled = true; btn.textContent = "Enviando…";
-      const fd = new FormData();
-      fd.append("arquivo", (f.querySelector("[name=arquivo]") as HTMLInputElement).files![0]);
-      const res = await fetch(`/api/admin/doc-empresa/${id}/upload`, { method: "POST", body: fd });
-      if (res.ok) reloadComAba();
-      else { alert((await res.json()).error || "Erro no envio"); btn.disabled = false; btn.textContent = "Enviar"; }
+      try {
+        // Passo 1: obter URL assinada para upload direto ao Supabase Storage (bypass Vercel)
+        const r1 = await fetch(`/api/admin/doc-empresa/${id}/upload-url`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ nome: arquivo.name, content_type: arquivo.type }),
+        });
+        if (!r1.ok) {
+          let msg = "Erro ao preparar upload";
+          try { msg = (await r1.json()).error || msg; } catch {}
+          throw new Error(msg);
+        }
+        const { signed_url, path, nome_original } = await r1.json();
+        // Passo 2: enviar arquivo direto ao bucket (sem passar pelo Vercel)
+        const r2 = await fetch(signed_url, {
+          method: "PUT",
+          headers: { "content-type": arquivo.type || "application/octet-stream" },
+          body: arquivo,
+        });
+        if (!r2.ok) throw new Error(`Falha no envio do arquivo (HTTP ${r2.status}).`);
+        // Passo 3: registrar no banco
+        const r3 = await fetch(`/api/admin/doc-empresa/${id}/upload`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ storage_path: path, nome: nome_original }),
+        });
+        if (!r3.ok) {
+          let msg = "Arquivo enviado mas falhou ao registrar";
+          try { msg = (await r3.json()).error || msg; } catch {}
+          throw new Error(msg);
+        }
+        reloadComAba();
+        return;
+      } catch (err: any) {
+        alert("Erro no upload: " + (err?.message || "tente novamente"));
+      }
+      btn.disabled = false; btn.textContent = "Enviar";
     });
 
     // ── Filtro ──
