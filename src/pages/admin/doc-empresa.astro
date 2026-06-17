@@ -11,14 +11,13 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 if (!temPerfil(claims, ["admin", "financeiro", "juridico"])) return Astro.redirect("/admin");
 
 const db = supabaseAdmin();
-const verArquivados = Astro.url.searchParams.get("arquivados") === "1";
-let q = db.from("doc_empresa").select("*, doc_empresa_arquivos(id,nome,created_at)").order("nome");
-if (!verArquivados) q = q.eq("arquivado", false);
-const { data: docsRaw } = await q;
+// Carrega TODOS (ativos + arquivados) — a aba "Arquivados" filtra no cliente
+const { data: docsRaw } = await db.from("doc_empresa")
+  .select("*, doc_empresa_arquivos(id,nome,created_at)").order("nome");
 const docs: any[] = docsRaw || [];
+const docsAtivos    = docs.filter((d: any) => !d.arquivado);
+const docsArquivados = docs.filter((d: any) => d.arquivado);
 
-// Categorias (a "divisão atual" — espelha os grupos do board Monday). Também é a
-// ordem de exibição. O import grava estes mesmos rótulos.
 // As 5 abas da plataforma (categorização macro). Também é a ordem de exibição.
 const ABAS = [
   { nome: "Documento Fiscal", icon: "🧾" },
@@ -49,19 +48,26 @@ function badge(d: any): { cls: string; txt: string } {
   return { cls: "badge-green", txt: `Válido até ${f}` };
 }
 
-const kpi = { total: docs.length, vencido: 0, vencendo: 0, na: 0, definir: 0 };
-for (const d of docs) { const s = situacao(d) as keyof typeof kpi; if (s in kpi) (kpi as any)[s]++; }
+// KPIs apenas de documentos ativos
+const kpi = { total: docsAtivos.length, vencido: 0, vencendo: 0, na: 0, definir: 0 };
+for (const d of docsAtivos) { const s = situacao(d) as keyof typeof kpi; if (s in kpi) (kpi as any)[s]++; }
 
-// agrupa por categoria, na ordem definida (extras vão para o fim)
+// Agrupamento dos ativos por categoria
 const porCat = new Map<string, any[]>();
-for (const d of docs) { const c = d.categoria || "Documentos Diversos"; if (!porCat.has(c)) porCat.set(c, []); porCat.get(c)!.push(d); }
+for (const d of docsAtivos) { const c = d.categoria || "Documentos Diversos"; if (!porCat.has(c)) porCat.set(c, []); porCat.get(c)!.push(d); }
 const cats = [...CATEGORIAS.filter((c) => porCat.has(c)), ...[...porCat.keys()].filter((c) => !CATEGORIAS.includes(c))];
 
-// Dados dos documentos p/ o JS — vão num bloco JSON e o onclick passa só o id.
-// (Passar JSON dentro do onclick é frágil: o Astro escapa em dobro e quebra o handler.)
+// Agrupamento dos arquivados por categoria
+const porCatArq = new Map<string, any[]>();
+for (const d of docsArquivados) { const c = d.categoria || "Documentos Diversos"; if (!porCatArq.has(c)) porCatArq.set(c, []); porCatArq.get(c)!.push(d); }
+const catsArq = [...CATEGORIAS.filter((c) => porCatArq.has(c)), ...[...porCatArq.keys()].filter((c) => !CATEGORIAS.includes(c))];
+
+// JSON p/ o JS do cliente — inclui todos para que editar/arquivar/excluir funcione
+// em ambas as abas (passamos o id no onclick, o docById resolve pelo JSON).
 const docsJs = docs.map((d: any) => ({
   id: d.id, categoria: d.categoria, nome: d.nome, periodicidade: d.periodicidade,
   validade: d.validade, validade_na: d.validade_na, site: d.site, observacoes: d.observacoes,
+  arquivado: d.arquivado,
   arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome })),
 }));
 const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
@@ -92,10 +98,11 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     {ABAS.map((a) => (
       <button type="button" class="pill" data-cat={a.nome} onclick="setAba(this)">{a.icon} {a.nome} <span class="count">{(porCat.get(a.nome) || []).length}</span></button>
     ))}
+    <button type="button" class="pill" data-cat="__arquivados__" onclick="setAba(this)">🗄️ Arquivados <span class="count">{docsArquivados.length}</span></button>
   </div>
 
-  <div class="card-grid">
-    <div class="stat-card"><div class="stat-value">{kpi.total}</div><div class="stat-label">Documentos</div></div>
+  <div id="kpiBar" class="card-grid">
+    <div class="stat-card"><div class="stat-value">{kpi.total}</div><div class="stat-label">Documentos ativos</div></div>
     <a class="stat-card" href="?#" onclick="setSit('vencido');return false;"><div class="stat-value" style="color:#B91C1C">{kpi.vencido}</div><div class="stat-label">⛔ Vencidos</div></a>
     <a class="stat-card" href="?#" onclick="setSit('vencendo');return false;"><div class="stat-value" style="color:#B45309">{kpi.vencendo}</div><div class="stat-label">🟠 Vencendo (30d)</div></a>
     <a class="stat-card" href="?#" onclick="setSit('definir');return false;"><div class="stat-value" style="color:#6B7280">{kpi.definir}</div><div class="stat-label">⚠ A definir</div></a>
@@ -104,15 +111,11 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 
   <div id="msg"></div>
 
-  <div style="margin:-4px 0 14px">
-    <a class="pill" href={verArquivados ? "/admin/doc-empresa" : "/admin/doc-empresa?arquivados=1"}>
-      {verArquivados ? "← Ocultar arquivados" : "🗄️ Ver arquivados"}
-    </a>
-  </div>
-
-  {cats.length === 0 && (
-    <div class="card"><div class="empty-state" style="padding:40px"><strong>Nenhum documento ainda</strong><p>Cadastre no botão "+ Novo documento" ou rode a importação do Monday.</p></div></div>
-  )}
+  <!-- ── SEÇÃO: documentos ativos (agrupados por categoria) ── -->
+  <div id="secAtivos">
+    {cats.length === 0 && (
+      <div class="card"><div class="empty-state" style="padding:40px"><strong>Nenhum documento ainda</strong><p>Cadastre no botão "+ Novo documento" ou rode a importação do Monday.</p></div></div>
+    )}
 
   {cats.map((c) => (
     <div class="card doc-sec" data-cat={c} style="padding:0;overflow:hidden;margin-bottom:18px">
@@ -155,6 +158,50 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       </div>
     </div>
   ))}
+  </div>{/* fim #secAtivos */}
+
+  <!-- ── SEÇÃO: documentos arquivados ── -->
+  <div id="secArquivados" style="display:none">
+    <p style="color:var(--ink-mid);font-size:13px;margin:0 0 14px">Documentos arquivados não geram alertas. Clique em <strong>Reativar</strong> para devolvê-los ao painel principal.</p>
+    {catsArq.length === 0 ? (
+      <div class="card"><div class="empty-state" style="padding:40px"><strong>Nenhum documento arquivado</strong></div></div>
+    ) : catsArq.map((c) => (
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px">
+        <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:#FAFBFC">
+          <span class="section-title" style="font-size:1rem">{c}</span>
+          <span class="badge badge-gray">{porCatArq.get(c)!.length}</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
+            <tbody>
+              {porCatArq.get(c)!.map((d: any) => {
+                const b = badge(d);
+                const nArq = (d.doc_empresa_arquivos || []).length;
+                return (
+                  <tr data-nome={(d.nome || "").toLowerCase()}>
+                    <td>
+                      <strong>{d.nome}</strong>
+                      {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
+                      {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
+                    </td>
+                    <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
+                    <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
+                    <td><button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`}>📎 {nArq || 0}</button></td>
+                    <td style="white-space:nowrap;text-align:right">
+                      <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
+                      <button class="btn btn-success btn-sm" onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
+                      <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ))}
+  </div>
 
   <!-- Modal: documento (novo/editar) -->
   <div class="modal-overlay" id="modalDoc">
@@ -221,7 +268,13 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       document.querySelectorAll("#abasPills .pill").forEach((p) => p.classList.remove("active"));
       btn.classList.add("active");
       abaAtiva = btn.dataset.cat || "";
-      filtrar();
+      const isArq = abaAtiva === "__arquivados__";
+      (document.getElementById("secAtivos") as HTMLElement).style.display     = isArq ? "none" : "";
+      (document.getElementById("secArquivados") as HTMLElement).style.display = isArq ? "" : "none";
+      (document.getElementById("kpiBar") as HTMLElement).style.display        = isArq ? "none" : "";
+      // filtros de situação e busca só fazem sentido nos ativos
+      (document.getElementById("fSit") as HTMLElement).style.display = isArq ? "none" : "";
+      if (!isArq) filtrar();
     }
     // Preserva a aba ativa ao recarregar a página após uma ação
     function reloadComAba() {
