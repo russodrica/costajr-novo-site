@@ -911,10 +911,18 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     }
     function renderFerias() {
       const filtro = (document.getElementById("feriasFiltro") as HTMLSelectElement).value;
+      // Período VIGENTE por colaborador (inicio_aquisitivo mais recente) — só ele "alerta".
+      const vigPorColab: Record<string, any> = {};
+      for (const p of feriasDados) {
+        const cur = vigPorColab[p.colaborador_id];
+        if (!cur || p.inicio_aquisitivo > cur.inicio_aquisitivo) vigPorColab[p.colaborador_id] = p;
+      }
+      const vigenteIds = new Set(Object.values(vigPorColab).map((p: any) => p.id));
+      const ehVigente = (p: any) => vigenteIds.has(p.id);
       const total = feriasDados.length;
-      const programados = feriasDados.filter((p) => p.resumo.completo && p.status !== "vencido").length;
-      const faltando = feriasDados.filter((p) => !p.resumo.completo && p.status !== "vencido").length;
-      const vencidos = feriasDados.filter((p) => p.status === "vencido").length;
+      const programados = feriasDados.filter((p) => ehVigente(p) && p.resumo.completo && p.status !== "vencido").length;
+      const faltando = feriasDados.filter((p) => ehVigente(p) && !p.resumo.completo && p.status !== "vencido").length;
+      const vencidos = feriasDados.filter((p) => ehVigente(p) && p.status === "vencido").length;
       document.getElementById("feriasBadge")!.textContent = String(faltando + vencidos || "");
       document.getElementById("ferias-cards")!.innerHTML = `
         <div class="stat-card" style="border-left:3px solid #6B7280"><div class="stat-value">${total}</div><div class="stat-label">Períodos CLT/PJ</div></div>
@@ -932,7 +940,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (!lista.length) { box.innerHTML = '<div class="card" style="text-align:center;padding:24px;color:#6B7280">Nada neste filtro. ✅</div>'; return; }
 
       box.innerHTML = lista.map((p) => {
-        const st = statusFerias(p);
+        const st = ehVigente(p) ? statusFerias(p) : { txt: "Período anterior (não cobra)", cor: "#6B7280", fundo: "#F3F4F6" };
         const parcelasHtml = (p.parcelas || []).length
           ? p.parcelas.map((pc: any) => {
               const conf = pc.status === "confirmada";
