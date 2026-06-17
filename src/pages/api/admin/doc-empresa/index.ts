@@ -46,7 +46,6 @@ export const POST: APIRoute = async ({ request }) => {
     const row: Record<string, unknown> = {
       nome,
       categoria,
-      grupo: categoria === "Documento Fiscal" ? (String(body.grupo || "").trim() || "Diversos") : null,
       validade_na,
       validade,
       periodicidade: String(body.periodicidade || "").trim() || null,
@@ -54,6 +53,9 @@ export const POST: APIRoute = async ({ request }) => {
       observacoes: String(body.observacoes || "").trim() || null,
       criado_por: admin.email,
     };
+    // "grupo" só vai no INSERT se a coluna já existir (após migration 068)
+    const grupo = categoria === "Documento Fiscal" ? (String(body.grupo || "").trim() || "Diversos") : null;
+    if (grupo) row.grupo = grupo;
 
     const db = supabaseAdmin();
     const { data, error } = await db.from("doc_empresa").insert(row).select().single();

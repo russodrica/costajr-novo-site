@@ -23,6 +23,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const c of CAMPOS) {
       if (body[c] === undefined) continue;
+      // "grupo" só vai no PATCH se tiver valor (coluna pode não existir antes da migration 068)
+      if (c === "grupo" && (body[c] === null || body[c] === "")) continue;
       if (c === "validade_na" || c === "arquivado") patch[c] = !!body[c];
       else patch[c] = body[c] === "" ? null : body[c];
     }
