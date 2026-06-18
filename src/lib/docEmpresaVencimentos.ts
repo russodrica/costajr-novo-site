@@ -28,9 +28,9 @@ async function coletar(db: any): Promise<Doc[]> {
     .lte("validade", limite)
     .order("validade", { ascending: true })
     .limit(3000);
-  // Não cobra documentos marcados "não aplicável" nem arquivados (defasados).
+  // Não cobra: "não aplicável", arquivados, nem Empreiteiros/Terceiros (validade é por obra).
   return (data || [])
-    .filter((d: any) => !d.validade_na && !d.arquivado)
+    .filter((d: any) => !d.validade_na && !d.arquivado && d.categoria !== "Empreiteiros / Terceiros")
     .map((d: any) => ({ id: d.id, nome: d.nome, categoria: d.categoria || "—", validade: d.validade, dias: diasAte(d.validade) }));
 }
 

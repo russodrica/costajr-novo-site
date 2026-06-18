@@ -30,6 +30,9 @@ const ABAS = [
 const CATEGORIAS = ABAS.map((a) => a.nome);
 const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 
+// Categoria cujos documentos são por obra — sem alerta de vencimento
+const CAT_SEM_ALERTA = "Empreiteiros / Terceiros";
+
 // Sub-grupos de "Documento Fiscal" (definidos aqui para usar no template; porGrupoFiscal calculado depois de porCat)
 const GRUPOS_FISCAL = [
   { key: "CND",          label: "CND — Federal, Estadual e Municipal" },
@@ -41,14 +44,16 @@ const GRUPOS_FISCAL = [
 const hoje = new Date().toISOString().slice(0, 10);
 const em30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 
-function situacao(d: any): string {
+function situacao(d: any, cat?: string): string {
+  if (cat === CAT_SEM_ALERTA) return "na"; // por obra — sem alerta de vencimento
   if (d.validade_na) return "na";
   if (!d.validade) return "definir";
   if (d.validade < hoje) return "vencido";
   if (d.validade <= em30) return "vencendo";
   return "valido";
 }
-function badge(d: any): { cls: string; txt: string } {
+function badge(d: any, cat?: string): { cls: string; txt: string } {
+  if (cat === CAT_SEM_ALERTA) return { cls: "badge-gray", txt: "📋 Por obra" };
   if (d.validade_na) return { cls: "badge-gray", txt: "N/A — sem validade" };
   if (!d.validade) return { cls: "badge-gray", txt: "⚠ Definir validade" };
   const f = String(d.validade).split("-").reverse().join("/");
@@ -57,9 +62,9 @@ function badge(d: any): { cls: string; txt: string } {
   return { cls: "badge-green", txt: `Válido até ${f}` };
 }
 
-// KPIs apenas de documentos ativos
+// KPIs apenas de documentos ativos (Empreiteiros/Terceiros não contam em vencido/vencendo)
 const kpi = { total: docsAtivos.length, vencido: 0, vencendo: 0, na: 0, definir: 0 };
-for (const d of docsAtivos) { const s = situacao(d) as keyof typeof kpi; if (s in kpi) (kpi as any)[s]++; }
+for (const d of docsAtivos) { const s = situacao(d, d.categoria || "") as keyof typeof kpi; if (s in kpi) (kpi as any)[s]++; }
 
 // Agrupamento dos ativos por categoria
 const porCat = new Map<string, any[]>();
@@ -155,10 +160,10 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                     <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
                     <tbody>
                       {docsGrupo.map((d: any) => {
-                        const b = badge(d);
+                        const b = badge(d, c);
                         const nArq = (d.doc_empresa_arquivos || []).length;
                         return (
-                          <tr class="doc-row" data-cat={c} data-sit={situacao(d)} data-nome={(d.nome || "").toLowerCase()}>
+                          <tr class="doc-row" data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()}>
                             <td>
                               <strong>{d.nome}</strong>
                               {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
@@ -167,7 +172,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                             <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
                             <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                             <td>
-                              <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`}>📎 {nArq || 0}</button>
+                              {nArq === 0
+                                ? <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px;cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600" onclick={`anexos('${d.id}')`} title="Nenhum arquivo anexado">📎 Sem anexo</button>
+                                : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} arquivo(s)`}>📎 {nArq}</button>}
                             </td>
                             <td style="white-space:nowrap;text-align:right">
                               <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
@@ -191,10 +198,10 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
               <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
               <tbody>
                 {docsInCat.map((d: any) => {
-                  const b = badge(d);
+                  const b = badge(d, c);
                   const nArq = (d.doc_empresa_arquivos || []).length;
                   return (
-                    <tr class="doc-row" data-cat={c} data-sit={situacao(d)} data-nome={(d.nome || "").toLowerCase()} style={d.arquivado ? "opacity:.55" : ""}>
+                    <tr class="doc-row" data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} style={d.arquivado ? "opacity:.55" : ""}>
                       <td>
                         <strong>{d.nome}</strong>
                         {d.arquivado && <span class="badge badge-gray" style="margin-left:6px">Arquivado</span>}
@@ -204,7 +211,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                       <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
                       <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                       <td>
-                        <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`}>📎 {nArq || 0}</button>
+                        {nArq === 0
+                          ? <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px;cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600" onclick={`anexos('${d.id}')`} title="Nenhum arquivo anexado">📎 Sem anexo</button>
+                          : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} arquivo(s)`}>📎 {nArq}</button>}
                       </td>
                       <td style="white-space:nowrap;text-align:right">
                         <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
