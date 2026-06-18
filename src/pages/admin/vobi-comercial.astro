@@ -65,12 +65,20 @@ for (let a = anoAtual; a >= anoAtual - 4; a--) anos.push(a);
       el("vcConvNum").textContent = d.conversao + "%";
 
       const maxV = Math.max(1, ...d.funil.map((f) => f.valor));
-      el("vcFunil").innerHTML = d.funil.map((f) => `
-        <div class="funil-row">
-          <span class="funil-lbl" title="${esc(f.nome)}">${esc(f.nome)}</span>
-          <div class="funil-track"><div class="funil-bar" style="width:${Math.max(2, (f.valor / maxV) * 100)}%;background:${esc(f.cor)}"></div></div>
-          <span class="funil-val">${fmt(f.valor)}<span class="q"> · ${f.n}</span></span>
-        </div>`).join("") || '<p class="nota">Nenhuma oportunidade no período.</p>';
+      const txtOn = (hex) => {
+        const c = String(hex || "").replace("#", "");
+        if (c.length < 6) return "#fff";
+        const r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#1A1D24" : "#fff";
+      };
+      el("vcFunil").innerHTML = d.funil.length ? d.funil.map((f) => {
+        const w = 26 + 74 * (f.valor / maxV);
+        const tc = txtOn(f.cor);
+        return `<div class="fn-seg" style="width:${w.toFixed(1)}%;background:${esc(f.cor)};color:${tc}" title="${esc(f.nome)} — ${fmt(f.valor)} · ${f.n} oportunidade(s)">
+          <span class="fn-name">${esc(f.nome)}</span>
+          <span class="fn-meta">${fmt(f.valor)} <span style="opacity:.7">· ${f.n}</span></span>
+        </div>`;
+      }).join("") : '<p class="nota">Nenhuma oportunidade no período.</p>';
 
       el("vcNota").innerHTML = 'Ao vivo da API da Vobi (somente leitura). Classificação: <b>Ganha</b> = oportunidade com data de fechamento preenchida; <b>Perdida/Cancelada</b> = oportunidade <b>arquivada</b> na Vobi; o resto é "em aberto/andamento". O funil mostra só o pipeline ativo (não-arquivado). Filtro de ano: ganha pela data de fechamento, perdida pela data de arquivamento, aberta pela data de criação.';
 
@@ -91,11 +99,12 @@ for (let a = anoAtual; a >= anoAtual - 4; a--) anos.push(a);
     .conv-bar { flex: 1; height: 22px; background: var(--gray-100); border-radius: 99px; overflow: hidden; }
     .conv-fill { height: 100%; background: linear-gradient(90deg, #7C3AED, #A78BFA); border-radius: 99px; transition: width .4s ease; }
     .conv-num { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 1.2rem; color: #7C3AED; min-width: 52px; text-align: right; }
-    .funil-row { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; }
-    .funil-lbl { width: 160px; flex: none; font-size: .8rem; color: var(--ink-mid); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .funil-track { flex: 1; background: var(--gray-100); border-radius: 99px; height: 16px; overflow: hidden; }
-    .funil-bar { height: 100%; border-radius: 99px; min-width: 2px; }
-    .funil-val { width: 150px; flex: none; text-align: right; font-size: .82rem; font-weight: 700; color: var(--ink); }
+    /* Funil centralizado (segmentos que afunilam, cor de cada etapa da Vobi) */
+    #vcFunil { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0 2px; }
+    .fn-seg { min-width: 200px; min-height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 18px; box-shadow: var(--shadow-xs); transition: transform .15s, box-shadow .15s; }
+    .fn-seg:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+    .fn-name { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .01em; }
+    .fn-meta { font-weight: 700; font-size: .8rem; white-space: nowrap; }
     .q { color: var(--ink-light); font-weight: 600; }
     .nota { font-size: .76rem; color: var(--ink-light); margin-top: 14px; line-height: 1.5; }
     .erro { background: var(--danger-bg); color: var(--danger-fg); border: 1px solid #FECACA; border-radius: 10px; padding: 14px 16px; font-size: .9rem; }
