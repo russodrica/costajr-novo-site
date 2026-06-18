@@ -30,7 +30,9 @@ for (let a = anoAtual + 1; a >= anoAtual - 4; a--) anos.push(a);
     const fmt = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
     const el = (id) => document.getElementById(id);
     function statCard(valor, label, sub, cor) {
-      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"};font-size:1.4rem;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div style="font-size:.72rem;color:var(--ink-light);margin-top:5px;font-weight:600">${sub}</div>` : ""}</div>`;
+      const s = String(valor);
+      const fs = s.length >= 12 ? "1.15rem" : s.length >= 10 ? "1.3rem" : "1.5rem";
+      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"};font-size:${fs};line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div style="font-size:.72rem;color:var(--ink-light);margin-top:5px;font-weight:600">${sub}</div>` : ""}</div>`;
     }
     async function carregar() {
       const ano = el("anoSel").value;
