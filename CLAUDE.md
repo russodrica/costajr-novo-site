@@ -1763,9 +1763,13 @@ Spec OpenAPI em D:/temp/vobi_openapi.json (147 paths). **PYTHON NAO EXISTE nesta
   elas so vem com `where[idStep]=<id>` (PERDIDA 2025 id=439403 -> 209 op/R$19,5mi;
   CANCELADA 2025 id=439404 -> 98 op/R$1,3mi). Ganhas via winnerDate (36 op/R$414k).
 
-**Arquivos:** `src/lib/vobi.ts` (auth+cache 5min; `vobiFinanceiro(ano)`, `vobiComercial(ano|null)`;
-classificacao: winnerDate=ganha, step nome ~/perdid/=perdida, ~/cancelad/=cancelada, resto
-=aberto). APIs `/api/admin/vobi/{financeiro,comercial}` (GET, `bloqueioSeSemLeitura`, 503
+**Arquivos:** `src/lib/vobi.ts` (auth+cache 5min; `vobiFinanceiro(ano)`, `vobiComercial(ano|null)`.
+**REGRA DE CLASSIFICACAO (definida pela Adriana 18/06, commit 29bfaed): ganha = winnerDate
+preenchido; perdida/cancelada = oportunidade ARQUIVADA (archivedDate set); resto = aberto.**
+NAO classificar pelas colunas "PERDIDA 2025"/"CANCELADA 2025" (sao colunas custom ATIVAS,
+archivedDate=null). As arquivadas vem do pseudo-step **Arquivado id=9999997** (=todas as
+arquivadas, archivedDate preenchido; 154 op/R$9,27mi). Funil = so pipeline ativo; filtro de
+ano pela data relevante (ganha=winnerDate, perdida=archivedDate, aberta=createdAt). APIs `/api/admin/vobi/{financeiro,comercial}` (GET, `bloqueioSeSemLeitura`, 503
 amigavel se sem credencial). Telas `/admin/vobi-financeiro` e `/admin/vobi-comercial`
 (filtro de ano client-side, KPIs, grafico, funil). Modulos `vobi-financeiro` (grupo
 financeiro) e `vobi-comercial` (grupo comercial) em permissoes.ts + Admin.astro — LGPD:
