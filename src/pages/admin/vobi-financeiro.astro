@@ -21,7 +21,7 @@ for (let a = anoAtual + 1; a >= anoAtual - 4; a--) anos.push(a);
     <div class="kpi-grid" id="vfKpis"></div>
     <div class="card" style="margin-bottom:16px">
       <div class="chart-title">Entradas × Saídas por mês — <span id="vfAno"></span> <span class="leg"><span class="dot" style="background:#16A34A"></span>Entradas <span class="dot" style="background:#C1272D;margin-left:10px"></span>Saídas</span></div>
-      <div class="bars" id="vfChart"></div>
+      <div class="bchart" id="vfChart"></div>
     </div>
     <div class="card" id="vfAberto"></div>
   </div>
@@ -57,14 +57,16 @@ for (let a = anoAtual + 1; a >= anoAtual - 4; a--) anos.push(a);
         statCard(fmt(d.receber.vencidoGeral), "A receber VENCIDO (em aberto)", `${d.receber.vencidoGeralQtd} parcela(s)`, "#B45309"),
       ].join("");
 
+      const MAXBAR = 150;
       const max = Math.max(1, ...d.meses.map((m) => Math.max(m.entradas, m.saidas)));
+      const hpx = (v) => (v > 0 ? Math.max(3, Math.round((v / max) * MAXBAR)) : 0);
       el("vfChart").innerHTML = d.meses.map((m) => `
-        <div class="bar-col">
-          <div class="bar-pair">
-            <div class="bar b-in" style="height:${(m.entradas / max) * 100}%" title="${m.mes}: entradas ${fmt(m.entradas)}"></div>
-            <div class="bar b-out" style="height:${(m.saidas / max) * 100}%" title="${m.mes}: saídas ${fmt(m.saidas)}"></div>
+        <div class="bcol">
+          <div class="bpair">
+            <div class="bbar bin" style="height:${hpx(m.entradas)}px" title="${m.mes} · entradas ${fmt(m.entradas)}"></div>
+            <div class="bbar bout" style="height:${hpx(m.saidas)}px" title="${m.mes} · saídas ${fmt(m.saidas)}"></div>
           </div>
-          <div class="bar-lbl">${m.mes}</div>
+          <div class="blbl">${m.mes}</div>
         </div>`).join("");
 
       el("vfAberto").innerHTML = `
@@ -88,18 +90,23 @@ for (let a = anoAtual + 1; a >= anoAtual - 4; a--) anos.push(a);
 
   <style>
     .live { background: #DCFCE7; color: #0F6B30; font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 99px; vertical-align: middle; margin-left: 6px; }
-    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px; }
-    .stat-sub { font-size: .72rem; color: var(--ink-light); margin-top: 6px; font-weight: 600; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(186px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .kpi-grid .stat-card { padding: 15px 16px; }
+    .kpi-grid .stat-value { font-size: 1.42rem; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    .kpi-grid .stat-label { font-size: .8rem; margin-top: 4px; }
+    .stat-sub { font-size: .72rem; color: var(--ink-light); margin-top: 5px; font-weight: 600; }
     .chart-title { font-family: 'Montserrat', sans-serif; font-size: .9rem; font-weight: 700; margin-bottom: 16px; color: var(--ink); }
     .leg { font-family: 'Open Sans', sans-serif; font-size: .72rem; font-weight: 600; color: var(--ink-mid); float: right; }
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
-    .bars { display: flex; align-items: flex-end; gap: 6px; height: 170px; }
-    .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 5px; }
-    .bar-pair { display: flex; align-items: flex-end; gap: 2px; height: 100%; width: 100%; justify-content: center; }
-    .bar { width: 42%; max-width: 18px; border-radius: 4px 4px 0 0; min-height: 2px; }
-    .b-in { background: #16A34A; }
-    .b-out { background: #C1272D; }
-    .bar-lbl { font-size: 10.5px; color: var(--ink-light); }
+    /* Gráfico de barras — alturas em PIXELS (render robusto) + grade sutil */
+    .bchart { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; height: 178px; padding-top: 12px; border-bottom: 2px solid var(--border); background: repeating-linear-gradient(to top, transparent 0, transparent 36px, var(--gray-100) 36px, var(--gray-100) 37px); }
+    .bcol { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 7px; }
+    .bpair { display: flex; align-items: flex-end; gap: 3px; height: 150px; }
+    .bbar { width: 15px; border-radius: 3px 3px 0 0; transition: opacity .15s; }
+    .bbar:hover { opacity: .78; }
+    .bin { background: #16A34A; }
+    .bout { background: #C1272D; }
+    .blbl { font-size: 11px; color: var(--ink-light); }
     .q { color: var(--ink-light); font-size: .82em; }
     .nota { font-size: .76rem; color: var(--ink-light); margin-top: 12px; }
     .erro { background: var(--danger-bg); color: var(--danger-fg); border: 1px solid #FECACA; border-radius: 10px; padding: 14px 16px; font-size: .9rem; }
