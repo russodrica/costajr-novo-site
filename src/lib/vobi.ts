@@ -129,57 +129,59 @@ export type VobiComercial = {
   totalOportunidades: number;
   totalValor: number;
   ganhas: Bucket;
-  perdidas: Bucket;
-  canceladas: Bucket;
+  perdidas: Bucket; // = arquivadas (regra da Adriana: perdida/cancelada = oportunidade ARQUIVADA)
   aberto: Bucket;
   conversao: number; // % ganhas / (ganhas + perdidas)
   funil: { nome: string; cor: string; n: number; valor: number }[];
 };
+
+// Pseudo-step "Arquivado" da Vobi — agrega TODAS as oportunidades arquivadas
+// (regra da Adriana: arquivado = perdida/cancelada). archivedDate vem preenchido.
+const STEP_ARQUIVADO = 9999997;
 
 export async function vobiComercial(ano: number | null): Promise<VobiComercial> {
   return cached(`com-${ano ?? "all"}`, 5 * 60 * 1000, async () => {
     const steps = await getAll("step");
     const nome = new Map<number, string>(steps.map((s) => [s.id, s.name]));
     const cor = new Map<number, string>(steps.map((s) => [s.id, s.color || "#94A3B8"]));
-    const lostIds = steps.filter((s) => /perdid/i.test(s.name || "")).map((s) => s.id);
-    const cancelIds = steps.filter((s) => /cancelad/i.test(s.name || "")).map((s) => s.id);
-    const lostSet = new Set(lostIds), cancelSet = new Set(cancelIds);
 
-    // pipeline padrão (a Vobi exclui perdidas/canceladas do fetch default) + as perdidas/canceladas por step
-    const abertasRaw = await getAll("refurbish");
-    const lostRaw: any[] = [], cancelRaw: any[] = [];
-    for (const id of lostIds) lostRaw.push(...(await getAll("refurbish", `&where[idStep]=${id}`)));
-    for (const id of cancelIds) cancelRaw.push(...(await getAll("refurbish", `&where[idStep]=${id}`)));
-
+    // pipeline ativo (não-arquivado; inclui as ganhas via winnerDate) + arquivadas (perdidas/canceladas)
+    const ativasRaw = await getAll("refurbish");
+    const arquivadasRaw = await getAll("refurbish", `&where[idStep]=${STEP_ARQUIVADO}`);
     const seen = new Set<number>();
     const todas: any[] = [];
-    for (const r of [...abertasRaw, ...lostRaw, ...cancelRaw]) if (!seen.has(r.id)) { seen.add(r.id); todas.push(r); }
+    for (const r of [...ativasRaw, ...arquivadasRaw]) if (!seen.has(r.id)) { seen.add(r.id); todas.push(r); }
 
-    const doAno = (r: any) => ano == null || (r.createdAt || r.creationDate || "").slice(0, 4) === String(ano);
+    // Filtro de ano pela data RELEVANTE de cada oportunidade:
+    // ganha -> winnerDate; arquivada -> archivedDate; aberta -> createdAt.
+    const keyDate = (r: any) => r.winnerDate || r.archivedDate || r.createdAt || r.creationDate || "";
+    const doAno = (r: any) => ano == null || String(keyDate(r)).slice(0, 4) === String(ano);
     const valor = (r: any) => n(r.budget ?? r.total);
     const filtradas = todas.filter(doAno);
 
     const z = (): Bucket => ({ n: 0, valor: 0 });
-    const ganhas = z(), perdidas = z(), canceladas = z(), aberto = z();
+    const ganhas = z(), perdidas = z(), aberto = z();
     const funilMap = new Map<number, { nome: string; cor: string; n: number; valor: number }>();
     for (const r of filtradas) {
       const v = valor(r);
-      const sid = r.idStep ?? 0;
-      const f = funilMap.get(sid) || { nome: nome.get(sid) || "Sem etapa", cor: cor.get(sid) || "#94A3B8", n: 0, valor: 0 };
-      f.n++; f.valor += v; funilMap.set(sid, f);
       let b: Bucket;
       if (r.winnerDate) b = ganhas;
-      else if (lostSet.has(r.idStep)) b = perdidas;
-      else if (cancelSet.has(r.idStep)) b = canceladas;
+      else if (r.archivedDate) b = perdidas;
       else b = aberto;
       b.n++; b.valor += v;
+      // funil = só o pipeline ATIVO (não-arquivado) por etapa
+      if (!r.archivedDate) {
+        const sid = r.idStep ?? 0;
+        const f = funilMap.get(sid) || { nome: nome.get(sid) || "Sem etapa", cor: cor.get(sid) || "#94A3B8", n: 0, valor: 0 };
+        f.n++; f.valor += v; funilMap.set(sid, f);
+      }
     }
     const funil = [...funilMap.values()].sort((a, b) => b.valor - a.valor);
     const dec = ganhas.n + perdidas.n;
     const conversao = dec ? Math.round((ganhas.n / dec) * 100) : 0;
     return {
       ano, totalOportunidades: filtradas.length, totalValor: filtradas.reduce((t, r) => t + valor(r), 0),
-      ganhas, perdidas, canceladas, aberto, conversao, funil,
+      ganhas, perdidas, aberto, conversao, funil,
     };
   });
 }

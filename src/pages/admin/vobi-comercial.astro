@@ -56,8 +56,7 @@ for (let a = anoAtual; a >= anoAtual - 4; a--) anos.push(a);
       el("vcKpis").innerHTML = [
         statCard(d.totalOportunidades, "Oportunidades " + periodo, fmt(d.totalValor) + " em valor", "var(--ink)"),
         statCard(d.ganhas.n, "Ganhas / fechadas", fmt(d.ganhas.valor), "#16A34A"),
-        statCard(d.perdidas.n, "Perdidas", fmt(d.perdidas.valor), "#C1272D"),
-        statCard(d.canceladas.n, "Canceladas", fmt(d.canceladas.valor), "#64748B"),
+        statCard(d.perdidas.n, "Perdidas/Canceladas (arquivadas)", fmt(d.perdidas.valor), "#C1272D"),
         statCard(d.aberto.n, "Em aberto / andamento", fmt(d.aberto.valor), "#1D4ED8"),
         statCard(d.conversao + "%", "Taxa de conversão", `${d.ganhas.n} ganha(s) de ${d.ganhas.n + d.perdidas.n} decididas`, "#7C3AED"),
       ].join("");
@@ -73,7 +72,7 @@ for (let a = anoAtual; a >= anoAtual - 4; a--) anos.push(a);
           <span class="funil-val">${fmt(f.valor)}<span class="q"> · ${f.n}</span></span>
         </div>`).join("") || '<p class="nota">Nenhuma oportunidade no período.</p>';
 
-      el("vcNota").innerHTML = 'Ao vivo da API da Vobi (somente leitura). Classificação: <b>Ganha</b> = data de fechamento (winnerDate) preenchida; <b>Perdida</b>/<b>Cancelada</b> = colunas cujo nome contém "perdida"/"cancelada"; o resto é "em aberto/andamento". Me avise se alguma coluna deve contar como ganha/perdida diferente.';
+      el("vcNota").innerHTML = 'Ao vivo da API da Vobi (somente leitura). Classificação: <b>Ganha</b> = oportunidade com data de fechamento preenchida; <b>Perdida/Cancelada</b> = oportunidade <b>arquivada</b> na Vobi; o resto é "em aberto/andamento". O funil mostra só o pipeline ativo (não-arquivado). Filtro de ano: ganha pela data de fechamento, perdida pela data de arquivamento, aberta pela data de criação.';
 
       el("vcStatus").style.display = "none";
       el("vcContent").style.display = "block";
