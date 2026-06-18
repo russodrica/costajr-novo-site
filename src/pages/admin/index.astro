@@ -1,13 +1,12 @@
 ---
-// HUB de entrada do painel unificado. Mostra um card por módulo que o usuário pode
-// acessar (nível != "nenhum"), agrupado por área, no visual amigável do portal.
-// O Dashboard virou só mais um card (módulo "dashboard" -> /admin/dashboard).
+// Tela inicial do painel = DASHBOARD DO SITE.
+// Mostra pendências que precisam de ação + indicadores principais de CADA área,
+// respeitando a permissão do usuário (cada bloco só aparece se o perfil tem acesso).
+// O dashboard operacional de Manutenção virou /admin/dashboard (aba Manutenção).
 import Admin from "../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { supabaseAdmin } from "../../lib/supabase";
-import {
-  GRUPOS_ADMIN, nivelEfetivo, perfisFrescos, carregarOverridesUsuario, rotuloPerfil,
-} from "../../lib/permissoes";
+import { nivelEfetivo, perfisFrescos, carregarOverridesUsuario, rotuloPerfil } from "../../lib/permissoes";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -19,139 +18,235 @@ try {
 
 const perfis = await perfisFrescos(claims);
 const overrides = await carregarOverridesUsuario(claims.sub);
+const pode = (key: string) => nivelEfetivo(key, perfis, overrides) !== "nenhum";
 
-// Identidade para o banner
+const db = supabaseAdmin();
+const hoje = new Date().toISOString().slice(0, 10);
+
+// Helper de contagem (Supabase não lança em erro de query — retorna count null).
+const cnt = (q: any) => q.select("*", { count: "exact", head: true });
+
 let nome = "";
-try {
-  const { data: prof } = await supabaseAdmin()
-    .from("portal_profiles")
-    .select("display_name, full_name")
-    .eq("id", claims.sub)
-    .maybeSingle();
-  if (prof) nome = prof.display_name || prof.full_name || "";
-} catch { /* fallback no e-mail */ }
+const [
+  prof,
+  chamadosAbertos, chamadosAndamento, preventivasAgendadas, clientesAtivos,
+  pagamentosAtrasados, materiaisPendentes, suporteAberto,
+  leadsNovos, leadsNegociando, leadsConvertidos, propostasTotal,
+  membrosPendentes, perguntasPendentes,
+  colaboradoresAtivos, colaboradoresFerias, docsVencidos,
+  obrasTotal, tarefasAbertas, ativosTotal,
+  finResumo,
+] = await Promise.all([
+  db.from("portal_profiles").select("display_name, full_name").eq("id", claims.sub).maybeSingle(),
+  cnt(db.from("manut_chamados")).eq("status", "aberto"),
+  cnt(db.from("manut_chamados")).eq("status", "em_andamento"),
+  cnt(db.from("manut_preventivas")).eq("status", "agendada"),
+  cnt(db.from("manut_clientes")).eq("status", "ativo"),
+  cnt(db.from("manut_pagamentos")).eq("status", "atrasado"),
+  cnt(db.from("manut_materiais")).eq("status", "pendente_aprovacao"),
+  cnt(db.from("manut_suporte")).eq("status", "aberto"),
+  cnt(db.from("manut_leads")).eq("etapa", "novo"),
+  cnt(db.from("manut_leads")).eq("etapa", "negociando"),
+  cnt(db.from("manut_leads")).eq("etapa", "convertido"),
+  cnt(db.from("com_propostas")),
+  cnt(db.from("portal_profiles")).eq("approval_status", "pending"),
+  cnt(db.from("portal_pending_questions")).eq("status", "pending"),
+  cnt(db.from("rh_colaboradores")).neq("status", "desligado"),
+  cnt(db.from("rh_colaboradores")).eq("status", "ferias"),
+  cnt(db.from("rh_documentos")).not("validade", "is", null).lt("validade", hoje),
+  cnt(db.from("obras")),
+  cnt(db.from("obras_tarefas")).eq("status", "pendente"),
+  cnt(db.from("ativos")),
+  db.rpc("fin_resumo_caixa", { p_meses: 1 }),
+]);
+
+if (prof.data) nome = prof.data.display_name || prof.data.full_name || "";
 const primeiroNome = (nome || claims.email?.split("@")[0] || "colaborador").trim().split(" ")[0];
 const perfilLabel = perfis.length ? rotuloPerfil(perfis[0]) : "";
+const dataHoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
 
-// Cor por grupo (barra do topo + círculo do ícone)
-const GRUPO_COR: Record<string, string> = {
-  "meu-espaco": "#C41E3A",
-  geral: "#475569",
-  manutencao: "#D97706",
-  operacoes: "#EA580C",
-  rh: "#0EA5E9",
-  financeiro: "#16A34A",
-  comercial: "#7C3AED",
-  juridico: "#9333EA",
-  portal: "#DB2777",
-  institucional: "#0D9488",
-  sistema: "#64748B",
-  conta: "#475569",
-};
-const GRUPO_TITULO: Record<string, string> = { geral: "Geral" };
+const finCards = (finResumo as any)?.data?.cards || {};
+const num = (v: any) => Number(v) || 0;
+const fmtMoney = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const fmtNum = (v: any) => String(num(v));
 
-// Cores individuais p/ os cards colaborador-facing (visual colorido como o portal antigo).
-const MODULO_COR: Record<string, string> = {
-  "meu-onboarding": "#2563EB",
-  junia: "#C41E3A",
-  "documentos-portal": "#0D9488",
-  "treinamentos-portal": "#7C3AED",
-  "meus-equipamentos": "#EA580C",
-};
+// ── Pendências que precisam de ação (gated por acesso + count > 0) ──
+type Pend = { l: string; n: number; href: string; nivel: "alto" | "medio"; ic: string };
+const pendencias: Pend[] = ([
+  pode("chamados")   && { l: "Chamados abertos",       n: num(chamadosAbertos.count),        href: "/admin/chamados?status=aberto",                 nivel: "alto",  ic: "alert-triangle" },
+  pode("pagamentos") && { l: "Pagamentos atrasados",   n: num(pagamentosAtrasados.count),    href: "/admin/pagamentos?status=atrasado",             nivel: "alto",  ic: "cash" },
+  pode("financeiro") && { l: "Contas atrasadas",       n: num(finCards.atrasados_pagar_qtd), href: "/admin/financeiro",                             nivel: "alto",  ic: "receipt-2" },
+  pode("rh")         && { l: "Documentos vencidos",    n: num(docsVencidos.count),           href: "/admin/rh",                                     nivel: "alto",  ic: "file-text" },
+  pode("materiais")  && { l: "Materiais p/ aprovar",   n: num(materiaisPendentes.count),     href: "/admin/materiais?status=pendente_aprovacao",    nivel: "medio", ic: "package" },
+  pode("membros")    && { l: "Membros p/ aprovar",     n: num(membrosPendentes.count),       href: "/admin/membros?status=pending",                 nivel: "medio", ic: "user-check" },
+  pode("perguntas")  && { l: "Perguntas JunIA",        n: num(perguntasPendentes.count),     href: "/admin/perguntas",                              nivel: "medio", ic: "message-circle" },
+  pode("leads")      && { l: "Leads sem contato",      n: num(leadsNovos.count),             href: "/admin/leads",                                  nivel: "medio", ic: "speakerphone" },
+  pode("suporte")    && { l: "Suporte aberto",         n: num(suporteAberto.count),          href: "/admin/suporte",                                nivel: "medio", ic: "headset" },
+] as (Pend | false)[]).filter((p): p is Pend => !!p && p.n > 0);
 
-// Seções visíveis: cada grupo com seus módulos acessíveis (nível != nenhum).
-const secoes = GRUPOS_ADMIN
-  .map((g) => ({
-    id: g.id,
-    titulo: g.label ?? GRUPO_TITULO[g.id] ?? "Geral",
-    cor: GRUPO_COR[g.id] || "#C41E3A",
-    itens: g.itens.filter((m) => nivelEfetivo(m.key, perfis, overrides) !== "nenhum"),
-  }))
-  .filter((s) => s.itens.length);
+// ── Indicadores por área (gated) ──
+type Metric = { v: string; l: string };
+type Area = { nome: string; cor: string; ic: string; href: string; ver: string; metrics: Metric[] };
+const areas: Area[] = ([
+  pode("chamados") && {
+    nome: "Manutenção", cor: "#D97706", ic: "tool", href: "/admin/dashboard", ver: "Abrir painel",
+    metrics: [
+      { v: fmtNum(chamadosAbertos.count), l: "Chamados abertos" },
+      { v: fmtNum(chamadosAndamento.count), l: "Em andamento" },
+      { v: fmtNum(preventivasAgendadas.count), l: "Preventivas" },
+      { v: fmtNum(clientesAtivos.count), l: "Clientes ativos" },
+    ],
+  },
+  pode("comercial") && {
+    nome: "Comercial", cor: "#7C3AED", ic: "businessplan", href: "/admin/comercial", ver: "Abrir CRM",
+    metrics: [
+      { v: fmtNum(leadsNovos.count), l: "Leads novos" },
+      { v: fmtNum(leadsNegociando.count), l: "Negociando" },
+      { v: fmtNum(leadsConvertidos.count), l: "Convertidos" },
+      { v: fmtNum(propostasTotal.count), l: "Propostas" },
+    ],
+  },
+  pode("financeiro") && {
+    nome: "Financeiro", cor: "#16A34A", ic: "building-bank", href: "/admin/financeiro", ver: "Abrir financeiro",
+    metrics: [
+      { v: fmtMoney(num(finCards.a_receber)), l: "A receber (mês)" },
+      { v: fmtMoney(num(finCards.a_pagar)), l: "A pagar (mês)" },
+      { v: fmtMoney(num(finCards.atrasados_pagar)), l: "Atrasado a pagar" },
+    ],
+  },
+  pode("rh") && {
+    nome: "RH & Pessoas", cor: "#0EA5E9", ic: "users", href: "/admin/rh", ver: "Abrir RH",
+    metrics: [
+      { v: fmtNum(colaboradoresAtivos.count), l: "Colaboradores" },
+      { v: fmtNum(colaboradoresFerias.count), l: "Em férias" },
+      { v: fmtNum(docsVencidos.count), l: "Docs vencidos" },
+    ],
+  },
+  (pode("obras") || pode("ativos")) && {
+    nome: "Operações & Obras", cor: "#EA580C", ic: "building-skyscraper", href: pode("obras") ? "/admin/obras" : "/admin/ativos", ver: "Abrir",
+    metrics: [
+      { v: fmtNum(obrasTotal.count), l: "Obras" },
+      { v: fmtNum(tarefasAbertas.count), l: "Tarefas abertas" },
+      { v: fmtNum(ativosTotal.count), l: "Ativos" },
+    ],
+  },
+] as (Area | false)[]).filter((a): a is Area => !!a);
 ---
-<Admin title="Início" current="">
-  <div class="hub-banner">
-    <div class="hb-text">
-      <p class="hb-eyebrow">Portal CJR</p>
-      <h2 class="hb-title">Olá, {primeiroNome}! 👋</h2>
-      <p class="hb-sub">Bem-vindo ao painel. Escolha um atalho abaixo para começar.</p>
+<Admin title="Visão geral" current="home">
+  <div class="hero">
+    <div class="hero-text">
+      <p class="hero-eyebrow">Painel Costa Júnior</p>
+      <h2 class="hero-title">Olá, {primeiroNome}</h2>
+      <p class="hero-sub">Resumo de hoje · <span style="text-transform:capitalize">{dataHoje}</span></p>
     </div>
-    <div class="hb-role">
-      <p class="hb-role-label">Seu acesso</p>
-      <p class="hb-role-value">{perfilLabel || "—"}</p>
-    </div>
+    {perfilLabel && (
+      <div class="hero-role">
+        <span class="hero-role-label">Seu acesso</span>
+        <span class="hero-role-value">{perfilLabel}</span>
+      </div>
+    )}
   </div>
 
-  {secoes.length === 0 && (
-    <div class="hub-vazio">
-      <div style="font-size:42px;margin-bottom:10px">🙂</div>
-      <strong>Nenhum módulo liberado ainda.</strong>
-      <p>Fale com o administrador para liberar seus acessos.</p>
-    </div>
-  )}
-
-  {secoes.map((s) => (
-    <section class="hub-sec">
-      <p class="hub-sec-title">{s.titulo}</p>
-      <div class="hub-grid">
-        {s.itens.map((m) => {
-          const cor = MODULO_COR[m.key] || s.cor;
-          return (
-            <a href={m.href} class="hub-card" style={`border-top-color:${cor}`}>
-              <div class="hub-icon" style={`background:${cor}`}>{m.icon}</div>
-              <h3>{m.label}</h3>
-            </a>
-          );
-        })}
+  {pendencias.length > 0 && (
+    <section class="blk">
+      <p class="blk-title"><i class="ti ti-bolt" aria-hidden="true"></i> Pendências que precisam de ação</p>
+      <div class="pend-row">
+        {pendencias.map(p => (
+          <a href={p.href} class={`pend ${p.nivel}`}>
+            <span class="pend-ic"><i class={`ti ti-${p.ic}`} aria-hidden="true"></i></span>
+            <span class="pend-n">{p.n}</span>
+            <span class="pend-l">{p.l}</span>
+          </a>
+        ))}
       </div>
     </section>
-  ))}
+  )}
+
+  <section class="blk">
+    <p class="blk-title"><i class="ti ti-layout-grid" aria-hidden="true"></i> Indicadores por área</p>
+    {areas.length === 0 ? (
+      <div class="vazio">
+        <i class="ti ti-lock" aria-hidden="true"></i>
+        <strong>Nenhuma área liberada ainda.</strong>
+        <p>Fale com o administrador para liberar seus acessos.</p>
+      </div>
+    ) : (
+      <div class="area-grid">
+        {areas.map(a => (
+          <a href={a.href} class="area-card" style={`--c:${a.cor}`}>
+            <div class="area-head">
+              <span class="area-ic"><i class={`ti ti-${a.ic}`} aria-hidden="true"></i></span>
+              <span class="area-nome">{a.nome}</span>
+              <span class="area-ver">{a.ver} <i class="ti ti-arrow-right" aria-hidden="true"></i></span>
+            </div>
+            <div class="area-metrics">
+              {a.metrics.map(m => (
+                <div class="metric">
+                  <span class="metric-v">{m.v}</span>
+                  <span class="metric-l">{m.l}</span>
+                </div>
+              ))}
+            </div>
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
 
   <style>
-    .hub-banner {
-      background: linear-gradient(135deg, #1A1C20 0%, #2D2F36 55%, #3A1419 100%);
-      border-radius: 18px; padding: 30px 34px; color: #fff; margin-bottom: 28px;
-      display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    .hero {
+      background: var(--surface); border: 1px solid var(--border); border-left: 5px solid var(--brand);
+      border-radius: var(--radius-lg); padding: 22px 26px; margin-bottom: 24px;
+      display: flex; align-items: center; justify-content: space-between; gap: 20px; box-shadow: var(--shadow-sm);
     }
-    .hb-eyebrow { font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #FC8181; margin: 0 0 9px; }
-    .hb-title { font-family: 'Montserrat', sans-serif; font-size: 29px; font-weight: 800; margin: 0 0 8px; color: #fff; line-height: 1.1; }
-    .hb-sub { margin: 0; color: #D1D5DB; font-size: 15.5px; }
-    .hb-role { text-align: right; flex-shrink: 0; }
-    .hb-role-label { margin: 0; font-size: 11px; color: #9CA3AF; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
-    .hb-role-value { margin: 6px 0 0; font-family: 'Montserrat', sans-serif; font-size: 18px; font-weight: 800; color: #FC8181; }
+    .hero-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--brand); margin: 0 0 6px; }
+    .hero-title { font-family: 'Montserrat', sans-serif; font-size: 26px; font-weight: 800; margin: 0; color: var(--ink); letter-spacing: -.01em; line-height: 1.1; }
+    .hero-sub { margin: 5px 0 0; color: var(--ink-mid); font-size: 14px; }
+    .hero-role { text-align: right; flex: none; }
+    .hero-role-label { display: block; font-size: 10.5px; color: var(--ink-light); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    .hero-role-value { display: block; margin-top: 4px; font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 700; color: var(--brand); }
 
-    .hub-sec { margin-bottom: 26px; }
-    .hub-sec-title {
-      font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px;
-      color: var(--ink-mid); margin: 0 0 14px; text-transform: uppercase; letter-spacing: .05em;
-    }
-    .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 16px; }
-    .hub-card {
-      background: #fff; border: 1px solid var(--border); border-top: 5px solid var(--brand);
-      border-radius: 14px; padding: 24px 16px 20px; text-decoration: none; color: inherit;
-      display: flex; flex-direction: column; align-items: center; text-align: center;
-      transition: all .2s ease; box-shadow: 0 2px 6px rgba(16,24,40,.05);
-    }
-    .hub-card:hover { transform: translateY(-4px); box-shadow: 0 16px 32px rgba(0,0,0,.12); }
-    .hub-icon {
-      width: 60px; height: 60px; border-radius: 50%; flex-shrink: 0;
-      background: var(--brand); color: #fff;
-      display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 14px;
-      box-shadow: 0 6px 16px rgba(16,24,40,.16);
-    }
-    .hub-card h3 {
-      font-family: 'Montserrat', sans-serif; font-size: 14px; font-weight: 700;
-      margin: 0; color: var(--ink); line-height: 1.3;
-    }
+    .blk { margin-bottom: 26px; }
+    .blk-title { display: flex; align-items: center; gap: 8px; font-family: 'Montserrat', sans-serif; font-size: .82rem; font-weight: 700; color: var(--ink-mid); margin: 0 0 12px; text-transform: uppercase; letter-spacing: .06em; }
+    .blk-title i { font-size: 16px; color: var(--brand); }
 
-    .hub-vazio { text-align: center; padding: 60px 20px; color: var(--ink-light); }
-    .hub-vazio strong { display: block; color: var(--ink-mid); font-size: 1.05rem; margin-bottom: 4px; }
+    /* Pendências */
+    .pend-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .pend { display: flex; align-items: center; gap: 9px; padding: 10px 16px; border-radius: var(--radius-md); text-decoration: none; font-size: .85rem; font-weight: 600; border: 1px solid transparent; transition: var(--transition); }
+    .pend:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .pend.alto  { background: var(--danger-bg);  color: var(--danger-fg);  border-color: #FECACA; }
+    .pend.medio { background: var(--warning-bg); color: var(--warning-fg); border-color: #FDE68A; }
+    .pend-ic { font-size: 16px; display: inline-flex; }
+    .pend-n  { font-family: 'Montserrat', sans-serif; font-size: 1.1rem; font-weight: 800; }
+
+    /* Cards de área */
+    .area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .area-card {
+      background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--c);
+      border-radius: var(--radius-lg); padding: 18px 20px 16px; text-decoration: none; color: inherit;
+      box-shadow: var(--shadow-sm); transition: var(--transition); display: block;
+    }
+    .area-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+    .area-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .area-ic {
+      width: 38px; height: 38px; border-radius: 10px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+      font-size: 20px; color: var(--c); background: color-mix(in srgb, var(--c) 13%, #fff);
+    }
+    .area-nome { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 1rem; color: var(--ink); flex: 1; }
+    .area-ver { font-size: .76rem; font-weight: 600; color: var(--c); display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+    .area-metrics { display: flex; gap: 8px; flex-wrap: wrap; }
+    .metric { flex: 1; min-width: 78px; background: var(--surface-sunken); border-radius: var(--radius-md); padding: 10px 12px; }
+    .metric-v { display: block; font-family: 'Montserrat', sans-serif; font-size: 1.32rem; font-weight: 700; color: var(--ink); line-height: 1.1; }
+    .metric-l { display: block; font-size: .72rem; color: var(--ink-mid); margin-top: 3px; }
+
+    .vazio { text-align: center; padding: 50px 20px; color: var(--ink-light); }
+    .vazio i { font-size: 38px; display: block; margin-bottom: 10px; }
+    .vazio strong { display: block; color: var(--ink-mid); font-size: 1.05rem; margin-bottom: 4px; }
 
     @media (max-width: 640px) {
-      .hub-banner { flex-direction: column; align-items: flex-start; padding: 24px 22px; }
-      .hb-role { text-align: left; }
-      .hb-title { font-size: 25px; }
-      .hub-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+      .hero { flex-direction: column; align-items: flex-start; }
+      .hero-role { text-align: left; }
+      .area-grid { grid-template-columns: 1fr; }
     }
   </style>
 </Admin>

@@ -61,7 +61,6 @@ const grupos: NavGroup[] = [
   {
     id: "geral", label: null, cor: "#475569",
     items: [
-      { href: "/admin/dashboard", label: "Dashboard", ic: "layout-dashboard", key: "dashboard" },
       { href: "/admin/analytics", label: "Análise do Site", ic: "chart-line", key: "analytics" },
     ],
   },
@@ -78,6 +77,7 @@ const grupos: NavGroup[] = [
   {
     id: "manutencao", label: "Manutenção", cor: "#D97706",
     items: [
+      { href: "/admin/dashboard", label: "Painel de Manutenção", ic: "gauge", key: "dashboard" },
       { href: "/admin/clientes", label: "Clientes", ic: "users", key: "clientes" },
       { href: "/admin/tecnicos", label: "Técnicos", ic: "tool", key: "tecnicos" },
       { href: "/admin/chamados", label: "Chamados", ic: "clipboard-list", key: "chamados" },
@@ -187,7 +187,7 @@ const moduloDaPagina = current ? grupos.flatMap(g => g.items).find(i => i.key ==
 const semAcessoPagina = !!(temPerfis && current && moduloDaPagina && !podeModulo(current));
 
 // Modo SOMENTE-LEITURA: o usuário tem nível "ver" neste módulo (acessa, mas não edita).
-const nivelPaginaAtual: NivelPerm = current ? nivelDe(current) : "editar";
+const nivelPaginaAtual: NivelPerm = (current && current !== "home") ? nivelDe(current) : "editar";
 const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ver";
 ---
 <!doctype html>
@@ -218,14 +218,20 @@ const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ve
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
-        <img src="/logo-cjr.png" alt="Costa Júnior Engenharia" class="logo-img" />
-        <span class="logo-mark" aria-hidden="true">CJ</span>
+        <a href="/admin" class="logo-link" aria-label="Visão geral">
+          <img src="/logo-cjr.png" alt="Costa Júnior Engenharia" class="logo-img" />
+          <span class="logo-mark" aria-hidden="true">CJ</span>
+        </a>
         <span class="logo-sub">Portal CJR</span>
         <button class="rail-toggle" onclick="toggleRail()" title="Recolher menu" aria-label="Recolher menu" type="button">
           <i class="ti ti-chevrons-left" aria-hidden="true"></i>
         </button>
       </div>
       <nav class="sidebar-nav">
+        <a href="/admin" title="Visão geral" style="--area:#475569" class={`nav-item ${current === "home" ? "active" : ""}`}>
+          <i class="ti ti-layout-dashboard nav-icon" aria-hidden="true"></i>
+          <span class="nav-label">Visão geral</span>
+        </a>
         {gruposVisiveis.map(g => (
           g.label === null
             ? g.items.map(item => (
@@ -561,6 +567,7 @@ const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ve
       padding: 18px 16px 14px; position: relative;
       border-bottom: 1px solid var(--border-light);
     }
+    .logo-link { display: flex; flex-direction: column; align-items: center; width: 100%; text-decoration: none; }
     .logo-img { width: 100%; max-width: 188px; height: auto; display: block; }
     .logo-mark { display: none; width: 36px; height: 36px; border-radius: 9px; background: var(--brand); color: #fff; font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px; align-items: center; justify-content: center; }
     .logo-sub  { font-size: 0.72rem; font-weight: 700; color: var(--ink-light); text-transform: uppercase; letter-spacing: 1.5px; }
