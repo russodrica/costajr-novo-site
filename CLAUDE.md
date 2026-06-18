@@ -1660,6 +1660,63 @@ saem das contagens Falta programar/Vencidos e ganham badge neutro "Periodo anter
 cobra)". Preventivo: hoje cada colaborador tem 1 periodo (= vigente), entao e no-op
 visual; vale quando os ciclos aquisitivos se acumularem (1 novo por ano via auto-avanco).
 
+## Atualizacao 18/06/2026 — Redesign premium do admin (direcao "Vibrante Monday", FUNDACAO)
+
+**DECISAO da Adriana (18/06/2026):** redesenhar o visual do painel /admin para padrao
+premium (inspirado em Stripe/Notion/Monday). Direcao escolhida = **"Vibrante Monday"**
+(cada AREA com cor propria forte e sistematica; vermelho da marca segue como identidade).
+Escopo escolhido = **"Fundacao + shell"** primeiro (cascateia pras ~45 telas via
+Admin.astro), depois ondas (dashboard executivo, tabelas/modais, ficha, dark mode).
+Mapeamento completo do design atual via workflow multi-agente (6 agentes) — relatorio
+de tokens/pain-points/3 direcoes na transcricao da sessao.
+
+**Onda Fundacao+shell ENTREGUE (commit c1c948e), tudo em `src/layouts/Admin.astro`:**
+- **Tokens expandidos no `:root`**: paleta semantica em trio (`--success/-bg/-fg`,
+  `--warning`, `--danger`, `--info`, `--purple`, `--orange`), cores por area
+  (`--area-*` na pratica embutidas no array de nav), escala de cinza `--gray-50..300`,
+  sombras em 2 camadas (`--shadow-xs..lg`), `--shadow-focus`, raios `--radius-sm..xl`,
+  `--brand-hover/-active/-50/-100/-ring`. **NOMES ANTIGOS MANTIDOS COMO ALIAS**
+  (`--brand`, `--ink`, `--bg`, `--border`, `--green/--red/--amber/--blue`, `--radius`,
+  `--radius-lg`, `--shadow-sm/md`, `--transition`) p/ NAO quebrar as 45 telas. `--ink`
+  passou a #1A1D24, `--bg` #F4F6FA (shifts pequenos).
+- **Icones vetoriais Tabler** (webfont CDN `@tabler/icons-webfont@3` no jsdelivr) no
+  lugar dos ~45 emojis. Cada NavItem ganhou campo `ic` (nome Tabler); render
+  `<i class="ti ti-${ic} nav-icon">`. LICAO: se o CDN falhar, icone fica em branco
+  (degrada ok). Verifiquei que todos os nomes existem no CSS antes do deploy.
+- **Cores por area (assinatura Monday):** cada `NavGroup` ganhou `cor`; aplicada via
+  `style="--area:..."` no grupo. Rotulo do grupo (`.nav-group-label`) e item ativo usam
+  `var(--area)`. **Item ativo redesenhado:** fim da sombra vermelha .35; agora faixa
+  lateral `inset 3px` + tint `color-mix(area 14%, #fff)` + texto `color-mix(area 80%, ink)`
+  (com fallback `--brand-50`/`--brand` antes do color-mix p/ navegador antigo).
+- **Sidebar recolhivel (rail 68px):** botao `.rail-toggle` no topo da logo, `toggleRail()`
+  alterna `.shell.collapsed` + persiste em `localStorage('admin-collapsed')`. Regras de
+  rail dentro de `@media (min-width:769px)` (mobile segue off-canvas). Mostra `.logo-mark`
+  ("CJ") e so icones; labels viram `display:none`.
+- **Busca global / command palette (Ctrl+K):** `.cmd-trigger` na topbar + overlay
+  `#cmdOverlay` que filtra os modulos ACESSIVEIS (`modulosBusca` = grupos filtrados por
+  `podeModulo`, serializado num `<script id="cmdData" type="application/json" is:inline>`).
+  JS num `<script is:inline>` (JS PURO, expoe `window.openCmd/closeCmd/toggleRail` p/ os
+  onclick inline — segue a regra is:inline-nao-compila-TS).
+- **Polish que cascateia:** botoes hover ESCURECE (`--brand-hover`, fim do opacity:.88) +
+  `:focus-visible` ring + semanticos via tokens; inputs com halo de foco
+  (`--shadow-focus`) e borda unificada `--border-strong`; tabelas hover perceptivel
+  (`--gray-100`) + zebra opcional `.table-zebra`; topbar 56->60px.
+- **Favicon:** criado `public/favicon.svg` (quadrado vermelho "CJ") + `<link rel=icon>` —
+  a aba estava SEM icone. Confirmado servido em prod (HTTP 200).
+- tsc + astro build limpos. **VERIFICACAO VISUAL ao vivo ficou pendente** (o navegador
+  desta sessao caiu no /admin/login e eu NAO faco login/senha no lugar da Adriana) —
+  validei por build + checagem dos nomes de icone no CSS do CDN + favicon servido.
+  Pedir a Adriana p/ dar **hard refresh (Ctrl+Shift+R)** no /admin (SW serve HTML
+  network-first, mas o refresh garante).
+
+**PROXIMAS ONDAS do redesign (escolha da Adriana):** (2) Dashboard executivo
+(numero-heroi + sparklines nos KPIs + deltas-chip + gráficos com grid/eixo + donut com
+stroke + taxa de conversao no funil); (3) Componentes DataTable/Modal padronizados
+(sticky header, ordenacao, modal unico com ESC/foco); (4) Ficha do colaborador
+modal->drawer; (5) Dark mode (`[data-theme=dark]`, viavel pq tokens ja centralizados);
+(6) hub `/admin/index` e telas com icone Tabler no lugar de emoji. Hub ja usa GRUPO_COR
+(Monday) — trocar emojis depois.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
