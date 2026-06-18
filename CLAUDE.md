@@ -1717,6 +1717,27 @@ modal->drawer; (5) Dark mode (`[data-theme=dark]`, viavel pq tokens ja centraliz
 (6) hub `/admin/index` e telas com icone Tabler no lugar de emoji. Hub ja usa GRUPO_COR
 (Monday) — trocar emojis depois.
 
+**Onda 2 (parcial) — Dashboards reestruturados (commit 71abe93, feedback da Adriana):**
+A Adriana apontou que o `/admin/dashboard` era so de MANUTENCAO e nao gostou da tela de
+cards de entrada. Decisao dela: a ENTRADA vira o "dashboard do site"; o de manutencao vai
+pra aba Manutencao.
+- `/admin` (`src/pages/admin/index.astro`) NAO e mais o hub de cards — virou o **DASHBOARD
+  DO SITE**: faixa "Pendencias que precisam de acao" (consolidada) + grid "Indicadores por
+  area" (Manutencao, Comercial, Financeiro, RH, Operacoes&Obras). **Cada bloco e GATED por
+  `nivelEfetivo(key,...)!=='nenhum'`** (so aparece p/ quem tem acesso aquela area — LGPD).
+  Financeiro usa a RPC `fin_resumo_caixa({p_meses:1})` -> `data.cards.{a_receber,a_pagar,
+  atrasados_pagar,atrasados_pagar_qtd}`. Contagens via Supabase (nao lanca em erro de query
+  -> count null vira 0, sem quebrar a home). Tabela das perguntas JunIA = `portal_pending_questions`
+  (status pending). Visual Monday: cards com border-top na cor da area + chip de icone tonal.
+- `/admin/dashboard` (`dashboard.astro`) = **"Painel de Manutencao"** (titulo trocado),
+  item movido do grupo "geral" p/ o grupo "manutencao" no menu (key segue "dashboard").
+- Menu: logo virou link p/ `/admin`; item fixo **"Visao geral"** no topo (sempre visivel,
+  fora da matriz de permissao, `current="home"`). Guard: `current==='home'` nunca cai em
+  somente-leitura (a chave "home" nao esta na matriz).
+- PENDENTE dessa onda (nao feito): sparklines/numero-heroi/deltas-chip e graficos com
+  eixo/grade ficaram p/ depois — esta entrega focou em "indicadores por area + pendencias"
+  (o pedido literal). O hub de cards antigo (GRUPO_COR/MODULO_COR) foi descontinuado.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
