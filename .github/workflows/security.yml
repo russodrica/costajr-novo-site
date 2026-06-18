@@ -18,8 +18,11 @@ jobs:
         run: |
           VER=8.18.4
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
-          # Falha o job se encontrar segredo commitado (a .env é gitignored; não deve achar nada).
-          ./gitleaks detect --source . --no-banner --redact --exit-code 1
+          # Escaneia os ARQUIVOS ATUAIS (--no-git): bloqueia QUALQUER segredo novo commitado.
+          # Não varre o histórico inteiro (reescrever histórico é perigoso neste repo
+          # sincronizado por OneDrive); o segredo histórico do MP foi REDIGIDO e deve ser
+          # ROTACIONADO no painel do Mercado Pago. .env é gitignored (não vai pro CI).
+          ./gitleaks detect --no-git --source . --no-banner --redact --exit-code 1
 
   npm-audit:
     name: npm audit (deps vulneráveis)

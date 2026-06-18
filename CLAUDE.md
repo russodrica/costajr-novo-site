@@ -90,7 +90,7 @@ Em 2026-05-05 a Adriana aprovou migração 100% do site da Costa Júnior para fo
 **Stack escolhida:**
 - Astro 5 (frontend SSR + API endpoints) hospedado na Vercel
 - Supabase (PostgreSQL + Storage + Auth)
-- Mercado Pago (já configurado: token APP_USR-7174475643508947-... cadastrado no Wix Secrets, será migrado pra .env Vercel)
+- Mercado Pago (token guardado em MP_ACCESS_TOKEN no .env/Vercel — NUNCA commitar o valor real)
 - Resend (email transacional)
 - Identidade visual: modernizar mantendo cores vermelho/preto e logo
 

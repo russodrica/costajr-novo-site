@@ -66,7 +66,7 @@ PUBLIC_SUPABASE_URL = (do Supabase)
 PUBLIC_SUPABASE_ANON_KEY = (do Supabase)
 SUPABASE_SERVICE_ROLE_KEY = (do Supabase)
 JWT_SECRET = (gerar — passo 5)
-MP_ACCESS_TOKEN = APP_USR-7174475643508947-042919-d55a8d5edf40dfcc4ebdbd3a52be7e31-495949079
+MP_ACCESS_TOKEN = APP_USR-xxxxx   (pegue no painel do Mercado Pago — NUNCA commitar o valor real)
 SITE_BASE_URL = https://costajr.com.br
 ADMIN_BYPASS_KEY = cjr-2026
 ```
