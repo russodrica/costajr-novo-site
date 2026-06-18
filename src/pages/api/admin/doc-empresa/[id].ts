@@ -6,7 +6,7 @@ import { excluirComLixeira, registrarAcao } from "../../../../lib/auditoria";
 export const prerender = false;
 
 const PERFIS = ["admin", "financeiro", "juridico"];
-const CAMPOS = ["nome", "categoria", "grupo", "periodicidade", "validade", "validade_na", "site", "observacoes", "arquivado"];
+const CAMPOS = ["nome", "categoria", "grupo", "periodicidade", "validade", "validade_na", "site", "observacoes", "arquivado", "valor_mensal"];
 
 // PATCH /api/admin/doc-empresa/[id] → edita / arquiva / marca "não aplicável"
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -25,6 +25,13 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       if (body[c] === undefined) continue;
       // "grupo" só vai no PATCH se tiver valor (coluna pode não existir antes da migration 068)
       if (c === "grupo" && (body[c] === null || body[c] === "")) continue;
+      // "valor_mensal" só vai no PATCH se for número válido (requer migration 069)
+      if (c === "valor_mensal") {
+        if (body[c] === null || body[c] === "") continue;
+        const num = parseFloat(String(body[c]));
+        if (isNaN(num)) continue;
+        patch[c] = num; continue;
+      }
       if (c === "validade_na" || c === "arquivado") patch[c] = !!body[c];
       else patch[c] = body[c] === "" ? null : body[c];
     }

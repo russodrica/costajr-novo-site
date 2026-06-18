@@ -53,9 +53,17 @@ export const POST: APIRoute = async ({ request }) => {
       observacoes: String(body.observacoes || "").trim() || null,
       criado_por: admin.email,
     };
-    // "grupo" só vai no INSERT se a coluna já existir (após migration 068)
-    const grupo = categoria === "Documento Fiscal" ? (String(body.grupo || "").trim() || "Diversos") : null;
+    // "grupo" vale para Documento Fiscal (sub-grupo) e Empresas Fornecedoras (tipo)
+    let grupo: string | null = null;
+    if (categoria === "Documento Fiscal") grupo = String(body.grupo || "").trim() || "Diversos";
+    else if (categoria === "Empresas Fornecedoras") grupo = String(body.grupo || "").trim() || "Recorrentes";
     if (grupo) row.grupo = grupo;
+
+    // valor_mensal: só para Empresas Fornecedoras; requer migration 069
+    if (categoria === "Empresas Fornecedoras" && body.valor_mensal != null && body.valor_mensal !== "") {
+      const vm = parseFloat(String(body.valor_mensal));
+      if (!isNaN(vm) && vm >= 0) row.valor_mensal = vm;
+    }
 
     const db = supabaseAdmin();
     const { data, error } = await db.from("doc_empresa").insert(row).select().single();

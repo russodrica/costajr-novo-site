@@ -80,6 +80,22 @@ for (const d of (porCat.get("Documento Fiscal") || [])) {
   porGrupoFiscal.get(gk)!.push(d);
 }
 
+// Sub-grupos de "Empresas Fornecedoras"
+const GRUPOS_FORNECEDOR = [
+  { key: "Consultoria",  label: "Consultoria" },
+  { key: "Benefícios",   label: "Benefícios" },
+  { key: "Recorrentes",  label: "Recorrentes" },
+  { key: "Plataformas",  label: "Plataformas" },
+  { key: "Locações",     label: "Locações" },
+];
+const porGrupoFornecedor = new Map<string, any[]>();
+for (const { key } of GRUPOS_FORNECEDOR) porGrupoFornecedor.set(key, []);
+for (const d of (porCat.get("Empresas Fornecedoras") || [])) {
+  const gk = d.grupo || "Recorrentes";
+  if (!porGrupoFornecedor.has(gk)) porGrupoFornecedor.set(gk, []);
+  porGrupoFornecedor.get(gk)!.push(d);
+}
+
 // Agrupamento dos arquivados por categoria
 const porCatArq = new Map<string, any[]>();
 for (const d of docsArquivados) { const c = d.categoria || "Documentos Diversos"; if (!porCatArq.has(c)) porCatArq.set(c, []); porCatArq.get(c)!.push(d); }
@@ -90,7 +106,7 @@ const catsArq = [...CATEGORIAS.filter((c) => porCatArq.has(c)), ...[...porCatArq
 const docsJs = docs.map((d: any) => ({
   id: d.id, categoria: d.categoria, grupo: d.grupo || null, nome: d.nome, periodicidade: d.periodicidade,
   validade: d.validade, validade_na: d.validade_na, site: d.site, observacoes: d.observacoes,
-  arquivado: d.arquivado,
+  arquivado: d.arquivado, valor_mensal: d.valor_mensal ?? null,
   arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome })),
 }));
 const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
@@ -142,6 +158,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 
   {cats.map((c) => {
     const isFiscal = c === "Documento Fiscal";
+    const isFornecedor = c === "Empresas Fornecedoras";
     const docsInCat = porCat.get(c)!;
     return (
       <div class="card doc-sec" data-cat={c} style="padding:0;overflow:hidden;margin-bottom:18px">
@@ -150,6 +167,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           <span class="badge badge-gray">{docsInCat.length}</span>
         </div>
         {isFiscal ? (
+          // ── Documento Fiscal: tabelas por sub-grupo ──
           GRUPOS_FISCAL.map(({ key, label }) => {
             const docsGrupo = porGrupoFiscal.get(key) || [];
             return docsGrupo.length > 0 ? (
@@ -192,6 +210,61 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
               </div>
             ) : null;
           })
+        ) : isFornecedor ? (
+          // ── Empresas Fornecedoras: tabela por sub-tipo com coluna $/Mês e cabeçalhos ordenáveis ──
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-forn-th="nome" onclick="sortForn('nome')" style="cursor:pointer;user-select:none">Fornecedor <span class="sort-arr">↕</span></th>
+                  <th>Periodicidade</th>
+                  <th data-forn-th="validade" onclick="sortForn('validade')" style="cursor:pointer;user-select:none">Validade <span class="sort-arr">↕</span></th>
+                  <th data-forn-th="val" onclick="sortForn('val')" style="cursor:pointer;user-select:none;text-align:right">$/Mês <span class="sort-arr">↕</span></th>
+                  <th>Anexos</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody data-forn-tbody-all="1">
+                {(GRUPOS_FORNECEDOR.flatMap(({ key, label }) => {
+                  const docsGrupo = porGrupoFornecedor.get(key) || [];
+                  if (!docsGrupo.length) return [] as any[];
+                  const labelRow = (
+                    <tr class="sg-label-row" data-sg-forn-label={key}>
+                      <td colspan={6} style="padding:7px 18px;font-size:12.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.04em;background:#F5F5F7;border-bottom:1px solid var(--border)">{label}</td>
+                    </tr>
+                  );
+                  const dataRows = docsGrupo.map((d: any) => {
+                    const b = badge(d, c);
+                    const nArq = (d.doc_empresa_arquivos || []).length;
+                    const vm = d.valor_mensal != null ? `R$ ${Number(d.valor_mensal).toLocaleString("pt-BR", {minimumFractionDigits: 2})}` : "—";
+                    return (
+                      <tr class="doc-row forn-row" data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} data-val={String(d.valor_mensal || 0)} data-validade={d.validade || "9999-99-99"} data-forn-grp={key}>
+                        <td>
+                          <strong>{d.nome}</strong>
+                          {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
+                          {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
+                        </td>
+                        <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
+                        <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
+                        <td style="text-align:right;font-weight:600;font-size:13px;white-space:nowrap">{vm}</td>
+                        <td>
+                          {nArq === 0
+                            ? <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px;cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600" onclick={`anexos('${d.id}')`} title="Nenhum arquivo anexado">📎 Sem anexo</button>
+                            : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} arquivo(s)`}>📎 {nArq}</button>}
+                        </td>
+                        <td style="white-space:nowrap;text-align:right">
+                          <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
+                          <button class="btn btn-outline btn-sm" onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>
+                          <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                        </td>
+                      </tr>
+                    );
+                  });
+                  return [labelRow, ...dataRows] as any[];
+                }) as any)}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div class="table-wrap">
             <table>
@@ -297,13 +370,12 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           </div>
         </div>
         <div class="form-group" id="grupoRow" style="display:none">
-          <label>Sub-grupo (Documento Fiscal)</label>
-          <select name="grupo">
-            <option value="CND">CND — Federal, Estadual e Municipal</option>
-            <option value="Trabalhistas">Trabalhistas — FGTS, INSS e outros</option>
-            <option value="Sócios">Sócios — RG, CNH, IR, Comprovante de Residência</option>
-            <option value="Diversos">Diversos</option>
-          </select>
+          <label id="grupoLabel">Sub-grupo</label>
+          <select name="grupo" id="grupoSel"><!-- opções injetadas pelo toggleGrupo() --></select>
+        </div>
+        <div class="form-group" id="valorMensalRow" style="display:none">
+          <label>Custo mensal (R$)</label>
+          <input type="number" name="valor_mensal" min="0" step="0.01" placeholder="0,00" style="max-width:180px" />
         </div>
         <div class="form-row">
           <div class="form-group"><label>Validade (vencimento)</label><input type="date" name="validade" id="fldValidade" /></div>
@@ -386,8 +458,21 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 
     function toggleGrupo() {
       const catVal = (document.querySelector("[name=categoria]") as HTMLSelectElement)?.value || "";
+      const isFisc = catVal === "Documento Fiscal";
+      const isForn = catVal === "Empresas Fornecedoras";
       const grupoRow = document.getElementById("grupoRow");
-      if (grupoRow) grupoRow.style.display = catVal === "Documento Fiscal" ? "" : "none";
+      const grupoLabel = document.getElementById("grupoLabel");
+      const grupoSel = document.getElementById("grupoSel") as HTMLSelectElement;
+      const valorMensalRow = document.getElementById("valorMensalRow");
+      if (grupoRow) grupoRow.style.display = (isFisc || isForn) ? "" : "none";
+      if (valorMensalRow) valorMensalRow.style.display = isForn ? "" : "none";
+      if (grupoLabel) grupoLabel.textContent = isFisc ? "Sub-grupo (Documento Fiscal)" : "Tipo";
+      if (grupoSel && (isFisc || isForn)) {
+        const opts = isFisc
+          ? [["CND","CND — Federal, Estadual e Municipal"],["Trabalhistas","Trabalhistas — FGTS, INSS e outros"],["Sócios","Sócios — RG, CNH, IR, Comprovante de Residência"],["Diversos","Diversos"]]
+          : [["Consultoria","Consultoria"],["Benefícios","Benefícios"],["Recorrentes","Recorrentes"],["Plataformas","Plataformas"],["Locações","Locações"]];
+        grupoSel.innerHTML = opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join("");
+      }
     }
 
     function abrirNovo() {
@@ -417,8 +502,10 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       val.value = d.validade || "";
       val.disabled = na.checked;
       toggleGrupo();
-      const grupoSel = f.querySelector("[name=grupo]") as HTMLSelectElement;
-      if (grupoSel) grupoSel.value = d.grupo || "Diversos";
+      const grupoSel = document.getElementById("grupoSel") as HTMLSelectElement;
+      if (grupoSel) grupoSel.value = d.grupo || (d.categoria === "Documento Fiscal" ? "Diversos" : "Recorrentes");
+      const vmInput = f.querySelector("[name=valor_mensal]") as HTMLInputElement;
+      if (vmInput) vmInput.value = d.valor_mensal != null ? String(d.valor_mensal) : "";
       document.getElementById("modalDocTitle")!.textContent = "Editar documento";
       overlay("modalDoc").classList.add("open");
     }
@@ -429,8 +516,11 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const fd = new FormData(f);
       const body: Record<string, any> = Object.fromEntries(fd.entries());
       body.validade_na = (f.querySelector("[name=validade_na]") as HTMLInputElement).checked;
-      // grupo só faz sentido em "Documento Fiscal"; zera nas outras categorias
-      if (body.categoria !== "Documento Fiscal") body.grupo = null;
+      // grupo vale para Fiscal (sub-grupo) e Fornecedoras (tipo); zera nas demais
+      if (body.categoria !== "Documento Fiscal" && body.categoria !== "Empresas Fornecedoras") body.grupo = null;
+      // valor_mensal só para Fornecedoras; converte para número
+      body.valor_mensal = (body.categoria === "Empresas Fornecedoras" && body.valor_mensal !== "")
+        ? parseFloat(String(body.valor_mensal)) || null : null;
       const id = body.id; delete body.id;
       const url = id ? `/api/admin/doc-empresa/${id}` : "/api/admin/doc-empresa";
       const method = id ? "PATCH" : "POST";
@@ -555,6 +645,49 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           );
           grp.style.display = anyVisible ? "" : "none";
         });
+        // Esconde labels de sub-grupos de "Empresas Fornecedoras" quando todas as linhas estão ocultas
+        sec.querySelectorAll("tr.sg-label-row").forEach((labelRow) => {
+          const grpKey = (labelRow as HTMLElement).dataset.sgFornLabel || "";
+          if (!grpKey) return;
+          const anyVisible = Array.from(sec.querySelectorAll(`tr.forn-row[data-forn-grp="${grpKey}"]`))
+            .some((r) => (r as HTMLElement).style.display !== "none");
+          (labelRow as HTMLElement).style.display = anyVisible ? "" : "none";
+        });
+      });
+    }
+
+    // ── Ordenação de "Empresas Fornecedoras" ──
+    let _fSort = { col: "", dir: 1 };
+    function sortForn(col: string) {
+      _fSort = { col, dir: _fSort.col === col ? -_fSort.dir : 1 };
+      // Lê grupos (label + linhas) na ordem atual do DOM e ordena dentro de cada grupo
+      const tbody = document.querySelector("[data-forn-tbody-all]") as HTMLElement;
+      if (!tbody) return;
+      type Grupo = { label: HTMLElement; rows: HTMLElement[] };
+      const grupos: Grupo[] = [];
+      let cur: Grupo | null = null;
+      Array.from(tbody.querySelectorAll("tr")).forEach((tr) => {
+        if ((tr as HTMLElement).classList.contains("sg-label-row")) {
+          cur = { label: tr as HTMLElement, rows: [] };
+          grupos.push(cur);
+        } else if (cur && (tr as HTMLElement).classList.contains("forn-row")) {
+          cur.rows.push(tr as HTMLElement);
+        }
+      });
+      grupos.forEach(({ label, rows }) => {
+        rows.sort((a, b) => {
+          if (col === "val") return (parseFloat(a.dataset.val || "0") - parseFloat(b.dataset.val || "0")) * _fSort.dir;
+          if (col === "validade") return (a.dataset.validade || "").localeCompare(b.dataset.validade || "") * _fSort.dir;
+          return (a.dataset.nome || "").localeCompare(b.dataset.nome || "", "pt-BR") * _fSort.dir;
+        });
+        tbody.appendChild(label);
+        rows.forEach((r) => tbody.appendChild(r));
+      });
+      // Atualiza setas nos cabeçalhos
+      document.querySelectorAll<HTMLElement>("[data-forn-th]").forEach((th) => {
+        const isActive = th.dataset.fornTh === col;
+        const span = th.querySelector(".sort-arr");
+        if (span) span.textContent = isActive ? (_fSort.dir > 0 ? " ▲" : " ▼") : " ↕";
       });
     }
     function setSit(s: string) {
@@ -575,6 +708,6 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       btn.disabled = false; btn.textContent = orig;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo });
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn });
   </script>
 </Admin>
