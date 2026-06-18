@@ -1,0 +1,105 @@
+---
+import Admin from "../../layouts/Admin.astro";
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+const anoAtual = new Date().getFullYear();
+const anos: number[] = [];
+for (let a = anoAtual; a >= anoAtual - 4; a--) anos.push(a);
+---
+<Admin title="Oportunidades (Vobi)" current="vobi-comercial">
+  <div class="toolbar">
+    <span class="toolbar-title">Oportunidades comerciais — Vobi <span class="live">ao vivo</span></span>
+    <select id="anoSel" class="filter-select">
+      <option value="todos">Todos os anos</option>
+      {anos.map((a) => <option value={a} selected={a === anoAtual}>{a}</option>)}
+    </select>
+    <button class="btn btn-secondary btn-sm" id="btnReload"><i class="ti ti-refresh" aria-hidden="true"></i> Atualizar</button>
+  </div>
+
+  <div id="vcStatus" class="loading"><span class="spinner"></span> Consultando a Vobi…</div>
+
+  <div id="vcContent" style="display:none">
+    <div class="kpi-grid" id="vcKpis"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="chart-title">Taxa de conversão (ganhas ÷ ganhas+perdidas)</div>
+      <div class="conv-wrap"><div class="conv-bar"><div class="conv-fill" id="vcConvFill"></div></div><span class="conv-num" id="vcConvNum"></span></div>
+    </div>
+    <div class="card">
+      <div class="chart-title">Funil por etapa (volume e valor por coluna da Vobi)</div>
+      <div id="vcFunil"></div>
+      <p class="nota" id="vcNota"></p>
+    </div>
+  </div>
+
+  <script>
+    const fmt = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+    const el = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    function statCard(valor, label, sub, cor) {
+      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"}">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div class="stat-sub">${sub}</div>` : ""}</div>`;
+    }
+    async function carregar() {
+      const ano = el("anoSel").value;
+      el("vcStatus").style.display = "flex";
+      el("vcStatus").innerHTML = '<span class="spinner"></span> Consultando a Vobi…';
+      el("vcContent").style.display = "none";
+      let d;
+      try {
+        const r = await fetch(`/api/admin/vobi/comercial?ano=${ano}`);
+        d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Falha ao consultar a Vobi.");
+      } catch (e) {
+        el("vcStatus").innerHTML = `<div class="erro"><strong>Não foi possível carregar.</strong><br>${e.message}</div>`;
+        return;
+      }
+      const periodo = d.ano ? `em ${d.ano}` : "(todos os anos)";
+      el("vcKpis").innerHTML = [
+        statCard(d.totalOportunidades, "Oportunidades " + periodo, fmt(d.totalValor) + " em valor", "var(--ink)"),
+        statCard(d.ganhas.n, "Ganhas / fechadas", fmt(d.ganhas.valor), "#16A34A"),
+        statCard(d.perdidas.n, "Perdidas", fmt(d.perdidas.valor), "#C1272D"),
+        statCard(d.canceladas.n, "Canceladas", fmt(d.canceladas.valor), "#64748B"),
+        statCard(d.aberto.n, "Em aberto / andamento", fmt(d.aberto.valor), "#1D4ED8"),
+        statCard(d.conversao + "%", "Taxa de conversão", `${d.ganhas.n} ganha(s) de ${d.ganhas.n + d.perdidas.n} decididas`, "#7C3AED"),
+      ].join("");
+
+      el("vcConvFill").style.width = d.conversao + "%";
+      el("vcConvNum").textContent = d.conversao + "%";
+
+      const maxV = Math.max(1, ...d.funil.map((f) => f.valor));
+      el("vcFunil").innerHTML = d.funil.map((f) => `
+        <div class="funil-row">
+          <span class="funil-lbl" title="${esc(f.nome)}">${esc(f.nome)}</span>
+          <div class="funil-track"><div class="funil-bar" style="width:${Math.max(2, (f.valor / maxV) * 100)}%;background:${esc(f.cor)}"></div></div>
+          <span class="funil-val">${fmt(f.valor)}<span class="q"> · ${f.n}</span></span>
+        </div>`).join("") || '<p class="nota">Nenhuma oportunidade no período.</p>';
+
+      el("vcNota").innerHTML = 'Ao vivo da API da Vobi (somente leitura). Classificação: <b>Ganha</b> = data de fechamento (winnerDate) preenchida; <b>Perdida</b>/<b>Cancelada</b> = colunas cujo nome contém "perdida"/"cancelada"; o resto é "em aberto/andamento". Me avise se alguma coluna deve contar como ganha/perdida diferente.';
+
+      el("vcStatus").style.display = "none";
+      el("vcContent").style.display = "block";
+    }
+    el("anoSel").addEventListener("change", carregar);
+    el("btnReload").addEventListener("click", carregar);
+    carregar();
+  </script>
+
+  <style>
+    .live { background: #EDE9FE; color: #5B21B6; font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 99px; vertical-align: middle; margin-left: 6px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .stat-sub { font-size: .72rem; color: var(--ink-light); margin-top: 6px; font-weight: 600; }
+    .chart-title { font-family: 'Montserrat', sans-serif; font-size: .9rem; font-weight: 700; margin-bottom: 14px; color: var(--ink); }
+    .conv-wrap { display: flex; align-items: center; gap: 14px; }
+    .conv-bar { flex: 1; height: 22px; background: var(--gray-100); border-radius: 99px; overflow: hidden; }
+    .conv-fill { height: 100%; background: linear-gradient(90deg, #7C3AED, #A78BFA); border-radius: 99px; transition: width .4s ease; }
+    .conv-num { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 1.2rem; color: #7C3AED; min-width: 52px; text-align: right; }
+    .funil-row { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; }
+    .funil-lbl { width: 160px; flex: none; font-size: .8rem; color: var(--ink-mid); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .funil-track { flex: 1; background: var(--gray-100); border-radius: 99px; height: 16px; overflow: hidden; }
+    .funil-bar { height: 100%; border-radius: 99px; min-width: 2px; }
+    .funil-val { width: 150px; flex: none; text-align: right; font-size: .82rem; font-weight: 700; color: var(--ink); }
+    .q { color: var(--ink-light); font-weight: 600; }
+    .nota { font-size: .76rem; color: var(--ink-light); margin-top: 14px; line-height: 1.5; }
+    .erro { background: var(--danger-bg); color: var(--danger-fg); border: 1px solid #FECACA; border-radius: 10px; padding: 14px 16px; font-size: .9rem; }
+    .loading { min-height: 120px; }
+  </style>
+</Admin>

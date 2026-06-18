@@ -1,0 +1,108 @@
+---
+import Admin from "../../layouts/Admin.astro";
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+const anoAtual = new Date().getFullYear();
+const anos: number[] = [];
+for (let a = anoAtual + 1; a >= anoAtual - 4; a--) anos.push(a);
+---
+<Admin title="Financeiro (Vobi)" current="vobi-financeiro">
+  <div class="toolbar">
+    <span class="toolbar-title">Indicadores financeiros — Vobi <span class="live">ao vivo</span></span>
+    <select id="anoSel" class="filter-select">
+      {anos.map((a) => <option value={a} selected={a === anoAtual}>{a}</option>)}
+    </select>
+    <button class="btn btn-secondary btn-sm" id="btnReload"><i class="ti ti-refresh" aria-hidden="true"></i> Atualizar</button>
+  </div>
+
+  <div id="vfStatus" class="loading"><span class="spinner"></span> Consultando a Vobi…</div>
+
+  <div id="vfContent" style="display:none">
+    <div class="kpi-grid" id="vfKpis"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="chart-title">Entradas × Saídas por mês — <span id="vfAno"></span> <span class="leg"><span class="dot" style="background:#16A34A"></span>Entradas <span class="dot" style="background:#C1272D;margin-left:10px"></span>Saídas</span></div>
+      <div class="bars" id="vfChart"></div>
+    </div>
+    <div class="card" id="vfAberto"></div>
+  </div>
+
+  <script>
+    const fmt = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+    const el = (id) => document.getElementById(id);
+    function statCard(valor, label, sub, cor) {
+      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"}">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div class="stat-sub">${sub}</div>` : ""}</div>`;
+    }
+    async function carregar() {
+      const ano = el("anoSel").value;
+      el("vfStatus").style.display = "flex";
+      el("vfStatus").innerHTML = '<span class="spinner"></span> Consultando a Vobi…';
+      el("vfContent").style.display = "none";
+      let d;
+      try {
+        const r = await fetch(`/api/admin/vobi/financeiro?ano=${ano}`);
+        d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Falha ao consultar a Vobi.");
+      } catch (e) {
+        el("vfStatus").innerHTML = `<div class="erro"><strong>Não foi possível carregar.</strong><br>${e.message}</div>`;
+        return;
+      }
+      el("vfAno").textContent = d.ano;
+      el("vfKpis").innerHTML = [
+        statCard(fmt(d.totais.entradas), "Entradas no ano", `previsto ${fmt(d.totais.entradasPrev)}`, "#16A34A"),
+        statCard(fmt(d.totais.saidas), "Saídas no ano", `previsto ${fmt(d.totais.saidasPrev)}`, "#C1272D"),
+        statCard(fmt(d.totais.resultado), "Resultado no ano", "entradas − saídas", d.totais.resultado >= 0 ? "#16A34A" : "#C1272D"),
+        statCard(fmt(d.pagar.aVencer), "A pagar a vencer", `${d.pagar.aVencerQtd} parcela(s) em ${d.ano}`, "#B45309"),
+        statCard(fmt(d.pagar.vencidoGeral), "A pagar VENCIDO (em aberto)", `${d.pagar.vencidoGeralQtd} parcela(s)`, "#C1272D"),
+        statCard(fmt(d.receber.aVencer), "A receber a vencer", `${d.receber.aVencerQtd} parcela(s) em ${d.ano}`, "#16A34A"),
+        statCard(fmt(d.receber.vencidoGeral), "A receber VENCIDO (em aberto)", `${d.receber.vencidoGeralQtd} parcela(s)`, "#B45309"),
+      ].join("");
+
+      const max = Math.max(1, ...d.meses.map((m) => Math.max(m.entradas, m.saidas)));
+      el("vfChart").innerHTML = d.meses.map((m) => `
+        <div class="bar-col">
+          <div class="bar-pair">
+            <div class="bar b-in" style="height:${(m.entradas / max) * 100}%" title="${m.mes}: entradas ${fmt(m.entradas)}"></div>
+            <div class="bar b-out" style="height:${(m.saidas / max) * 100}%" title="${m.mes}: saídas ${fmt(m.saidas)}"></div>
+          </div>
+          <div class="bar-lbl">${m.mes}</div>
+        </div>`).join("");
+
+      el("vfAberto").innerHTML = `
+        <div class="chart-title">Contas em aberto (parcelas não pagas na Vobi)</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Tipo</th><th>Vencido (em aberto, geral)</th><th>A vencer em ${d.ano}</th><th>Total em ${d.ano}</th></tr></thead>
+          <tbody>
+            <tr><td><strong>A pagar</strong></td><td style="color:#C1272D">${fmt(d.pagar.vencidoGeral)} <span class="q">(${d.pagar.vencidoGeralQtd})</span></td><td>${fmt(d.pagar.aVencer)} <span class="q">(${d.pagar.aVencerQtd})</span></td><td><strong>${fmt(d.pagar.total)}</strong> <span class="q">(${d.pagar.qtd})</span></td></tr>
+            <tr><td><strong>A receber</strong></td><td style="color:#B45309">${fmt(d.receber.vencidoGeral)} <span class="q">(${d.receber.vencidoGeralQtd})</span></td><td style="color:#16A34A">${fmt(d.receber.aVencer)} <span class="q">(${d.receber.aVencerQtd})</span></td><td><strong>${fmt(d.receber.total)}</strong> <span class="q">(${d.receber.qtd})</span></td></tr>
+          </tbody>
+        </table></div>
+        <p class="nota">Dados puxados ao vivo da API da Vobi (somente leitura). "Vencido geral" = todas as parcelas em aberto com vencimento já passado, independente do ano.</p>`;
+
+      el("vfStatus").style.display = "none";
+      el("vfContent").style.display = "block";
+    }
+    el("anoSel").addEventListener("change", carregar);
+    el("btnReload").addEventListener("click", carregar);
+    carregar();
+  </script>
+
+  <style>
+    .live { background: #DCFCE7; color: #0F6B30; font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 99px; vertical-align: middle; margin-left: 6px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .stat-sub { font-size: .72rem; color: var(--ink-light); margin-top: 6px; font-weight: 600; }
+    .chart-title { font-family: 'Montserrat', sans-serif; font-size: .9rem; font-weight: 700; margin-bottom: 16px; color: var(--ink); }
+    .leg { font-family: 'Open Sans', sans-serif; font-size: .72rem; font-weight: 600; color: var(--ink-mid); float: right; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
+    .bars { display: flex; align-items: flex-end; gap: 6px; height: 170px; }
+    .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 5px; }
+    .bar-pair { display: flex; align-items: flex-end; gap: 2px; height: 100%; width: 100%; justify-content: center; }
+    .bar { width: 42%; max-width: 18px; border-radius: 4px 4px 0 0; min-height: 2px; }
+    .b-in { background: #16A34A; }
+    .b-out { background: #C1272D; }
+    .bar-lbl { font-size: 10.5px; color: var(--ink-light); }
+    .q { color: var(--ink-light); font-size: .82em; }
+    .nota { font-size: .76rem; color: var(--ink-light); margin-top: 12px; }
+    .erro { background: var(--danger-bg); color: var(--danger-fg); border: 1px solid #FECACA; border-radius: 10px; padding: 14px 16px; font-size: .9rem; }
+    .loading { min-height: 120px; }
+  </style>
+</Admin>

@@ -165,10 +165,12 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   ] },
   { id: "financeiro", label: "Financeiro", itens: [
     { key: "financeiro", label: "Financeiro", icon: "🏦", href: "/admin/financeiro" },
+    { key: "vobi-financeiro", label: "Financeiro Vobi", icon: "🔗", href: "/admin/vobi-financeiro" },
     { key: "fin-conciliacao", label: "Conciliação (OFX)", icon: "🔄", href: "/admin/fin-conciliacao" },
   ] },
   { id: "comercial", label: "Comercial", itens: [
     { key: "comercial", label: "Comercial (CRM)", icon: "📊", href: "/admin/comercial" },
+    { key: "vobi-comercial", label: "Oportunidades Vobi", icon: "🔗", href: "/admin/vobi-comercial" },
   ] },
   { id: "juridico", label: "Jurídico & Documentos", itens: [
     { key: "doc-empresa", label: "Documentos da Empresa", icon: "📑", href: "/admin/doc-empresa" },
