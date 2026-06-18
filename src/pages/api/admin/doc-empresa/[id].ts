@@ -40,7 +40,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (patch.validade_na === true) patch.validade = null;
     if (patch.validade) patch.validade_na = false;
 
-    const { data, error } = await db.from("doc_empresa").update(patch).eq("id", id).select().single();
+    let { data, error } = await db.from("doc_empresa").update(patch).eq("id", id).select().single();
+    // Se a migration 068/069 ainda não foi rodada, as colunas grupo/valor_mensal não existem.
+    // Nesse caso, retenta sem elas para não bloquear o usuário.
+    if (error && /could not find.*column.*(grupo|valor_mensal)/i.test(error.message)) {
+      delete patch.grupo;
+      delete patch.valor_mensal;
+      const r2 = await db.from("doc_empresa").update(patch).eq("id", id).select().single();
+      data = r2.data;
+      error = r2.error;
+    }
     if (error) return jsonErr(400, error.message);
 
     const acaoTxt = body.arquivado === true ? `Arquivou o documento "${doc.nome}"`
