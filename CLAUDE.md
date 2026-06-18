@@ -1738,6 +1738,46 @@ pra aba Manutencao.
   eixo/grade ficaram p/ depois — esta entrega focou em "indicadores por area + pendencias"
   (o pedido literal). O hub de cards antigo (GRUPO_COR/MODULO_COR) foi descontinuado.
 
+## Atualizacao 18/06/2026 (parte 2) — Integracao AO VIVO com a Vobi (somente leitura)
+
+**DECISAO da Adriana:** em vez de migrar/transicionar o financeiro da Vobi (exige muito
+teste), fazer uma INTEGRACAO ao vivo (read-only) que puxa indicadores direto da API e
+mostra na plataforma CJR. Pediu: Financeiro (contas em aberto/a vencer, filtro por
+periodo/ano, indicadores) e Comercial/Oportunidades (incl. PERDIDAS, valor e volume,
+taxa de fechamento). **Commit 511e0c2.**
+
+**API Vobi v2 (descoberto nesta sessao):** base `https://api.vobi.com.br/v2`. Auth =
+`POST /auth/token` com `Authorization: Basic base64(VOBI_UUID:VOBI_SECRET)` -> `{jwt}`
+(campo `jwt`!). GET com `Bearer`. Listas: `?limit=500&offset=N`, resposta `{rows,count}`.
+Spec OpenAPI em D:/temp/vobi_openapi.json (147 paths). **PYTHON NAO EXISTE nesta maquina
+— a skill vobi-connector usa python3; eu repliquei em Node.** Credenciais validas no .env.
+- **Financeiro:** `/financial/cashFlow?where[year]=YYYY` -> `{foreseenAccomplished:[...]}`
+  com linhas type `incomeTotal`/`expenseTotal`/`result`/`finalBalance` (campos january..
+  december + *Foreseen = previsto). Parcelas em aberto: `/installment?where[idInstallmentStatus]=1`
+  (1=previsto/nao pago) `&where[$payment.billType$]=expense|income`; campo `dueDate`,
+  `price`. (idInstallmentStatus: 12=cancelado, 2-11=pago, 1=previsto.)
+- **Comercial = `/refurbish`** (oportunidades/obras): `budget`=valor, `winnerDate`=ganho,
+  `idStep`=coluna do funil. **O funil sao STEPS** (`/step`, 51 colunas custom da Adriana:
+  NOVA, EM ORCAMENTO, ENVIADO CLIENTE, VENDA, "PERDIDA 2025", "CANCELADA 2025", FATURADA,
+  PAUSADA...). **LICAO CRITICA: o `/refurbish` padrao EXCLUI as perdidas/canceladas** —
+  elas so vem com `where[idStep]=<id>` (PERDIDA 2025 id=439403 -> 209 op/R$19,5mi;
+  CANCELADA 2025 id=439404 -> 98 op/R$1,3mi). Ganhas via winnerDate (36 op/R$414k).
+
+**Arquivos:** `src/lib/vobi.ts` (auth+cache 5min; `vobiFinanceiro(ano)`, `vobiComercial(ano|null)`;
+classificacao: winnerDate=ganha, step nome ~/perdid/=perdida, ~/cancelad/=cancelada, resto
+=aberto). APIs `/api/admin/vobi/{financeiro,comercial}` (GET, `bloqueioSeSemLeitura`, 503
+amigavel se sem credencial). Telas `/admin/vobi-financeiro` e `/admin/vobi-comercial`
+(filtro de ano client-side, KPIs, grafico, funil). Modulos `vobi-financeiro` (grupo
+financeiro) e `vobi-comercial` (grupo comercial) em permissoes.ts + Admin.astro — LGPD:
+financeiro so admin+financeiro, comercial so admin+comercial.
+
+**ACAO PENDENTE DA ADRIANA (eu NAO digito secrets em sistema externo):** colar `VOBI_UUID`
+e `VOBI_SECRET` (valores do .env) nas Environment Variables da Vercel + Reimplantar. Sem
+isso as telas mostram "Credenciais da Vobi nao configuradas". **A classificacao won/lost
+por nome de coluna pode precisar de ajuste fino** (ex.: FATURADA/EM ANDAMENTO contam como
+"em aberto" hoje pois nao tem winnerDate; se a Adriana quiser que contem como ganha,
+mapear os ids de step). idStep dos won-steps a confirmar com ela.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
