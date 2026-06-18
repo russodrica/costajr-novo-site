@@ -12,12 +12,15 @@ export const EPI_CATALOGO = [
   "Máscara respiratória",
   "Protetor auricular",
   "Óculos de proteção",
+  "Protetor solar",
   "Botina",
   "Calça",
   "Camiseta",
   "Luva pigmentada",
   "Luva de raspa",
   "Luva de borracha",
+  "Luva de proteção mecânica",
+  "Luva de proteção química",
   "Capacete",
 ];
 
