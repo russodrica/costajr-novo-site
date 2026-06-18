@@ -30,7 +30,7 @@ for (let a = anoAtual + 1; a >= anoAtual - 4; a--) anos.push(a);
     const fmt = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
     const el = (id) => document.getElementById(id);
     function statCard(valor, label, sub, cor) {
-      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"}">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div class="stat-sub">${sub}</div>` : ""}</div>`;
+      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"};font-size:1.4rem;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div style="font-size:.72rem;color:var(--ink-light);margin-top:5px;font-weight:600">${sub}</div>` : ""}</div>`;
     }
     async function carregar() {
       const ano = el("anoSel").value;
@@ -61,24 +61,25 @@ for (let a = anoAtual + 1; a >= anoAtual - 4; a--) anos.push(a);
       const max = Math.max(1, ...d.meses.map((m) => Math.max(m.entradas, m.saidas)));
       const hpx = (v) => (v > 0 ? Math.max(3, Math.round((v / max) * MAXBAR)) : 0);
       el("vfChart").innerHTML = d.meses.map((m) => `
-        <div class="bcol">
-          <div class="bpair">
-            <div class="bbar bin" style="height:${hpx(m.entradas)}px" title="${m.mes} · entradas ${fmt(m.entradas)}"></div>
-            <div class="bbar bout" style="height:${hpx(m.saidas)}px" title="${m.mes} · saídas ${fmt(m.saidas)}"></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:7px">
+          <div style="display:flex;align-items:flex-end;gap:3px;height:150px">
+            <div style="width:15px;border-radius:3px 3px 0 0;background:#16A34A;height:${hpx(m.entradas)}px" title="${m.mes} · entradas ${fmt(m.entradas)}"></div>
+            <div style="width:15px;border-radius:3px 3px 0 0;background:#C1272D;height:${hpx(m.saidas)}px" title="${m.mes} · saídas ${fmt(m.saidas)}"></div>
           </div>
-          <div class="blbl">${m.mes}</div>
+          <div style="font-size:11px;color:var(--ink-light)">${m.mes}</div>
         </div>`).join("");
 
+      const q = (n) => `<span style="color:var(--ink-light);font-size:.82em">(${n})</span>`;
       el("vfAberto").innerHTML = `
-        <div class="chart-title">Contas em aberto (parcelas não pagas na Vobi)</div>
+        <div style="font-family:'Montserrat',sans-serif;font-size:.9rem;font-weight:700;margin-bottom:16px;color:var(--ink)">Contas em aberto (parcelas não pagas na Vobi)</div>
         <div class="table-wrap"><table>
           <thead><tr><th>Tipo</th><th>Vencido (em aberto, geral)</th><th>A vencer em ${d.ano}</th><th>Total em ${d.ano}</th></tr></thead>
           <tbody>
-            <tr><td><strong>A pagar</strong></td><td style="color:#C1272D">${fmt(d.pagar.vencidoGeral)} <span class="q">(${d.pagar.vencidoGeralQtd})</span></td><td>${fmt(d.pagar.aVencer)} <span class="q">(${d.pagar.aVencerQtd})</span></td><td><strong>${fmt(d.pagar.total)}</strong> <span class="q">(${d.pagar.qtd})</span></td></tr>
-            <tr><td><strong>A receber</strong></td><td style="color:#B45309">${fmt(d.receber.vencidoGeral)} <span class="q">(${d.receber.vencidoGeralQtd})</span></td><td style="color:#16A34A">${fmt(d.receber.aVencer)} <span class="q">(${d.receber.aVencerQtd})</span></td><td><strong>${fmt(d.receber.total)}</strong> <span class="q">(${d.receber.qtd})</span></td></tr>
+            <tr><td><strong>A pagar</strong></td><td style="color:#C1272D">${fmt(d.pagar.vencidoGeral)} ${q(d.pagar.vencidoGeralQtd)}</td><td>${fmt(d.pagar.aVencer)} ${q(d.pagar.aVencerQtd)}</td><td><strong>${fmt(d.pagar.total)}</strong> ${q(d.pagar.qtd)}</td></tr>
+            <tr><td><strong>A receber</strong></td><td style="color:#B45309">${fmt(d.receber.vencidoGeral)} ${q(d.receber.vencidoGeralQtd)}</td><td style="color:#16A34A">${fmt(d.receber.aVencer)} ${q(d.receber.aVencerQtd)}</td><td><strong>${fmt(d.receber.total)}</strong> ${q(d.receber.qtd)}</td></tr>
           </tbody>
         </table></div>
-        <p class="nota">Dados puxados ao vivo da API da Vobi (somente leitura). "Vencido geral" = todas as parcelas em aberto com vencimento já passado, independente do ano.</p>`;
+        <p style="font-size:.76rem;color:var(--ink-light);margin-top:12px">Dados puxados ao vivo da API da Vobi (somente leitura). "Vencido geral" = todas as parcelas em aberto com vencimento já passado, independente do ano.</p>`;
 
       el("vfStatus").style.display = "none";
       el("vfContent").style.display = "block";

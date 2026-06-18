@@ -36,7 +36,7 @@ for (let a = anoAtual; a >= anoAtual - 4; a--) anos.push(a);
     const el = (id) => document.getElementById(id);
     const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     function statCard(valor, label, sub, cor) {
-      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"}">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div class="stat-sub">${sub}</div>` : ""}</div>`;
+      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"};font-size:1.6rem;line-height:1.15">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div style="font-size:.74rem;color:var(--ink-light);margin-top:5px;font-weight:600">${sub}</div>` : ""}</div>`;
     }
     async function carregar() {
       const ano = el("anoSel").value;
@@ -74,9 +74,9 @@ for (let a = anoAtual; a >= anoAtual - 4; a--) anos.push(a);
       el("vcFunil").innerHTML = d.funil.length ? d.funil.map((f) => {
         const w = 26 + 74 * (f.valor / maxV);
         const tc = txtOn(f.cor);
-        return `<div class="fn-seg" style="width:${w.toFixed(1)}%;background:${esc(f.cor)};color:${tc}" title="${esc(f.nome)} — ${fmt(f.valor)} · ${f.n} oportunidade(s)">
-          <span class="fn-name">${esc(f.nome)}</span>
-          <span class="fn-meta">${fmt(f.valor)} <span style="opacity:.7">· ${f.n}</span></span>
+        return `<div style="width:${w.toFixed(1)}%;min-width:200px;min-height:42px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 18px;box-shadow:var(--shadow-xs);background:${esc(f.cor)};color:${tc}" title="${esc(f.nome)} — ${fmt(f.valor)} · ${f.n} oportunidade(s)">
+          <span style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.nome)}</span>
+          <span style="font-weight:700;font-size:.8rem;white-space:nowrap">${fmt(f.valor)} <span style="opacity:.7">· ${f.n}</span></span>
         </div>`;
       }).join("") : '<p class="nota">Nenhuma oportunidade no período.</p>';
 
