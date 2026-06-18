@@ -1,0 +1,20 @@
+title = "CJR gitleaks config"
+
+# Usa as regras padrão do gitleaks (cobre tokens de API, chaves, etc.).
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Pula arquivos de DOCUMENTAÇÃO/notas internas (.md) e exemplos (.example).
+Motivo: CLAUDE.md/HOWTO_DEPLOY.md são notas operacionais que acumularam VALORES de
+segredos ao longo do tempo. Varrê-los a cada commit é ruído — o segredo já está no
+histórico (reescrever histórico é perigoso neste repo sincronizado por OneDrive).
+O fix REAL desses é ROTACIONAR nas plataformas (Mercado Pago, Telegram, D4Sign...),
+não apagar de um doc. O scanner foca no CÓDIGO (.ts/.astro/.mjs/.sql), onde um
+segredo novo NÃO pode entrar.
+"""
+paths = [
+  '''.*\.md$''',
+  '''.*\.example$''',
+]

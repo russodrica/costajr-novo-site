@@ -22,7 +22,7 @@ jobs:
           # Não varre o histórico inteiro (reescrever histórico é perigoso neste repo
           # sincronizado por OneDrive); o segredo histórico do MP foi REDIGIDO e deve ser
           # ROTACIONADO no painel do Mercado Pago. .env é gitignored (não vai pro CI).
-          ./gitleaks detect --no-git --source . --no-banner --redact --exit-code 1
+          ./gitleaks detect --no-git --source . --config .gitleaks.toml --no-banner --redact --exit-code 1
 
   npm-audit:
     name: npm audit (deps vulneráveis)
