@@ -43,7 +43,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     let { data, error } = await db.from("doc_empresa").update(patch).eq("id", id).select().single();
     // Se a migration 068/069 ainda não foi rodada, as colunas grupo/valor_mensal não existem.
     // Nesse caso, retenta sem elas para não bloquear o usuário.
-    if (error && /could not find.*column.*(grupo|valor_mensal)/i.test(error.message)) {
+    if (error && /grupo|valor_mensal|schema cache/i.test(error.message || "")) {
       delete patch.grupo;
       delete patch.valor_mensal;
       const r2 = await db.from("doc_empresa").update(patch).eq("id", id).select().single();
