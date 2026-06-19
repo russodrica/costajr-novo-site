@@ -26,9 +26,12 @@ export function geminiConfigurado(): boolean {
 export type HistMsg = { role: "user" | "assistant"; content: string };
 
 // ── Chamadas aos provedores (texto) ──────────────────────────────────────────
-async function chamarGemini(key: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
+// Cada MODELO do Gemini tem cota gratuita separada — tentamos vários antes de desistir.
+const MODELOS_GEMINI = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest", "gemini-1.5-flash"];
+
+async function geminiUmModelo(key: string, modelo: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
   const contents = mensagens.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO_GEMINI}:generateContent`, {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": key, "content-type": "application/json" },
     body: JSON.stringify({
@@ -37,10 +40,22 @@ async function chamarGemini(key: string, system: string, mensagens: HistMsg[]): 
       generationConfig: { maxOutputTokens: 900, temperature: 0.4 },
     }),
   });
-  if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  if (!r.ok) throw new Error(`Gemini(${modelo}) ${r.status}: ${(await r.text()).slice(0, 160)}`);
   const j: any = await r.json();
   const text = (j?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || "").join("");
   return String(text || "").trim() || null;
+}
+
+async function chamarGemini(key: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
+  let ultimoErro: any = null;
+  for (const modelo of MODELOS_GEMINI) {
+    try {
+      const r = await geminiUmModelo(key, modelo, system, mensagens);
+      if (r) return r;
+    } catch (e) { ultimoErro = e; } // 429/erro nesse modelo -> tenta o próximo
+  }
+  if (ultimoErro) throw ultimoErro;
+  return null;
 }
 
 async function chamarNvidia(key: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
@@ -72,14 +87,21 @@ async function chamarClaude(key: string, system: string, mensagens: HistMsg[]): 
   return (bloco?.text || "").trim() || null;
 }
 
-// Gera texto via o primeiro provedor configurado. Retorna null se nenhum estiver setado.
+// Gera texto tentando os provedores configurados EM ORDEM (Gemini -> NVIDIA -> Claude).
+// Se um falhar (ex.: cota 429), tenta o próximo. Retorna null se nenhum estiver setado;
+// lança o último erro se todos os configurados falharam (quem chama trata/faz fallback).
 export async function gerarTextoLLM(system: string, mensagens: HistMsg[]): Promise<string | null> {
-  const gm = envGemini();
-  if (gm) return chamarGemini(gm, system, mensagens);
-  const nv = envNvidia();
-  if (nv) return chamarNvidia(nv, system, mensagens);
-  const an = envClaude();
-  if (an) return chamarClaude(an, system, mensagens);
+  const tentativas: Array<() => Promise<string | null>> = [];
+  const gm = envGemini(); if (gm) tentativas.push(() => chamarGemini(gm, system, mensagens));
+  const nv = envNvidia(); if (nv) tentativas.push(() => chamarNvidia(nv, system, mensagens));
+  const an = envClaude(); if (an) tentativas.push(() => chamarClaude(an, system, mensagens));
+  if (!tentativas.length) return null;
+  let ultimoErro: any = null;
+  for (const t of tentativas) {
+    try { const r = await t(); if (r) return r; }
+    catch (e) { ultimoErro = e; } // falhou esse provedor -> tenta o próximo
+  }
+  if (ultimoErro) throw ultimoErro;
   return null;
 }
 
