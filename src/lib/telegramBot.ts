@@ -291,7 +291,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   await responderCallback(B, cq.id);
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
-  if (/^(ganex|gtipo|gslot|gcancel):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
+  if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
   if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start para recomeçar.", botaoTelefone); return; }
@@ -662,7 +662,7 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
   let slotKey = detectarSlotPorTexto(nome);
   let validade = detectarValidade(nome);
   let match = casarColaborador(nome, lista);
-  let ia = false;
+  let ia = false, iaNome = "";
   if (geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
     try {
       const raw = await lerDocumentoGemini(SYS_LER_DOC, "Extraia os metadados deste documento.", buf.toString("base64"), ct);
@@ -671,14 +671,14 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
         ia = true;
         const si = detectarSlotPorTexto(String(o.tipo || "")); if (si) slotKey = si;
         if (o.validade && /^\d{4}-\d{2}-\d{2}$/.test(String(o.validade).trim())) validade = String(o.validade).trim();
-        if (o.nome_pessoa) { const m2 = casarColaborador(String(o.nome_pessoa), lista); if (m2 && (!match || m2.score >= match.score)) match = m2; }
+        if (o.nome_pessoa) { iaNome = String(o.nome_pessoa); const m2 = casarColaborador(iaNome, lista); if (m2 && (!match || m2.score >= match.score)) match = m2; }
       }
     } catch { /* segue pela heurística do nome */ }
   }
   const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
   const token = Date.now().toString(36);
   const dados = {
-    doc_path: storagePath, doc_nome: nome, autor: `${nomeRemetente(msg.from)} (via grupo Telegram)`,
+    doc_path: storagePath, doc_nome: nome, ct, ia_nome: iaNome, autor: `${nomeRemetente(msg.from)} (via grupo Telegram)`,
     sug_colab_id: match?.id || null, sug_colab_nome: match?.nome || null,
     sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade, sug_validade: validade || null, ia,
   };
@@ -692,15 +692,19 @@ async function cardDocGrupo(B: Bot, chatId: number, token: string, d: any) {
   if (d.sug_colab_id) {
     const primeiro = String(d.sug_colab_nome || "").split(" ")[0];
     await enviar(B, chatId,
-      `📎 <b>${escTg(d.doc_nome)}</b> (${origem})\nPessoa: <b>${escTg(d.sug_colab_nome)}</b>\nTipo: <b>${escTg(d.sug_slot_label)}</b>${venc}\n\nConfirma?`,
+      `📎 <b>${escTg(d.doc_nome)}</b> (${origem})\nPessoa (RH): <b>${escTg(d.sug_colab_nome)}</b>\nTipo: <b>${escTg(d.sug_slot_label)}</b>${venc}\n\nÉ documento <b>dessa pessoa (RH)</b> ou <b>da empresa (Jurídico)</b>?`,
       inline([
-        [{ text: `✅ Anexar p/ ${primeiro}`.slice(0, 60), callback_data: "ganex:" + token }],
-        [{ text: "🏷️ Outro tipo", callback_data: "gtipo:" + token }, { text: "❌ Descartar", callback_data: "gcancel:" + token }],
+        [{ text: `✅ Anexar na ficha de ${primeiro}`.slice(0, 60), callback_data: "ganex:" + token }],
+        [{ text: "🏢 É da empresa (Jurídico)", callback_data: "gemp:" + token }, { text: "🏷️ Outro tipo", callback_data: "gtipo:" + token }],
+        [{ text: "❌ Descartar", callback_data: "gcancel:" + token }],
       ]));
   } else {
     await enviar(B, chatId,
-      `📎 <b>${escTg(d.doc_nome)}</b> (${origem})\n❓ <b>Não identifiquei de quem é.</b> Renomeie o arquivo com o nome da pessoa e reenvie, ou anexe pelo painel do RH / chat privado do bot (lá dá pra buscar o nome).`,
-      inline([[{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+      `📎 <b>${escTg(d.doc_nome)}</b> (${origem})\n❓ Não identifiquei a pessoa (RH). Se for documento da <b>empresa</b> (contrato/fornecedor — Jurídico), toque abaixo. Senão, renomeie com o nome da pessoa e reenvie.`,
+      inline([
+        [{ text: "🏢 É documento da empresa (Jurídico)", callback_data: "gemp:" + token }],
+        [{ text: "❌ Descartar", callback_data: "gcancel:" + token }],
+      ]));
   }
 }
 
@@ -746,6 +750,40 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     });
     await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gdoc:" + token);
     await enviar(B, chatId, `✅ <b>Anexado!</b> ${escTg(slot.label)} → ficha de <b>${escTg(d.sug_colab_nome)}</b>. 🙌`);
+    return;
+  }
+  // ── EMPRESA / JURÍDICO (doc_empresa + doc_empresa_arquivos) ──
+  if (acao === "gemp") {
+    const { data: emps } = await db.from("doc_empresa").select("id, nome").eq("arquivado", false).limit(3000);
+    const lista = (emps || []).map((e: any) => ({ id: e.id, nome: e.nome }));
+    const m = casarColaborador(`${d.doc_nome} ${d.ia_nome || ""}`, lista);
+    if (!m) {
+      await enviar(B, chatId, "🏢 Não consegui identificar a empresa/contrato pelo nome do arquivo. Anexe pelo painel <b>Documentos da Empresa</b> (Jurídico), ou renomeie o arquivo com o nome da empresa e reenvie.");
+      return;
+    }
+    await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: m.id, emp_nome: m.nome } }).eq("telegram_user_id", "gdoc:" + token);
+    await enviar(B, chatId, `🏢 Anexar este documento ao cadastro da empresa <b>${escTg(m.nome)}</b>?`,
+      inline([[{ text: "✅ Sim, anexar", callback_data: "gempok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+    return;
+  }
+  if (acao === "gempok") {
+    if (!d.emp_id) { await enviar(B, chatId, "Faltou a empresa — toque em 🏢 de novo."); return; }
+    const { data: blob } = await db.storage.from("rh").download(d.doc_path);
+    if (!blob) { await enviar(B, chatId, "❌ Não achei o arquivo. Reenvie o documento."); return; }
+    const buf = Buffer.from(await blob.arrayBuffer());
+    const ext = d.doc_path.split(".").pop() || "pdf";
+    const newPath = `${d.emp_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
+    if (eUp) { await enviar(B, chatId, "❌ Falha ao mover o arquivo: " + escTg(eUp.message)); return; }
+    const { data: row, error } = await db.from("doc_empresa_arquivos").insert({ doc_id: d.emp_id, nome: d.doc_nome, storage_path: newPath, criado_por: d.autor }).select().single();
+    if (error) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
+    await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
+    await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
+      acao: "criar", entidade: "doc_empresa_arquivos", registro_id: row?.id ?? null,
+      descricao: `Telegram (grupo): anexou "${d.doc_nome}" ao documento da empresa ${d.emp_nome}`, dados: { doc_id: d.emp_id },
+    });
+    await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gdoc:" + token);
+    await enviar(B, chatId, `✅ <b>Anexado!</b> "${escTg(d.doc_nome)}" → empresa <b>${escTg(d.emp_nome)}</b> (Jurídico). 🙌`);
     return;
   }
 }
