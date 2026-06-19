@@ -11,7 +11,10 @@ function env(n: string) { return (import.meta.env as any)[n] || (process.env as 
 const TOKEN_ATIVO = env("TELEGRAM_BOT_TOKEN");
 const TOKEN_ADM = env("TELEGRAM_BOT_TOKEN_ADM");
 const SECRET = env("INTEGRA_TELEGRAM_SECRET");
-const SITE = (env("SITE_BASE_URL") || "https://www.costajr.com.br").replace(/\/$/, "");
+// Telegram NÃO segue redirecionamento: o apex (costajr.com.br) faz 307 -> www, o que
+// quebra a entrega dos updates. Forçamos o host www (que responde direto, sem redirect).
+let SITE = (env("SITE_BASE_URL") || "https://www.costajr.com.br").replace(/\/$/, "");
+if (/^https?:\/\/costajr\.com\.br$/i.test(SITE)) SITE = "https://www.costajr.com.br";
 
 const BOTS = [
   { nome: "Ativos (@cjr_ativo_bot)", token: TOKEN_ATIVO, path: "/api/telegram/webhook" },
