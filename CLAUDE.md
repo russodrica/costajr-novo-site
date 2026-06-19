@@ -1957,6 +1957,14 @@ EXCLUSIVAMENTE RH/Admin (todos do grupo veem os documentos — mas RH ja tem ace
   (download+upload) e cria `doc_empresa_arquivos {doc_id, nome, storage_path, criado_por}`. Callbacks
   gemp (casa+confirma) / gempok (move+anexa). doc_empresa = modulo Documentos da Empresa (perfis
   admin/financeiro/juridico). Se nao casar a empresa -> pede anexar pelo painel.
+- **GRUPO da BASE DE CONHECIMENTO (commit ad48f84):** SEGUNDO grupo registravel, separado do de
+  documentos. `/ativar_base` (admin do grupo) registra key `grupo_base` em telegram_sessoes.
+  `onGrupoMensagem` roteia: chat == grupo_rh -> documentos; chat == grupo_base -> base. No grupo de
+  base, TEXTO >=15 chars (nao-comando) -> gerarTextoLLM organiza em pergunta/resposta/categoria ->
+  card com [Salvar na base]/[Descartar] (pendente em telegram_sessoes key `gkb:`+token; callbacks
+  gkbsave/gkbcancel) -> insert portal_kb (vale na hora na JunIA). Documento postado no grupo de base
+  -> "use o grupo de documentos". REQUER: criar o grupo + add @cjr_adm_bot (privacidade ja OFF) +
+  admin manda /ativar_base. Sem env nova, sem migration.
 
 ## Atualizacao 19/06/2026 (parte 4) — Ativos: categoria "Linha Telefonica" separada do aparelho
 
