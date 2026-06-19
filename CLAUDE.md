@@ -1958,6 +1958,20 @@ EXCLUSIVAMENTE RH/Admin (todos do grupo veem os documentos — mas RH ja tem ace
   gemp (casa+confirma) / gempok (move+anexa). doc_empresa = modulo Documentos da Empresa (perfis
   admin/financeiro/juridico). Se nao casar a empresa -> pede anexar pelo painel.
 
+## Atualizacao 19/06/2026 (parte 4) — Ativos: categoria "Linha Telefonica" separada do aparelho
+
+Pedido da Adriana ("EM ATIVOS, SEPARAR LINHAS DE TELEFONES"): a LINHA (numero/chip/plano) virou
+categoria PROPRIA, separada do aparelho fisico. **Commit a793b96. Migration 070 RODADA** (ALTER do
+`ativos_categoria_check` p/ incluir `linha_telefonica`, via Management API/Chrome HTTP 201). Campos
+no jsonb `ativos.campos`: linha, operadora, plano, valor_mensal, iccid, pin_puk, aparelho,
+dia_vencimento. Aba propria em /admin/ativos (categorias map + catIcone 📞 + bloco
+`campos-linha_telefonica` no form; toggle automatico por `#campos-${cat}`). `CATEGORIAS_VALIDAS`
+atualizado em ativos/index.ts E ativos/import.ts (+ CAT_POR_ROTULO "linha telefonica"). `iccid`
+adicionado a CAMPOS_OCULTOS_PORTAL (meus-equipamentos.ts; sensivel, igual pin_puk). O aparelho
+(categoria telefonia) segue com seus campos de linha p/ retrocompat — as linhas NOVAS entram como
+itens proprios, alocaveis a pessoa independente do aparelho. PENDENTE p/ a Adriana decidir: migrar
+linhas embutidas nos aparelhos existentes p/ itens proprios (nao feito — so categoria nova).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
