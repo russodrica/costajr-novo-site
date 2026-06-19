@@ -1918,6 +1918,39 @@ adm: so RH/admin (menu so doc/base; nao-RH ve "exclusivo do RH"). Novo webhook
 "Webhook was set" nos dois; `TELEGRAM_BOT_TOKEN_ADM` confirmado presente na Vercel). So falta a
 verificacao ao vivo do fluxo doc/base pelo app (mandar /start no @cjr_adm_bot -> Enviar documento).
 
+**BUG CRITICO RESOLVIDO — webhook no apex nao entregava (19/06/2026, commit 159ed34):** o bot
+@cjr_adm_bot ficava MUDO (e o @cjr_ativo_bot tambem nunca recebeu de verdade — so tinha sido
+testado com updates SIMULADOS). CAUSA: o webhook estava registrado em `https://costajr.com.br/...`
+(APEX), e o apex faz **HTTP 307 -> www** (confirmado por curl: apex=307 redirect, www=403 alcancavel).
+**O Telegram NAO segue redirect em webhook** -> 0 entregas, e getWebhookInfo mostrava pending=0 sem
+erro (nada era nem tentado). DIAGNOSTICO: logs da Vercel (Registros) filtrando "webhook" = vazio =
+Telegram nunca chamou. FIX: `configurar.ts` forca o host **www** no setWebhook
+(`if (/^https?:\/\/costajr\.com\.br$/.test(SITE)) SITE="https://www.costajr.com.br"`). **Apos deploy a
+Adriana tem que clicar "Ativar/Reativar os 2 bots" de novo** p/ regravar a URL www. LICAO P/ SEMPRE:
+webhook do Telegram TEM que apontar pro host que responde direto (sem redirect) — usar www, nunca apex.
+Diagnostico padrao de bot mudo: getMe (token certo?) + getWebhookInfo (url/erro/pending) + logs da
+Vercel + curl no apex e no www p/ ver 307.
+
+## Atualizacao 19/06/2026 (parte 3) — GRUPO de RH como inbox de DOCUMENTOS (decisao da Adriana)
+
+A Adriana preferiu um **GRUPO** especifico (so RH) p/ jogar DOCUMENTOS, em vez do chat privado 1:1
+(achou mais pratico — um lugar so). **Commit 9f4da16.** Esclarecido a ela: grupo so e seguro se tiver
+EXCLUSIVAMENTE RH/Admin (todos do grupo veem os documentos — mas RH ja tem acesso a esses docs).
+- `telegramBot.ts`: o bot adm agora age em GRUPO (antes `chat.type!=="private"` retornava). `onMessage`
+  -> se grupo e modo adm -> `onGrupoMensagem`. Comando **`/ativar_grupo`** (so admin do grupo, checado
+  via getChatMember) registra o chat como inbox em `telegram_sessoes` key `"grupo_rh"` (dados.chat_id).
+  So o grupo REGISTRADO processa documentos; outros grupos sao ignorados.
+- Documento postado no grupo -> baixa -> bucket rh inbox -> sugere pessoa/tipo/validade (slotsDoc +
+  Gemini) -> card com botoes **Anexar p/ NOME / Outro tipo / Descartar**. Pendentes guardados por TOKEN
+  (`telegram_sessoes` key `"gdoc:"+token`, token=Date.now().toString(36)); callback_data carrega o token
+  (`ganex:`/`gtipo:`/`gslot:token:slot`/`gcancel:`) — sem colisao entre uploads simultaneos. Autor do
+  audit = nome do remetente do Telegram ("via grupo Telegram"). Sem identificacao por telefone (a porta
+  e o proprio grupo). Se a pessoa nao for identificada no doc -> sem botao Anexar (pede renomear/painel).
+- **REQUER (acao da Adriana):** (1) criar o grupo com SO RH/Admin, (2) adicionar @cjr_adm_bot, (3) no
+  **BotFather desligar a Privacidade** do @cjr_adm_bot (/mybots -> Bot Settings -> Group Privacy -> Turn
+  off) senao o bot NAO recebe os documentos do grupo (so comandos), (4) um admin manda `/ativar_grupo`.
+  E reativar os webhooks (fix www) antes de tudo. KB/base segue no chat privado do bot.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
