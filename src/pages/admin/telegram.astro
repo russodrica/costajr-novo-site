@@ -70,7 +70,8 @@ if (claims.role !== "admin") return Astro.redirect("/admin");
           const html = infos.map((x) => {
             if (!x.configurado) return linhaBot(x.bot, false, "token ausente na Vercel");
             const i = x.info || {};
-            return linhaBot(x.bot, !!i.url && !i.last_error_message, i.url ? `webhook ok${i.last_error_message ? ` · erro: ${i.last_error_message}` : ""}` : "sem webhook (toque em Ativar)");
+            const extra = `<b>${x.username || "?"}</b> · ${i.url ? "webhook ok" : "sem webhook"}${i.pending_update_count ? ` · ${i.pending_update_count} pendentes` : ""}${i.last_error_message ? ` · erro: ${i.last_error_message}` : ""}`;
+            return linhaBot(x.bot, !!i.url && !i.last_error_message, extra);
           }).join("");
           show(html, infos.every((x) => x.configurado && x.info?.url && !x.info?.last_error_message));
         } else { show("Sem informação. Toque em Ativar.", false); }

@@ -51,7 +51,11 @@ export const GET: APIRoute = async ({ request }) => {
       if (!b.token) { infos.push({ bot: b.nome, configurado: false }); continue; }
       const r = await fetch(`https://api.telegram.org/bot${b.token}/getWebhookInfo`);
       const d = await r.json().catch(() => ({}));
-      infos.push({ bot: b.nome, configurado: true, info: d?.result || d });
+      // getMe → confirma QUAL bot é esse token (username), p/ pegar token trocado
+      const rm = await fetch(`https://api.telegram.org/bot${b.token}/getMe`);
+      const dm = await rm.json().catch(() => ({}));
+      const username = dm?.result?.username ? "@" + dm.result.username : (dm?.ok === false ? "token inválido" : "?");
+      infos.push({ bot: b.nome, configurado: true, username, info: d?.result || d });
     }
     return jsonOk({ infos });
   } catch (e: any) {
