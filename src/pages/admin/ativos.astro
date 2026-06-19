@@ -18,16 +18,18 @@ const filtroGarantia = Astro.url.searchParams.get("garantia") || ""; // "vencend
 // aparece na aba "Para conserto". Itens fora de circulação saem das categorias.
 const STATUS_EXTRAVIO = ["extraviado", "roubado"];
 const STATUS_SAIDA = ["baixado", "descartado", "vendido"];
-const STATUS_FORA = [...STATUS_EXTRAVIO, ...STATUS_SAIDA];
+const STATUS_VENDA = ["a_venda"]; // anunciados p/ venda — fora do estoque ativo, grupo próprio
+const STATUS_FORA = [...STATUS_EXTRAVIO, ...STATUS_SAIDA, ...STATUS_VENDA];
 const STATUS_CIRC = ["em_estoque", "disponivel", "alocado", "em_manutencao", "em_transito", "danificado"];
 // Abas especiais (não são categorias de tipo)
-const ESPECIAIS = ["deposito", "extraviados", "saidas", "conserto"];
+const ESPECIAIS = ["deposito", "a_venda", "extraviados", "saidas", "conserto"];
 const ehEspecial = ESPECIAIS.includes(filtroCategoria);
 
 let q = db.from("ativos").select("*").order("created_at", { ascending: false }).limit(1000);
 if (filtroCategoria === "deposito") q = q.eq("alocado_para_tipo", "deposito");
 else if (filtroCategoria === "extraviados") q = q.in("status", STATUS_EXTRAVIO);
 else if (filtroCategoria === "saidas") q = q.in("status", STATUS_SAIDA);
+else if (filtroCategoria === "a_venda") q = q.eq("status", "a_venda");
 else if (filtroCategoria === "conserto") q = q.eq("status", "danificado");
 else {
   if (filtroCategoria !== "todas") q = q.eq("categoria", filtroCategoria);
@@ -51,6 +53,7 @@ const emCirculacao = (todosAtivos || []).filter((a) => !STATUS_FORA.includes(a.s
 const itensDeposito = (todosAtivos || []).filter((a) => a.alocado_para_tipo === "deposito");
 const itensExtravio = (todosAtivos || []).filter((a) => STATUS_EXTRAVIO.includes(a.status));
 const itensSaida = (todosAtivos || []).filter((a) => STATUS_SAIDA.includes(a.status));
+const itensVenda = (todosAtivos || []).filter((a) => a.status === "a_venda");
 const totalCirc = emCirculacao.length;
 const porStatus: Record<string, number> = {};
 for (const a of todosAtivos || []) porStatus[a.status] = (porStatus[a.status] || 0) + 1;
@@ -87,12 +90,12 @@ const categorias: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   em_estoque: "Em estoque", disponivel: "Disponível", alocado: "Alocado", em_manutencao: "Em manutenção",
   em_transito: "Em trânsito", extraviado: "Extraviado", roubado: "Roubado", danificado: "Danificado",
-  baixado: "Baixado", descartado: "Descartado", vendido: "Vendido",
+  a_venda: "À Venda", baixado: "Baixado", descartado: "Descartado", vendido: "Vendido",
 };
 const statusBadge: Record<string, string> = {
   em_estoque: "badge-blue", disponivel: "badge-green", alocado: "badge-purple", em_manutencao: "badge-orange",
   em_transito: "badge-yellow", extraviado: "badge-red", roubado: "badge-red", danificado: "badge-red",
-  baixado: "badge-gray", descartado: "badge-gray", vendido: "badge-green",
+  a_venda: "badge-yellow", baixado: "badge-gray", descartado: "badge-gray", vendido: "badge-green",
 };
 const catIcone: Record<string, string> = {
   telefonia: "📱", linha_telefonica: "📞", informatica: "💻", equipamento_obra: "🛠️", epi: "🦺", veiculo: "🚗", mobiliario: "🪑", outros: "📦",
@@ -112,6 +115,8 @@ if (filtroCategoria === "extraviados") {
   grupos = STATUS_EXTRAVIO.map((s) => ({ key: s, label: extravioLabels[s], icone: extravioIcones[s], itens: (ativos || []).filter((a: any) => a.status === s) })).filter((g) => g.itens.length);
 } else if (filtroCategoria === "saidas") {
   grupos = STATUS_SAIDA.map((s) => ({ key: s, label: saidaLabels[s], icone: saidaIcones[s], itens: (ativos || []).filter((a: any) => a.status === s) })).filter((g) => g.itens.length);
+} else if (filtroCategoria === "a_venda") {
+  grupos = [{ key: "a_venda", label: "À Venda", icone: "🏷️", itens: (ativos || []) }].filter((g) => g.itens.length);
 } else if (filtroCategoria === "deposito") {
   const nomes = [...new Set((ativos || []).map((a: any) => a.alocado_para_nome || "Sem depósito definido"))];
   grupos = nomes.map((n) => ({ key: String(n), label: String(n), icone: "📦", itens: (ativos || []).filter((a: any) => (a.alocado_para_nome || "Sem depósito definido") === n) })).filter((g) => g.itens.length);
@@ -138,11 +143,12 @@ const abas = [{ cat: "todas", label: "Todos", icone: "📋", count: totalCirc }]
   .concat(ordemCat.filter((c) => porCategoria[c]).map((c) => ({ cat: c, label: categorias[c], icone: catIcone[c] || "📦", count: porCategoria[c] })));
 const abasEspeciais = [
   { cat: "deposito", label: "Em depósito", icone: "📦", count: itensDeposito.length },
+  { cat: "a_venda", label: "À Venda", icone: "🏷️", count: itensVenda.length },
   { cat: "extraviados", label: "Extraviados", icone: "❓", count: itensExtravio.length },
   { cat: "saidas", label: "Saídas", icone: "⛔", count: itensSaida.length },
   { cat: "conserto", label: "Para conserto", icone: "🔧", count: quebrados.length },
 ];
-const tituloEspecial: Record<string, string> = { deposito: "Em depósito", extraviados: "Extraviados / roubados", saidas: "Saídas (baixa / descarte / venda)", conserto: "Para conserto" };
+const tituloEspecial: Record<string, string> = { deposito: "Em depósito", a_venda: "À Venda (anunciados)", extraviados: "Extraviados / roubados", saidas: "Saídas (baixa / descarte / venda)", conserto: "Para conserto" };
 const tituloAba = ehEspecial ? tituloEspecial[filtroCategoria] : filtroCategoria === "todas" ? "Todos os ativos" : (categorias[filtroCategoria] || "Ativos");
 ---
 <Admin title="Ativos Patrimoniais" current="ativos">
@@ -166,6 +172,10 @@ const tituloAba = ehEspecial ? tituloEspecial[filtroCategoria] : filtroCategoria
     <a class="stat-card" href="/admin/ativos?categoria=extraviados" style="text-decoration:none;cursor:pointer" title="Itens extraviados ou roubados">
       <div class="stat-value" style={itensExtravio.length ? "color:#B91C1C" : ""}>{itensExtravio.length}</div>
       <div class="stat-label">Extraviados {itensExtravio.length ? "→" : ""}</div>
+    </a>
+    <a class="stat-card" href="/admin/ativos?categoria=a_venda" style="text-decoration:none;cursor:pointer" title="Itens anunciados para venda (fora do estoque ativo)">
+      <div class="stat-value" style={itensVenda.length ? "color:#CA8A04" : ""}>{itensVenda.length}</div>
+      <div class="stat-label">À Venda {itensVenda.length ? "→" : ""}</div>
     </a>
     <div class="stat-card"><div class="stat-value" style="color:#16A34A;font-size:1.35rem">{fmtMoney(valorTotal)}</div><div class="stat-label">Valor do patrimônio</div></div>
     <a class="stat-card" href="/admin/ativos?categoria=saidas" style="text-decoration:none;cursor:pointer" title="Total recebido em vendas de ativos (separado do patrimônio)">

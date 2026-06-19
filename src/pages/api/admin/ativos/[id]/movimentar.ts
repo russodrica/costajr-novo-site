@@ -9,11 +9,11 @@ import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 export const prerender = false;
 
 const ATIVOS_ALERT_EMAIL = import.meta.env.ATIVOS_ALERT_EMAIL || "adm@costajr.com.br";
-const STATUS_VALIDOS = ["em_estoque", "disponivel", "alocado", "em_manutencao", "em_transito", "extraviado", "roubado", "danificado", "baixado", "descartado", "vendido"];
+const STATUS_VALIDOS = ["em_estoque", "disponivel", "alocado", "em_manutencao", "em_transito", "extraviado", "roubado", "danificado", "a_venda", "baixado", "descartado", "vendido"];
 const STATUS_LABEL: Record<string, string> = {
   em_estoque: "Em estoque", disponivel: "Disponível", alocado: "Alocado", em_manutencao: "Em manutenção",
   em_transito: "Em trânsito", extraviado: "Extraviado", roubado: "Roubado", danificado: "Danificado",
-  baixado: "Baixado", descartado: "Descartado", vendido: "Vendido",
+  a_venda: "À Venda", baixado: "Baixado", descartado: "Descartado", vendido: "Vendido",
 };
 const TIPOS_OCORRENCIA = ["extravio", "roubo", "furto", "dano", "quebra", "sinistro", "outro"];
 
