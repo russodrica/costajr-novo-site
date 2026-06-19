@@ -7,7 +7,7 @@ export const prerender = false;
 // Campos sensíveis que NÃO devem aparecer para o colaborador no portal (LGPD — minimização):
 // segredos operacionais e dados de registro que o portador não precisa no dia a dia.
 // O admin continua vendo tudo na ficha do ativo.
-const CAMPOS_OCULTOS_PORTAL = new Set(["pin_puk", "renavam", "chassi", "mac"]);
+const CAMPOS_OCULTOS_PORTAL = new Set(["pin_puk", "renavam", "chassi", "mac", "iccid"]);
 function camposSeguros(campos: Record<string, unknown> | null | undefined) {
   if (!campos || typeof campos !== "object") return {};
   const out: Record<string, unknown> = {};

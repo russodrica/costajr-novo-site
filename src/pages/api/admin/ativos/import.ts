@@ -7,11 +7,12 @@ import { bloqueioSeSoLeitura } from "../../../../lib/permissoes";
 
 export const prerender = false;
 
-const CATEGORIAS_VALIDAS = ["telefonia", "informatica", "equipamento_obra", "epi", "veiculo", "mobiliario", "outros"];
+const CATEGORIAS_VALIDAS = ["telefonia", "linha_telefonica", "informatica", "equipamento_obra", "epi", "veiculo", "mobiliario", "outros"];
 
 // rótulos PT (do export) → enum
 const CAT_POR_ROTULO: Record<string, string> = {
-  telefonia: "telefonia", informatica: "informatica", "equip de obra": "equipamento_obra",
+  telefonia: "telefonia", "linha telefonica": "linha_telefonica", linha_telefonica: "linha_telefonica", linha: "linha_telefonica",
+  informatica: "informatica", "equip de obra": "equipamento_obra",
   equipamento_obra: "equipamento_obra", "equipamento de obra": "equipamento_obra",
   epi: "epi", veiculo: "veiculo", mobiliario: "mobiliario", outros: "outros",
 };
