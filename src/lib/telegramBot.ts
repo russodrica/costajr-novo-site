@@ -8,6 +8,9 @@
 // ════════════════════════════════════════════════════════════════════════
 import { supabaseAdmin } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
+import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador } from "./slotsDoc";
+import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
+import { registrarAcao } from "./auditoria";
 
 function envVar(name: string): string {
   return (import.meta.env as any)[name] || (process.env as any)[name] || "";
@@ -150,7 +153,7 @@ async function onMessage(db: any, msg: any) {
 
   if (/^\/cancelar/i.test(texto) && sessao) {
     await salvarSessao(db, { ...sessao, estado: "pronto", dados: idBaseDe(sessao.dados || {}) });
-    if (identificado) await perguntarRegistrar(chatId, sessao!.dados.colaborador_nome || "colega");
+    if (identificado) await mostrarMenu(db, chatId, sessao!.dados);
     return;
   }
 
@@ -161,13 +164,23 @@ async function onMessage(db: any, msg: any) {
     return;
   }
 
+  // RH/Admin pode enviar um DOCUMENTO (foto/PDF) a qualquer momento → fluxo de anexo
+  if (msg.photo || msg.document) {
+    if (!(await ehRhAdmin(db, identificado))) { await enviar(chatId, "📄 O envio de documentos pelo Telegram é restrito ao RH/Admin."); return; }
+    return await onDocumentoRecebido(db, sessao!, chatId, msg);
+  }
+
   const estado = sessao?.estado || "pronto";
   if (estado === "busca_equip") return await buscarEquip(db, sessao!, chatId, texto);
   if (estado === "busca_pessoa") return await buscarPessoa(db, sessao!, chatId, texto);
   if (estado === "busca_obra") return await buscarObra(db, sessao!, chatId, texto);
+  if (estado === "busca_pessoa_doc") return await buscarPessoaDoc(db, sessao!, chatId, texto);
+  if (estado === "kb_aguarda") return await onTextoKb(db, sessao!, chatId, texto);
+  if (estado === "kb_manual") return await onKbManual(db, sessao!, chatId, texto);
+  if (estado === "doc_aguarda") { await enviar(chatId, "Me envie a <b>foto</b> ou o <b>PDF</b> do documento. 📎"); return; }
 
-  // qualquer outra mensagem (estado pronto) → reabre o fluxo
-  await perguntarRegistrar(chatId, sessao!.dados.colaborador_nome || "colega");
+  // qualquer outra mensagem (estado pronto) → reabre o menu
+  await mostrarMenu(db, chatId, sessao!.dados);
 }
 
 async function identificar(db: any, userId: string, chatId: number, telefone: string) {
@@ -183,7 +196,7 @@ async function identificar(db: any, userId: string, chatId: number, telefone: st
     dados: { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null },
   });
   await enviar(chatId, `✅ Identificado: <b>${escTg(achado.nome)}</b>!`, tirarTeclado);
-  await perguntarRegistrar(chatId, achado.nome);
+  await mostrarMenu(db, chatId, { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null });
 }
 
 async function buscarEquip(db: any, sessao: Sessao, chatId: number, termo: string) {
@@ -241,11 +254,50 @@ async function onCallback(db: any, cq: any) {
     await enviar(chatId, data === "reg:nao" ? "Ok! Quando precisar, é só mandar uma mensagem. 👋" : "Cancelado.");
     return;
   }
-  if (data === "reg:sim") {
+  if (data === "reg:sim" || data === "menu:mov") {
     await salvarSessao(db, { ...sessao, estado: "esc_categoria", dados: idBase });
     await perguntarCategoria(chatId);
     return;
   }
+  if (data === "menu:doc" || data === "menu:kb") {
+    if (!(await ehRhAdmin(db, dados.colaborador_id))) { await enviar(chatId, "Recurso restrito ao RH/Admin."); return; }
+    if (data === "menu:doc") {
+      await salvarSessao(db, { ...sessao, estado: "doc_aguarda", dados: idBase });
+      await enviar(chatId, "📄 <b>Enviar documento</b>\nMe mande a <b>foto</b> ou o <b>PDF</b> do documento (de um colaborador). Eu leio e sugiro de quem é, o tipo e a validade.");
+    } else {
+      await salvarSessao(db, { ...sessao, estado: "kb_aguarda", dados: idBase });
+      await enviar(chatId, "📚 <b>Alimentar a base</b>\nMe mande o <b>texto/assunto</b> a cadastrar (ex.: \"o vencimento do cartão X é dia Y\"). Eu transformo em pergunta e resposta pra você confirmar.");
+    }
+    return;
+  }
+  if (data === "danex") return await anexarDoc(db, sessao, chatId);
+  if (data === "dpess") {
+    await salvarSessao(db, { ...sessao, estado: "busca_pessoa_doc", dados });
+    await enviar(chatId, "🔎 Digite o <b>nome da pessoa</b> dona do documento:");
+    return;
+  }
+  if (data === "dtipo") {
+    const linhas = SLOTS_DOC.map((s) => [{ text: s.label.slice(0, 60), callback_data: "dslot:" + s.key }]);
+    linhas.push(btnCancelar);
+    await enviar(chatId, "Qual o <b>tipo</b> do documento?", inline(linhas));
+    return;
+  }
+  if (data.startsWith("dslot:")) {
+    const slot = slotPorKey(data.slice(6)) || slotPorKey("outro")!;
+    const nd = { ...dados, sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade };
+    await salvarSessao(db, { ...sessao, estado: "doc_confirma", dados: nd });
+    await cardDoc(chatId, nd);
+    return;
+  }
+  if (data.startsWith("pdoc:")) {
+    const { data: p } = await db.from("rh_colaboradores").select("id, nome").eq("id", data.slice(5)).maybeSingle();
+    if (!p) { await enviar(chatId, "Pessoa não encontrada."); return; }
+    const nd = { ...dados, sug_colab_id: p.id, sug_colab_nome: p.nome };
+    await salvarSessao(db, { ...sessao, estado: "doc_confirma", dados: nd });
+    await cardDoc(chatId, nd);
+    return;
+  }
+  if (data === "kbsave") return await salvarKb(db, sessao, chatId);
   if (data.startsWith("cat:")) {
     const cat = data.slice(4);
     await salvarSessao(db, { ...sessao, estado: "busca_equip", dados: { ...idBase, categoria: cat } });
@@ -328,5 +380,191 @@ async function confirmar(db: any, sessao: Sessao, chatId: number) {
 
   await enviar(chatId, `✅ <b>Equipamento movimentado com sucesso!</b>\n${escTg(nomeAtivo(ativo))} foi atualizado na base. Obrigado! 🙌`,
     inline([[{ text: "📦 Registrar outra", callback_data: "reg:sim" }]]));
+  await salvarSessao(db, { ...sessao, estado: "pronto", dados: idBaseDe(d) });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// DOCUMENTOS + BASE DE CONHECIMENTO pelo Telegram (só RH/Admin).
+// Reaproveita o "cérebro" da Caixa de Entrada (slotsDoc + llm).
+// ════════════════════════════════════════════════════════════════════════
+
+// Só quem tem perfil admin/rh (resolvido pelo vínculo rh_colaboradores → portal_profiles).
+async function ehRhAdmin(db: any, colaboradorId: string): Promise<boolean> {
+  try {
+    if (!colaboradorId) return false;
+    const { data: c } = await db.from("rh_colaboradores").select("profile_id").eq("id", colaboradorId).maybeSingle();
+    if (!c?.profile_id) return false;
+    const { data: p } = await db.from("portal_profiles").select("role, roles").eq("id", c.profile_id).maybeSingle();
+    const roles = [p?.role, ...(Array.isArray(p?.roles) ? p.roles : [])].filter(Boolean);
+    return roles.includes("admin") || roles.includes("rh");
+  } catch { return false; }
+}
+
+async function mostrarMenu(db: any, chatId: number, dados: any) {
+  const nome = dados?.colaborador_nome || "colega";
+  const linhas: { text: string; callback_data: string }[][] = [[{ text: "📦 Movimentar equipamento", callback_data: "menu:mov" }]];
+  if (await ehRhAdmin(db, dados?.colaborador_id)) {
+    linhas.push([{ text: "📄 Enviar documento (RH)", callback_data: "menu:doc" }]);
+    linhas.push([{ text: "📚 Alimentar a base (RH)", callback_data: "menu:kb" }]);
+  }
+  await enviar(chatId, `Olá, <b>${escTg(nome)}</b>! 👋\nO que você quer fazer?`, inline(linhas));
+}
+
+// Baixa o conteúdo de um arquivo do Telegram (getFile → download).
+async function baixarArquivoTg(fileId: string): Promise<Buffer | null> {
+  if (!TOKEN) return null;
+  try {
+    const f = await tg("getFile", { file_id: fileId });
+    const path = f?.result?.file_path;
+    if (!path) return null;
+    const r = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${path}`);
+    if (!r.ok) return null;
+    return Buffer.from(await r.arrayBuffer());
+  } catch { return null; }
+}
+
+const autorDe = (d: any) => `${d.colaborador_nome}${d.colaborador_email ? ` <${d.colaborador_email}>` : ""} (via Telegram)`;
+
+async function onDocumentoRecebido(db: any, sessao: Sessao, chatId: number, msg: any) {
+  await enviar(chatId, "📎 Recebi! Analisando o documento… ⏳");
+  let fileId = "", nome = "documento", ct = "application/octet-stream";
+  if (msg.document) { fileId = msg.document.file_id; nome = msg.document.file_name || "documento"; ct = msg.document.mime_type || "application/octet-stream"; }
+  else if (msg.photo?.length) { fileId = msg.photo[msg.photo.length - 1].file_id; nome = "foto-telegram.jpg"; ct = "image/jpeg"; }
+  if (!fileId) { await enviar(chatId, "Não consegui ler esse arquivo. Envie como foto ou PDF."); return; }
+
+  const ctL = ct.toLowerCase();
+  const tipoOk = ctL === "application/pdf" || ctL.startsWith("image/") || ctL.includes("word") || ctL.includes("officedocument") || /\.(pdf|jpg|jpeg|png|webp|doc|docx)$/i.test(nome);
+  if (!tipoOk) { await enviar(chatId, "❌ Formato não aceito — envie PDF, foto ou Word."); return; }
+
+  const buf = await baixarArquivoTg(fileId);
+  if (!buf) { await enviar(chatId, "❌ Não consegui baixar o arquivo. Tente enviar de novo."); return; }
+  if (buf.length > 18 * 1024 * 1024) { await enviar(chatId, "❌ Arquivo muito grande (máx. ~18 MB)."); return; }
+
+  let ext = (nome.includes(".") ? nome.split(".").pop() : "")?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
+  if (!ext || ext.length > 5) ext = ctL.includes("pdf") ? "pdf" : ctL.startsWith("image/") ? "jpg" : "bin";
+  const storagePath = `inbox/tg-${Date.now()}.${ext}`;
+  const { error: errUp } = await db.storage.from("rh").upload(storagePath, buf, { contentType: ct, upsert: false });
+  if (errUp) { await enviar(chatId, "❌ Falha ao guardar o arquivo: " + escTg(errUp.message)); return; }
+
+  // sugestão: nome do arquivo + (se houver Gemini) leitura do documento
+  const { data: colabs } = await db.from("rh_colaboradores").select("id, nome").neq("status", "desligado").limit(3000);
+  const lista = (colabs || []).map((c: any) => ({ id: c.id, nome: c.nome }));
+  let slotKey = detectarSlotPorTexto(nome);
+  let validade = detectarValidade(nome);
+  let match = casarColaborador(nome, lista);
+  let ia = false;
+  if (geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+    try {
+      const system = `Você lê um documento de RH de um colaborador da construtora Costa Júnior e extrai metadados. Responda APENAS JSON: {"nome_pessoa":"nome completo ou vazio","tipo":"um de: ASO, CNH, RG, Contrato, CTPS, Titulo de Eleitor, Certidao, Comprovante de Residencia, NR-35, NR-10, NR-06, NR-01, Advertencia, Suspensao, Ordem de Servico, Outro","validade":"AAAA-MM-DD ou vazio"}`;
+      const raw = await lerDocumentoGemini(system, "Extraia os metadados deste documento.", buf.toString("base64"), ct);
+      const o = raw ? extrairJson(raw) : null;
+      if (o) {
+        ia = true;
+        const si = detectarSlotPorTexto(String(o.tipo || "")); if (si) slotKey = si;
+        if (o.validade && /^\d{4}-\d{2}-\d{2}$/.test(String(o.validade).trim())) validade = String(o.validade).trim();
+        if (o.nome_pessoa) { const m2 = casarColaborador(String(o.nome_pessoa), lista); if (m2 && (!match || m2.score >= match.score)) match = m2; }
+      }
+    } catch { /* IA falhou → segue pela heurística do nome */ }
+  }
+  const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
+  const nd = {
+    ...idBaseDe(sessao.dados || {}), doc_path: storagePath, doc_nome: nome,
+    sug_colab_id: match?.id || null, sug_colab_nome: match?.nome || null,
+    sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade,
+    sug_validade: validade || null, ia,
+  };
+  await salvarSessao(db, { ...sessao, estado: "doc_confirma", dados: nd });
+  await cardDoc(chatId, nd);
+}
+
+async function cardDoc(chatId: number, d: any) {
+  const pessoa = d.sug_colab_nome ? `<b>${escTg(d.sug_colab_nome)}</b>` : "<i>(não identifiquei a pessoa)</i>";
+  const venc = d.sug_tem_validade ? `\nValidade: ${d.sug_validade ? escTg(d.sug_validade) : "<i>não detectei</i>"}` : "";
+  const origem = d.ia ? "🔮 li o documento" : "📄 sugerido pelo nome do arquivo";
+  const linhas: { text: string; callback_data: string }[][] = [];
+  if (d.sug_colab_id) linhas.push([{ text: "✅ Anexar na ficha", callback_data: "danex" }]);
+  linhas.push([{ text: "👤 Trocar pessoa", callback_data: "dpess" }, { text: "🏷️ Trocar tipo", callback_data: "dtipo" }]);
+  linhas.push(btnCancelar);
+  await enviar(chatId,
+    `📎 <b>${escTg(d.doc_nome)}</b> (${origem})\n\nPessoa: ${pessoa}\nTipo: <b>${escTg(d.sug_slot_label)}</b>${venc}\n\n${d.sug_colab_id ? "Confirma?" : "Toque em <b>Trocar pessoa</b> pra escolher de quem é."}`,
+    inline(linhas));
+}
+
+async function buscarPessoaDoc(db: any, sessao: Sessao, chatId: number, termo: string) {
+  if (termo.length < 2) { await enviar(chatId, "Digite ao menos 2 letras do nome."); return; }
+  const t = termo.replace(/[%,()]/g, " ").trim();
+  const { data: pessoas } = await db.from("rh_colaboradores").select("id, nome").neq("status", "desligado").ilike("nome", `%${t}%`).limit(8);
+  if (!pessoas?.length) { await enviar(chatId, `Não achei ninguém com "<b>${escTg(termo)}</b>". Tente outro nome, ou /cancelar.`); return; }
+  const linhas = pessoas.map((p: any) => [{ text: String(p.nome).slice(0, 60), callback_data: "pdoc:" + p.id }]);
+  linhas.push(btnCancelar);
+  await enviar(chatId, "De quem é o documento?", inline(linhas));
+}
+
+async function anexarDoc(db: any, sessao: Sessao, chatId: number) {
+  const d = sessao.dados || {};
+  if (!d.doc_path || !d.sug_colab_id) { await enviar(chatId, "Faltou a pessoa. Toque em 👤 Trocar pessoa."); return; }
+  const slot = slotPorKey(d.sug_slot) || slotPorKey("outro")!;
+  const validade = d.sug_tem_validade ? (d.sug_validade || null) : null;
+  const titulo = `${slot.prefixo} — ${d.doc_nome}`.slice(0, 200);
+  const autor = autorDe(d);
+  const { data: row, error } = await db.from("rh_documentos").insert({
+    colaborador_id: d.sug_colab_id, titulo, tipo: slot.tipo, storage_path: d.doc_path,
+    validade, validade_na: !d.sug_tem_validade, criado_por: autor,
+  }).select().single();
+  if (error) { await enviar(chatId, "❌ Não consegui anexar: " + escTg(error.message)); return; }
+  await registrarAcao(db, { req: undefined as any, admin: { email: autor } as any }, {
+    acao: "criar", entidade: "rh_documentos", registro_id: row?.id ?? null,
+    descricao: `Telegram: anexou "${slot.label}" a ${d.sug_colab_nome}`, dados: { tipo: slot.tipo, validade },
+  });
+  await enviar(chatId, `✅ <b>Anexado!</b>\n${escTg(slot.label)} → ficha de <b>${escTg(d.sug_colab_nome)}</b>. 🙌`,
+    inline([[{ text: "📄 Enviar outro", callback_data: "menu:doc" }]]));
+  await salvarSessao(db, { ...sessao, estado: "pronto", dados: idBaseDe(d) });
+}
+
+async function onTextoKb(db: any, sessao: Sessao, chatId: number, texto: string) {
+  if (texto.length < 5) { await enviar(chatId, "Mande um texto um pouco maior pra eu entender o assunto. 🙂"); return; }
+  let pergunta = "", resposta = "", categoria = "Geral";
+  if (llmConfigurado()) {
+    await enviar(chatId, "✨ Organizando… ⏳");
+    try {
+      const system = `Você organiza conhecimento interno da Costa Júnior Engenharia para um FAQ (a JunIA usa). A partir de um texto livre, gere UMA pergunta clara (como um colaborador perguntaria) e a resposta, em português, objetivo. Não invente além do texto. Responda APENAS JSON: {"pergunta":"...","resposta":"...","categoria":"Geral|Operacional|RH|Financeiro|Comercial|Administrativo"}`;
+      const raw = await gerarTextoLLM(system, [{ role: "user", content: texto.slice(0, 4000) }]);
+      const o = raw ? extrairJson(raw) : null;
+      if (o && o.resposta) { pergunta = String(o.pergunta || "").trim(); resposta = String(o.resposta || "").trim(); categoria = String(o.categoria || "Geral").trim() || "Geral"; }
+    } catch { /* cai no manual */ }
+  }
+  if (!resposta) {
+    await salvarSessao(db, { ...sessao, estado: "kb_manual", dados: idBaseDe(sessao.dados || {}) });
+    await enviar(chatId, "Não consegui organizar com a IA agora. Me mande no formato:\n<b>Pergunta | Resposta</b>\n(ex.: Qual o prazo do Santander? | 5 dias úteis)");
+    return;
+  }
+  const nd = { ...idBaseDe(sessao.dados || {}), kb_pergunta: pergunta, kb_resposta: resposta, kb_categoria: categoria };
+  await salvarSessao(db, { ...sessao, estado: "kb_confirma", dados: nd });
+  await enviar(chatId,
+    `📚 Vou cadastrar na base:\n\n<b>P:</b> ${escTg(pergunta)}\n<b>R:</b> ${escTg(resposta)}\n<b>Categoria:</b> ${escTg(categoria)}`,
+    inline([[{ text: "✅ Salvar", callback_data: "kbsave" }], [{ text: "✏️ Reescrever (mande de novo)", callback_data: "menu:kb" }], btnCancelar]));
+}
+
+async function onKbManual(db: any, sessao: Sessao, chatId: number, texto: string) {
+  const i = texto.indexOf("|");
+  if (i < 1) { await enviar(chatId, "Use o formato <b>Pergunta | Resposta</b>."); return; }
+  const pergunta = texto.slice(0, i).trim(), resposta = texto.slice(i + 1).trim();
+  if (!pergunta || !resposta) { await enviar(chatId, "Faltou a pergunta ou a resposta."); return; }
+  const nd = { ...idBaseDe(sessao.dados || {}), kb_pergunta: pergunta, kb_resposta: resposta, kb_categoria: "Geral" };
+  await salvarSessao(db, { ...sessao, estado: "kb_confirma", dados: nd });
+  await enviar(chatId, `📚 Vou cadastrar:\n<b>P:</b> ${escTg(pergunta)}\n<b>R:</b> ${escTg(resposta)}`, inline([[{ text: "✅ Salvar", callback_data: "kbsave" }], btnCancelar]));
+}
+
+async function salvarKb(db: any, sessao: Sessao, chatId: number) {
+  const d = sessao.dados || {};
+  if (!d.kb_pergunta || !d.kb_resposta) { await enviar(chatId, "Faltou conteúdo. Recomece em 📚 Alimentar a base."); return; }
+  const autor = autorDe(d);
+  const { data: row, error } = await db.from("portal_kb").insert({ question: d.kb_pergunta, answer: d.kb_resposta, category: d.kb_categoria || "Geral" }).select().single();
+  if (error) { await enviar(chatId, "❌ Não consegui salvar: " + escTg(error.message)); return; }
+  await registrarAcao(db, { req: undefined as any, admin: { email: autor } as any }, {
+    acao: "criar", entidade: "portal_kb", registro_id: row?.id ?? null,
+    descricao: `Telegram: adicionou à base "${String(d.kb_pergunta).slice(0, 80)}"`, dados: { category: d.kb_categoria },
+  });
+  await enviar(chatId, "✅ <b>Salvo na base!</b> Já vale na JunIA. 🤖", inline([[{ text: "📚 Cadastrar outro", callback_data: "menu:kb" }]]));
   await salvarSessao(db, { ...sessao, estado: "pronto", dados: idBaseDe(d) });
 }
