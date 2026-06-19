@@ -1950,6 +1950,13 @@ EXCLUSIVAMENTE RH/Admin (todos do grupo veem os documentos — mas RH ja tem ace
   **BotFather desligar a Privacidade** do @cjr_adm_bot (/mybots -> Bot Settings -> Group Privacy -> Turn
   off) senao o bot NAO recebe os documentos do grupo (so comandos), (4) um admin manda `/ativar_grupo`.
   E reativar os webhooks (fix www) antes de tudo. KB/base segue no chat privado do bot.
+- **ROTEIA RH x EMPRESA/JURIDICO (commit 7960327):** no grupo o card pergunta "e da PESSOA (RH) ou da
+  EMPRESA (Juridico)?". Pessoa -> rh_documentos (como antes). Empresa -> botao "🏢 E da empresa" casa o
+  doc com `doc_empresa` pelo nome (filename + nome extraido pela IA, via casarColaborador na lista de
+  doc_empresa nao-arquivados), MOVE o arquivo do bucket `rh`/inbox p/ o bucket PRIVADO `doc-empresa`
+  (download+upload) e cria `doc_empresa_arquivos {doc_id, nome, storage_path, criado_por}`. Callbacks
+  gemp (casa+confirma) / gempok (move+anexa). doc_empresa = modulo Documentos da Empresa (perfis
+  admin/financeiro/juridico). Se nao casar a empresa -> pede anexar pelo painel.
 
 ## Convencoes desta pasta para o Claude Code
 
