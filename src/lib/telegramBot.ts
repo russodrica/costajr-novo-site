@@ -626,7 +626,7 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
       return;
     }
     await salvarSessao(db, { telegram_user_id: "grupo_rh", chat_id: String(chatId), estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "" } });
-    await enviar(B, chatId, "✅ <b>Grupo ativado como inbox de documentos do RH!</b>\nMandem aqui a <b>foto</b> ou o <b>PDF</b> de um documento que eu sugiro de quem é e arquivo na ficha. ⚠️ Lembrem: <b>todos deste grupo veem os documentos</b> — mantenham só RH/Admin aqui.");
+    await enviar(B, chatId, "✅ <b>Grupo ativado como inbox de documentos!</b>\nMandem aqui a <b>foto</b> ou o <b>PDF</b> de um documento. Eu leio e pergunto o destino:\n• <b>Pessoa (RH)</b> → arquiva na ficha do colaborador\n• <b>Empresa (Jurídico)</b> → anexa no contrato/fornecedor (Documentos da Empresa)\n\n⚠️ Lembrem: <b>todos deste grupo veem os documentos</b> — mantenham só RH/Admin aqui.");
     return;
   }
 
