@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { requireAdmin, jsonOk, jsonErr } from "~/lib/auth";
 import { exigirArea } from "~/lib/permissoes";
-import { responderJunIA } from "~/lib/junia";
+import { responderJuniaIA, type HistMsg } from "~/lib/juniaIA";
 
 export const prerender = false;
 
@@ -52,9 +52,16 @@ export const POST: APIRoute = async ({ request }) => {
       convId = c.id;
     }
 
+    // histórico da conversa (para perguntas de acompanhamento / esclarecimento da JunIA)
+    let historico: HistMsg[] = [];
+    {
+      const { data: hist } = await sb.from("portal_messages").select("role, content").eq("conversation_id", convId).order("created_at").limit(16);
+      historico = (hist || []).map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
+    }
+
     await sb.from("portal_messages").insert({ conversation_id: convId, role: "user", content: texto });
 
-    const r = await responderJunIA(claims, texto);
+    const r = await responderJuniaIA(claims, texto, historico);
 
     const { data: msgIA } = await sb.from("portal_messages").insert({
       conversation_id: convId, role: "assistant", content: r.resposta,

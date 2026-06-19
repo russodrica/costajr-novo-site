@@ -13,6 +13,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
     "@astrojs/node": "^9.0.0",
     "@astrojs/vercel": "^8.0.0",
     "@supabase/supabase-js": "^2.45.0",
