@@ -1814,6 +1814,46 @@ do plano Pro/Max.) Eu NAO digito a chave. Enquanto nao por nenhuma, a JunIA segu
 PRIVACIDADE: a base (so categorias permitidas) + a pergunta vao pra nuvem do provedor — ok p/
 assistente interno; as travas (trabalhista/categorias por perfil) limitam o que e enviado.
 
+## Atualizacao 19/06/2026 — Caixa de Entrada (alimentar base + anexar documentos com sugestao)
+
+**Pedido da Adriana:** (1) jeito rapido de mandar coisas novas pra base de conhecimento que
+suba direto pro site; (2) jeito de jogar documentos pra substituir vencidos/inexistentes e o
+SISTEMA descobrir onde anexar. Decisoes dela: canal = "Pagina/link rapido" (protegida,
+funciona no celular); arquivamento = "Sugere e voce confirma".
+
+**Entregue (commit 660c5c0): `/admin/caixa-entrada`** (menu RH & Pessoas, key `caixa-entrada`,
+gated admin+rh). Duas abas:
+- **Base de Conhecimento:** "Organizar com IA" (cola texto livre -> IA devolve pergunta+
+  resposta+categoria pra revisar) + form salvar -> `portal_kb` (entra NA HORA na JunIA).
+  Endpoints `/api/admin/caixa/kb` e `/kb-organizar`.
+- **Documentos:** sobe arquivo (1 ou varios; drag&drop) via URL ASSINADA pro bucket PRIVADO
+  `rh` na pasta `inbox/` (sem limite de body da Vercel) -> o sistema SUGERE pessoa+tipo+
+  validade -> voce confere e clica "Anexar" -> cria `rh_documentos` com TITULO no prefixo do
+  slot (cai no slot certo da ficha, via slotDoDoc). Endpoints `/doc-upload-url`, `/doc-sugerir`,
+  `/doc-anexar`, `/doc-descartar`. **SEM migration/tabela nova** — a "caixa" vive na propria
+  pagina (upload->sugere->confirma); arquivo nao confirmado fica orfao no storage (descartar
+  remove). Anexar = logado em audit_log.
+
+**Como o sistema "adivinha" o documento:** `src/lib/slotsDoc.ts` (espelha SLOTS_DOC da ficha
+RH: contrato/rg_hab/aso/nr01-06-10-35/ctps/etc + prefixo+tipo+validade por slot) com
+`detectarSlotPorTexto` (keywords), `detectarValidade` (regex de data) e `casarColaborador`
+(casa nome do arquivo/IA com rh_colaboradores ativos). 1o pela heuristica do nome do arquivo;
+2o, se houver Gemini, a IA LE o PDF/imagem e melhora (nome da pessoa, tipo, validade).
+
+**IA compartilhada — `src/lib/llm.ts` (NOVO):** camada extraida do juniaIA. `gerarTextoLLM`
+(Gemini->NVIDIA->Claude, primeiro configurado), `lerDocumentoGemini` (le PDF/imagem via
+inline_data, SO Gemini), `llmConfigurado`/`geminiConfigurado`, `extrairJson`. juniaIA.ts foi
+refatorado p/ usar llm.ts (re-exporta llmConfigurado/HistMsg p/ compat). **Tudo GRACEFUL sem
+chave:** KB cai p/ preenchimento manual; Documentos caem p/ sugestao pelo nome do arquivo.
+
+**PENDENTE p/ a Adriana (ativa a IA — eu NAO digito chaves em sistema externo):** colar
+`GEMINI_API_KEY` (gerada no Google AI Studio) nas Environment Variables da Vercel + Reimplantar.
+Sem isso, a Caixa de Entrada funciona (manual / por nome do arquivo) e a JunIA segue no motor
+de palavra-chave. Com a chave: "Organizar com IA" na base e "IA le o documento" passam a valer
+(e a JunIA fica humanizada). Ordem de provedor: Gemini > NVIDIA > Claude > fallback. Middleware:
+`/api/admin/caixa/*` mapeado p/ modulo `caixa-entrada` (moduloDaRotaApi) + bloqueioSeSoLeitura
+por endpoint (LGPD: so admin+rh editam).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
