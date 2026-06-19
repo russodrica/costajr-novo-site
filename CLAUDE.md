@@ -1913,9 +1913,10 @@ adm: so RH/admin (menu so doc/base; nao-RH ve "exclusivo do RH"). Novo webhook
 `/api/telegram/webhook-adm` (chama processarUpdate(update,"adm"); mesmo secret INTEGRA_TELEGRAM_SECRET).
 `/api/admin/telegram/configurar` agora ativa OS DOIS bots (loop) e devolve {resultados}/{infos}; a tela
 `/admin/telegram` mostra status dos 2. **DECISAO arquitetural: grupo NAO serve p/ documento sensivel**
-(todo mundo do grupo veria = LGPD); o certo e chat PRIVADO 1:1 com o bot + gate de perfil. **PENDENTE:
-a Adriana ativar o webhook do @cjr_adm_bot** em /admin/telegram -> "Ativar/Reativar os 2 bots" (1x),
-e confirmar que `TELEGRAM_BOT_TOKEN_ADM` esta na Vercel. Verificacao ao vivo do fluxo doc/base PENDENTE.
+(todo mundo do grupo veria = LGPD); o certo e chat PRIVADO 1:1 com o bot + gate de perfil.
+**WEBHOOKS DOS 2 BOTS ATIVADOS (19/06/2026)** via /admin/telegram (Adriana clicou; status =
+"Webhook was set" nos dois; `TELEGRAM_BOT_TOKEN_ADM` confirmado presente na Vercel). So falta a
+verificacao ao vivo do fluxo doc/base pelo app (mandar /start no @cjr_adm_bot -> Enviar documento).
 
 ## Convencoes desta pasta para o Claude Code
 
