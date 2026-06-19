@@ -1901,6 +1901,22 @@ Nao-RH que tenta mandar doc -> recusa educada. Tudo logado em audit_log (autor =
 pq e tudo try/catch + optional chaining. Verificacao ao vivo PENDENTE (a Adriana vai testar pelo
 app do Telegram: /start -> menu -> Enviar documento/Alimentar base).
 
+**REFATORADO p/ BOT DEDICADO (19/06/2026, commit 4489400 — decisao da Adriana):** ela preocupou-se
+em separar publicos (o bot de Ativos e conhecido por todo o time de campo). Doc+Base MIGRARAM pro
+**@cjr_adm_bot** (que ja existia, canal ADM); o **@cjr_ativo_bot fica SO equipamento**. `telegramBot.ts`
+virou CIENTE DO BOT: `processarUpdate(update, modo)` com `modo: "ativo"|"adm"`; um objeto `Bot`
+{token, modo, pre, nome} e threaded por TODOS os helpers (enviar/tg/baixarArquivoTg/getSessao). Token:
+ativo=`TELEGRAM_BOT_TOKEN`, adm=`TELEGRAM_BOT_TOKEN_ADM` (ja na Vercel). **Sessoes separadas por bot**
+via PREFIXO na chave (`telegram_sessoes.telegram_user_id` = `"adm:"+userId` no bot adm) — assim a mesma
+pessoa usando os 2 bots nao colide (sem migration). Bot ativo: foto/PDF -> "use o @cjr_adm_bot". Bot
+adm: so RH/admin (menu so doc/base; nao-RH ve "exclusivo do RH"). Novo webhook
+`/api/telegram/webhook-adm` (chama processarUpdate(update,"adm"); mesmo secret INTEGRA_TELEGRAM_SECRET).
+`/api/admin/telegram/configurar` agora ativa OS DOIS bots (loop) e devolve {resultados}/{infos}; a tela
+`/admin/telegram` mostra status dos 2. **DECISAO arquitetural: grupo NAO serve p/ documento sensivel**
+(todo mundo do grupo veria = LGPD); o certo e chat PRIVADO 1:1 com o bot + gate de perfil. **PENDENTE:
+a Adriana ativar o webhook do @cjr_adm_bot** em /admin/telegram -> "Ativar/Reativar os 2 bots" (1x),
+e confirmar que `TELEGRAM_BOT_TOKEN_ADM` esta na Vercel. Verificacao ao vivo do fluxo doc/base PENDENTE.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
