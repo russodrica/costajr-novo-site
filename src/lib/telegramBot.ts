@@ -176,7 +176,12 @@ export async function processarUpdate(update: any, modo: Modo = "ativo"): Promis
 // ── Mensagens ────────────────────────────────────────────────────────────
 async function onMessage(db: any, B: Bot, msg: any) {
   const chat = msg.chat;
-  if (!chat || chat.type !== "private") return;
+  if (!chat) return;
+  if (chat.type !== "private") {
+    // grupos: só o bot de RH, e só no grupo-inbox registrado (documentos)
+    if (B.modo === "adm") return await onGrupoMensagem(db, B, msg);
+    return;
+  }
   const userId = String(msg.from?.id || "");
   const chatId = chat.id;
   if (!userId) return;
@@ -284,7 +289,10 @@ async function onCallback(db: any, B: Bot, cq: any) {
   const chatId = cq.message?.chat?.id;
   const data = String(cq.data || "");
   await responderCallback(B, cq.id);
-  if (!userId || !chatId) return;
+  if (!chatId) return;
+  // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
+  if (/^(ganex|gtipo|gslot|gcancel):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
+  if (!userId) return;
   const sessao = await getSessao(db, B, userId);
   if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start para recomeçar.", botaoTelefone); return; }
   const dados = sessao.dados || {};
@@ -582,4 +590,162 @@ async function salvarKb(db: any, B: Bot, sessao: Sessao, chatId: number) {
   });
   await enviar(B, chatId, "✅ <b>Salvo na base!</b> Já vale na JunIA. 🤖", inline([[{ text: "📚 Cadastrar outro", callback_data: "menu:kb" }]]));
   await salvarSessao(db, { ...sessao, estado: "pronto", dados: idBaseDe(d) });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// GRUPO de RH = inbox de DOCUMENTOS (só o bot adm, só no grupo registrado).
+// Quem está no grupo já é autorizado (RH/Admin) — a "porta" é o próprio grupo.
+// Requer: bot adicionado ao grupo + Privacidade do bot DESLIGADA (BotFather),
+// e um admin do grupo enviar /ativar_grupo uma vez.
+// ════════════════════════════════════════════════════════════════════════
+const SYS_LER_DOC = `Você lê um documento de RH de um colaborador da construtora Costa Júnior e extrai metadados. Responda APENAS JSON: {"nome_pessoa":"nome completo ou vazio","tipo":"um de: ASO, CNH, RG, Contrato, CTPS, Titulo de Eleitor, Certidao, Comprovante de Residencia, NR-35, NR-10, NR-06, NR-01, Advertencia, Suspensao, Ordem de Servico, Outro","validade":"AAAA-MM-DD ou vazio"}`;
+
+async function getGrupoRh(db: any): Promise<string | null> {
+  const { data } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "grupo_rh").maybeSingle();
+  return data?.dados?.chat_id != null ? String(data.dados.chat_id) : null;
+}
+async function ehAdminGrupo(B: Bot, chatId: number, userId?: number): Promise<boolean> {
+  if (!userId) return false;
+  const r = await tg(B, "getChatMember", { chat_id: chatId, user_id: userId });
+  const st = r?.result?.status;
+  return st === "creator" || st === "administrator";
+}
+function nomeRemetente(from: any): string {
+  const nome = `${from?.first_name || ""} ${from?.last_name || ""}`.trim() || "alguém";
+  return from?.username ? `${nome} (@${from.username})` : nome;
+}
+
+async function onGrupoMensagem(db: any, B: Bot, msg: any) {
+  const chat = msg.chat;
+  const chatId = chat.id;
+  const texto = String(msg.text || "").trim();
+
+  if (/^\/ativar_grupo(@\w+)?/i.test(texto)) {
+    if (!(await ehAdminGrupo(B, chatId, msg.from?.id))) {
+      await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode ativar este grupo como inbox de RH.");
+      return;
+    }
+    await salvarSessao(db, { telegram_user_id: "grupo_rh", chat_id: String(chatId), estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "" } });
+    await enviar(B, chatId, "✅ <b>Grupo ativado como inbox de documentos do RH!</b>\nMandem aqui a <b>foto</b> ou o <b>PDF</b> de um documento que eu sugiro de quem é e arquivo na ficha. ⚠️ Lembrem: <b>todos deste grupo veem os documentos</b> — mantenham só RH/Admin aqui.");
+    return;
+  }
+
+  const reg = await getGrupoRh(db);
+  if (!reg || reg !== String(chatId)) {
+    if (msg.photo || msg.document) await enviar(B, chatId, "Este grupo ainda não está ativado. Um <b>administrador</b> deve enviar <code>/ativar_grupo</code> aqui.");
+    return;
+  }
+  if (msg.photo || msg.document) return await onDocGrupo(db, B, msg, chatId);
+  // texto comum no grupo → ignora (as pessoas conversam ali)
+}
+
+async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
+  let fileId = "", nome = "documento", ct = "application/octet-stream";
+  if (msg.document) { fileId = msg.document.file_id; nome = msg.document.file_name || "documento"; ct = msg.document.mime_type || "application/octet-stream"; }
+  else if (msg.photo?.length) { fileId = msg.photo[msg.photo.length - 1].file_id; nome = "foto-telegram.jpg"; ct = "image/jpeg"; }
+  if (!fileId) return;
+  const ctL = ct.toLowerCase();
+  const tipoOk = ctL === "application/pdf" || ctL.startsWith("image/") || ctL.includes("word") || ctL.includes("officedocument") || /\.(pdf|jpg|jpeg|png|webp|doc|docx)$/i.test(nome);
+  if (!tipoOk) { await enviar(B, chatId, "❌ Formato não aceito — envie PDF, foto ou Word."); return; }
+  await enviar(B, chatId, "📎 Analisando o documento… ⏳");
+  const buf = await baixarArquivoTg(B, fileId);
+  if (!buf) { await enviar(B, chatId, "❌ Não consegui baixar o arquivo. Tente de novo."); return; }
+  if (buf.length > 18 * 1024 * 1024) { await enviar(B, chatId, "❌ Arquivo muito grande (máx. ~18 MB)."); return; }
+  let ext = (nome.includes(".") ? nome.split(".").pop() : "")?.toLowerCase().replace(/[^a-z0-9]/g, "") || "";
+  if (!ext || ext.length > 5) ext = ctL.includes("pdf") ? "pdf" : ctL.startsWith("image/") ? "jpg" : "bin";
+  const storagePath = `inbox/tg-${Date.now()}.${ext}`;
+  const { error: errUp } = await db.storage.from("rh").upload(storagePath, buf, { contentType: ct, upsert: false });
+  if (errUp) { await enviar(B, chatId, "❌ Falha ao guardar: " + escTg(errUp.message)); return; }
+
+  const { data: colabs } = await db.from("rh_colaboradores").select("id, nome").neq("status", "desligado").limit(3000);
+  const lista = (colabs || []).map((c: any) => ({ id: c.id, nome: c.nome }));
+  let slotKey = detectarSlotPorTexto(nome);
+  let validade = detectarValidade(nome);
+  let match = casarColaborador(nome, lista);
+  let ia = false;
+  if (geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+    try {
+      const raw = await lerDocumentoGemini(SYS_LER_DOC, "Extraia os metadados deste documento.", buf.toString("base64"), ct);
+      const o = raw ? extrairJson(raw) : null;
+      if (o) {
+        ia = true;
+        const si = detectarSlotPorTexto(String(o.tipo || "")); if (si) slotKey = si;
+        if (o.validade && /^\d{4}-\d{2}-\d{2}$/.test(String(o.validade).trim())) validade = String(o.validade).trim();
+        if (o.nome_pessoa) { const m2 = casarColaborador(String(o.nome_pessoa), lista); if (m2 && (!match || m2.score >= match.score)) match = m2; }
+      }
+    } catch { /* segue pela heurística do nome */ }
+  }
+  const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
+  const token = Date.now().toString(36);
+  const dados = {
+    doc_path: storagePath, doc_nome: nome, autor: `${nomeRemetente(msg.from)} (via grupo Telegram)`,
+    sug_colab_id: match?.id || null, sug_colab_nome: match?.nome || null,
+    sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade, sug_validade: validade || null, ia,
+  };
+  await salvarSessao(db, { telegram_user_id: "gdoc:" + token, chat_id: String(chatId), estado: "pendente", dados });
+  await cardDocGrupo(B, chatId, token, dados);
+}
+
+async function cardDocGrupo(B: Bot, chatId: number, token: string, d: any) {
+  const venc = d.sug_tem_validade ? `\nValidade: ${d.sug_validade ? escTg(d.sug_validade) : "<i>não detectei</i>"}` : "";
+  const origem = d.ia ? "🔮 li o documento" : "📄 pelo nome do arquivo";
+  if (d.sug_colab_id) {
+    const primeiro = String(d.sug_colab_nome || "").split(" ")[0];
+    await enviar(B, chatId,
+      `📎 <b>${escTg(d.doc_nome)}</b> (${origem})\nPessoa: <b>${escTg(d.sug_colab_nome)}</b>\nTipo: <b>${escTg(d.sug_slot_label)}</b>${venc}\n\nConfirma?`,
+      inline([
+        [{ text: `✅ Anexar p/ ${primeiro}`.slice(0, 60), callback_data: "ganex:" + token }],
+        [{ text: "🏷️ Outro tipo", callback_data: "gtipo:" + token }, { text: "❌ Descartar", callback_data: "gcancel:" + token }],
+      ]));
+  } else {
+    await enviar(B, chatId,
+      `📎 <b>${escTg(d.doc_nome)}</b> (${origem})\n❓ <b>Não identifiquei de quem é.</b> Renomeie o arquivo com o nome da pessoa e reenvie, ou anexe pelo painel do RH / chat privado do bot (lá dá pra buscar o nome).`,
+      inline([[{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+  }
+}
+
+async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: string) {
+  const acao = data.slice(0, data.indexOf(":"));
+  const resto = data.slice(data.indexOf(":") + 1);
+  const token = resto.split(":")[0];
+  const { data: pend } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gdoc:" + token).maybeSingle();
+  const d = pend?.dados;
+  if (!d) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
+
+  if (acao === "gcancel") {
+    await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
+    await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gdoc:" + token);
+    await enviar(B, chatId, "🗑️ Documento descartado.");
+    return;
+  }
+  if (acao === "gtipo") {
+    const linhas = SLOTS_DOC.map((s) => [{ text: s.label.slice(0, 60), callback_data: `gslot:${token}:${s.key}` }]);
+    await enviar(B, chatId, "Qual o <b>tipo</b> do documento?", inline(linhas));
+    return;
+  }
+  if (acao === "gslot") {
+    const slot = slotPorKey(resto.split(":")[1]) || slotPorKey("outro")!;
+    const nd = { ...d, sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade };
+    await db.from("telegram_sessoes").update({ dados: nd }).eq("telegram_user_id", "gdoc:" + token);
+    await cardDocGrupo(B, chatId, token, nd);
+    return;
+  }
+  if (acao === "ganex") {
+    if (!d.sug_colab_id) { await enviar(B, chatId, "Sem pessoa definida — não dá pra anexar."); return; }
+    const slot = slotPorKey(d.sug_slot) || slotPorKey("outro")!;
+    const validade = d.sug_tem_validade ? (d.sug_validade || null) : null;
+    const titulo = `${slot.prefixo} — ${d.doc_nome}`.slice(0, 200);
+    const { data: row, error } = await db.from("rh_documentos").insert({
+      colaborador_id: d.sug_colab_id, titulo, tipo: slot.tipo, storage_path: d.doc_path,
+      validade, validade_na: !d.sug_tem_validade, criado_por: d.autor,
+    }).select().single();
+    if (error) { await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
+    await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
+      acao: "criar", entidade: "rh_documentos", registro_id: row?.id ?? null,
+      descricao: `Telegram (grupo): anexou "${slot.label}" a ${d.sug_colab_nome}`, dados: { tipo: slot.tipo, validade },
+    });
+    await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gdoc:" + token);
+    await enviar(B, chatId, `✅ <b>Anexado!</b> ${escTg(slot.label)} → ficha de <b>${escTg(d.sug_colab_nome)}</b>. 🙌`);
+    return;
+  }
 }
