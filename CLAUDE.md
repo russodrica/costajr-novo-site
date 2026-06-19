@@ -1801,10 +1801,18 @@ externo. Pode pedir esclarecimento de volta. Usar o modelo mais barato (Haiku) n
 - SDK oficial **`@anthropic-ai/sdk`** (v0.105) instalado. Custo ~2 centavos/pergunta (Haiku
   US$1/US$5 por Mtok); formato da chamada validado (401 auth, sem erro de formato).
 
-**PENDENTE DA ADRIANA:** criar/usar uma `ANTHROPIC_API_KEY` (do **console.anthropic.com**,
-conta com **creditos de API** — que e SEPARADO do plano Claude Pro/Max do chat/Claude Code)
-e colar na Vercel + redeploy. Eu NAO digito a chave. Pode por teto de gasto no console.
-Enquanto nao por, a JunIA segue na busca por palavra-chave (sem custo).
+**PROVEDOR DE IA AUTOMATICO (commit 8bc35e4):** a Adriana preferiu a API GRATIS. `juniaIA.ts`
+escolhe sozinho, nesta ordem: (1) `NVIDIA_API_KEY` -> **gpt-oss-120b** (modelo aberto da
+OpenAI hospedado de graca pela NVIDIA em `https://integrate.api.nvidia.com/v1/chat/completions`,
+formato OpenAI/Bearer nvapi-; endpoint validado 403 auth) — GRATIS com limite de requisicoes;
+(2) `ANTHROPIC_API_KEY` -> Claude Haiku (pago, barato); (3) nenhum -> busca por palavra-chave.
+
+**PENDENTE DA ADRIANA:** pegar a chave GRATIS da NVIDIA em **build.nvidia.com/openai/gpt-oss-120b**
+("Get API Key", chave `nvapi-...`) e colar na Vercel como **`NVIDIA_API_KEY`** + redeploy. (Ou,
+se um dia quiser Claude, `ANTHROPIC_API_KEY` do console.anthropic.com — creditos de API SEPARADOS
+do plano Pro/Max.) Eu NAO digito a chave. Enquanto nao por nenhuma, a JunIA segue na busca atual.
+PRIVACIDADE: a base (so categorias permitidas) + a pergunta vao pra nuvem do provedor — ok p/
+assistente interno; as travas (trabalhista/categorias por perfil) limitam o que e enviado.
 
 ## Convencoes desta pasta para o Claude Code
 
