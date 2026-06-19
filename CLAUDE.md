@@ -1965,6 +1965,12 @@ EXCLUSIVAMENTE RH/Admin (todos do grupo veem os documentos — mas RH ja tem ace
   gkbsave/gkbcancel) -> insert portal_kb (vale na hora na JunIA). Documento postado no grupo de base
   -> "use o grupo de documentos". REQUER: criar o grupo + add @cjr_adm_bot (privacidade ja OFF) +
   admin manda /ativar_base. Sem env nova, sem migration.
+- **CHECAGEM + APROVACAO no grupo de base (commit 15c0147):** antes de propor, `checarBaseKb` manda
+  o novo item + a base (portal_kb, ~36 itens) pro LLM e classifica novo|duplicado|contradiz (mostra o
+  item conflitante no card). APROVACAO: `/ativar_base` guarda `aprovador_id`/`aprovador_nome` (quem
+  ativou) em grupo_base.dados; o item fica "aguardando aprovacao de X" e o callback gkbsave SO funciona
+  se `cq.from.id == aprovador_id` (fallback: admin do grupo, p/ registro antigo sem aprovador). Outros
+  enviam, mas so o aprovador publica. gkbcancel idem (so aprovador recusa). pendentes em gkb:+token.
 
 ## Atualizacao 19/06/2026 (parte 4) — Ativos: categoria "Linha Telefonica" separada do aparelho
 
