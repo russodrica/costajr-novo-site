@@ -291,6 +291,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   await responderCallback(B, cq.id);
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
+  if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, chatId, data);
   if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
@@ -604,6 +605,10 @@ async function getGrupoRh(db: any): Promise<string | null> {
   const { data } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "grupo_rh").maybeSingle();
   return data?.dados?.chat_id != null ? String(data.dados.chat_id) : null;
 }
+async function getGrupoBase(db: any): Promise<string | null> {
+  const { data } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "grupo_base").maybeSingle();
+  return data?.dados?.chat_id != null ? String(data.dados.chat_id) : null;
+}
 async function ehAdminGrupo(B: Bot, chatId: number, userId?: number): Promise<boolean> {
   if (!userId) return false;
   const r = await tg(B, "getChatMember", { chat_id: chatId, user_id: userId });
@@ -620,23 +625,46 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
   const chatId = chat.id;
   const texto = String(msg.text || "").trim();
 
+  // ── ativar grupo de DOCUMENTOS ──
   if (/^\/ativar_grupo(@\w+)?/i.test(texto)) {
     if (!(await ehAdminGrupo(B, chatId, msg.from?.id))) {
-      await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode ativar este grupo como inbox de RH.");
+      await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode ativar este grupo.");
       return;
     }
     await salvarSessao(db, { telegram_user_id: "grupo_rh", chat_id: String(chatId), estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "" } });
-    await enviar(B, chatId, "✅ <b>Grupo ativado como inbox de documentos!</b>\nMandem aqui a <b>foto</b> ou o <b>PDF</b> de um documento. Eu leio e pergunto o destino:\n• <b>Pessoa (RH)</b> → arquiva na ficha do colaborador\n• <b>Empresa (Jurídico)</b> → anexa no contrato/fornecedor (Documentos da Empresa)\n\n⚠️ Lembrem: <b>todos deste grupo veem os documentos</b> — mantenham só RH/Admin aqui.");
+    await enviar(B, chatId, "✅ <b>Grupo ativado como inbox de DOCUMENTOS!</b>\nMandem aqui a <b>foto</b> ou o <b>PDF</b> de um documento. Eu leio e pergunto o destino:\n• <b>Pessoa (RH)</b> → arquiva na ficha do colaborador\n• <b>Empresa (Jurídico)</b> → anexa no contrato/fornecedor (Documentos da Empresa)\n\n⚠️ Lembrem: <b>todos deste grupo veem os documentos</b> — mantenham só RH/Admin aqui.");
+    return;
+  }
+  // ── ativar grupo da BASE DE CONHECIMENTO ──
+  if (/^\/ativar_base(@\w+)?/i.test(texto)) {
+    if (!(await ehAdminGrupo(B, chatId, msg.from?.id))) {
+      await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode ativar este grupo.");
+      return;
+    }
+    await salvarSessao(db, { telegram_user_id: "grupo_base", chat_id: String(chatId), estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "" } });
+    await enviar(B, chatId, "✅ <b>Grupo ativado como BASE DE CONHECIMENTO da JunIA!</b>\nMandem aqui as <b>instruções/textos</b> que querem cadastrar. Eu organizo em <b>pergunta + resposta</b> e vocês confirmam pra subir pra base (vale na hora na JunIA).\n\nDica: pra cada assunto, mandem um texto separado.");
     return;
   }
 
-  const reg = await getGrupoRh(db);
-  if (!reg || reg !== String(chatId)) {
-    if (msg.photo || msg.document) await enviar(B, chatId, "Este grupo ainda não está ativado. Um <b>administrador</b> deve enviar <code>/ativar_grupo</code> aqui.");
+  const rh = await getGrupoRh(db);
+  const base = await getGrupoBase(db);
+  const cid = String(chatId);
+
+  // grupo de DOCUMENTOS
+  if (rh && cid === rh) {
+    if (msg.photo || msg.document) return await onDocGrupo(db, B, msg, chatId);
+    return; // texto no grupo de documentos → ignora
+  }
+  // grupo da BASE DE CONHECIMENTO
+  if (base && cid === base) {
+    if (msg.photo || msg.document) { await enviar(B, chatId, "📚 Este grupo é da <b>base de conhecimento</b> (texto). Para enviar documentos, use o grupo de documentos."); return; }
+    if (texto && texto.length >= 15 && !texto.startsWith("/")) return await onTextoKbGrupo(db, B, msg, chatId, texto);
     return;
   }
-  if (msg.photo || msg.document) return await onDocGrupo(db, B, msg, chatId);
-  // texto comum no grupo → ignora (as pessoas conversam ali)
+  // grupo não registrado: só orienta se mandaram doc ou comando de ativacao
+  if (msg.photo || msg.document || /^\/ativar/i.test(texto)) {
+    await enviar(B, chatId, "Este grupo ainda não está ativado. Um <b>administrador</b> deve enviar <code>/ativar_grupo</code> (documentos) ou <code>/ativar_base</code> (base de conhecimento).");
+  }
 }
 
 async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
@@ -786,4 +814,50 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     await enviar(B, chatId, `✅ <b>Anexado!</b> "${escTg(d.doc_nome)}" → empresa <b>${escTg(d.emp_nome)}</b> (Jurídico). 🙌`);
     return;
   }
+}
+
+// ── GRUPO da BASE DE CONHECIMENTO (texto → JunIA) ────────────────────────
+async function onTextoKbGrupo(db: any, B: Bot, msg: any, chatId: number, texto: string) {
+  let pergunta = "", resposta = "", categoria = "Geral";
+  if (llmConfigurado()) {
+    await enviar(B, chatId, "✨ Organizando…");
+    try {
+      const system = `Você organiza conhecimento interno da Costa Júnior Engenharia para um FAQ (a JunIA usa). A partir de um texto livre, gere UMA pergunta clara (como um colaborador perguntaria) e a resposta, em português, objetivo. Não invente além do texto. Responda APENAS JSON: {"pergunta":"...","resposta":"...","categoria":"Geral|Operacional|RH|Financeiro|Comercial|Administrativo"}`;
+      const raw = await gerarTextoLLM(system, [{ role: "user", content: texto.slice(0, 4000) }]);
+      const o = raw ? extrairJson(raw) : null;
+      if (o && o.resposta) { pergunta = String(o.pergunta || "").trim(); resposta = String(o.resposta || "").trim(); categoria = String(o.categoria || "Geral").trim() || "Geral"; }
+    } catch { /* cai no manual */ }
+  }
+  if (!resposta) {
+    const i = texto.indexOf("|");
+    if (i > 0) { pergunta = texto.slice(0, i).trim(); resposta = texto.slice(i + 1).trim(); }
+    if (!resposta) { await enviar(B, chatId, "Não consegui organizar esse texto. Mande no formato <b>Pergunta | Resposta</b> (ou ative a IA na Caixa de Entrada)."); return; }
+  }
+  const token = Date.now().toString(36);
+  const autor = `${nomeRemetente(msg.from)} (via grupo Telegram)`;
+  await salvarSessao(db, { telegram_user_id: "gkb:" + token, chat_id: String(chatId), estado: "pendente", dados: { kb_pergunta: pergunta, kb_resposta: resposta, kb_categoria: categoria, autor } });
+  await enviar(B, chatId,
+    `📚 Vou cadastrar na base:\n\n<b>P:</b> ${escTg(pergunta)}\n<b>R:</b> ${escTg(resposta)}\n<b>Categoria:</b> ${escTg(categoria)}`,
+    inline([[{ text: "✅ Salvar na base", callback_data: "gkbsave:" + token }], [{ text: "❌ Descartar", callback_data: "gkbcancel:" + token }]]));
+}
+
+async function onCallbackKbGrupo(db: any, B: Bot, chatId: number, data: string) {
+  const acao = data.slice(0, data.indexOf(":"));
+  const token = data.slice(data.indexOf(":") + 1);
+  const { data: pend } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gkb:" + token).maybeSingle();
+  const d = pend?.dados;
+  if (!d) { await enviar(B, chatId, "Esse item já foi tratado. 👍"); return; }
+  if (acao === "gkbcancel") {
+    await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gkb:" + token);
+    await enviar(B, chatId, "🗑️ Descartado.");
+    return;
+  }
+  const { data: row, error } = await db.from("portal_kb").insert({ question: d.kb_pergunta, answer: d.kb_resposta, category: d.kb_categoria || "Geral" }).select().single();
+  if (error) { await enviar(B, chatId, "❌ Não salvou: " + escTg(error.message)); return; }
+  await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
+    acao: "criar", entidade: "portal_kb", registro_id: row?.id ?? null,
+    descricao: `Telegram (grupo base): adicionou "${String(d.kb_pergunta).slice(0, 80)}"`, dados: { category: d.kb_categoria },
+  });
+  await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gkb:" + token);
+  await enviar(B, chatId, "✅ <b>Salvo na base!</b> Já vale na JunIA. 🤖");
 }
