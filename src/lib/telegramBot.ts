@@ -291,7 +291,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   await responderCallback(B, cq.id);
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
-  if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, chatId, data);
+  if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, cq, chatId, data);
   if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
@@ -609,6 +609,25 @@ async function getGrupoBase(db: any): Promise<string | null> {
   const { data } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "grupo_base").maybeSingle();
   return data?.dados?.chat_id != null ? String(data.dados.chat_id) : null;
 }
+async function getGrupoBaseInfo(db: any): Promise<any | null> {
+  const { data } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "grupo_base").maybeSingle();
+  return data?.dados || null;
+}
+
+// Compara o novo item com a base existente (IA): "novo" | "duplicado" | "contradiz".
+async function checarBaseKb(db: any, pergunta: string, resposta: string): Promise<any | null> {
+  if (!llmConfigurado()) return null;
+  try {
+    const { data: kb } = await db.from("portal_kb").select("question, answer").limit(500);
+    if (!kb?.length) return null;
+    const base = kb.slice(0, 150).map((k: any) => `- P: ${k.question}\n  R: ${k.answer}`).join("\n");
+    const system = `Você compara um NOVO item de FAQ interno com a base já existente. Classifique o NOVO como: "novo" (não há nada equivalente), "duplicado" (já existe item que responde à MESMA coisa) ou "contradiz" (existe item cuja resposta é INCOMPATÍVEL com a do novo). Responda APENAS JSON: {"status":"novo|duplicado|contradiz","item":"a pergunta existente conflitante ou vazio","resposta_existente":"a resposta existente conflitante ou vazio","motivo":"curto"}`;
+    const raw = await gerarTextoLLM(system, [{ role: "user", content: `NOVO:\nP: ${pergunta}\nR: ${resposta}\n\nBASE EXISTENTE:\n${base}` }]);
+    const o = raw ? extrairJson(raw) : null;
+    if (o && o.status) return { status: String(o.status).toLowerCase(), item: String(o.item || ""), resposta_existente: String(o.resposta_existente || ""), motivo: String(o.motivo || "") };
+  } catch { /* sem checagem → segue */ }
+  return null;
+}
 async function ehAdminGrupo(B: Bot, chatId: number, userId?: number): Promise<boolean> {
   if (!userId) return false;
   const r = await tg(B, "getChatMember", { chat_id: chatId, user_id: userId });
@@ -641,8 +660,8 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
       await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode ativar este grupo.");
       return;
     }
-    await salvarSessao(db, { telegram_user_id: "grupo_base", chat_id: String(chatId), estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "" } });
-    await enviar(B, chatId, "✅ <b>Grupo ativado como BASE DE CONHECIMENTO da JunIA!</b>\nMandem aqui as <b>instruções/textos</b> que querem cadastrar. Eu organizo em <b>pergunta + resposta</b> e vocês confirmam pra subir pra base (vale na hora na JunIA).\n\nDica: pra cada assunto, mandem um texto separado.");
+    await salvarSessao(db, { telegram_user_id: "grupo_base", chat_id: String(chatId), estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "", aprovador_id: msg.from?.id || null, aprovador_nome: nomeRemetente(msg.from) } });
+    await enviar(B, chatId, `✅ <b>Grupo ativado como BASE DE CONHECIMENTO da JunIA!</b>\nMandem aqui as <b>instruções/textos</b> que querem cadastrar. Eu organizo em <b>pergunta + resposta</b>, <b>checo se já existe ou se contradiz</b> a base, e mostro pra aprovação.\n\n🔒 <b>Só ${escTg(nomeRemetente(msg.from))}</b> (quem ativou) pode <b>aprovar e salvar</b> na base. As demais pessoas enviam, mas a publicação depende dessa aprovação.`);
     return;
   }
 
@@ -833,31 +852,50 @@ async function onTextoKbGrupo(db: any, B: Bot, msg: any, chatId: number, texto: 
     if (i > 0) { pergunta = texto.slice(0, i).trim(); resposta = texto.slice(i + 1).trim(); }
     if (!resposta) { await enviar(B, chatId, "Não consegui organizar esse texto. Mande no formato <b>Pergunta | Resposta</b> (ou ative a IA na Caixa de Entrada)."); return; }
   }
+  // checagem de duplicado/contradição na base + quem aprova
+  const check = await checarBaseKb(db, pergunta, resposta);
+  const info = await getGrupoBaseInfo(db);
+  const aprovadorNome = info?.aprovador_nome || "o responsável";
+
+  let aviso = "";
+  if (check?.status === "duplicado") aviso = `\n\n⚠️ <b>Parece DUPLICADO</b> de: "${escTg(check.item)}".${check.motivo ? " " + escTg(check.motivo) : ""}`;
+  else if (check?.status === "contradiz") aviso = `\n\n⛔ <b>CONTRADIZ a base</b>: "${escTg(check.item)}" (hoje diz: ${escTg(check.resposta_existente)}). Confira qual está certo antes de aprovar.`;
+
   const token = Date.now().toString(36);
   const autor = `${nomeRemetente(msg.from)} (via grupo Telegram)`;
-  await salvarSessao(db, { telegram_user_id: "gkb:" + token, chat_id: String(chatId), estado: "pendente", dados: { kb_pergunta: pergunta, kb_resposta: resposta, kb_categoria: categoria, autor } });
+  await salvarSessao(db, { telegram_user_id: "gkb:" + token, chat_id: String(chatId), estado: "pendente", dados: { kb_pergunta: pergunta, kb_resposta: resposta, kb_categoria: categoria, autor, aprovador_id: info?.aprovador_id || null } });
   await enviar(B, chatId,
-    `📚 Vou cadastrar na base:\n\n<b>P:</b> ${escTg(pergunta)}\n<b>R:</b> ${escTg(resposta)}\n<b>Categoria:</b> ${escTg(categoria)}`,
-    inline([[{ text: "✅ Salvar na base", callback_data: "gkbsave:" + token }], [{ text: "❌ Descartar", callback_data: "gkbcancel:" + token }]]));
+    `📚 <b>Proposta para a base</b> (por ${escTg(nomeRemetente(msg.from))}):\n\n<b>P:</b> ${escTg(pergunta)}\n<b>R:</b> ${escTg(resposta)}\n<b>Categoria:</b> ${escTg(categoria)}${aviso}\n\n🔒 Aguardando aprovação de <b>${escTg(aprovadorNome)}</b>.`,
+    inline([[{ text: "✅ Aprovar e salvar", callback_data: "gkbsave:" + token }], [{ text: "❌ Recusar", callback_data: "gkbcancel:" + token }]]));
 }
 
-async function onCallbackKbGrupo(db: any, B: Bot, chatId: number, data: string) {
+async function onCallbackKbGrupo(db: any, B: Bot, cq: any, chatId: number, data: string) {
   const acao = data.slice(0, data.indexOf(":"));
   const token = data.slice(data.indexOf(":") + 1);
   const { data: pend } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gkb:" + token).maybeSingle();
   const d = pend?.dados;
   if (!d) { await enviar(B, chatId, "Esse item já foi tratado. 👍"); return; }
+
+  // só o aprovador (quem ativou o grupo) decide; fallback: admin do grupo (registro antigo sem aprovador)
+  const tapId = cq?.from?.id;
+  const podeAprovar = d.aprovador_id ? String(tapId) === String(d.aprovador_id) : await ehAdminGrupo(B, chatId, tapId);
+  if (!podeAprovar) {
+    const info = await getGrupoBaseInfo(db);
+    await enviar(B, chatId, `🔒 Só <b>${escTg(info?.aprovador_nome || "quem ativou o grupo")}</b> pode aprovar/recusar o que sobe pra base.`);
+    return;
+  }
+
   if (acao === "gkbcancel") {
     await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gkb:" + token);
-    await enviar(B, chatId, "🗑️ Descartado.");
+    await enviar(B, chatId, "🗑️ Recusado — não foi pra base.");
     return;
   }
   const { data: row, error } = await db.from("portal_kb").insert({ question: d.kb_pergunta, answer: d.kb_resposta, category: d.kb_categoria || "Geral" }).select().single();
   if (error) { await enviar(B, chatId, "❌ Não salvou: " + escTg(error.message)); return; }
   await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
     acao: "criar", entidade: "portal_kb", registro_id: row?.id ?? null,
-    descricao: `Telegram (grupo base): adicionou "${String(d.kb_pergunta).slice(0, 80)}"`, dados: { category: d.kb_categoria },
+    descricao: `Telegram (grupo base): aprovado e adicionado "${String(d.kb_pergunta).slice(0, 80)}"`, dados: { category: d.kb_categoria },
   });
   await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gkb:" + token);
-  await enviar(B, chatId, "✅ <b>Salvo na base!</b> Já vale na JunIA. 🤖");
+  await enviar(B, chatId, "✅ <b>Aprovado e salvo na base!</b> Já vale na JunIA. 🤖");
 }
