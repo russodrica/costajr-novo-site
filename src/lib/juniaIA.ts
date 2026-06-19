@@ -90,7 +90,18 @@ ${base}`;
       { role: "user", content: pergunta },
     ];
 
-    const saida = await gerarTextoLLM(sistema, mensagens);
+    // Chamada à IA isolada: se ela LANÇAR (ex.: limite gratuito por minuto / 429),
+    // NÃO criamos pendência falsa nem caímos na busca por palavra-chave — pedimos pra
+    // tentar de novo. (A base provavelmente tem a resposta; foi só a IA indisponível.)
+    let saida: string | null = null;
+    try {
+      saida = await gerarTextoLLM(sistema, mensagens);
+    } catch {
+      return {
+        resposta: "Recebi muitas perguntas em sequência e atingi o limite momentâneo da IA gratuita. 🙏 Tente de novo daqui a pouquinho — a resposta provavelmente já está na nossa base.",
+        categoria, precisaResposta: false, fonte: "redirecionamento",
+      };
+    }
     const out = saida ? parseSaida(saida) : null;
     if (!out) return responderJunIA(claims, pergunta); // sem saída/parse -> fallback seguro
 
