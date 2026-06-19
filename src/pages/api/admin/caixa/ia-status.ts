@@ -5,6 +5,7 @@ import { gerarTextoLLM } from "~/lib/llm";
 export const prerender = false;
 
 function provedor(): string | null {
+  if (process.env.GROQ_API_KEY) return "Groq (gpt-oss)";
   if (process.env.GEMINI_API_KEY) return "Gemini (Google)";
   if (process.env.NVIDIA_API_KEY) return "NVIDIA gpt-oss";
   if (process.env.ANTHROPIC_API_KEY) return "Claude (Anthropic)";

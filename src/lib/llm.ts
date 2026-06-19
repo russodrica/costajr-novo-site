@@ -8,15 +8,17 @@
 // ============================================================================
 import Anthropic from "@anthropic-ai/sdk";
 
+const MODELO_GROQ = "openai/gpt-oss-120b";
 const MODELO_NVIDIA = "openai/gpt-oss-120b";
 const MODELO_CLAUDE = "claude-haiku-4-5";
 
+const envGroq = () => process.env.GROQ_API_KEY ?? import.meta.env.GROQ_API_KEY;
 const envGemini = () => process.env.GEMINI_API_KEY ?? import.meta.env.GEMINI_API_KEY;
 const envNvidia = () => process.env.NVIDIA_API_KEY ?? import.meta.env.NVIDIA_API_KEY;
 const envClaude = () => process.env.ANTHROPIC_API_KEY ?? import.meta.env.ANTHROPIC_API_KEY;
 
 export function llmConfigurado(): boolean {
-  return !!(envGemini() || envNvidia() || envClaude());
+  return !!(envGroq() || envGemini() || envNvidia() || envClaude());
 }
 export function geminiConfigurado(): boolean {
   return !!envGemini();
@@ -57,6 +59,23 @@ async function chamarGemini(key: string, system: string, mensagens: HistMsg[]): 
   return null;
 }
 
+async function chamarGroq(key: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
+  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: MODELO_GROQ,
+      max_tokens: 1200,
+      temperature: 0.4,
+      messages: [{ role: "system", content: system }, ...mensagens],
+    }),
+  });
+  if (!r.ok) throw new Error(`Groq ${r.status}: ${(await r.text()).slice(0, 160)}`);
+  const j: any = await r.json();
+  const msg = j?.choices?.[0]?.message;
+  return ((msg?.content || msg?.reasoning_content || "") as string).trim() || null;
+}
+
 async function chamarNvidia(key: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
   const r = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
     method: "POST",
@@ -91,6 +110,7 @@ async function chamarClaude(key: string, system: string, mensagens: HistMsg[]): 
 // lança o último erro se todos os configurados falharam (quem chama trata/faz fallback).
 export async function gerarTextoLLM(system: string, mensagens: HistMsg[]): Promise<string | null> {
   const tentativas: Array<() => Promise<string | null>> = [];
+  const gq = envGroq(); if (gq) tentativas.push(() => chamarGroq(gq, system, mensagens));
   const gm = envGemini(); if (gm) tentativas.push(() => chamarGemini(gm, system, mensagens));
   const nv = envNvidia(); if (nv) tentativas.push(() => chamarNvidia(nv, system, mensagens));
   const an = envClaude(); if (an) tentativas.push(() => chamarClaude(an, system, mensagens));
