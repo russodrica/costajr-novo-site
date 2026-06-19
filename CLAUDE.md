@@ -1782,6 +1782,30 @@ por nome de coluna pode precisar de ajuste fino** (ex.: FATURADA/EM ANDAMENTO co
 "em aberto" hoje pois nao tem winnerDate; se a Adriana quiser que contem como ganha,
 mapear os ids de step). idStep dos won-steps a confirmar com ela.
 
+## Atualizacao 19/06/2026 — JunIA inteligente com a API do Claude (Haiku)
+
+**Pedido da Adriana:** humanizar a JunIA e fazer ela ENTENDER a pergunta pelo sentido
+(cada um pergunta diferente), achando a resposta cadastrada na base — SEM buscar nada
+externo. Pode pedir esclarecimento de volta. Usar o modelo mais barato (Haiku) na conta dela.
+
+**Feito (commit 01b1bdc):**
+- `src/lib/juniaIA.ts` — `responderJuniaIA(claims, pergunta, historico)`: RAG sobre
+  `portal_kb` (so categorias que o perfil pode ver = LGPD; trava trabalhista ANTES do
+  modelo). Manda os Q&A permitidos + a pergunta + historico da conversa pro **Claude
+  Haiku** (`claude-haiku-4-5`), que faz match SEMANTICO, humaniza, OU pede esclarecimento,
+  OU sinaliza "sem_resposta" (vira pendencia pro gestor, fluxo que ja existia). System
+  prompt proibe conhecimento externo. Saida em JSON {tipo, texto} parseada com fallback.
+- **Fallback seguro:** sem `ANTHROPIC_API_KEY` OU em qualquer erro (cota/rede/parse) ->
+  cai no motor de busca por palavra-chave atual (`junia.ts`, `responderJunIA`). Nada quebra.
+- Endpoint `/api/portal/junia` carrega o historico (`portal_messages`) e chama a versao IA.
+- SDK oficial **`@anthropic-ai/sdk`** (v0.105) instalado. Custo ~2 centavos/pergunta (Haiku
+  US$1/US$5 por Mtok); formato da chamada validado (401 auth, sem erro de formato).
+
+**PENDENTE DA ADRIANA:** criar/usar uma `ANTHROPIC_API_KEY` (do **console.anthropic.com**,
+conta com **creditos de API** — que e SEPARADO do plano Claude Pro/Max do chat/Claude Code)
+e colar na Vercel + redeploy. Eu NAO digito a chave. Pode por teto de gasto no console.
+Enquanto nao por, a JunIA segue na busca por palavra-chave (sem custo).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
