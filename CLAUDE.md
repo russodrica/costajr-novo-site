@@ -1854,6 +1854,21 @@ de palavra-chave. Com a chave: "Organizar com IA" na base e "IA le o documento" 
 `/api/admin/caixa/*` mapeado p/ modulo `caixa-entrada` (moduloDaRotaApi) + bloqueioSeSoLeitura
 por endpoint (LGPD: so admin+rh editam).
 
+**IA ATIVADA E FUNCIONANDO (19/06/2026):** a Adriana colou a `GEMINI_API_KEY` na Vercel
+(eu guiei pelo Chrome; ela digita/cola a chave — eu nao) e reimplantou. Medidor de status
+criado: `GET /api/admin/caixa/ia-status` + faixa colorida no topo da /admin/caixa-entrada
+(verde=IA ativa / vermelho=erro com motivo / amarelo=sem chave) — usar SEMPRE p/ diagnosticar
+IA sem adivinhar. **LICAO CRITICA (Gemini free tier): `gemini-2.0-flash` retornou HTTP 429
+"exceeded your current quota / check billing" mesmo em chave nova** — mas **cada MODELO do
+Gemini tem cota gratuita SEPARADA**. Fix (commits b639e37/413181a): `src/lib/llm.ts`
+`chamarGemini` e `lerDocumentoGemini` percorrem `MODELOS_GEMINI` = [gemini-2.0-flash,
+gemini-2.5-flash, gemini-flash-latest, gemini-1.5-flash] e usam o 1o que responder; e
+`gerarTextoLLM` tenta Gemini->NVIDIA->Claude EM ORDEM caindo pro proximo no erro. Resultado:
+ficou **GRATIS e funcionando** (um dos modelos tinha cota). Se um dia TODOS derem 429: ela
+NAO consegue NVIDIA (conta pede verificacao no suporte) — Plano C pronto = **Groq**
+(console.groq.com, chave na hora sem cartao, OpenAI-compat, mesmo gpt-oss) — basta adicionar
+um provedor em llm.ts + var GROQ_API_KEY.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
