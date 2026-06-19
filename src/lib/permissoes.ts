@@ -158,6 +158,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   ] },
   { id: "rh", label: "RH & Pessoas", itens: [
     { key: "rh", label: "RH — Pessoas", icon: "🧑‍💼", href: "/admin/rh" },
+    { key: "caixa-entrada", label: "Caixa de Entrada", icon: "📥", href: "/admin/caixa-entrada" },
     { key: "recrutamento", label: "Recrutamento (R&S)", icon: "🧲", href: "/admin/recrutamento" },
     { key: "avaliacoes", label: "Avaliação de Desempenho", icon: "📊", href: "/admin/avaliacoes" },
     { key: "clima", label: "Pesquisa de Clima", icon: "🌡️", href: "/admin/clima" },
@@ -308,6 +309,7 @@ export function moduloDaRotaApi(pathname: string): string | null {
   if (["login", "logout", "forgot-senha"].includes(seg)) return null;
   // especiais (a pasta não bate com a key do módulo)
   if (seg === "fin") return "financeiro";
+  if (seg === "caixa") return "caixa-entrada";
   if (seg === "d4sign" || seg === "termos") return "assinaturas";
   if (seg === "permissoes" || seg === "permissoes-usuarios") return "permissoes";
   if (seg === "portal") {

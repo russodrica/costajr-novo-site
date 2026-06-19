@@ -1,0 +1,317 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { supabaseAdmin } from "~/lib/supabase";
+import { SLOTS_DOC } from "~/lib/slotsDoc";
+import { llmConfigurado, geminiConfigurado } from "~/lib/llm";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+
+const db = supabaseAdmin();
+const { data: colabsRaw } = await db
+  .from("rh_colaboradores").select("id, nome, status").neq("status", "desligado").order("nome");
+const colaboradores = (colabsRaw || []).map((c: any) => ({ id: c.id, nome: c.nome }));
+const { data: kbRaw } = await db.from("portal_kb").select("category").limit(3000);
+const categorias = Array.from(
+  new Set((kbRaw || []).map((k: any) => (k.category || "Geral")).filter(Boolean)),
+).sort();
+
+const iaAtiva = llmConfigurado();
+const iaDoc = geminiConfigurado();
+const dados = { colaboradores, slots: SLOTS_DOC, categorias, iaAtiva, iaDoc };
+const dadosJson = JSON.stringify(dados).replace(/</g, "\\u003c");
+---
+
+<Admin title="Caixa de Entrada" current="caixa-entrada">
+  <div class="toolbar">
+    <span class="toolbar-title"><i class="ti ti-inbox" aria-hidden="true"></i> Caixa de Entrada</span>
+  </div>
+  <p class="cx-sub">Um lugar rápido (funciona no celular) pra alimentar o sistema: jogue conhecimento na base da
+    <b>JunIA</b> e solte <b>documentos</b> que o sistema sugere de quem é e onde anexar — você só confirma.</p>
+
+  <div class="cx-tabs">
+    <button class="cx-tab on" data-tab="kb" type="button"><i class="ti ti-brain"></i> Base de Conhecimento</button>
+    <button class="cx-tab" data-tab="doc" type="button"><i class="ti ti-file-text"></i> Documentos</button>
+  </div>
+
+  <!-- ABA: Base de Conhecimento -->
+  <section id="paneKb" class="cx-pane">
+    <div class="card cx-col">
+      <div class="cx-card-title"><i class="ti ti-sparkles"></i> 1. Cole um texto e a IA organiza (opcional)</div>
+      {iaAtiva ? (
+        <p class="cx-help">Cole uma anotação, e-mail ou instrução. A IA transforma em <b>pergunta + resposta</b> pra você revisar.</p>
+      ) : (
+        <div class="cx-banner"><b>IA ainda não ativada.</b> Você pode preencher manualmente abaixo. Para ligar a IA, falta a chave <code>GEMINI_API_KEY</code> na Vercel.</div>
+      )}
+      <textarea id="kbTexto" rows="4" placeholder="Ex.: O prazo do Santander para liberar acesso é de 5 dias úteis após o envio dos documentos..."></textarea>
+      <div style="margin-top:8px">
+        <button id="btnOrganizar" class="btn btn-secondary btn-sm" type="button"><i class="ti ti-wand"></i> Organizar com IA</button>
+      </div>
+    </div>
+
+    <form id="formKb" class="card cx-col">
+      <div class="cx-card-title"><i class="ti ti-database-plus"></i> 2. Revise e salve na base</div>
+      <p class="cx-help">O que você salvar entra <b>na hora</b> na JunIA (Fórum), respeitando as categorias dos perfis.</p>
+      <label class="cx-lbl">Pergunta (como o colaborador perguntaria)
+        <input id="kbPergunta" type="text" maxlength="500" placeholder="Ex.: Qual o prazo do Santander para liberar acesso?" />
+      </label>
+      <label class="cx-lbl">Resposta
+        <textarea id="kbResposta" rows="4" placeholder="Resposta clara e objetiva..."></textarea>
+      </label>
+      <label class="cx-lbl">Categoria
+        <input id="kbCategoria" type="text" list="cxCats" value="Geral" placeholder="Geral" />
+        <datalist id="cxCats">{categorias.map((c) => <option value={c}></option>)}</datalist>
+      </label>
+      <div style="margin-top:10px">
+        <button id="btnSalvarKb" class="btn" type="submit"><i class="ti ti-check"></i> Salvar na base</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ABA: Documentos -->
+  <section id="paneDoc" class="cx-pane" style="display:none">
+    <div class="card">
+      <div class="cx-card-title"><i class="ti ti-upload"></i> Solte os documentos aqui</div>
+      <p class="cx-help">
+        Envie um ou vários arquivos (PDF, foto ou Word). {iaDoc
+          ? <span>A IA <b>lê o documento</b> e sugere de quem é, o tipo e a validade.</span>
+          : <span>O sistema sugere pelo <b>nome do arquivo</b>. (Para a IA ler o conteúdo, falta a chave <code>GEMINI_API_KEY</code> na Vercel.)</span>}
+        Você confere e clica em <b>Anexar</b> — vai direto pra ficha da pessoa no RH.
+      </p>
+      <div id="dropzone" class="cx-dropzone">
+        <i class="ti ti-cloud-upload" style="font-size:30px;color:var(--ink-light)"></i>
+        <div>Arraste arquivos aqui ou</div>
+        <button id="btnEscolherDocs" class="btn btn-secondary btn-sm" type="button"><i class="ti ti-folder"></i> Escolher arquivos</button>
+      </div>
+      <div id="docCards"></div>
+    </div>
+  </section>
+
+  <div id="cxToast" class="cx-toast"></div>
+  <script type="application/json" id="caixaData" set:html={dadosJson}></script>
+
+  <script>
+    const DADOS = JSON.parse(document.getElementById("caixaData")?.textContent || "{}");
+    const COLABS = DADOS.colaboradores || [];
+    const SLOTS = DADOS.slots || [];
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    let toastT;
+    function toast(msg, ok = true) {
+      const t = $("cxToast"); if (!t) return;
+      t.textContent = msg;
+      t.style.background = ok ? "#16A34A" : "#C1272D";
+      t.classList.add("show");
+      clearTimeout(toastT);
+      toastT = setTimeout(() => t.classList.remove("show"), 4200);
+    }
+
+    // ── Abas ──────────────────────────────────────────────────────────────
+    document.querySelectorAll(".cx-tab").forEach((tb) => tb.addEventListener("click", () => {
+      document.querySelectorAll(".cx-tab").forEach((x) => x.classList.remove("on"));
+      tb.classList.add("on");
+      const k = tb.getAttribute("data-tab");
+      $("paneKb").style.display = k === "kb" ? "" : "none";
+      $("paneDoc").style.display = k === "doc" ? "" : "none";
+    }));
+
+    // ── Base de Conhecimento ──────────────────────────────────────────────
+    async function organizarIA() {
+      const texto = ($("kbTexto").value || "").trim();
+      if (!texto) { toast("Cole um texto primeiro.", false); return; }
+      const btn = $("btnOrganizar"); const o = btn.innerHTML; btn.disabled = true; btn.textContent = "Organizando…";
+      try {
+        const r = await fetch("/api/admin/caixa/kb-organizar", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ texto, categorias: DADOS.categorias }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Falha ao organizar.");
+        if (!d.ia) { toast("A IA não está ativa ainda — preencha manualmente abaixo.", false); }
+        else {
+          $("kbPergunta").value = d.pergunta || "";
+          $("kbResposta").value = d.resposta || "";
+          $("kbCategoria").value = d.categoria || "Geral";
+          toast("Pronto! Revise e clique em Salvar. ✏️");
+        }
+      } catch (e) { toast(e.message, false); }
+      finally { btn.disabled = false; btn.innerHTML = o; }
+    }
+
+    async function salvarKb(ev) {
+      ev.preventDefault();
+      const pergunta = ($("kbPergunta").value || "").trim();
+      const resposta = ($("kbResposta").value || "").trim();
+      const categoria = ($("kbCategoria").value || "Geral").trim() || "Geral";
+      if (!pergunta || !resposta) { toast("Preencha a pergunta e a resposta.", false); return; }
+      const btn = $("btnSalvarKb"); const o = btn.innerHTML; btn.disabled = true; btn.textContent = "Salvando…";
+      try {
+        const r = await fetch("/api/admin/caixa/kb", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ pergunta, resposta, categoria }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Falha ao salvar.");
+        toast("Salvo! Já está valendo na JunIA. ✅");
+        $("kbPergunta").value = ""; $("kbResposta").value = ""; $("kbTexto").value = "";
+      } catch (e) { toast(e.message, false); }
+      finally { btn.disabled = false; btn.innerHTML = o; }
+    }
+
+    // ── Documentos ────────────────────────────────────────────────────────
+    function escolherDocs() {
+      const picker = document.createElement("input");
+      picker.type = "file"; picker.multiple = true;
+      picker.accept = ".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx";
+      picker.onchange = () => { Array.from(picker.files || []).forEach(processarArquivo); };
+      picker.click();
+    }
+
+    const optsColab = (sel) => `<option value="">— escolher pessoa —</option>` +
+      COLABS.map((c) => `<option value="${c.id}"${c.id === sel ? " selected" : ""}>${esc(c.nome)}</option>`).join("");
+    const optsSlot = (sel) => SLOTS.map((s) => `<option value="${s.key}"${s.key === sel ? " selected" : ""}>${esc(s.label)}</option>`).join("");
+
+    let seq = 0;
+    async function processarArquivo(file) {
+      const id = "dc" + (++seq);
+      const wrap = document.createElement("div");
+      wrap.id = id; wrap.className = "doc-card";
+      wrap.innerHTML = `<div class="dc-status">⏳ Enviando ${esc(file.name)}…</div>`;
+      $("docCards").prepend(wrap);
+      try {
+        const r1 = await fetch("/api/admin/caixa/doc-upload-url", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ nome: file.name, content_type: file.type }),
+        });
+        const d1 = await r1.json();
+        if (!r1.ok) throw new Error(d1.error || "Falha ao preparar o envio.");
+        const r2 = await fetch(d1.signed_url, { method: "PUT", headers: { "content-type": file.type || "application/octet-stream" }, body: file });
+        if (!r2.ok) throw new Error("Falha no envio do arquivo (HTTP " + r2.status + ").");
+        wrap.querySelector(".dc-status").textContent = DADOS.iaDoc ? "🔮 Lendo o documento com IA…" : "🔎 Analisando…";
+        const r3 = await fetch("/api/admin/caixa/doc-sugerir", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path: d1.path, nome_arquivo: file.name, content_type: file.type, usar_ia: DADOS.iaDoc }),
+        });
+        const s = await r3.json();
+        if (!r3.ok) throw new Error(s.error || "Falha na sugestão.");
+        renderCard(wrap, file, d1.path, s);
+      } catch (e) {
+        wrap.innerHTML = `<div class="dc-err">⚠️ ${esc(file.name)} — ${esc(e.message)}</div>`;
+      }
+    }
+
+    function renderCard(wrap, file, path, s) {
+      const conf = s.confianca === "alta" ? ["#DCFCE7", "#166534", "Sugestão confiável"]
+        : s.confianca === "media" ? ["#FEF3C7", "#92400E", "Confira a sugestão"]
+        : ["#FEE2E2", "#991B1B", "Defina a pessoa"];
+      const origem = s.ia_usada ? "🔮 lido por IA" : "📄 sugerido pelo nome do arquivo";
+      wrap.className = "doc-card";
+      wrap.innerHTML = `
+        <div class="dc-head"><span class="dc-file">📎 ${esc(file.name)}</span>
+          <span class="dc-chip" style="background:${conf[0]};color:${conf[1]}">${conf[2]}</span></div>
+        <div class="dc-grid">
+          <label class="dc-l">Pessoa<select class="dc-colab">${optsColab(s.colaborador_id)}</select></label>
+          <label class="dc-l">Tipo / onde anexar<select class="dc-slot">${optsSlot(s.slot)}</select></label>
+          <label class="dc-l dc-val">Validade<input type="date" class="dc-validade" value="${s.validade || ""}"></label>
+          <label class="dc-na"><input type="checkbox" class="dc-semvenc"> Sem vencimento</label>
+        </div>
+        <div class="dc-foot">
+          <span class="dc-origem">${origem}</span><span style="flex:1"></span>
+          <button class="btn btn-secondary btn-sm dc-descartar" type="button">Descartar</button>
+          <button class="btn btn-sm dc-anexar" type="button">✓ Anexar à ficha</button>
+        </div>`;
+      const selSlot = wrap.querySelector(".dc-slot");
+      const valWrap = wrap.querySelector(".dc-val");
+      const naWrap = wrap.querySelector(".dc-na");
+      const semv = wrap.querySelector(".dc-semvenc");
+      const sync = () => {
+        const sd = SLOTS.find((x) => x.key === selSlot.value);
+        const tem = !!(sd && sd.validade);
+        valWrap.style.display = tem ? "" : "none";
+        naWrap.style.display = tem ? "" : "none";
+      };
+      selSlot.addEventListener("change", sync); sync();
+      semv.addEventListener("change", () => { wrap.querySelector(".dc-validade").disabled = semv.checked; });
+      wrap.querySelector(".dc-descartar").addEventListener("click", () => descartar(wrap, path));
+      wrap.querySelector(".dc-anexar").addEventListener("click", () => anexar(wrap, file, path));
+    }
+
+    async function anexar(wrap, file, path) {
+      const colaborador_id = wrap.querySelector(".dc-colab").value;
+      const slot = wrap.querySelector(".dc-slot").value;
+      if (!colaborador_id) { toast("Escolha a pessoa antes de anexar.", false); return; }
+      const semv = wrap.querySelector(".dc-semvenc").checked;
+      const validade = wrap.querySelector(".dc-validade").value;
+      const btn = wrap.querySelector(".dc-anexar"); btn.disabled = true; btn.textContent = "Anexando…";
+      try {
+        const r = await fetch("/api/admin/caixa/doc-anexar", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path, nome_arquivo: file.name, colaborador_id, slot, validade, validade_na: semv }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Falha ao anexar.");
+        const lbl = (SLOTS.find((x) => x.key === slot) || {}).label || "documento";
+        wrap.className = "doc-card done";
+        wrap.innerHTML = `<div class="dc-ok">✅ Anexado a <b>${esc(d.colaborador_nome || "")}</b> — ${esc(lbl)}</div>`;
+        toast("Documento anexado à ficha! ✅");
+      } catch (e) { toast(e.message, false); btn.disabled = false; btn.textContent = "✓ Anexar à ficha"; }
+    }
+
+    async function descartar(wrap, path) {
+      try { await fetch("/api/admin/caixa/doc-descartar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path }) }); } catch (e) { /* ignora */ }
+      wrap.remove();
+    }
+
+    // ── Wiring ────────────────────────────────────────────────────────────
+    $("btnOrganizar") && $("btnOrganizar").addEventListener("click", organizarIA);
+    $("formKb") && $("formKb").addEventListener("submit", salvarKb);
+    $("btnEscolherDocs") && $("btnEscolherDocs").addEventListener("click", escolherDocs);
+    const dz = $("dropzone");
+    if (dz) {
+      ["dragover", "dragenter"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("over"); }));
+      ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("over"); }));
+      dz.addEventListener("drop", (e) => { Array.from((e.dataTransfer && e.dataTransfer.files) || []).forEach(processarArquivo); });
+    }
+  </script>
+
+  <style is:global>
+    .cx-sub { font-size: .9rem; color: var(--ink-mid); margin: 4px 0 16px; max-width: 760px; line-height: 1.5; }
+    .cx-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .cx-tab { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border: 1px solid var(--border); background: #fff; border-radius: 10px; font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: .88rem; color: var(--ink-mid); cursor: pointer; transition: all .15s; }
+    .cx-tab:hover { border-color: var(--brand); color: var(--brand); }
+    .cx-tab.on { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: var(--shadow-sm); }
+    .cx-pane { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    @media (max-width: 860px) { .cx-pane { grid-template-columns: 1fr; } }
+    .cx-col { display: flex; flex-direction: column; }
+    .cx-card-title { font-family: 'Montserrat', sans-serif; font-size: .98rem; font-weight: 800; color: var(--ink); margin-bottom: 8px; display: flex; align-items: center; gap: 7px; }
+    .cx-help { font-size: .82rem; color: var(--ink-light); margin: 0 0 12px; line-height: 1.5; }
+    .cx-banner { background: var(--warning-bg, #FEF3C7); color: var(--warning-fg, #92400E); border: 1px solid #FDE68A; border-radius: 9px; padding: 10px 12px; font-size: .82rem; margin-bottom: 12px; line-height: 1.45; }
+    .cx-banner code, .cx-help code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px; font-size: .92em; }
+    .cx-lbl { display: block; font-size: .8rem; font-weight: 700; color: var(--ink-mid); margin-bottom: 12px; }
+    .cx-lbl input, .cx-lbl textarea, #kbTexto { width: 100%; margin-top: 5px; }
+    /* Dropzone */
+    .cx-dropzone { border: 2px dashed var(--border-strong, #CBD5E1); border-radius: 12px; padding: 26px 18px; text-align: center; color: var(--ink-mid); display: flex; flex-direction: column; align-items: center; gap: 9px; transition: all .15s; font-size: .9rem; }
+    .cx-dropzone.over { border-color: var(--brand); background: var(--brand-50, #FEF2F2); }
+    /* Cartões de documento */
+    #docCards { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+    .doc-card { border: 1px solid var(--border); border-radius: 12px; padding: 13px 15px; background: #fff; box-shadow: var(--shadow-xs); }
+    .doc-card.done { background: #F0FDF4; border-color: #BBF7D0; }
+    .dc-status { font-size: .88rem; color: var(--ink-mid); font-weight: 600; }
+    .dc-err { font-size: .86rem; color: #991B1B; font-weight: 600; }
+    .dc-ok { font-size: .92rem; color: #166534; font-weight: 700; }
+    .dc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+    .dc-file { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: .9rem; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dc-chip { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+    .dc-grid { display: grid; grid-template-columns: 1.4fr 1.4fr 1fr auto; gap: 11px; align-items: end; }
+    @media (max-width: 720px) { .dc-grid { grid-template-columns: 1fr 1fr; } }
+    .dc-l { display: flex; flex-direction: column; font-size: .74rem; font-weight: 700; color: var(--ink-mid); gap: 4px; }
+    .dc-l select, .dc-l input { width: 100%; }
+    .dc-na { display: flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; color: var(--ink-mid); padding-bottom: 8px; }
+    .dc-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+    .dc-origem { font-size: .74rem; color: var(--ink-light); font-style: italic; }
+    /* Toast */
+    .cx-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); background: #16A34A; color: #fff; padding: 12px 20px; border-radius: 10px; font-weight: 700; font-size: .9rem; box-shadow: 0 8px 26px rgba(0,0,0,.2); opacity: 0; pointer-events: none; transition: all .25s; z-index: 9999; max-width: 90vw; }
+    .cx-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</Admin>

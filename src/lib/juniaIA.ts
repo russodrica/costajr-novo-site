@@ -12,81 +12,14 @@
 // Segurança/custo: só envia ao modelo os itens das categorias que o perfil pode ver
 // (LGPD); a trava trabalhista é aplicada ANTES de chamar o modelo.
 // ============================================================================
-import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin } from "./supabase";
 import { temPerfil, type AdminClaims } from "./auth";
 import { permissoesDoUsuario } from "./permissoes";
 import { detectarCategoria, responderJunIA, type RespostaJunIA } from "./junia";
+import { gerarTextoLLM, llmConfigurado, type HistMsg } from "./llm";
 
-const MODELO_GEMINI = "gemini-2.0-flash";
-const MODELO_NVIDIA = "openai/gpt-oss-120b";
-const MODELO_CLAUDE = "claude-haiku-4-5";
-
-const envGemini = () => process.env.GEMINI_API_KEY ?? import.meta.env.GEMINI_API_KEY;
-const envNvidia = () => process.env.NVIDIA_API_KEY ?? import.meta.env.NVIDIA_API_KEY;
-const envClaude = () => process.env.ANTHROPIC_API_KEY ?? import.meta.env.ANTHROPIC_API_KEY;
-export function llmConfigurado(): boolean {
-  return !!(envGemini() || envNvidia() || envClaude());
-}
-
-export type HistMsg = { role: "user" | "assistant"; content: string };
-
-// ── Chamadas aos provedores ──────────────────────────────────────────────────
-async function chamarGemini(key: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
-  const contents = mensagens.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO_GEMINI}:generateContent`, {
-    method: "POST",
-    headers: { "x-goog-api-key": key, "content-type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: system }] },
-      contents,
-      generationConfig: { maxOutputTokens: 800, temperature: 0.4 },
-    }),
-  });
-  if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const j: any = await r.json();
-  const text = (j?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || "").join("");
-  return String(text || "").trim() || null;
-}
-
-async function chamarNvidia(key: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
-  const r = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-    method: "POST",
-    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      model: MODELO_NVIDIA,
-      max_tokens: 1200,
-      temperature: 0.4,
-      messages: [{ role: "system", content: system }, ...mensagens],
-    }),
-  });
-  if (!r.ok) throw new Error(`NVIDIA ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const j: any = await r.json();
-  const msg = j?.choices?.[0]?.message;
-  return ((msg?.content || msg?.reasoning_content || "") as string).trim() || null;
-}
-
-async function chamarClaude(key: string, system: string, mensagens: HistMsg[]): Promise<string | null> {
-  const client = new Anthropic({ apiKey: key });
-  const resp = await client.messages.create({
-    model: MODELO_CLAUDE,
-    max_tokens: 700,
-    system,
-    messages: mensagens as any,
-  });
-  const bloco = resp.content.find((b: any) => b.type === "text") as any;
-  return (bloco?.text || "").trim() || null;
-}
-
-async function gerarRespostaLLM(system: string, mensagens: HistMsg[]): Promise<string | null> {
-  const gm = envGemini();
-  if (gm) return chamarGemini(gm, system, mensagens);
-  const nv = envNvidia();
-  if (nv) return chamarNvidia(nv, system, mensagens);
-  const an = envClaude();
-  if (an) return chamarClaude(an, system, mensagens);
-  return null;
-}
+// re-exporta para compatibilidade com quem importa de juniaIA
+export { llmConfigurado, type HistMsg };
 
 // ── Parsing da saída JSON {tipo, texto} ──────────────────────────────────────
 function parseSaida(txt: string): { tipo: string; texto: string } | null {
@@ -157,7 +90,7 @@ ${base}`;
       { role: "user", content: pergunta },
     ];
 
-    const saida = await gerarRespostaLLM(sistema, mensagens);
+    const saida = await gerarTextoLLM(sistema, mensagens);
     const out = saida ? parseSaida(saida) : null;
     if (!out) return responderJunIA(claims, pergunta); // sem saída/parse -> fallback seguro
 
