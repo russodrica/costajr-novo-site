@@ -8,7 +8,6 @@
 // ============================================================================
 import Anthropic from "@anthropic-ai/sdk";
 
-const MODELO_GEMINI = "gemini-2.0-flash";
 const MODELO_NVIDIA = "openai/gpt-oss-120b";
 const MODELO_CLAUDE = "claude-haiku-4-5";
 
@@ -118,19 +117,29 @@ export async function lerDocumentoGemini(
   if (!key) return null;
   const mt = (mimeType || "").toLowerCase();
   if (!(mt === "application/pdf" || mt.startsWith("image/"))) return null;
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO_GEMINI}:generateContent`, {
-    method: "POST",
-    headers: { "x-goog-api-key": key, "content-type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mt, data: base64 } }] }],
-      generationConfig: { maxOutputTokens: 500, temperature: 0.1 },
-    }),
-  });
-  if (!r.ok) throw new Error(`Gemini(doc) ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const j: any = await r.json();
-  const text = (j?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || "").join("");
-  return String(text || "").trim() || null;
+
+  // Tenta os mesmos modelos do texto (cada um tem cota gratuita separada) — todos leem PDF/imagem.
+  let ultimoErro: any = null;
+  for (const modelo of MODELOS_GEMINI) {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+        method: "POST",
+        headers: { "x-goog-api-key": key, "content-type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: system }] },
+          contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mt, data: base64 } }] }],
+          generationConfig: { maxOutputTokens: 500, temperature: 0.1 },
+        }),
+      });
+      if (!r.ok) throw new Error(`Gemini(doc/${modelo}) ${r.status}: ${(await r.text()).slice(0, 160)}`);
+      const j: any = await r.json();
+      const text = (j?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || "").join("");
+      const out = String(text || "").trim();
+      if (out) return out;
+    } catch (e) { ultimoErro = e; } // 429/erro nesse modelo -> tenta o próximo
+  }
+  if (ultimoErro) throw ultimoErro;
+  return null;
 }
 
 // Extrai o primeiro objeto JSON de uma string (tolerante a ```json e texto em volta).
