@@ -1864,10 +1864,42 @@ Gemini tem cota gratuita SEPARADA**. Fix (commits b639e37/413181a): `src/lib/llm
 `chamarGemini` e `lerDocumentoGemini` percorrem `MODELOS_GEMINI` = [gemini-2.0-flash,
 gemini-2.5-flash, gemini-flash-latest, gemini-1.5-flash] e usam o 1o que responder; e
 `gerarTextoLLM` tenta Gemini->NVIDIA->Claude EM ORDEM caindo pro proximo no erro. Resultado:
-ficou **GRATIS e funcionando** (um dos modelos tinha cota). Se um dia TODOS derem 429: ela
-NAO consegue NVIDIA (conta pede verificacao no suporte) — Plano C pronto = **Groq**
-(console.groq.com, chave na hora sem cartao, OpenAI-compat, mesmo gpt-oss) — basta adicionar
-um provedor em llm.ts + var GROQ_API_KEY.
+ficou **GRATIS e funcionando** (um dos modelos tinha cota).
+
+**PROVEDOR DEFINITIVO = GROQ (19/06/2026, commit 883e045):** o free tier do Gemini era apertado
+demais (2-3 perguntas seguidas ja davam 429). A Adriana pegou chave gratis do **Groq**
+(console.groq.com, "Continue with Google", sem cartao/verificacao) e colou `GROQ_API_KEY` na
+Vercel (eu guiei pelo Chrome). `src/lib/llm.ts` agora tenta **Groq -> Gemini -> NVIDIA -> Claude**
+(Groq primeiro; modelo `openai/gpt-oss-120b` via `https://api.groq.com/openai/v1/chat/completions`,
+formato OpenAI/Bearer). Medidor confirmou "IA ativa — provedor: Groq". JunIA estavel (aguenta
+varias perguntas seguidas). NOTA: **leitura de PDF por imagem continua SO no Gemini**
+(`lerDocumentoGemini`; gpt-oss e texto) — se Gemini recusar, doc cai na sugestao pelo nome do
+arquivo. Tambem: quando a IA LANCA (limite/erro), a JunIA pede "tente de novo" em vez de abrir
+pendencia falsa (commit 27fa450) — antes parecia que a base estava incompleta.
+
+## Atualizacao 19/06/2026 (parte 2) — DOC + BASE pelo Telegram (so RH/admin, sugere e confirma)
+
+**Pedido da Adriana:** automatizar envio de documentos e alimentar a base de conhecimento pelo
+Telegram. Decisoes: **so RH/admin** + **sugere e voce confirma**. **Commit 9abbca4. Sem env nova,
+sem migration** (usa @cjr_ativo_bot / TELEGRAM_BOT_TOKEN + telegram_sessoes + rh_documentos +
+portal_kb + audit_log que ja existem; webhook ja ativo).
+
+**`src/lib/telegramBot.ts` estendido:** o menu pos-identificacao (`mostrarMenu`) agora mostra, P/
+QUEM TEM PERFIL admin/rh (resolvido por `ehRhAdmin`: rh_colaboradores.profile_id -> portal_profiles
+role/roles), 2 botoes novos alem de "Movimentar equipamento":
+- **📄 Enviar documento:** manda foto/PDF -> `baixarArquivoTg` (getFile + download) -> sobe no bucket
+  privado `rh` pasta inbox/ -> sugere pessoa+tipo+validade reusando `slotsDoc` (detectarSlotPorTexto/
+  detectarValidade/casarColaborador) + `lerDocumentoGemini` se houver Gemini -> card com [Anexar]/
+  [Trocar pessoa]/[Trocar tipo] -> confirma -> insert em `rh_documentos` (titulo = prefixo do slot ->
+  cai no slot certo da ficha). Estados: doc_aguarda/doc_confirma/busca_pessoa_doc.
+- **📚 Alimentar a base:** manda texto -> `gerarTextoLLM` organiza em pergunta/resposta/categoria ->
+  confirma -> insert em `portal_kb` (vale na hora na JunIA). Fallback manual "Pergunta | Resposta"
+  se a IA falhar. Estados: kb_aguarda/kb_confirma/kb_manual.
+RH/admin tambem pode mandar a foto/PDF DIRETO (sem tocar no menu) que cai no fluxo de documento.
+Nao-RH que tenta mandar doc -> recusa educada. Tudo logado em audit_log (autor = "Nome <email>
+(via Telegram)"). LICAO: `registrarAcao` aceita ctx sem req/admin reais (`{req:undefined, admin:{email}}`)
+pq e tudo try/catch + optional chaining. Verificacao ao vivo PENDENTE (a Adriana vai testar pelo
+app do Telegram: /start -> menu -> Enviar documento/Alimentar base).
 
 ## Convencoes desta pasta para o Claude Code
 
