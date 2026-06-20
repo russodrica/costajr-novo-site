@@ -72,8 +72,8 @@ const blocosInativos = blocosTodos.filter(b => !b.ativo && b.itens.length).map(b
 const totalInativos = colaboradores.filter(c => c.status === "desligado" && !ehDiarista(c)).length;
 
 // ── Labels e badges ──
-const stColab: Record<string, string> = { ativo: "Ativo", ferias: "Férias", afastado: "Afastado", congelado: "🔒 Congelado (jurídico)", desligado: "Desligado" };
-const badgeColab: Record<string, string> = { ativo: "badge-green", ferias: "badge-blue", afastado: "badge-yellow", congelado: "badge-purple", desligado: "badge-gray" };
+const stColab: Record<string, string> = { ativo: "Ativo", ferias: "Férias", afastado: "Afastado", congelado: "🔒 Congelado (jurídico)", em_desligamento: "🚪 Em desligamento", desligado: "Desligado" };
+const badgeColab: Record<string, string> = { ativo: "badge-green", ferias: "badge-blue", afastado: "badge-yellow", congelado: "badge-purple", em_desligamento: "badge-yellow", desligado: "badge-gray" };
 const regimes: Record<string, string> = { clt: "CLT", pj: "PJ", estagio: "Estágio", temporario: "Temporário", socio: "Sócio", diarista: "Diarista" };
 const tiposAus: Record<string, string> = { ferias: "Férias", atestado: "Atestado", falta: "Falta", licenca: "Licença", folga: "Folga", outro: "Outro" };
 const badgeTipoAus: Record<string, string> = { ferias: "badge-blue", atestado: "badge-purple", falta: "badge-red", licenca: "badge-orange", folga: "badge-green", outro: "badge-gray" };
@@ -599,6 +599,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <button type="button" class="ficha-tab" data-ft="epi" onclick="fichaTab('epi')">🦺 EPIs</button>
         <button type="button" class="ficha-tab" data-ft="acessos" onclick="fichaTab('acessos')">🔐 Acessos <span id="fichaTabAcessosCount" style="opacity:.85"></span></button>
         <button type="button" class="ficha-tab" data-ft="pendencias" onclick="fichaTab('pendencias')">⚠️ Pendências <span id="fichaTabPendCount" style="opacity:.85"></span></button>
+        <button type="button" class="ficha-tab" data-ft="deslig" onclick="fichaTab('deslig')">🚪 Desligamento</button>
       </div>
       <div id="fichaPaneDados">
       <form id="formColab">
@@ -718,6 +719,13 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         </div>
         <p style="font-size:12px;color:#9CA3AF;margin:0 0 12px">Tudo o que falta resolver: campos obrigatórios, documentos faltando, fichas sem assinatura e vencimentos.</p>
         <div id="pendConteudo"><div class="loading"><div class="spinner"></div> Verificando…</div></div>
+      </div>
+
+      <div id="fichaPaneDeslig" style="display:none">
+        <div class="section-header" style="margin-bottom:10px">
+          <span class="section-title" style="font-size:15px">🚪 Desligamento</span>
+        </div>
+        <div id="desligConteudo"><div class="loading"><div class="spinner"></div> Carregando…</div></div>
       </div>
     </div>
   </div>
@@ -1367,12 +1375,13 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     const camposColab = ["nome","email","email_pessoal","telefone","telefone_pessoal","cpf","rg","data_nascimento","cargo","setor","regime","salario","data_admissao","status","endereco","cidade","uf","contato_emergencia_nome","contato_emergencia_telefone","pix","banco","agencia","conta","observacoes"];
 
     function fichaTab(qual: string) {
-      const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi", acessos: "fichaPaneAcessos", pendencias: "fichaPanePendencias" };
+      const panes: Record<string, string> = { dados: "fichaPaneDados", docs: "fichaPaneDocs", epi: "fichaPaneEpi", acessos: "fichaPaneAcessos", pendencias: "fichaPanePendencias", deslig: "fichaPaneDeslig" };
       for (const [k, id] of Object.entries(panes)) { const el = document.getElementById(id); if (el) (el as any).style.display = (k === qual ? "" : "none"); }
       document.querySelectorAll(".ficha-tab").forEach((t) => t.classList.toggle("active", (t as any).dataset.ft === qual));
       if (qual === "epi" && (window as any).__fichaColabId) carregarEpi((window as any).__fichaColabId);
       if (qual === "acessos" && (window as any).__fichaColabId) carregarAcessos((window as any).__fichaColabId);
       if (qual === "pendencias" && (window as any).__fichaColabId) carregarPendencias((window as any).__fichaColabId);
+      if (qual === "deslig" && (window as any).__fichaColabId) carregarDesligamento((window as any).__fichaColabId);
     }
     (window as any).fichaTab = fichaTab;
 
@@ -1722,6 +1731,63 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       } catch { box.innerHTML = '<div class="alert alert-error">Erro ao verificar pendências.</div>'; }
     }
     (window as any).carregarPendencias = carregarPendencias;
+
+    // ── Aba Desligamento: iniciar (corta acessos) + tarefas da TI ──────────────
+    async function carregarDesligamento(colabId: string) {
+      const el = document.getElementById("desligConteudo")!;
+      const c = (colabPorId as any)[colabId] || {};
+      const st = c.status || "ativo";
+      let topo = "";
+      if (st === "desligado") {
+        topo = `<div class="alert" style="background:#F3F4F6;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:13px">Colaborador <b>desligado</b>. As tarefas geradas no início do processo ficam abaixo.</div>`;
+      } else if (st === "em_desligamento") {
+        topo = `<div class="alert" style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:13px">🚪 <b>Em desligamento.</b> PortalCJR e Telegram já foram cortados. A TI conclui as tarefas abaixo; depois finalize pelo botão <b>Desligar</b> (devolução de ativos/EPIs).</div>`;
+      } else {
+        topo = `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.65">
+          Ao iniciar, o sistema <b>corta na hora</b> o PortalCJR (login + grupos do Telegram + bots) e <b>gera tarefas pra TI</b> cancelar bancos, Vobi, Rotaexata, ControlID e as demais plataformas que constam na aba <b>🔐 Acessos</b>. O histórico de acessos é preservado.
+          <div style="margin-top:12px"><button type="button" class="btn btn-danger" onclick="iniciarDesligamentoColab('${colabId}')">🚪 Iniciar desligamento (cortar acessos)</button></div>
+        </div>`;
+      }
+      el.innerHTML = topo + '<div id="desligTarefas" style="margin-top:14px"></div>';
+      await carregarTarefasDeslig(colabId);
+    }
+    async function carregarTarefasDeslig(colabId: string) {
+      const alvo = document.getElementById("desligTarefas"); if (!alvo) return;
+      try {
+        const r = await fetch(`/api/admin/rh/desligamentos/tarefas?colaborador_id=${colabId}`);
+        const tarefas = r.ok ? await r.json() : [];
+        if (!tarefas.length) { alvo.innerHTML = ""; return; }
+        const es = (s: any) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const pend = tarefas.filter((t: any) => t.status !== "concluida").length;
+        const linha = (t: any) => `<label style="display:flex;align-items:flex-start;gap:9px;padding:9px 10px;border:1px solid #E5E7EB;border-radius:8px;margin-bottom:7px;background:${t.status === "concluida" ? "#F0FDF4" : "#fff"}">
+          <input type="checkbox" ${t.status === "concluida" ? "checked" : ""} onchange="toggleTarefaDeslig('${t.id}', this.checked)" style="margin-top:3px">
+          <span style="flex:1;font-size:13px"><b>${es(t.sistema)}</b>${t.categoria ? ` <span style="color:#9CA3AF">· ${es(t.categoria)}</span>` : ""}<br><span style="color:#4B5563">${es(t.descricao)}</span>${t.link ? ` · <a href="${es(t.link)}" target="_blank" rel="noopener">abrir plataforma ↗</a>` : ""}${t.status === "concluida" && t.concluida_por ? `<br><span style="font-size:11px;color:#16A34A">✓ feito por ${es(t.concluida_por)}</span>` : ""}</span>
+        </label>`;
+        alvo.innerHTML = `<div class="section-title" style="font-size:14px;margin-bottom:8px">📋 Tarefas da TI <span style="color:#9CA3AF;font-weight:600">(${pend} pendente${pend === 1 ? "" : "s"} de ${tarefas.length})</span></div>` + tarefas.map(linha).join("");
+      } catch { alvo.innerHTML = '<p style="color:#9CA3AF;font-size:12px">Não foi possível carregar as tarefas.</p>'; }
+    }
+    async function iniciarDesligamentoColab(colabId: string) {
+      if (!confirm("Iniciar desligamento? Isso CORTA o PortalCJR e o Telegram do colaborador NA HORA e gera as tarefas para a TI. Continuar?")) return;
+      const el = document.getElementById("desligConteudo")!;
+      el.innerHTML = '<div class="loading"><div class="spinner"></div> Cortando acessos…</div>';
+      try {
+        const r = await fetch("/api/admin/rh/desligamentos/iniciar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ colaborador_id: colabId }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Falha ao iniciar");
+        if ((colabPorId as any)[colabId]) (colabPorId as any)[colabId].status = "em_desligamento";
+        alert(`Desligamento iniciado!\n• Portal: ${d.portal}\n• Telegram: ${d.telegram}\n• Acessos revogados: ${d.acessosRevogados}\n• Tarefas p/ TI: ${d.tarefas}`);
+        location.reload();
+      } catch (e: any) { alert("Erro: " + e.message); carregarDesligamento(colabId); }
+    }
+    async function toggleTarefaDeslig(id: string, concluir: boolean) {
+      try {
+        await fetch("/api/admin/rh/desligamentos/tarefas", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ tarefa_id: id, concluir }) });
+        if ((window as any).__fichaColabId) carregarTarefasDeslig((window as any).__fichaColabId);
+      } catch { /* best-effort */ }
+    }
+    (window as any).carregarDesligamento = carregarDesligamento;
+    (window as any).iniciarDesligamentoColab = iniciarDesligamentoColab;
+    (window as any).toggleTarefaDeslig = toggleTarefaDeslig;
     function coletarEpi() {
       return Array.from(document.querySelectorAll("#epiTbody tr")).map((tr) => {
         const nomeInput = tr.querySelector(".epi-nome") as HTMLInputElement | null;

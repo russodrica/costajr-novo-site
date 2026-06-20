@@ -46,7 +46,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     // valida só quando o valor está presente E não vazio (evita barrar edições legítimas)
     if (body.regime && !["clt", "pj", "estagio", "temporario", "socio", "diarista"].includes(body.regime)) return jsonErr(400, "Regime inválido");
-    if (body.status && !["ativo", "ferias", "afastado", "congelado", "desligado"].includes(body.status)) return jsonErr(400, "Status inválido");
+    if (body.status && !["ativo", "ferias", "afastado", "congelado", "em_desligamento", "desligado"].includes(body.status)) return jsonErr(400, "Status inválido");
 
     const editaveis = [
       "profile_id", "nome", "email", "email_pessoal", "telefone", "telefone_pessoal", "cpf", "rg", "data_nascimento", "foto_url",
