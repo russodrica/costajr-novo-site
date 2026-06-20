@@ -51,7 +51,7 @@ const [
   cnt(db.from("com_propostas")),
   cnt(db.from("portal_profiles")).eq("approval_status", "pending"),
   cnt(db.from("portal_pending_questions")).eq("status", "pending"),
-  cnt(db.from("rh_colaboradores")).neq("status", "desligado"),
+  cnt(db.from("rh_colaboradores")).eq("status", "ativo"),
   cnt(db.from("rh_colaboradores")).eq("status", "ferias"),
   cnt(db.from("rh_documentos")).not("validade", "is", null).lt("validade", hoje),
   cnt(db.from("obras")),
