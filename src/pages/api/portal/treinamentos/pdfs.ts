@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { requireAdmin, jsonOk, jsonErr } from "~/lib/auth";
 import { filtroAcessoConteudo } from "~/lib/permissoes";
+import { urlAssinadaTreino } from "~/lib/treinoStorage";
 
 export const prerender = false;
 
@@ -13,7 +14,9 @@ export const GET: APIRoute = async ({ request }) => {
     const filtro = await filtroAcessoConteudo(claims); // null = admin vê tudo
     if (filtro) q = q.or(filtro);
     const { data } = await q.order("categoria").order("ordem");
-    return jsonOk(data || []);
+    // entrega URL assinada (bucket privado) — só funciona logado
+    const rows = await Promise.all((data || []).map(async (p: any) => ({ ...p, url: await urlAssinadaTreino(sb, p.url) })));
+    return jsonOk(rows);
   } catch {
     return jsonErr(401, "Não autenticado.");
   }

@@ -14,6 +14,37 @@ import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, e
 import { registrarAcao } from "./auditoria";
 import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
+import { urlAssinadaTreino } from "./treinoStorage";
+
+// Converte links /api/portal/treinamentos/abrir do texto da JunIA em BOTÕES com
+// URL assinada (privada) — quem usa o bot já foi identificado pelo telefone, então
+// recebe um link temporário que abre sem precisar logar no portal.
+async function resolverTreinoTelegram(db: any, texto: string): Promise<{ texto: string; botoes: { text: string; url: string }[] }> {
+  const re = /https?:\/\/[^\s)]*\/api\/portal\/treinamentos\/abrir\?[^\s)]*/gi;
+  const achados = Array.from(new Set(texto.match(re) || []));
+  const botoes: { text: string; url: string }[] = [];
+  let limpo = texto;
+  for (const link of achados) {
+    try {
+      const u = new URL(link);
+      const tipo = u.searchParams.get("tipo") === "pdf" ? "pdf" : "video";
+      const id = u.searchParams.get("id") || "";
+      if (id) {
+        const tabela = tipo === "pdf" ? "portal_treinamentos_pdfs" : "portal_treinamentos_videos";
+        const { data: item } = await db.from(tabela).select("*").eq("id", id).maybeSingle();
+        const original = tipo === "pdf" ? item?.url : item?.url_video;
+        const assinada = await urlAssinadaTreino(db, original);
+        if (assinada && /^https?:/i.test(assinada)) {
+          botoes.push({ text: tipo === "pdf" ? "📄 Abrir o procedimento" : "📺 Assistir ao treinamento", url: assinada });
+        }
+      }
+    } catch { /* ignore */ }
+    limpo = limpo.split(link).join("");
+  }
+  // remove rótulos órfãos ("📺 Assista ao treinamento completo aqui:" / "📄 Veja ... aqui:")
+  limpo = limpo.replace(/(?:📺|📄)\s*(?:Assista|Veja)[^\n:]*:\s*/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  return { texto: limpo, botoes };
+}
 
 function envVar(name: string): string {
   return (import.meta.env as any)[name] || (process.env as any)[name] || "";
@@ -982,7 +1013,10 @@ async function responderPerguntaJunia(db: any, B: Bot, msg: any, chatId: number,
     await enviar(B, chatId, resp);
   } else {
     resp = r.resposta;
-    await enviar(B, chatId, escTg(resp));
+    // se a resposta tiver link de treinamento, vira botão com URL assinada (privada)
+    const { texto: tl, botoes } = await resolverTreinoTelegram(db, resp);
+    const teclado = botoes.length ? { inline_keyboard: botoes.map((b) => [b]) } : undefined;
+    await enviar(B, chatId, escTg(tl), teclado);
   }
   // guarda as últimas trocas (4 turnos) p/ a JunIA entender follow-ups ("Itaú", "vencimento"...)
   const novaHist = [...hist, { role: "user", content: pergunta }, { role: "assistant", content: resp }].slice(-8) as HistMsg[];
