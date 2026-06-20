@@ -15,7 +15,13 @@
 import { supabaseAdmin } from "./supabase";
 import { temPerfil, type AdminClaims } from "./auth";
 import { permissoesDoUsuario } from "./permissoes";
-import { detectarCategoria, responderJunIA, type RespostaJunIA } from "./junia";
+import { detectarCategoria, responderJunIA, REDIRECIONAMENTOS, pontuarEntrada, type RespostaJunIA } from "./junia";
+
+// Mensagem padrão de "fale com o responsável" quando o assunto é de uma área que o
+// perfil NÃO pode ver (LGPD). Usa o texto da área quando houver.
+function direcionarArea(categoria: string): string {
+  return REDIRECIONAMENTOS[categoria] || `Esse assunto é da área de ${categoria}. 🙂 Para essa informação, por favor procure o responsável dessa área — não tenho permissão para te responder isso por aqui.`;
+}
 import { gerarTextoLLM, llmConfigurado, type HistMsg } from "./llm";
 
 // re-exporta para compatibilidade com quem importa de juniaIA
@@ -55,8 +61,17 @@ export async function responderJuniaIA(
     // categorias que o perfil pode ver (LGPD)
     const { categoriasKb } = await permissoesDoUsuario(claims);
     const catsOk = new Set([...categoriasKb.map((c) => c.toLowerCase()), "geral"]);
+    const ehAdmin = temPerfil(claims, ["admin"]);
 
     const { data: kb } = await db.from("portal_kb").select("question, answer, category").limit(1000);
+
+    // GATE por categoria (LGPD): se o assunto detectado é de uma ÁREA que o perfil NÃO
+    // pode ver, direciona ao responsável da área — não responde NEM encaminha pro grupo.
+    const catL = categoria.toLowerCase();
+    if (!ehAdmin && catL !== "geral" && !catsOk.has(catL)) {
+      return { resposta: direcionarArea(categoria), categoria, precisaResposta: false, fonte: "redirecionamento" };
+    }
+
     const permitidas = (kb || []).filter(
       (k) => catsOk.has((k.category || "Geral").toLowerCase()) && ((k.category || "").toLowerCase() !== "trabalhista" || podeTrabalhista),
     );
@@ -106,6 +121,16 @@ ${base}`;
     if (!out) return responderJunIA(claims, pergunta); // sem saída/parse -> fallback seguro
 
     if (out.tipo === "sem_resposta") {
+      // a resposta pode EXISTIR, mas numa categoria restrita ao perfil → direciona à área
+      // (não vira pendência, e não responde o conteúdo restrito)
+      const restrita = (kb || [])
+        .map((k) => ({ k, score: pontuarEntrada(pergunta, k) }))
+        .filter((x) => x.score >= 6 && !ehAdmin && !catsOk.has((x.k.category || "Geral").toLowerCase()))
+        .sort((a, b) => b.score - a.score)[0];
+      if (restrita) {
+        const cat = restrita.k.category || categoria;
+        return { resposta: direcionarArea(cat), categoria: cat, precisaResposta: false, fonte: "redirecionamento" };
+      }
       return {
         resposta: out.texto || "Não tenho essa informação ainda. 🔎 Já encaminhei para um gestor — você será avisado aqui no portal assim que a resposta chegar!",
         categoria, precisaResposta: true, fonte: "sem resposta",

@@ -20,7 +20,7 @@ const KEYWORDS: Record<string, string[]> = {
   "Administrativo": ["administrativo", "documento", "arquivo", "certidão", "certidao", "veículo", "veiculo", "condutor", "multa", "cnh", "locação", "locacao", "contrato de locação", "monday", "agenda"],
 };
 
-const REDIRECIONAMENTOS: Record<string, string> = {
+export const REDIRECIONAMENTOS: Record<string, string> = {
   "Financeiro": "Para questões financeiras, fale com o departamento financeiro da Costa Júnior.",
   "RH": "Para questões de Recursos Humanos e Departamento Pessoal, procure o RH/DP.",
   "Recrutamento": "Para questões de recrutamento e seleção, procure o time de R&S.",
