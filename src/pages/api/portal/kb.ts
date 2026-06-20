@@ -12,12 +12,9 @@ export const GET: APIRoute = async ({ request }) => {
     const sb = supabaseAdmin();
     const { categoriasKb, perfis } = await permissoesDoUsuario(claims);
     const ehAdmin = perfis.includes("admin"); // admin vê tudo, sempre
-    let q = sb.from("portal_kb").select("id, question, answer, category");
-    if (!ehAdmin) {
-      const filtros = ["access_roles.cs.{all}", ...perfis.map((r) => `access_roles.cs.{${r}}`)].join(",");
-      q = q.or(filtros);
-    }
-    const { data } = await q.order("category").order("created_at");
+    // Acesso da Base de Conhecimento é dado SÓ pelas CATEGORIAS (decisão da Adriana):
+    // busca tudo e filtra por categoria abaixo (access_roles não governa mais a KB).
+    const { data } = await sb.from("portal_kb").select("id, question, answer, category").order("category").order("created_at");
     if (ehAdmin) return jsonOk(data || []);
     // conteúdo trabalhista só para quem tem a permissão (ou gestão)
     const podeTrabalhista = claims.trabalhista || temPerfil(claims, ["admin", "rh"]);

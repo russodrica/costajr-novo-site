@@ -30,7 +30,7 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
   <div class="card">
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Pergunta</th><th>Categoria</th><th>Acesso</th><th>Data</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Pergunta</th><th>Categorias</th><th>Data</th><th>Ações</th></tr></thead>
         <tbody>
           {kb?.length ? kb.map((k: any) => (
             <tr>
@@ -39,7 +39,6 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
                 <span style="font-size:12px;color:#888;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{k.answer}</span>
               </td>
               <td>{String(k.category || "Geral").split(/[;|]/).map((c: string) => c.trim()).filter(Boolean).map((c: string) => (<span class="badge badge-blue" style="margin:2px 4px 2px 0;display:inline-block">{c}</span>))}</td>
-              <td style="font-size:12px">{(k.access_roles || ["all"]).join(", ")}</td>
               <td>{fmtDate(k.created_at)}</td>
               <td>
                 <div style="display:flex;gap:4px">
@@ -48,7 +47,7 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
                 </div>
               </td>
             </tr>
-          )) : <tr><td colspan="5" style="text-align:center;color:#999;padding:32px">Nenhum item cadastrado</td></tr>}
+          )) : <tr><td colspan="4" style="text-align:center;color:#999;padding:32px">Nenhum item cadastrado</td></tr>}
         </tbody>
       </table>
     </div>
@@ -61,40 +60,24 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
         <button onclick="closeModal()" class="modal-close">✕</button>
       </div>
       <input type="hidden" id="edit-id">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Categorias * <span style="font-weight:400;color:var(--ink-light);font-size:12px">— marque uma ou mais (a pergunta aparece para todas)</span></label>
-          <div id="f-cats" style="display:flex;flex-wrap:wrap;gap:7px 14px;padding:6px 2px">
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Geral" style="margin:0"> Geral</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Administrativo" style="margin:0"> Administrativo</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Financeiro" style="margin:0"> Financeiro</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Trabalhista" style="margin:0"> Trabalhista</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Segurança do Trabalho" style="margin:0"> Segurança do Trabalho</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="RH" style="margin:0"> RH</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Recrutamento" style="margin:0"> Recrutamento</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Comercial" style="margin:0"> Comercial</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Operacional" style="margin:0"> Operacional</label>
-          </div>
-          <datalist id="cats-kb">
-            <option value="Geral"></option><option value="Administrativo"></option><option value="Financeiro"></option>
-            <option value="Trabalhista"></option><option value="Segurança do Trabalho"></option><option value="RH"></option>
-            <option value="Recrutamento"></option><option value="Comercial"></option><option value="Operacional"></option>
-          </datalist>
+      <div class="form-group">
+        <label>Categorias * <span style="font-weight:400;color:var(--ink-light);font-size:12px">— marque uma ou mais (quem tem qualquer uma dessas áreas enxerga a pergunta)</span></label>
+        <div id="f-cats" style="display:flex;flex-wrap:wrap;gap:7px 16px;padding:6px 2px">
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Geral" style="margin:0"> Geral</label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Administrativo" style="margin:0"> Administrativo</label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Financeiro" style="margin:0"> Financeiro</label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Trabalhista" style="margin:0"> Trabalhista</label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Segurança do Trabalho" style="margin:0"> Segurança do Trabalho</label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="RH" style="margin:0"> RH</label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Recrutamento" style="margin:0"> Recrutamento</label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Comercial" style="margin:0"> Comercial</label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Operacional" style="margin:0"> Operacional</label>
         </div>
-        <div class="form-group">
-          <label>Acesso (roles)</label>
-          <select id="f-roles" multiple style="height:80px">
-            <option value="all" selected>Todos (all)</option>
-            <option value="admin">Administrador</option>
-            <option value="manutencao_operacao">Manutenção - Operação</option>
-            <option value="manutencao_administrativo">Manutenção - Administrativo</option>
-            <option value="operacional">Operação</option>
-            <option value="rh">RH / DP</option>
-            <option value="financeiro">Financeiro</option>
-            <option value="comercial">Comercial</option>
-            <option value="juridico">Jurídico</option>
-          </select>
-        </div>
+        <datalist id="cats-kb">
+          <option value="Geral"></option><option value="Administrativo"></option><option value="Financeiro"></option>
+          <option value="Trabalhista"></option><option value="Segurança do Trabalho"></option><option value="RH"></option>
+          <option value="Recrutamento"></option><option value="Comercial"></option><option value="Operacional"></option>
+        </datalist>
       </div>
       <div class="form-group">
         <label>Pergunta *</label>
@@ -140,20 +123,6 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
         <label>— ou — URL da página/PDF</label>
         <input type="url" id="imp-url" placeholder="https://...">
       </div>
-      <div class="form-group">
-        <label>Acesso (roles)</label>
-        <select id="imp-roles" multiple style="height:80px">
-          <option value="all" selected>Todos (all)</option>
-          <option value="admin">Administrador</option>
-          <option value="manutencao_operacao">Manutenção - Operação</option>
-          <option value="manutencao_administrativo">Manutenção - Administrativo</option>
-          <option value="operacional">Operação</option>
-          <option value="rh">RH / DP</option>
-          <option value="financeiro">Financeiro</option>
-          <option value="comercial">Comercial</option>
-          <option value="juridico">Jurídico</option>
-        </select>
-      </div>
       <div id="imp-msg"></div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="fecharImport()">Cancelar</button>
@@ -171,7 +140,6 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
       const categoria = (document.getElementById("imp-cat") as HTMLInputElement).value.trim();
       const url = (document.getElementById("imp-url") as HTMLInputElement).value.trim();
       const arquivo = (document.getElementById("imp-arquivo") as HTMLInputElement).files?.[0];
-      const roles = Array.from((document.getElementById("imp-roles") as HTMLSelectElement).selectedOptions).map(o => o.value);
       const msg = document.getElementById("imp-msg")!;
       if (!titulo || !categoria) { msg.innerHTML = '<div class="alert alert-error">Preencha título e categoria.</div>'; return; }
       if (!arquivo && !url) { msg.innerHTML = '<div class="alert alert-error">Escolha um PDF ou informe uma URL.</div>'; return; }
@@ -181,7 +149,7 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
       btn.disabled = true; btn.textContent = "Importando...";
       msg.innerHTML = '<div class="alert" style="background:#FFF8E7;border:1px solid #E8D49A;padding:8px 12px;border-radius:8px;font-size:12.5px">Lendo o conteúdo, aguarde…</div>';
 
-      const body: any = { titulo, categoria, access_roles: roles };
+      const body: any = { titulo, categoria };
       if (arquivo) {
         body.arquivo_base64 = await new Promise<string>((resolve) => {
           const r = new FileReader();
@@ -222,15 +190,13 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
       const category = cats.join("; ");
       const question = (document.getElementById("f-question") as HTMLInputElement).value.trim();
       const answer   = (document.getElementById("f-answer") as HTMLTextAreaElement).value.trim();
-      const sel      = document.getElementById("f-roles") as HTMLSelectElement;
-      const access_roles = Array.from(sel.selectedOptions).map(o => o.value);
       if (!question || !answer || !cats.length) return alert("Preencha a pergunta, a resposta e marque ao menos uma categoria.");
 
       const btn = document.getElementById("btnSalvar") as HTMLButtonElement;
       btn.disabled = true; btn.textContent = "Salvando...";
       const method = id ? "PUT" : "POST";
       const url = id ? `/api/admin/portal/kb/${id}` : "/api/admin/portal/kb";
-      const res = await fetch(url, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify({ question, answer, category, access_roles }) });
+      const res = await fetch(url, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify({ question, answer, category }) });
       btn.disabled = false; btn.textContent = "Salvar";
       if (res.ok) { closeModal(); location.reload(); } else { alert("Erro ao salvar."); }
     }
