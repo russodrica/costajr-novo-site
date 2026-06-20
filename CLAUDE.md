@@ -1955,6 +1955,14 @@ grupo — e direcionado. PILARES (a Adriana controla): (1) cada item de portal_k
 quem ve o que. REDIRECIONAMENTOS + pontuarEntrada agora exportados de junia.ts.
 **SETUP (Adriana):** criar bot no BotFather -> TELEGRAM_BOT_TOKEN_JUNIA na Vercel + Redeploy -> /admin/
 telegram Ativar -> testar. Grupo da Base precisa estar ativado (/ativar_base) p/ o fallback funcionar.
+**3 bots ATIVADOS (19/06) e BUG do perfil CORRIGIDO (commits e686438/0a1c270):** no teste, a Adriana
+(admin) foi BLOQUEADA em Financeiro — porque `claimsDeColaborador` selecionava `portal_profiles.trabalhista`
+(coluna NAO existe; o nome certo e `tem_trabalhista`) -> a query falhava (PostgREST 42703) -> TODOS caiam
+no default "operacional" no bot. Fix: usar `tem_trabalhista`. LICAO: o perfil de quem usa o bot da JunIA
+vem da ficha RH (rh_colaboradores.profile_id) -> portal_profiles role/roles/tem_trabalhista. Quem NAO tem
+login vinculado (profile_id null) cai em "operacional" (conservador/LGPD-safe) — pra alguem (ex.: financeiro/
+rh) ter acesso pleno no bot, a ficha precisa do login vinculado ("Dar acesso" no /admin/rh). O REDIRECIONAMENTO
+por area (operacional perguntando Financeiro -> "fale com o financeiro") foi VALIDADO ao vivo (funcionou).
 
 ## Atualizacao 19/06/2026 (parte 3) — GRUPO de RH como inbox de DOCUMENTOS (decisao da Adriana)
 
