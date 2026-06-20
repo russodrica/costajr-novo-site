@@ -2135,8 +2135,9 @@ expert de cavar o arquivo cru no devtools — igual YouTube/Drive). **Commit 275
   crua sem o nome estampado. PDF: link "Ver PDF" -> /abrir?tipo=pdf (novo tab).
 - VERIFICADO: build limpo; LOCAL (dev + token forjado c/ segredo local) /treino renderiza
   nome "Teste Fulano" + url object/sign/treinamentos/... + <video> + overlay class=wm; PROD
-  /treino=200, /abrir=401. Happy-path logado em prod = pedir p/ Adriana testar (nao forjo
-  cookie de prod). LIMITACAO honesta documentada: overlay, nao DRM.
+  /treino=200, /abrir=401. **CONFIRMADO PELA ADRIANA ("tudo certo") em 19/06/2026** —
+  testou no portal e no Telegram, vídeo abre com o nome estampado. LIMITACAO honesta
+  documentada: overlay, nao DRM. (Blindagem da parte 8 tambem confirmada funcionando.)
 
 ## Convencoes desta pasta para o Claude Code
 
