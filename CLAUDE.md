@@ -2108,6 +2108,36 @@ nao podem ser publicos — so quem e da empresa ve. Escolha: "Blindar + Telegram
   treinamento novo FUNCIONA, mas fica publico ate mover. Pra blindar uploads futuros:
   upload dedicado de treinamento apontando pro bucket privado. CAEPI/RHiD nao afetados.
 
+## Atualizacao 19/06/2026 (parte 9) — Marca d'agua com o nome de quem assiste (treinamentos)
+
+**Pedido da Adriana** (depois de eu explicar que DRM-no-arquivo e inviavel na stack):
+estampar o nome de quem esta assistindo POR CIMA do video. Construido como OVERLAY
+client-side (honesto: pega gravacao de tela/print/foto/forward do link; NAO impede um
+expert de cavar o arquivo cru no devtools — igual YouTube/Drive). **Commit 275c77c.**
+
+- **Player unico `/treino/[token].astro`** (PUBLICO, token-gated, prerender false): valida
+  o token (jose), busca o item, assina a URL do bucket privado (4h) e toca em `<video>`
+  (ou iframe p/ YouTube/PDF) com o NOME repetido em diagonal por cima (SVG tile via
+  background-image, pointer-events:none) + controlslist=nodownload + no-contextmenu +
+  meta noindex. Token invalido/expirado -> pagina "Link indisponivel".
+- **Token** = JWT `signToken({tipo:"treino",vtipo,id,nome}, "12h")` (lib/treinoStorage:
+  assinarTreinoToken/lerTreinoToken; nomeDoUsuario(db,sub) pega display_name/full_name).
+  Carrega QUEM vai assistir -> se o link for encaminhado, abre com o nome da pessoa
+  ORIGINAL (rastreavel). requireAdmin NAO aceita token "treino" (tipo!=admin).
+- **`/api/portal/treinamentos/abrir`** agora: requireAdmin -> pega o nome do usuario
+  logado -> assina token -> **302 p/ `/treino/[token]`** (antes ia direto pra URL assinada).
+- **Bot JunIA** (`resolverTreinoTelegram(db,texto,nome)`): gera token com o nome de quem
+  perguntou (sessao.dados.colaborador_nome) e o botao leva a
+  `https://www.costajr.com.br/treino/[token]`. Botao de URL do Telegram nao precisa escaping.
+- **GET de videos/pdfs REVERTIDO** (nao assina mais na listagem): a pagina
+  /admin/treinamentos-portal abre TUDO via `/abrir`->/treino (modal carrega o /treino num
+  iframe same-origin; X-Frame-Options=SAMEORIGIN permite). Assim o app NUNCA expoe a URL
+  crua sem o nome estampado. PDF: link "Ver PDF" -> /abrir?tipo=pdf (novo tab).
+- VERIFICADO: build limpo; LOCAL (dev + token forjado c/ segredo local) /treino renderiza
+  nome "Teste Fulano" + url object/sign/treinamentos/... + <video> + overlay class=wm; PROD
+  /treino=200, /abrir=401. Happy-path logado em prod = pedir p/ Adriana testar (nao forjo
+  cookie de prod). LIMITACAO honesta documentada: overlay, nao DRM.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
