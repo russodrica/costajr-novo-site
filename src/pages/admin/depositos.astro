@@ -39,7 +39,7 @@ const ativosCount = (depositos || []).filter((d: any) => d.ativo).length;
               <td>{porDeposito[d.id] ? <a href={`/admin/ativos?local=deposito&deposito=${d.id}`}>{porDeposito[d.id]} item(ns)</a> : "0"}</td>
               <td>{d.ativo ? <span class="badge badge-green">Ativo</span> : <span class="badge badge-gray">Inativo</span>}</td>
               <td style="white-space:nowrap;text-align:right">
-                <button class="btn btn-secondary btn-sm" onclick={`editar(${JSON.stringify(d).replace(/"/g, "&quot;")})`}>Editar</button>
+                <button class="btn btn-secondary btn-sm" onclick={`editar(${JSON.stringify(d)})`}>Editar</button>
                 {d.ativo
                   ? <button class="btn btn-outline btn-sm" onclick={`setAtivo('${d.id}', false)`}>Inativar</button>
                   : <button class="btn btn-success btn-sm" onclick={`setAtivo('${d.id}', true)`}>Reativar</button>}
