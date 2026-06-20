@@ -20,13 +20,18 @@ if (claims.role !== "admin") return Astro.redirect("/admin");
       <p style="margin:6px 0 0;font-size:.9rem;line-height:1.6;color:var(--ink-mid)">Registrar movimentação de equipamento: <code>/start</code> → compartilhar telefone → buscar o equipamento → <em>Devolvi ao estoque · Levei para obra · Está com defeito · Entreguei p/ pessoa</em>.</p>
     </div>
 
-    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
       <strong style="font-size:.95rem">📄 Bot de RH — <code>@cjr_adm_bot</code> (só RH/Admin)</strong>
-      <p style="margin:6px 0 0;font-size:.9rem;line-height:1.6;color:var(--ink-mid)"><strong>Enviar documento</strong> (manda foto/PDF → a IA sugere de quem é/tipo/validade → você confirma → anexa na ficha) e <strong>Alimentar a base</strong> (manda um texto → vira pergunta/resposta na JunIA). Tudo no chat privado, nunca em grupo.</p>
+      <p style="margin:6px 0 0;font-size:.9rem;line-height:1.6;color:var(--ink-mid)"><strong>Enviar documento</strong> (foto/PDF → a IA sugere e você confirma → ficha) e <strong>Alimentar a base</strong> (texto → vira pergunta/resposta na JunIA). Também atende <strong>grupos</strong>: <code>/ativar_grupo</code> (documentos) e <code>/ativar_base</code> (base + perguntas sem resposta).</p>
+    </div>
+
+    <div style="background:#FBF0FF;border:1px solid #E9D5FF;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <strong style="font-size:.95rem">🤖 Bot da JunIA — <code>@cjr_junia_bot</code> (todo o time)</strong>
+      <p style="margin:6px 0 0;font-size:.9rem;line-height:1.6;color:var(--ink-mid)">Qualquer colaborador pergunta no privado e a <strong>JunIA responde na hora</strong> (pela base). Se ela não souber, a pergunta cai no <strong>grupo da Base</strong>; vocês respondem a mensagem por lá, o bot <strong>devolve a resposta pra quem perguntou</strong> e propõe adicionar à base. Requer a var <code>TELEGRAM_BOT_TOKEN_JUNIA</code> na Vercel.</p>
     </div>
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <button class="btn btn-primary" id="btnAtivar" onclick="ativar()">⚡ Ativar / Reativar os 2 bots</button>
+      <button class="btn btn-primary" id="btnAtivar" onclick="ativar()">⚡ Ativar / Reativar os bots</button>
       <button class="btn btn-secondary" id="btnStatus" onclick="verStatus()">🔍 Ver status</button>
     </div>
     <div id="msg" style="margin-top:14px"></div>
@@ -59,7 +64,7 @@ if (claims.role !== "admin") return Astro.redirect("/admin");
         } else { show("⚠ Não ativou: " + (d.error || JSON.stringify(d)), false); }
         dump(d);
       } catch (e) { show("Erro: " + e, false); }
-      b.disabled = false; b.textContent = "⚡ Ativar / Reativar os 2 bots";
+      b.disabled = false; b.textContent = "⚡ Ativar / Reativar os bots";
     }
     async function verStatus() {
       try {

@@ -12,17 +12,22 @@ import { enviarTelegram, escTg } from "./telegram";
 import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 import { registrarAcao } from "./auditoria";
+import { responderJuniaIA } from "./juniaIA";
+import { detectarCategoria } from "./junia";
 
 function envVar(name: string): string {
   return (import.meta.env as any)[name] || (process.env as any)[name] || "";
 }
 
 // ── Identidade de cada bot ───────────────────────────────────────────────
-type Modo = "ativo" | "adm";
+type Modo = "ativo" | "adm" | "junia";
 type Bot = { token: string; modo: Modo; pre: string; nome: string };
 function botPorModo(modo: Modo): Bot {
   if (modo === "adm") {
     return { token: envVar("TELEGRAM_BOT_TOKEN_ADM") || envVar("TELEGRAM_BOT_TOKEN"), modo, pre: "adm:", nome: "@cjr_adm_bot" };
+  }
+  if (modo === "junia") {
+    return { token: envVar("TELEGRAM_BOT_TOKEN_JUNIA") || envVar("TELEGRAM_BOT_TOKEN"), modo, pre: "junia:", nome: "@cjr_junia_bot" };
   }
   return { token: envVar("TELEGRAM_BOT_TOKEN"), modo: "ativo", pre: "", nome: "@cjr_ativo_bot" };
 }
@@ -182,6 +187,7 @@ async function onMessage(db: any, B: Bot, msg: any) {
     if (B.modo === "adm") return await onGrupoMensagem(db, B, msg);
     return;
   }
+  if (B.modo === "junia") return await onMessageJunia(db, B, msg);
   const userId = String(msg.from?.id || "");
   const chatId = chat.id;
   if (!userId) return;
@@ -242,6 +248,10 @@ async function identificar(db: any, B: Bot, userId: string, chatId: number, tele
     dados: { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null },
   });
   await enviar(B, chatId, `✅ Identificado: <b>${escTg(achado.nome)}</b>!`, tirarTeclado);
+  if (B.modo === "junia") {
+    await enviar(B, chatId, "Sou a <b>JunIA</b> 🤖, a inteligência da Costa Júnior. Pode me perguntar sobre <b>processos, normas e rotinas</b> — eu respondo aqui na hora. Se eu não souber, encaminho pro time e te aviso por aqui assim que responderem.");
+    return;
+  }
   await mostrarMenu(db, B, chatId, { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null });
 }
 
@@ -676,6 +686,12 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
   }
   // grupo da BASE DE CONHECIMENTO
   if (base && cid === base) {
+    // resposta (reply) a uma pergunta encaminhada pela JunIA → manda pro autor
+    const rep = msg.reply_to_message;
+    if (rep?.message_id && texto) {
+      const { data: pq } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "pq:" + rep.message_id).maybeSingle();
+      if (pq?.dados) return await responderPerguntaEncaminhada(db, B, msg, chatId, rep.message_id, pq.dados, texto);
+    }
     if (msg.photo || msg.document) { await enviar(B, chatId, "📚 Este grupo é da <b>base de conhecimento</b> (texto). Para enviar documentos, use o grupo de documentos."); return; }
     if (texto && texto.length >= 15 && !texto.startsWith("/")) return await onTextoKbGrupo(db, B, msg, chatId, texto);
     return;
@@ -898,4 +914,107 @@ async function onCallbackKbGrupo(db: any, B: Bot, cq: any, chatId: number, data:
   });
   await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gkb:" + token);
   await enviar(B, chatId, "✅ <b>Aprovado e salvo na base!</b> Já vale na JunIA. 🤖");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// BOT da JunIA (@cjr_junia_bot) — qualquer colaborador pergunta no privado.
+// Identifica por telefone (LGPD: categorias do perfil). Sem resposta -> encaminha
+// pro grupo da Base; o gestor responde (reply) e o bot devolve pro autor.
+// ════════════════════════════════════════════════════════════════════════
+async function onMessageJunia(db: any, B: Bot, msg: any) {
+  const chatId = msg.chat.id;
+  const userId = String(msg.from?.id || "");
+  if (!userId) return;
+
+  if (msg.contact) {
+    if (String(msg.contact.user_id || "") !== userId) { await enviar(B, chatId, "Compartilhe o <b>seu próprio</b> contato, por favor.", botaoTelefone); return; }
+    return await identificar(db, B, userId, chatId, msg.contact.phone_number);
+  }
+
+  const texto = String(msg.text || "").trim();
+  const sessao = await getSessao(db, B, userId);
+  if (!sessao?.dados?.colaborador_id) {
+    await enviar(B, chatId, "Oi! 👋 Sou a <b>JunIA</b>, a inteligência da Costa Júnior. Pra eu te responder direitinho, preciso te identificar pelo seu telefone cadastrado.\n\nToque no botão abaixo:", botaoTelefone);
+    return;
+  }
+  if (/^\/(start|ajuda|help)/i.test(texto)) {
+    await enviar(B, chatId, "Pode perguntar! 🤖 Ex.: <i>\"qual o prazo do Santander?\"</i> ou <i>\"como nomear uma obra?\"</i>. Se eu não souber, encaminho pro time e te aviso aqui.");
+    return;
+  }
+  if (!texto || texto.length < 3 || texto.startsWith("/")) return;
+  return await responderPerguntaJunia(db, B, msg, chatId, sessao, texto);
+}
+
+async function claimsDeColaborador(db: any, colabId: string, email?: string | null): Promise<any> {
+  let sub = "tg-" + colabId, role = "operacional", roles: string[] = ["operacional"], trabalhista = false;
+  try {
+    const { data: c } = await db.from("rh_colaboradores").select("profile_id").eq("id", colabId).maybeSingle();
+    if (c?.profile_id) {
+      const { data: p } = await db.from("portal_profiles").select("id, role, roles, trabalhista").eq("id", c.profile_id).maybeSingle();
+      if (p) { sub = p.id; role = p.role || role; roles = Array.isArray(p.roles) && p.roles.length ? p.roles : [role]; trabalhista = !!p.trabalhista; }
+    }
+  } catch { /* usa defaults */ }
+  return { sub, role, roles, trabalhista, email: email || null, tipo: "admin" };
+}
+
+async function responderPerguntaJunia(db: any, B: Bot, msg: any, chatId: number, sessao: Sessao, pergunta: string) {
+  await tg(B, "sendChatAction", { chat_id: chatId, action: "typing" });
+  const d = sessao.dados || {};
+  let r: any = null;
+  try {
+    const claims = await claimsDeColaborador(db, d.colaborador_id, d.colaborador_email);
+    r = await responderJuniaIA(claims, pergunta, []);
+  } catch { r = null; }
+  if (!r) { await enviar(B, chatId, "Tive um probleminha agora 🙏 tente de novo daqui a pouco."); return; }
+
+  if (r.precisaResposta) {
+    const ok = await encaminharPergunta(db, chatId, d, pergunta);
+    await enviar(B, chatId, ok
+      ? "🔎 Ainda não tenho essa resposta cadastrada. <b>Encaminhei pro time</b> e te aviso <b>aqui</b> assim que responderem!"
+      : "🔎 Ainda não tenho essa resposta. Vou verificar com o time e te retorno.");
+    return;
+  }
+  await enviar(B, chatId, escTg(r.resposta));
+}
+
+// Posta a pergunta sem resposta no grupo da Base (via bot adm) e guarda o pendente
+// pela message_id da mensagem do grupo. true se conseguiu encaminhar.
+async function encaminharPergunta(db: any, askerChatId: number, d: any, pergunta: string): Promise<boolean> {
+  const base = await getGrupoBase(db);
+  if (!base) return false;
+  const admBot = botPorModo("adm");
+  const nome = d.colaborador_nome || "colaborador";
+  const primeiro = String(nome).split(" ")[0];
+  const enviado = await enviar(admBot, base,
+    `❓ <b>Pergunta sem resposta na base</b>\nDe: <b>${escTg(nome)}</b>\n\n"${escTg(pergunta)}"\n\n↩️ <b>Responda ESTA mensagem</b> com a resposta — eu envio pro ${escTg(primeiro)} e proponho adicionar à base.`);
+  const msgId = enviado?.result?.message_id;
+  if (!msgId) return false;
+  await salvarSessao(db, { telegram_user_id: "pq:" + msgId, chat_id: String(base), estado: "pendente", dados: { pergunta, asker_chat_id: askerChatId, asker_nome: nome } });
+  return true;
+}
+
+// Gestor respondeu (reply) no grupo da Base → manda pro autor (bot JunIA) e propõe base.
+async function responderPerguntaEncaminhada(db: any, B: Bot, msg: any, chatId: number, msgId: number, pq: any, resposta: string) {
+  const juniaBot = botPorModo("junia");
+  const r = await enviar(juniaBot, pq.asker_chat_id,
+    `🤖 <b>Resposta para a sua pergunta:</b>\n\n<i>"${escTg(pq.pergunta)}"</i>\n\n${escTg(resposta)}`);
+  await db.from("telegram_sessoes").delete().eq("telegram_user_id", "pq:" + msgId);
+  if (r?.ok === false) await enviar(B, chatId, `⚠️ Não consegui enviar para <b>${escTg(pq.asker_nome)}</b> (pode ter parado o bot). Resposta: "${escTg(resposta)}"`);
+  else await enviar(B, chatId, `✅ Resposta enviada para <b>${escTg(pq.asker_nome)}</b>.`);
+  await proporKbDireto(db, B, chatId, msg, pq.pergunta, resposta);
+}
+
+// Proposta de base com P/R já conhecidos (resposta do gestor) + checagem + aprovação.
+async function proporKbDireto(db: any, B: Bot, chatId: number, msg: any, pergunta: string, resposta: string) {
+  const categoria = detectarCategoria(pergunta) || "Geral";
+  const check = await checarBaseKb(db, pergunta, resposta);
+  const info = await getGrupoBaseInfo(db);
+  let aviso = "";
+  if (check?.status === "duplicado") aviso = `\n⚠️ Parece duplicado de: "${escTg(check.item)}".`;
+  else if (check?.status === "contradiz") aviso = `\n⛔ Contradiz: "${escTg(check.item)}".`;
+  const token = Date.now().toString(36);
+  await salvarSessao(db, { telegram_user_id: "gkb:" + token, chat_id: String(chatId), estado: "pendente", dados: { kb_pergunta: pergunta, kb_resposta: resposta, kb_categoria: categoria, autor: `${nomeRemetente(msg.from)} (via grupo Telegram)`, aprovador_id: info?.aprovador_id || null } });
+  await enviar(B, chatId,
+    `📚 Adicionar essa resposta à base da JunIA?\n<b>P:</b> ${escTg(pergunta)}\n<b>R:</b> ${escTg(resposta)}\n<b>Categoria:</b> ${escTg(categoria)}${aviso}`,
+    inline([[{ text: "✅ Aprovar e salvar", callback_data: "gkbsave:" + token }], [{ text: "❌ Não adicionar", callback_data: "gkbcancel:" + token }]]));
 }
