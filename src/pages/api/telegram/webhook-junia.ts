@@ -3,7 +3,7 @@ import { processarUpdate } from "../../../lib/telegramBot";
 
 export const prerender = false;
 
-// POST /api/telegram/webhook-junia — recebedor do bot da JunIA (@cjr_junia_bot).
+// POST /api/telegram/webhook-junia — recebedor do bot da JunIA (@CjrJunIA_bot).
 // Mesmo segredo no header (INTEGRA_TELEGRAM_SECRET). Roteia em modo "junia".
 const SECRET = import.meta.env.INTEGRA_TELEGRAM_SECRET || process.env.INTEGRA_TELEGRAM_SECRET || "";
 

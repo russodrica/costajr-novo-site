@@ -20,7 +20,7 @@ if (/^https?:\/\/costajr\.com\.br$/i.test(SITE)) SITE = "https://www.costajr.com
 const BOTS = [
   { nome: "Ativos (@cjr_ativo_bot)", token: TOKEN_ATIVO, path: "/api/telegram/webhook" },
   { nome: "RH (@cjr_adm_bot)", token: TOKEN_ADM, path: "/api/telegram/webhook-adm" },
-  { nome: "JunIA (@cjr_junia_bot)", token: TOKEN_JUNIA, path: "/api/telegram/webhook-junia" },
+  { nome: "JunIA (@CjrJunIA_bot)", token: TOKEN_JUNIA, path: "/api/telegram/webhook-junia" },
 ];
 
 // POST → setWebhook nos dois bots configurados

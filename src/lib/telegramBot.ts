@@ -27,7 +27,7 @@ function botPorModo(modo: Modo): Bot {
     return { token: envVar("TELEGRAM_BOT_TOKEN_ADM") || envVar("TELEGRAM_BOT_TOKEN"), modo, pre: "adm:", nome: "@cjr_adm_bot" };
   }
   if (modo === "junia") {
-    return { token: envVar("TELEGRAM_BOT_TOKEN_JUNIA") || envVar("TELEGRAM_BOT_TOKEN"), modo, pre: "junia:", nome: "@cjr_junia_bot" };
+    return { token: envVar("TELEGRAM_BOT_TOKEN_JUNIA") || envVar("TELEGRAM_BOT_TOKEN"), modo, pre: "junia:", nome: "@CjrJunIA_bot" };
   }
   return { token: envVar("TELEGRAM_BOT_TOKEN"), modo: "ativo", pre: "", nome: "@cjr_ativo_bot" };
 }
@@ -917,7 +917,7 @@ async function onCallbackKbGrupo(db: any, B: Bot, cq: any, chatId: number, data:
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// BOT da JunIA (@cjr_junia_bot) — qualquer colaborador pergunta no privado.
+// BOT da JunIA (@CjrJunIA_bot) — qualquer colaborador pergunta no privado.
 // Identifica por telefone (LGPD: categorias do perfil). Sem resposta -> encaminha
 // pro grupo da Base; o gestor responde (reply) e o bot devolve pro autor.
 // ════════════════════════════════════════════════════════════════════════
