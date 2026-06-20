@@ -7,7 +7,7 @@ import { bloqueioSeSoLeitura } from "../../../../lib/permissoes";
 
 export const prerender = false;
 
-const CATEGORIAS_VALIDAS = ["telefonia", "linha_telefonica", "informatica", "equipamento_obra", "epi", "veiculo", "mobiliario", "outros"];
+const CATEGORIAS_VALIDAS = ["telefonia", "linha_telefonica", "informatica", "tablet", "equipamento_obra", "epi", "veiculo", "mobiliario", "outros"];
 
 // GET /api/admin/ativos?categoria=&status=&busca=&alocado_tipo=&alocado_id=
 export const GET: APIRoute = async ({ request, url }) => {

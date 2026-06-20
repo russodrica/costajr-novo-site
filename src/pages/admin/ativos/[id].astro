@@ -32,7 +32,7 @@ const hojeISO = new Date().toISOString().slice(0, 10);
 if (!ativo) return Astro.redirect("/admin/ativos");
 
 const categorias: Record<string, string> = {
-  telefonia: "Telefonia", informatica: "Informática", equipamento_obra: "Equip. de Obra",
+  telefonia: "Telefonia", informatica: "Informática", tablet: "Tablet", equipamento_obra: "Equip. de Obra",
   epi: "EPI", veiculo: "Veículo", mobiliario: "Mobiliário", outros: "Outros",
 };
 const statusLabels: Record<string, string> = {
