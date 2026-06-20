@@ -10,7 +10,10 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 
 const filtroCrm = Astro.url.searchParams.get("crm") || "";
 const db = supabaseAdmin();
-let q = db.from("manut_leads").select("*").order("created_at", { ascending: false });
+// Pré-cadastros = SÓ quem preencheu o formulário no SITE. Exclui a lista B2B
+// importada do Manus (origem "Prospecção B2B (Manus)", marcada com manus_id) — essa
+// fica no CRM Comercial, que é o lugar dela.
+let q = db.from("manut_leads").select("*").is("manus_id", null).order("created_at", { ascending: false });
 if (filtroCrm) q = q.eq("etapa", filtroCrm);
 const { data: leads } = await q;
 
