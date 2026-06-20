@@ -2163,6 +2163,22 @@ em Operacoes & Obras / Obras e Projetos, **visao ao vivo read-only** (decisao de
   "Ativo" = nao-arquivado (isActive da Vobi nao discrimina — arquivados tb sao isActive).
   Build limpo; deploy live (API=401 sem login). Pedir a Adriana confirmar logada.
 
+**Transferir equipamento SO p/ obra EM ANDAMENTO (commit 9d2c3a7) — o PORQUE dos projetos
+Vobi:** a Adriana queria os projetos ativos no portal PARA isto: ao movimentar um equipamento
+p/ obra (/admin/ativos/[id] -> "transferir para obra"), so liberar obras EM ANDAMENTO; mas o
+HISTORICO do equipamento guarda TODAS as obras por onde passou (mesmo apos encerrarem — ja
+era assim: ativos_movimentos nunca apaga + guarda para_nome). DEFINICAO de "em andamento" =
+**Vobi idStatus === 5** (vendida/em execucao; vs idStatus 1 = em negociacao). flowState e null,
+nao serve. idStatus 5 ~79 obras (EM ANDAMENTO, FATURADA, PAUSADA, GARANTIA, SALDO PENDENTE,
+FINANCEIRO 2025...); idStatus 1 ~88 (ENVIADO CLIENTE, NOVA, LEAD...). `vobiObrasAndamento()` em
+vobi.ts (filtra emAndamento). Endpoint `/api/admin/ativos/obras-andamento` (live, casa com obra
+local por vobi_id SEM o prefixo "vobi-" -> 79/79 casados; fallback p/ obras locais status=ativa
+se Vobi off). O dropdown de "transferir para obra" e populado por JS desse endpoint (so em
+andamento); submit usa data-obraid (obra_id local quando casa, senao so o nome). Tela
+vobi-projetos alinhada: "Em andamento (vendidas)" = idStatus 5. SE a Adriana quiser excluir
+fases pos-obra (GARANTIA/FATURADA/SALDO PENDENTE) do "em andamento", filtrar por idStep
+especifico em vez de idStatus 5.
+
 **VoIP — PENDENTE (bloqueado por falta de info):** ela quer "integracao via API" mas NAO
 disse QUAL plataforma de VoIP nem deu credenciais/documentacao nem o que a integracao faz
 (click-to-call? log de chamadas no cliente/lead? identificar quem liga? gravacoes?).
