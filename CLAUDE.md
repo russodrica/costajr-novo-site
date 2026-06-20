@@ -2139,6 +2139,37 @@ expert de cavar o arquivo cru no devtools — igual YouTube/Drive). **Commit 275
   testou no portal e no Telegram, vídeo abre com o nome estampado. LIMITACAO honesta
   documentada: overlay, nao DRM. (Blindagem da parte 8 tambem confirmada funcionando.)
 
+## Atualizacao 19/06/2026 (parte 10) — Projetos Ativos da Vobi ao vivo (Operacoes & Obras) + VoIP pendente
+
+**Pedido da Adriana:** (1) integrar VoIP via API; (2) os projetos ATIVOS irem pro portal,
+em Operacoes & Obras / Obras e Projetos, **visao ao vivo read-only** (decisao dela), fonte
+**Vobi**.
+
+**Projetos Ativos (Vobi) — FEITO (commit f095eda):**
+- `vobiProjetos()` em src/lib/vobi.ts: lista `refurbish` NAO-arquivados (= ativos; o
+  /refurbish padrao ja exclui arquivados = perdidos/cancelados/historicos). Resolve o
+  CLIENTE real via `/companyCustomer` (idCompanyCustomer -> name; ATENCAO:
+  `refurbish.companyEntity` e a PROPRIA CJR, NAO o cliente!). Agrupa por FASE (idStep ->
+  step.name/color). Retorna {total, valorTotal, emExecucao(=ganhos/winnerDate),
+  valorExecucao, porFase[], projetos[]}. Cache 5min (igual fin/comercial).
+- Tela `/admin/vobi-projetos` (grupo "operacoes" = Operacoes & Obras; perfis
+  admin/operacional/manutencao_* via GRUPO_ROLES.operacoes): KPIs (ativos, em execucao,
+  em negociacao, fases), barras por fase clicaveis (filtra a tabela) + dropdown de fase,
+  tabela (projeto/cliente/cidade/fase-badge/valor/datas). API `/api/admin/vobi/projetos`
+  (read-only, bloqueioSeSemLeitura, 503 amigavel sem VOBI_UUID/SECRET). Registrado em
+  permissoes.ts GRUPOS_ADMIN + Admin.astro.
+- Numeros (ao vivo 19/06): ~165-167 projetos ativos, ~R$3,6mi; ~35 em execucao (ganhos)
+  ~R$414k; fases: ENVIADO CLIENTE 49, PAUSADA 30, FATURADA 19, EM ANDAMENTO 3, etc.
+  "Ativo" = nao-arquivado (isActive da Vobi nao discrimina — arquivados tb sao isActive).
+  Build limpo; deploy live (API=401 sem login). Pedir a Adriana confirmar logada.
+
+**VoIP — PENDENTE (bloqueado por falta de info):** ela quer "integracao via API" mas NAO
+disse QUAL plataforma de VoIP nem deu credenciais/documentacao nem o que a integracao faz
+(click-to-call? log de chamadas no cliente/lead? identificar quem liga? gravacoes?).
+PROXIMA SESSAO: pedir (1) nome da plataforma de VoIP, (2) acesso a API (token/credenciais +
+docs), (3) o que deve fazer no portal. Sem isso nao da pra integrar. (Eu NAO digito API keys
+em sistemas externos; ela cola na Vercel, igual Vobi/Telegram/Groq.)
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
