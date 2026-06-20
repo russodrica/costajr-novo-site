@@ -48,7 +48,7 @@ if (!token) return Astro.redirect("/admin/login");
       el("vpTabTitle").textContent = `Projetos${fase ? " — " + fase : ""} (${lista.length})`;
       el("vpRows").innerHTML = lista.length ? lista.map((p) => `
         <tr>
-          <td style="max-width:300px"><strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nome)}</strong>${p.ganho ? '<span style="font-size:11px;color:#16A34A;font-weight:700">● em execução</span>' : ""}</td>
+          <td style="max-width:300px"><strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nome)}</strong>${p.emAndamento ? '<span style="font-size:11px;color:#16A34A;font-weight:700">● em andamento</span>' : ""}</td>
           <td>${esc(p.cliente) || "—"}</td>
           <td>${esc(p.cidade) || "—"}${p.uf ? "/" + esc(p.uf) : ""}</td>
           <td><span class="badge" style="background:${esc(p.faseCor)};color:${txtOn(p.faseCor)}">${esc(p.fase)}</span></td>
@@ -73,8 +73,8 @@ if (!token) return Astro.redirect("/admin/login");
       DADOS = d;
       el("vpKpis").innerHTML = [
         statCard(d.total, "Projetos ativos", fmt(d.valorTotal) + " em valor", "var(--ink)"),
-        statCard(d.emExecucao, "Em execução (ganhos)", fmt(d.valorExecucao), "#16A34A"),
-        statCard(d.total - d.emExecucao, "Em negociação / outras fases", fmt(d.valorTotal - d.valorExecucao), "#1D4ED8"),
+        statCard(d.emExecucao, "Em andamento (vendidas)", fmt(d.valorExecucao), "#16A34A"),
+        statCard(d.total - d.emExecucao, "Em negociação", fmt(d.valorTotal - d.valorExecucao), "#1D4ED8"),
         statCard(d.porFase.length, "Fases com projetos", "distribuídos no pipeline", "#7C3AED"),
       ].join("");
 

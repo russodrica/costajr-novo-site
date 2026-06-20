@@ -309,10 +309,11 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
         <div class="form-group"><label>Obra *</label>
           <input type="text" id="obraSearch" placeholder="🔎 Buscar obra pelo nome..." autocomplete="off" oninput="filtrarObras()" style="margin-bottom:6px" />
           <select name="obra_sel" id="obraSelect" required>
-            <option value="">Selecione...</option>
-            {obras?.map((o: any) => <option value={o.id} data-nome={o.nome}>{o.nome}</option>)}
+            <option value="">Carregando obras em andamento…</option>
+            {obras?.map((o: any) => <option value={o.id} data-obraid={o.id} data-nome={o.nome}>{o.nome}</option>)}
             <option value="__outra__">Outra (digitar nome)...</option>
           </select>
+          <p style="font-size:11px;color:var(--ink-light);margin:5px 2px 0">Só obras <b>em andamento</b> (ao vivo da Vobi). O histórico do equipamento guarda <b>todas</b> as obras por onde passou, mesmo após encerrarem.</p>
         </div>
         <div class="form-group" style="display:none" data-outro><label>Nome da obra</label><input name="obra_nome_manual" /></div>
         <div class="form-group"><label>Condição do equipamento</label><input name="condicao" /></div>
@@ -679,7 +680,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
           const sel = f.querySelector("select[name='obra_sel']") as HTMLSelectElement;
           const opt = sel.selectedOptions[0];
           if (sel.value === "__outra__") { body.obra_nome = body.obra_nome_manual; body.obra_id = null; }
-          else { body.obra_id = sel.value; body.obra_nome = opt?.dataset.nome; }
+          else { body.obra_id = opt?.dataset.obraid || null; body.obra_nome = opt?.dataset.nome; }
           if (!body.obra_nome) { alert("Informe a obra"); return; }
         }
         if (acao === "transferir_deposito") {
@@ -909,6 +910,29 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
         o.hidden = !!termo && !o.text.toLowerCase().includes(termo);
       });
     }
+    // popula o dropdown SÓ com obras EM ANDAMENTO (ao vivo da Vobi; o histórico do
+    // equipamento guarda todas as obras por onde passou — ver ativos_movimentos).
+    async function carregarObrasAndamento() {
+      const sel = document.getElementById("obraSelect") as HTMLSelectElement;
+      if (!sel) return;
+      const outra = '<option value="__outra__">Outra (digitar nome)…</option>';
+      const esc = (s: any) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      try {
+        const r = await fetch("/api/admin/ativos/obras-andamento");
+        const d = await r.json();
+        const obras = (d && d.obras) || [];
+        if (!obras.length) { sel.innerHTML = '<option value="">Nenhuma obra em andamento no momento</option>' + outra; return; }
+        const opts = ['<option value="">Selecione a obra…</option>'];
+        for (const o of obras) {
+          const rotulo = o.nome + (o.cliente ? " — " + o.cliente : "") + (o.cidade ? " (" + o.cidade + ")" : "");
+          opts.push(`<option value="${o.obra_id || ("v-" + (o.vobi_id || ""))}" data-obraid="${o.obra_id || ""}" data-nome="${esc(o.nome)}">${esc(rotulo)}</option>`);
+        }
+        opts.push(outra);
+        sel.innerHTML = opts.join("");
+      } catch {
+        sel.innerHTML = '<option value="">Não foi possível carregar — use "Outra (digitar nome)"</option>' + outra;
+      }
+    }
     // mostra o campo "valor da venda" só quando o status escolhido for Vendido
     function toggleValorVenda() {
       const sel = document.querySelector("#modalStatus select[name='novo_status']") as HTMLSelectElement;
@@ -917,6 +941,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     }
     (window as any).filtrarObras = filtrarObras;
     (window as any).toggleValorVenda = toggleValorVenda;
+    carregarObrasAndamento();
 
     (window as any).fecharModais = fecharModais;
     (window as any).abrirModal = abrirModal;

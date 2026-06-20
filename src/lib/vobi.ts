@@ -192,7 +192,7 @@ export async function vobiComercial(ano: number | null): Promise<VobiComercial> 
 
 export type VobiProjeto = {
   id: number; nome: string; valor: number; fase: string; faseCor: string;
-  ganho: boolean; ganhoEm: string | null; inicio: string | null; previsao: string | null;
+  ganho: boolean; ganhoEm: string | null; emAndamento: boolean; inicio: string | null; previsao: string | null;
   cidade: string | null; uf: string | null; cliente: string | null; criadoEm: string | null;
 };
 export type VobiProjetos = {
@@ -222,6 +222,8 @@ export async function vobiProjetos(): Promise<VobiProjetos> {
         faseCor: (r.idStep != null && cor.get(r.idStep)) || "#94A3B8",
         ganho: !!r.winnerDate,
         ganhoEm: r.winnerDate || null,
+        // idStatus 5 = vendida/em execução (vs 1 = em negociação) -> "obra em andamento"
+        emAndamento: r.idStatus === 5,
         inicio: r.startDate || r.startPrediction || null,
         previsao: r.predictionDate || null,
         cidade: r.city || null,
@@ -233,7 +235,7 @@ export async function vobiProjetos(): Promise<VobiProjetos> {
     projetos.sort((a, b) => b.valor - a.valor);
 
     const valorTotal = projetos.reduce((t, p) => t + p.valor, 0);
-    const won = projetos.filter((p) => p.ganho);
+    const andamento = projetos.filter((p) => p.emAndamento);
     const faseMap = new Map<string, { fase: string; cor: string; n: number; valor: number }>();
     for (const p of projetos) {
       const f = faseMap.get(p.fase) || { fase: p.fase, cor: p.faseCor, n: 0, valor: 0 };
@@ -243,8 +245,20 @@ export async function vobiProjetos(): Promise<VobiProjetos> {
 
     return {
       total: projetos.length, valorTotal,
-      emExecucao: won.length, valorExecucao: won.reduce((t, p) => t + p.valor, 0),
+      emExecucao: andamento.length, valorExecucao: andamento.reduce((t, p) => t + p.valor, 0),
       porFase, projetos,
     };
   });
+}
+
+// Obras EM ANDAMENTO (idStatus 5 = vendida/em execução, não-arquivada) — usado para
+// LIBERAR a transferência de equipamento só para essas obras (o histórico do
+// equipamento guarda todas, mesmo as que saíram de andamento).
+export type ObraAndamento = { vobiId: number; nome: string; cliente: string | null; cidade: string | null };
+export async function vobiObrasAndamento(): Promise<ObraAndamento[]> {
+  const { projetos } = await vobiProjetos();
+  return projetos
+    .filter((p) => p.emAndamento)
+    .map((p) => ({ vobiId: p.id, nome: p.nome, cliente: p.cliente, cidade: p.cidade }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
