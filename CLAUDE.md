@@ -2077,6 +2077,37 @@ NOTA: os MP4 estao no bucket PUBLICO `portal` (mesma postura do modulo Treinamen
 PENDENTE/opcional: mover treinamentos p/ bucket privado + URL assinada se a Adriana
 quiser que o ARQUIVO tambem exija login.
 
+## Atualizacao 19/06/2026 (parte 8) — Treinamentos BLINDADOS (bucket privado + URL assinada)
+
+**Pedido da Adriana:** os videos/PDFs de treinamento (link agora vai pra base/JunIA)
+nao podem ser publicos — so quem e da empresa ve. Escolha: "Blindar + Telegram OK".
+
+**Feito (commit d3def44, SEM migration):**
+- **Bucket PRIVADO `treinamentos`** criado. Os 18 arquivos (15 mp4 + 3 PDFs) foram
+  COPIADOS de `portal` (publico) -> `treinamentos` (privado) com a MESMA chave, e as
+  copias publicas APAGADAS. Validado: 18/18 URL publica MORTA, 18/18 assinada 200.
+- **`src/lib/treinoStorage.ts`**: `keyDeUrlPortal(url)` (extrai a chave de uma URL
+  `/object/public/portal/...`) + `urlAssinadaTreino(db,url)` (assina no bucket privado;
+  link externo YouTube passa direto; fallback p/ a url original se nao achar). **As
+  tabelas portal_treinamentos_videos.url_video / _pdfs.url AINDA guardam a URL publica
+  antiga** — usada SO p/ derivar a chave; a entrega e sempre assinada (21600s).
+- **GET /api/portal/treinamentos/videos e /pdfs**: assinam cada item ao listar (a pagina
+  /admin/treinamentos-portal toca via URL assinada, sem mudar a pagina).
+- **NOVO `/api/portal/treinamentos/abrir?tipo=video|pdf&id=`** (requireAdmin): gera URL
+  assinada e redireciona (302). **Os 18 itens da base de conhecimento foram reescritos**
+  p/ apontar pra esse /abrir (em vez da URL publica). Web: clica logado -> abre. (A 19a,
+  Fusao Santander, e YouTube — fica como link direto.)
+- **Bot JunIA (telegramBot.ts `resolverTreinoTelegram`)**: ao responder, converte links
+  /abrir em BOTAO inline com a URL ASSINADA (quem usa o bot ja foi identificado por
+  telefone -> abre sem logar no portal). Botao de URL nao precisa de escaping HTML.
+- VERIFICADO: deploy live (/abrir=401 sem login), onboarding NAO usa esses arquivos,
+  base sem url publica restante. Apagar e REVERSIVEL (re-copiar do privado p/ publico).
+- **PENDENTE (follow-up, NAO critico):** uploads NOVOS de treinamento ainda vao pro
+  bucket PUBLICO `portal` (o /api/admin/portal/upload-url e compartilhado com onboarding/
+  kb e sempre usa `conteudo/`). urlAssinadaTreino faz fallback p/ a url publica, entao
+  treinamento novo FUNCIONA, mas fica publico ate mover. Pra blindar uploads futuros:
+  upload dedicado de treinamento apontando pro bucket privado. CAEPI/RHiD nao afetados.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
