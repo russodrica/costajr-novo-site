@@ -10,7 +10,7 @@
 import { supabaseAdmin } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
 import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador } from "./slotsDoc";
-import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
+import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
 import { registrarAcao } from "./auditoria";
 import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
@@ -937,8 +937,9 @@ async function onMessageJunia(db: any, B: Bot, msg: any) {
     await enviar(B, chatId, "Oi! 👋 Sou a <b>JunIA</b>, a inteligência da Costa Júnior. Pra eu te responder direitinho, preciso te identificar pelo seu telefone cadastrado.\n\nToque no botão abaixo:", botaoTelefone);
     return;
   }
-  if (/^\/(start|ajuda|help)/i.test(texto)) {
-    await enviar(B, chatId, "Pode perguntar! 🤖 Ex.: <i>\"qual o prazo do Santander?\"</i> ou <i>\"como nomear uma obra?\"</i>. Se eu não souber, encaminho pro time e te aviso aqui.");
+  if (/^\/(start|ajuda|help|nova)/i.test(texto)) {
+    await salvarSessao(db, { ...sessao, dados: { ...(sessao.dados || {}), hist: [] } }); // recomeça a conversa
+    await enviar(B, chatId, "Pode perguntar! 🤖 Ex.: <i>\"qual o prazo do Santander?\"</i> ou <i>\"como nomear uma obra?\"</i>. Se eu não souber, encaminho pro time e te aviso aqui.\n\n(Mande <b>/nova</b> a qualquer momento pra recomeçar do zero.)");
     return;
   }
   if (!texto || texto.length < 3 || texto.startsWith("/")) return;
@@ -960,21 +961,28 @@ async function claimsDeColaborador(db: any, colabId: string, email?: string | nu
 async function responderPerguntaJunia(db: any, B: Bot, msg: any, chatId: number, sessao: Sessao, pergunta: string) {
   await tg(B, "sendChatAction", { chat_id: chatId, action: "typing" });
   const d = sessao.dados || {};
+  const hist: HistMsg[] = Array.isArray(d.hist) ? d.hist : []; // memória da conversa (multi-turno)
   let r: any = null;
   try {
     const claims = await claimsDeColaborador(db, d.colaborador_id, d.colaborador_email);
-    r = await responderJuniaIA(claims, pergunta, []);
+    r = await responderJuniaIA(claims, pergunta, hist);
   } catch { r = null; }
   if (!r) { await enviar(B, chatId, "Tive um probleminha agora 🙏 tente de novo daqui a pouco."); return; }
 
+  let resp: string;
   if (r.precisaResposta) {
     const ok = await encaminharPergunta(db, chatId, d, pergunta);
-    await enviar(B, chatId, ok
-      ? "🔎 Ainda não tenho essa resposta cadastrada. <b>Encaminhei pro time</b> e te aviso <b>aqui</b> assim que responderem!"
-      : "🔎 Ainda não tenho essa resposta. Vou verificar com o time e te retorno.");
-    return;
+    resp = ok
+      ? "🔎 Ainda não tenho essa resposta cadastrada. Encaminhei pro time e te aviso aqui assim que responderem!"
+      : "🔎 Ainda não tenho essa resposta. Vou verificar com o time e te retorno.";
+    await enviar(B, chatId, resp);
+  } else {
+    resp = r.resposta;
+    await enviar(B, chatId, escTg(resp));
   }
-  await enviar(B, chatId, escTg(r.resposta));
+  // guarda as últimas trocas (4 turnos) p/ a JunIA entender follow-ups ("Itaú", "vencimento"...)
+  const novaHist = [...hist, { role: "user", content: pergunta }, { role: "assistant", content: resp }].slice(-8) as HistMsg[];
+  await salvarSessao(db, { ...sessao, dados: { ...d, hist: novaHist } });
 }
 
 // Posta a pergunta sem resposta no grupo da Base (via bot adm) e guarda o pendente
