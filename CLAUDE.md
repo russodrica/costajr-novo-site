@@ -2059,6 +2059,24 @@ p/ liberar 1 modulo a 1 perfil sem mexer no grupo.
 - DICA: pra deixar 1 item em 2 areas, edita em /admin/portal-kb e marca as
   categorias. Nao existe mais "Acesso (roles)" na base.
 
+**Classificacao dos 37 itens existentes (workflow 2-passagens+revisor):** estavam
+mal categorizados ("tudo administrativo"). Reclassificados por AREA via REST PATCH
+(category com "; "). Destaques: as 5 de OBRA sairam de Geral->Operacional; "limite
+de pontos CNH"/"multas"/"condutores" Trabalhista->Administrativo (frota); "exame
+admissional" Trabalhista->RH; Financeiro; justa-causa/advertencia ficou RH;Trabalhista.
+
+**19 treinamentos viraram itens da base (19/06/2026):** para cada treinamento
+PUBLICADO (16 videos + 3 PDFs de portal_treinamentos_videos/_pdfs), criei 1 Q&A em
+portal_kb onde a JunIA EXPLICA o tema + entrega o LINK (workflow gerou pergunta+
+explicacao; o link/categoria eu anexei deterministicamente — nunca deixar o LLM
+inventar URL). Categoria do item = AREA do treinamento (mapeada do access_roles:
+rh->RH, operacional->Operacional, comercial->Comercial, financeiro->Financeiro,
+juridico->Juridico, all->Geral). Total da base: 37->56. Link so aparece LOGADO
+(portal/JunIA sao auth-gated) => "so quem e da empresa ve" (pedido da Adriana).
+NOTA: os MP4 estao no bucket PUBLICO `portal` (mesma postura do modulo Treinamentos);
+PENDENTE/opcional: mover treinamentos p/ bucket privado + URL assinada se a Adriana
+quiser que o ARQUIVO tambem exija login.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
