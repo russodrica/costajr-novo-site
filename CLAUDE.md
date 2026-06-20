@@ -1945,6 +1945,14 @@ avisa o autor "te aviso aqui". No grupo da Base, REPLY a essa msg -> `responderP
 manda a resposta pro autor (via bot JUNIA, cross-bot pelo asker_chat_id) + `proporKbDireto` (card de
 aprovacao p/ adicionar a base). Webhook `/api/telegram/webhook-junia`; `configurar.ts` ativa os 3 bots;
 tela /admin/telegram tem o card da JunIA. Privacidade do junia bot NAO precisa mexer (so privado).
+**GATE DE CATEGORIA por perfil (commit 32b2b72, vale portal E telegram):** `responderJuniaIA` agora,
+se a categoria detectada da pergunta esta FORA das `categoriasKb` do perfil (e nao e Geral, e nao e
+admin), responde com `REDIRECIONAMENTOS[categoria]` ("procure o responsavel da area") ANTES do modelo;
+e se a resposta existe so em categoria restrita (pontuarEntrada>=6), direciona em vez de virar
+pendencia. Ou seja: quem nao tem perfil RH/Financeiro nao recebe esse conteudo NEM gera pergunta no
+grupo — e direcionado. PILARES (a Adriana controla): (1) cada item de portal_kb com a CATEGORIA certa
+("Geral" = todos veem); (2) matriz perfil->categorias_kb em /admin/permissoes = fonte da verdade de
+quem ve o que. REDIRECIONAMENTOS + pontuarEntrada agora exportados de junia.ts.
 **SETUP (Adriana):** criar bot no BotFather -> TELEGRAM_BOT_TOKEN_JUNIA na Vercel + Redeploy -> /admin/
 telegram Ativar -> testar. Grupo da Base precisa estar ativado (/ativar_base) p/ o fallback funcionar.
 
