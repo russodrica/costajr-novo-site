@@ -2011,6 +2011,17 @@ adicionado a CAMPOS_OCULTOS_PORTAL (meus-equipamentos.ts; sensivel, igual pin_pu
 itens proprios, alocaveis a pessoa independente do aparelho. PENDENTE p/ a Adriana decidir: migrar
 linhas embutidas nos aparelhos existentes p/ itens proprios (nao feito — so categoria nova).
 
+## Atualizacao 19/06/2026 (parte 6) — comercial ve Documentos da Empresa (leitura)
+
+Pedido da Adriana. **Commit bfd251e.** Novo mecanismo `MODULO_ROLES_EXTRA` em permissoes.ts: acesso
+EXTRA a UM modulo especifico alem do grupo dele — `{ "doc-empresa": { comercial: "ver" } }`. nivelEfetivo:
+padrao do grupo (editar) vence; senao extra (ver/editar); senao nenhum. Assim comercial ve SO
+"Documentos da Empresa" (nao o resto do grupo Juridico = Assinaturas/D4Sign). Pagina doc-empresa.astro
+liberou comercial; os 5 endpoints doc-empresa aceitam comercial p/ LEITURA (mutacoes barradas pela trava
+central do middleware quando nivel=="ver"). Se a Adriana quiser comercial EDITANDO (add contrato),
+trocar { comercial: "ver" } por { comercial: "editar" } + nao depender so do middleware. Padrao reusavel
+p/ liberar 1 modulo a 1 perfil sem mexer no grupo.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
