@@ -5,7 +5,7 @@ import { excluirComLixeira, registrarAcao } from "../../../../lib/auditoria";
 
 export const prerender = false;
 
-const PERFIS = ["admin", "financeiro", "juridico"];
+const PERFIS = ["admin", "financeiro", "juridico", "comercial"]; // comercial = leitura (middleware barra mutação)
 const CAMPOS = ["nome", "categoria", "grupo", "periodicidade", "validade", "validade_na", "site", "observacoes", "arquivado", "valor_mensal"];
 
 // PATCH /api/admin/doc-empresa/[id] → edita / arquiva / marca "não aplicável"

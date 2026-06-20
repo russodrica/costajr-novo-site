@@ -5,7 +5,7 @@ import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
-const PERFIS = ["admin", "financeiro", "juridico"];
+const PERFIS = ["admin", "financeiro", "juridico", "comercial"]; // comercial = leitura (middleware barra mutação)
 
 // GET /api/admin/doc-empresa/arquivos/[fid] → redireciona para URL assinada (10 min).
 // Bucket PRIVADO — documentos sensíveis (LGPD).

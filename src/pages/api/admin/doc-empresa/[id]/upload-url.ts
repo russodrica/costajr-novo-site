@@ -4,7 +4,7 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 
 export const prerender = false;
 
-const PERFIS = ["admin", "financeiro", "juridico"];
+const PERFIS = ["admin", "financeiro", "juridico", "comercial"]; // comercial = leitura (middleware barra mutação)
 const EXT_OK = ["pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "webp"];
 
 // POST /api/admin/doc-empresa/[id]/upload-url

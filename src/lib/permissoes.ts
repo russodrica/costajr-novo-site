@@ -236,11 +236,22 @@ export function nivelPadraoPerfil(grupoId: string, perfis: string[]): NivelPerm 
 
 /** Nível EFETIVO de um módulo: override do usuário, senão padrão do perfil.
  *  Admin nunca é travado (sempre 'editar'). */
+// Acesso EXTRA a um módulo específico, além do grupo dele. Ex.: o perfil COMERCIAL
+// vê "Documentos da Empresa" em modo LEITURA, sem enxergar o resto do grupo Jurídico
+// (Assinaturas/D4Sign). A trava central (middleware) impede edição quando o nível é "ver".
+export const MODULO_ROLES_EXTRA: Record<string, Record<string, NivelPerm>> = {
+  "doc-empresa": { comercial: "ver" },
+};
+
 export function nivelEfetivo(moduloKey: string, perfis: string[], overrides: Record<string, NivelPerm>): NivelPerm {
   if (perfis.includes("admin")) return "editar";
   const ov = overrides[moduloKey];
   if (ov === "nenhum" || ov === "ver" || ov === "editar") return ov;
-  return nivelPadraoPerfil(MODULO_GRUPO[moduloKey] || "", perfis);
+  const padrao = nivelPadraoPerfil(MODULO_GRUPO[moduloKey] || "", perfis);
+  if (padrao === "editar") return "editar";
+  const extra = MODULO_ROLES_EXTRA[moduloKey];
+  if (extra) for (const p of perfis) if (extra[p]) return extra[p];
+  return padrao;
 }
 
 /** Perfis FRESCOS do usuário (lidos do banco; fallback no token). */

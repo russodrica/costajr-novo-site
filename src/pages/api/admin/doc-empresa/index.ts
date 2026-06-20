@@ -6,7 +6,8 @@ import { registrarAcao } from "../../../../lib/auditoria";
 export const prerender = false;
 
 // Documentos da Empresa: acesso restrito a admin + financeiro + jurídico.
-const PERFIS = ["admin", "financeiro", "juridico"];
+// comercial entra como LEITURA (a trava central/middleware bloqueia mutações p/ nível "ver")
+const PERFIS = ["admin", "financeiro", "juridico", "comercial"];
 
 // GET /api/admin/doc-empresa?categoria=...&arquivados=1 → lista com anexos
 export const GET: APIRoute = async ({ request, url }) => {

@@ -5,7 +5,7 @@ import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
 
-const PERFIS = ["admin", "financeiro", "juridico"];
+const PERFIS = ["admin", "financeiro", "juridico", "comercial"]; // comercial = leitura (middleware barra mutação)
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 const EXT_POR_MIME: Record<string, string> = {
   "application/pdf": "pdf",
