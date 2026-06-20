@@ -2030,6 +2030,35 @@ central do middleware quando nivel=="ver"). Se a Adriana quiser comercial EDITAN
 trocar { comercial: "ver" } por { comercial: "editar" } + nao depender so do middleware. Padrao reusavel
 p/ liberar 1 modulo a 1 perfil sem mexer no grupo.
 
+## Atualizacao 19/06/2026 (parte 7) — Base de Conhecimento: multi-categoria + acesso SO por categoria
+
+**Pedido da Adriana:** (1) um item da base poder aparecer em MAIS DE UMA categoria;
+(2) tirar o campo "Acesso (roles)" da KB — o acesso e dado PELAS CATEGORIAS.
+
+**Feito (commits 33f4bda + 83e7538, SEM migration):**
+- **Multi-categoria sem coluna nova:** as categorias ficam na propria coluna
+  `portal_kb.category` separadas por `;` (ex.: `RH; Financeiro`). Helper
+  `catsDoItem(k)` em src/lib/junia.ts faz o split (minusculas; item antigo de 1
+  categoria vira lista de 1). Filtro da JunIA (junia.ts E juniaIA.ts) e da
+  navegacao (api/portal/kb.ts) passou a liberar o item se QUALQUER categoria dele
+  bater com as categoriasKb do perfil (`catsDoItem(k).some(c => catsOk.has(c))`).
+  Redirecionamento/gate usam a 1a categoria restrita (split + find). Trabalhista:
+  se QUALQUER categoria do item for trabalhista e o perfil nao puder, exclui.
+- **Tela /admin/portal-kb:** campo "Categoria" virou GRUPO DE CHECKBOXES
+  (`#f-cats`, 9 categorias) no modal de editar; salvar junta com `; `. Tabela
+  mostra 1 selo por categoria. openModal marca as caixas pelo split de k.category.
+- **"Acesso (roles)" REMOVIDO da KB** (modal editar, modal importar e coluna da
+  tabela). salvar()/importar() nao mandam mais access_roles. api/portal/kb.ts
+  deixou de filtrar por `access_roles.cs.{...}` — gate da KB e 100% por categoria.
+  **Verificado:** os 37 itens ja eram `access_roles=["all"]`, entao ZERO mudanca de
+  comportamento / sem risco LGPD. A coluna access_roles continua existindo e
+  **AINDA governa os OUTROS modulos** (treinamentos/onboarding/integracao/
+  documentos via permissoes.ts filtroAccessRoles) — NAO mexer la.
+- A JunIA (chat web + 3 bots Telegram) ja era category-only, entao herda o
+  multi-categoria de graca. Build (tsc+astro) limpo; deploys Ready em producao.
+- DICA: pra deixar 1 item em 2 areas, edita em /admin/portal-kb e marca as
+  categorias. Nao existe mais "Acesso (roles)" na base.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
