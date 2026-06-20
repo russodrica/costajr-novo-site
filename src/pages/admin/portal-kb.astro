@@ -38,7 +38,7 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
                 <strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{k.question}</strong>
                 <span style="font-size:12px;color:#888;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{k.answer}</span>
               </td>
-              <td><span class="badge badge-blue">{k.category}</span></td>
+              <td>{String(k.category || "Geral").split(/[;|]/).map((c: string) => c.trim()).filter(Boolean).map((c: string) => (<span class="badge badge-blue" style="margin:2px 4px 2px 0;display:inline-block">{c}</span>))}</td>
               <td style="font-size:12px">{(k.access_roles || ["all"]).join(", ")}</td>
               <td>{fmtDate(k.created_at)}</td>
               <td>
@@ -63,12 +63,22 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
       <input type="hidden" id="edit-id">
       <div class="form-row">
         <div class="form-group">
-          <label>Categoria *</label>
-          <input type="text" id="f-cat" list="cats-kb" placeholder="ex: Geral, Financeiro, Operacional">
+          <label>Categorias * <span style="font-weight:400;color:var(--ink-light);font-size:12px">— marque uma ou mais (a pergunta aparece para todas)</span></label>
+          <div id="f-cats" style="display:flex;flex-wrap:wrap;gap:7px 14px;padding:6px 2px">
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Geral" style="margin:0"> Geral</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Administrativo" style="margin:0"> Administrativo</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Financeiro" style="margin:0"> Financeiro</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Trabalhista" style="margin:0"> Trabalhista</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Segurança do Trabalho" style="margin:0"> Segurança do Trabalho</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="RH" style="margin:0"> RH</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Recrutamento" style="margin:0"> Recrutamento</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Comercial" style="margin:0"> Comercial</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer;white-space:nowrap"><input type="checkbox" value="Operacional" style="margin:0"> Operacional</label>
+          </div>
           <datalist id="cats-kb">
-            <option value="Geral"/><option value="Administrativo"/><option value="Financeiro"/>
-            <option value="Trabalhista"/><option value="Segurança do Trabalho"/><option value="RH"/>
-            <option value="Recrutamento"/><option value="Comercial"/><option value="Operacional"/>
+            <option value="Geral"></option><option value="Administrativo"></option><option value="Financeiro"></option>
+            <option value="Trabalhista"></option><option value="Segurança do Trabalho"></option><option value="RH"></option>
+            <option value="Recrutamento"></option><option value="Comercial"></option><option value="Operacional"></option>
           </datalist>
         </div>
         <div class="form-group">
@@ -194,7 +204,10 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
 
     function openModal(k?: any) {
       document.getElementById("edit-id")!.value = k?.id || "";
-      (document.getElementById("f-cat") as HTMLInputElement).value = k?.category || "";
+      const cats = String(k?.category || "").split(/[;|]/).map((c) => c.trim().toLowerCase()).filter(Boolean);
+      document.querySelectorAll("#f-cats input[type=checkbox]").forEach((cb) => {
+        (cb as HTMLInputElement).checked = cats.includes((cb as HTMLInputElement).value.toLowerCase());
+      });
       (document.getElementById("f-question") as HTMLInputElement).value = k?.question || "";
       (document.getElementById("f-answer") as HTMLTextAreaElement).value = k?.answer || "";
       document.getElementById("modal-title")!.textContent = k ? "Editar Pergunta" : "Nova Pergunta";
@@ -205,12 +218,13 @@ function fmtDate(d: string | null) { return d ? new Date(d).toLocaleDateString("
 
     async function salvar() {
       const id       = (document.getElementById("edit-id") as HTMLInputElement).value;
-      const category = (document.getElementById("f-cat") as HTMLInputElement).value.trim();
+      const cats     = Array.from(document.querySelectorAll("#f-cats input:checked")).map((c) => (c as HTMLInputElement).value);
+      const category = cats.join("; ");
       const question = (document.getElementById("f-question") as HTMLInputElement).value.trim();
       const answer   = (document.getElementById("f-answer") as HTMLTextAreaElement).value.trim();
       const sel      = document.getElementById("f-roles") as HTMLSelectElement;
       const access_roles = Array.from(sel.selectedOptions).map(o => o.value);
-      if (!question || !answer || !category) return alert("Preencha todos os campos obrigatórios.");
+      if (!question || !answer || !cats.length) return alert("Preencha a pergunta, a resposta e marque ao menos uma categoria.");
 
       const btn = document.getElementById("btnSalvar") as HTMLButtonElement;
       btn.disabled = true; btn.textContent = "Salvando...";

@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { requireAdmin, jsonOk, jsonErr, temPerfil } from "~/lib/auth";
 import { permissoesDoUsuario } from "~/lib/permissoes";
+import { catsDoItem } from "~/lib/junia";
 
 export const prerender = false;
 
@@ -22,9 +23,9 @@ export const GET: APIRoute = async ({ request }) => {
     const podeTrabalhista = claims.trabalhista || temPerfil(claims, ["admin", "rh"]);
     const catsOk = new Set(categoriasKb.map((x) => x.toLowerCase()));
     const lista = (data || []).filter((kbe) => {
-      const cat = (kbe.category || "Geral").toLowerCase();
-      if (cat === "trabalhista" && !podeTrabalhista) return false;
-      return catsOk.has(cat) || cat === "geral";
+      const cats = catsDoItem(kbe);
+      if (cats.includes("trabalhista") && !podeTrabalhista) return false;
+      return cats.some((c) => catsOk.has(c) || c === "geral");
     });
     return jsonOk(lista);
   } catch {

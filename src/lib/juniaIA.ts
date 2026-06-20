@@ -15,7 +15,7 @@
 import { supabaseAdmin } from "./supabase";
 import { temPerfil, type AdminClaims } from "./auth";
 import { permissoesDoUsuario } from "./permissoes";
-import { detectarCategoria, responderJunIA, REDIRECIONAMENTOS, pontuarEntrada, type RespostaJunIA } from "./junia";
+import { detectarCategoria, responderJunIA, REDIRECIONAMENTOS, pontuarEntrada, catsDoItem, type RespostaJunIA } from "./junia";
 
 // Mensagem padrão de "fale com o responsável" quando o assunto é de uma área que o
 // perfil NÃO pode ver (LGPD). Usa o texto da área quando houver.
@@ -73,7 +73,7 @@ export async function responderJuniaIA(
     }
 
     const permitidas = (kb || []).filter(
-      (k) => catsOk.has((k.category || "Geral").toLowerCase()) && ((k.category || "").toLowerCase() !== "trabalhista" || podeTrabalhista),
+      (k) => catsDoItem(k).some((c) => catsOk.has(c)) && (!catsDoItem(k).includes("trabalhista") || podeTrabalhista),
     );
     if (!permitidas.length) return responderJunIA(claims, pergunta);
 
@@ -125,10 +125,10 @@ ${base}`;
       // (não vira pendência, e não responde o conteúdo restrito)
       const restrita = (kb || [])
         .map((k) => ({ k, score: pontuarEntrada(pergunta, k) }))
-        .filter((x) => x.score >= 6 && !ehAdmin && !catsOk.has((x.k.category || "Geral").toLowerCase()))
+        .filter((x) => x.score >= 6 && !ehAdmin && !catsDoItem(x.k).some((c) => catsOk.has(c)))
         .sort((a, b) => b.score - a.score)[0];
       if (restrita) {
-        const cat = restrita.k.category || categoria;
+        const cat = String(restrita.k.category || categoria).split(/[;|]/).map((c) => c.trim()).find((c) => !catsOk.has(c.toLowerCase())) || categoria;
         return { resposta: direcionarArea(cat), categoria: cat, precisaResposta: false, fonte: "redirecionamento" };
       }
       return {

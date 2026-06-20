@@ -61,6 +61,14 @@ export function pontuarEntrada(pergunta: string, kb: { question: string; answer:
   return score;
 }
 
+// Uma entrada da base pode pertencer a MAIS DE UMA categoria. As categorias ficam
+// na própria coluna `category`, separadas por ";" (ex.: "RH; Financeiro").
+// Retorna sempre em minúsculas; entradas antigas (1 categoria) viram lista de 1.
+export function catsDoItem(k: { category?: string | null }): string[] {
+  const arr = String(k?.category || "Geral").split(/[;|]/).map((c) => c.trim().toLowerCase()).filter(Boolean);
+  return arr.length ? arr : ["geral"];
+}
+
 export interface RespostaJunIA {
   resposta: string;
   categoria: string;
@@ -85,7 +93,7 @@ export async function responderJunIA(claims: AdminClaims, pergunta: string): Pro
   const todas = (kb || []).map((k) => ({ ...k, score: pontuarEntrada(pergunta, k) })).filter((k) => k.score > 0);
   todas.sort((a, b) => b.score - a.score);
 
-  const permitidas = todas.filter((k) => catsOk.has((k.category || "Geral").toLowerCase()) && ((k.category || "").toLowerCase() !== "trabalhista" || podeTrabalhista));
+  const permitidas = todas.filter((k) => catsDoItem(k).some((c) => catsOk.has(c)) && (!catsDoItem(k).includes("trabalhista") || podeTrabalhista));
   const melhor = permitidas[0];
 
   if (melhor && melhor.score >= 6) {
@@ -98,10 +106,11 @@ export async function responderJunIA(claims: AdminClaims, pergunta: string): Pro
   }
 
   // havia resposta, mas em categoria restrita ao perfil → redireciona
-  const restrita = todas.find((k) => !catsOk.has((k.category || "Geral").toLowerCase()) && k.score >= 6);
+  const restrita = todas.find((k) => !catsDoItem(k).some((c) => catsOk.has(c)) && k.score >= 6);
   if (restrita) {
-    const msg = REDIRECIONAMENTOS[restrita.category || ""] || "Esse assunto é tratado por outro departamento — fale com seu gestor.";
-    return { resposta: `Olá! ${msg}`, categoria: restrita.category || categoria, precisaResposta: false, fonte: "redirecionamento" };
+    const catRestrita = String(restrita.category || "").split(/[;|]/).map((c) => c.trim()).find((c) => !catsOk.has(c.toLowerCase())) || restrita.category || "";
+    const msg = REDIRECIONAMENTOS[catRestrita] || "Esse assunto é tratado por outro departamento — fale com seu gestor.";
+    return { resposta: `Olá! ${msg}`, categoria: catRestrita || categoria, precisaResposta: false, fonte: "redirecionamento" };
   }
 
   return {
