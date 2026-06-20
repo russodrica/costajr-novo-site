@@ -1931,6 +1931,23 @@ webhook do Telegram TEM que apontar pro host que responde direto (sem redirect) 
 Diagnostico padrao de bot mudo: getMe (token certo?) + getWebhookInfo (url/erro/pending) + logs da
 Vercel + curl no apex e no www p/ ver 307.
 
+## Atualizacao 19/06/2026 (parte 5) — BOT da JunIA no Telegram (3o bot) + fallback p/ grupo
+
+A Adriana quis a JunIA como BOT do Telegram: o time pergunta no privado e ela responde na hora;
+sem resposta -> cai no grupo da Base, o gestor responde (reply) e o bot devolve pro autor. **Commit
+cb00870.** TERCEIRO bot, modo "junia", token `TELEGRAM_BOT_TOKEN_JUNIA` (NOVA env — a Adriana cria o
+bot no BotFather e cola o token na Vercel). `botPorModo("junia")` pre="junia:". onMessageJunia:
+identifica por telefone (claimsDeColaborador resolve profile_id -> portal_profiles role/roles/trabalhista;
+sem profile -> defaults operacional, so categorias geral/operacional por LGPD) -> `responderJuniaIA`
+(reusa o motor com IA + categorias do perfil). precisaResposta -> `encaminharPergunta` posta no grupo
+da Base (via bot ADM), guarda pendente em `telegram_sessoes` key `pq:`+message_id da msg do grupo ->
+avisa o autor "te aviso aqui". No grupo da Base, REPLY a essa msg -> `responderPerguntaEncaminhada`
+manda a resposta pro autor (via bot JUNIA, cross-bot pelo asker_chat_id) + `proporKbDireto` (card de
+aprovacao p/ adicionar a base). Webhook `/api/telegram/webhook-junia`; `configurar.ts` ativa os 3 bots;
+tela /admin/telegram tem o card da JunIA. Privacidade do junia bot NAO precisa mexer (so privado).
+**SETUP (Adriana):** criar bot no BotFather -> TELEGRAM_BOT_TOKEN_JUNIA na Vercel + Redeploy -> /admin/
+telegram Ativar -> testar. Grupo da Base precisa estar ativado (/ativar_base) p/ o fallback funcionar.
+
 ## Atualizacao 19/06/2026 (parte 3) — GRUPO de RH como inbox de DOCUMENTOS (decisao da Adriana)
 
 A Adriana preferiu um **GRUPO** especifico (so RH) p/ jogar DOCUMENTOS, em vez do chat privado 1:1
