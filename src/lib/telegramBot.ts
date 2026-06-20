@@ -183,8 +183,8 @@ async function onMessage(db: any, B: Bot, msg: any) {
   const chat = msg.chat;
   if (!chat) return;
   if (chat.type !== "private") {
-    // grupos: só o bot de RH, e só no grupo-inbox registrado (documentos)
-    if (B.modo === "adm") return await onGrupoMensagem(db, B, msg);
+    // grupos: bot de RH (documentos+base) e bot da JunIA (base) atendem grupos registrados
+    if (B.modo === "adm" || B.modo === "junia") return await onGrupoMensagem(db, B, msg);
     return;
   }
   if (B.modo === "junia") return await onMessageJunia(db, B, msg);
@@ -654,8 +654,12 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
   const chatId = chat.id;
   const texto = String(msg.text || "").trim();
 
-  // ── ativar grupo de DOCUMENTOS ──
+  // ── ativar grupo de DOCUMENTOS (só pelo bot de RH) ──
   if (/^\/ativar_grupo(@\w+)?/i.test(texto)) {
+    if (B.modo !== "adm") {
+      await enviar(B, chatId, "Aqui no grupo eu cuido da <b>base de conhecimento</b> 🧠. Para isso, mande <code>/ativar_base</code>. (Grupo de DOCUMENTOS é com o bot de RH @cjr_adm_bot.)");
+      return;
+    }
     if (!(await ehAdminGrupo(B, chatId, msg.from?.id))) {
       await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode ativar este grupo.");
       return;
@@ -670,7 +674,7 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
       await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode ativar este grupo.");
       return;
     }
-    await salvarSessao(db, { telegram_user_id: "grupo_base", chat_id: String(chatId), estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "", aprovador_id: msg.from?.id || null, aprovador_nome: nomeRemetente(msg.from) } });
+    await salvarSessao(db, { telegram_user_id: "grupo_base", chat_id: String(chatId), estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "", bot_modo: B.modo, aprovador_id: msg.from?.id || null, aprovador_nome: nomeRemetente(msg.from) } });
     await enviar(B, chatId, `✅ <b>Grupo ativado como BASE DE CONHECIMENTO da JunIA!</b>\nMandem aqui as <b>instruções/textos</b> que querem cadastrar. Eu organizo em <b>pergunta + resposta</b>, <b>checo se já existe ou se contradiz</b> a base, e mostro pra aprovação.\n\n🔒 <b>Só ${escTg(nomeRemetente(msg.from))}</b> (quem ativou) pode <b>aprovar e salvar</b> na base. As demais pessoas enviam, mas a publicação depende dessa aprovação.`);
     return;
   }
@@ -988,12 +992,14 @@ async function responderPerguntaJunia(db: any, B: Bot, msg: any, chatId: number,
 // Posta a pergunta sem resposta no grupo da Base (via bot adm) e guarda o pendente
 // pela message_id da mensagem do grupo. true se conseguiu encaminhar.
 async function encaminharPergunta(db: any, askerChatId: number, d: any, pergunta: string): Promise<boolean> {
-  const base = await getGrupoBase(db);
+  const info = await getGrupoBaseInfo(db);
+  const base = info?.chat_id;
   if (!base) return false;
-  const admBot = botPorModo("adm");
+  // posta no grupo da base usando o bot que ATIVOU o grupo (junia ou adm)
+  const grpBot = botPorModo(info.bot_modo === "junia" ? "junia" : "adm");
   const nome = d.colaborador_nome || "colaborador";
   const primeiro = String(nome).split(" ")[0];
-  const enviado = await enviar(admBot, base,
+  const enviado = await enviar(grpBot, base,
     `❓ <b>Pergunta sem resposta na base</b>\nDe: <b>${escTg(nome)}</b>\n\n"${escTg(pergunta)}"\n\n↩️ <b>Responda ESTA mensagem</b> com a resposta — eu envio pro ${escTg(primeiro)} e proponho adicionar à base.`);
   const msgId = enviado?.result?.message_id;
   if (!msgId) return false;
