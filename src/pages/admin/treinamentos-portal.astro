@@ -156,8 +156,9 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       return url;
     }
 
-    (window as any).openVideo = function(url: string, title: string, desc: string) {
-      (document.getElementById("videoFrame") as HTMLIFrameElement).src = toEmbedUrl(url);
+    (window as any).openVideo = function(id: string, title: string, desc: string) {
+      // abre o player COM MARCA D'ÁGUA (/api/.../abrir -> /treino), nunca a URL crua
+      (document.getElementById("videoFrame") as HTMLIFrameElement).src = `/api/portal/treinamentos/abrir?tipo=video&id=${encodeURIComponent(id)}`;
       document.getElementById("modalTitle")!.textContent = title;
       document.getElementById("modalDesc")!.textContent = desc || "";
       document.getElementById("videoModal")!.classList.add("open");
@@ -180,7 +181,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
       const el = document.getElementById("content-videos")!;
       if (!items.length) { el.innerHTML = '<div class="empty-state"><strong>Nenhum vídeo nesta categoria</strong><p>Experimente selecionar outra categoria ou "Todos".</p></div>'; return; }
       el.innerHTML = `<div class="videos-grid">${items.map(v => `
-        <div class="video-card" onclick="openVideo('${esc(v.url_video)}','${esc(v.titulo)}','${esc(v.descricao||"")}')">
+        <div class="video-card" onclick="openVideo('${esc(v.id)}','${esc(v.titulo)}','${esc(v.descricao||"")}')">
           <div class="thumb-wrap">
             ${getThumb(v.url_video) ? `<img src="${getThumb(v.url_video)}" alt="${esc(v.titulo)}" loading="lazy">` : ""}
             <div class="play-icon">▶</div>
@@ -205,7 +206,7 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
             <h3>${p.titulo}</h3>
             <p>${p.descricao || ""}${p.paginas ? ` · ${p.paginas} páginas` : ""}</p>
           </div>
-          ${p.url ? `<a href="${p.url}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Ver PDF</a>` : ""}
+          <a href="/api/portal/treinamentos/abrir?tipo=pdf&id=${p.id}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Ver PDF</a>
         </div>`).join("")}</div>`;
     }
 

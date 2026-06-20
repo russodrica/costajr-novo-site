@@ -14,12 +14,14 @@ import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, e
 import { registrarAcao } from "./auditoria";
 import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
-import { urlAssinadaTreino } from "./treinoStorage";
+import { assinarTreinoToken } from "./treinoStorage";
 
-// Converte links /api/portal/treinamentos/abrir do texto da JunIA em BOTÕES com
-// URL assinada (privada) — quem usa o bot já foi identificado pelo telefone, então
-// recebe um link temporário que abre sem precisar logar no portal.
-async function resolverTreinoTelegram(db: any, texto: string): Promise<{ texto: string; botoes: { text: string; url: string }[] }> {
+const SITE_TREINO = "https://www.costajr.com.br";
+
+// Converte links /api/portal/treinamentos/abrir do texto da JunIA em BOTÕES que
+// levam ao player COM MARCA D'ÁGUA (/treino/[token]). O token carrega o NOME de
+// quem perguntou — o vídeo abre estampado com o nome (rastreável se encaminhado).
+async function resolverTreinoTelegram(db: any, texto: string, nome: string): Promise<{ texto: string; botoes: { text: string; url: string }[] }> {
   const re = /https?:\/\/[^\s)]*\/api\/portal\/treinamentos\/abrir\?[^\s)]*/gi;
   const achados = Array.from(new Set(texto.match(re) || []));
   const botoes: { text: string; url: string }[] = [];
@@ -30,13 +32,8 @@ async function resolverTreinoTelegram(db: any, texto: string): Promise<{ texto: 
       const tipo = u.searchParams.get("tipo") === "pdf" ? "pdf" : "video";
       const id = u.searchParams.get("id") || "";
       if (id) {
-        const tabela = tipo === "pdf" ? "portal_treinamentos_pdfs" : "portal_treinamentos_videos";
-        const { data: item } = await db.from(tabela).select("*").eq("id", id).maybeSingle();
-        const original = tipo === "pdf" ? item?.url : item?.url_video;
-        const assinada = await urlAssinadaTreino(db, original);
-        if (assinada && /^https?:/i.test(assinada)) {
-          botoes.push({ text: tipo === "pdf" ? "📄 Abrir o procedimento" : "📺 Assistir ao treinamento", url: assinada });
-        }
+        const token = await assinarTreinoToken({ vtipo: tipo, id, nome: nome || "Colaborador" });
+        botoes.push({ text: tipo === "pdf" ? "📄 Abrir o procedimento" : "📺 Assistir ao treinamento", url: `${SITE_TREINO}/treino/${token}` });
       }
     } catch { /* ignore */ }
     limpo = limpo.split(link).join("");
@@ -1013,8 +1010,8 @@ async function responderPerguntaJunia(db: any, B: Bot, msg: any, chatId: number,
     await enviar(B, chatId, resp);
   } else {
     resp = r.resposta;
-    // se a resposta tiver link de treinamento, vira botão com URL assinada (privada)
-    const { texto: tl, botoes } = await resolverTreinoTelegram(db, resp);
+    // se a resposta tiver link de treinamento, vira botão p/ o player com marca d'água
+    const { texto: tl, botoes } = await resolverTreinoTelegram(db, resp, d.colaborador_nome || "Colaborador");
     const teclado = botoes.length ? { inline_keyboard: botoes.map((b) => [b]) } : undefined;
     await enviar(B, chatId, escTg(tl), teclado);
   }

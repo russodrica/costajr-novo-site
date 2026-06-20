@@ -2,7 +2,6 @@ import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { requireAdmin, jsonOk, jsonErr } from "~/lib/auth";
 import { filtroAcessoConteudo } from "~/lib/permissoes";
-import { urlAssinadaTreino } from "~/lib/treinoStorage";
 
 export const prerender = false;
 
@@ -14,9 +13,9 @@ export const GET: APIRoute = async ({ request }) => {
     const filtro = await filtroAcessoConteudo(claims); // null = admin vê tudo
     if (filtro) q = q.or(filtro);
     const { data } = await q.order("categoria").order("ordem");
-    // entrega URL assinada (bucket privado) — só funciona logado
-    const rows = await Promise.all((data || []).map(async (v: any) => ({ ...v, url_video: await urlAssinadaTreino(sb, v.url_video) })));
-    return jsonOk(rows);
+    // NÃO assina aqui: a reprodução passa pelo player com marca d'água (/api/portal/
+    // treinamentos/abrir → /treino), pra nunca expor a URL crua sem o nome estampado.
+    return jsonOk(data || []);
   } catch {
     return jsonErr(401, "Não autenticado.");
   }

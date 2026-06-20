@@ -1,31 +1,26 @@
 import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { requireAdmin } from "~/lib/auth";
-import { urlAssinadaTreino } from "~/lib/treinoStorage";
+import { assinarTreinoToken, nomeDoUsuario } from "~/lib/treinoStorage";
 
 export const prerender = false;
 
 // GET /api/portal/treinamentos/abrir?tipo=video|pdf&id=<id>
-// Exige login (cookie admin_token OU x-portal-auth). Gera uma URL ASSINADA nova
-// e redireciona — o link da base de conhecimento aponta pra cá, então o vídeo só
-// abre para quem está logado na empresa. Link externo (YouTube) redireciona direto.
+// Exige login. Gera um token com o NOME do usuário logado e redireciona para o
+// player com marca d'água (/treino/[token]) — o vídeo abre estampado com o nome
+// de quem está assistindo. O link da base de conhecimento aponta pra cá.
 export const GET: APIRoute = async ({ request, url }) => {
   try {
-    await requireAdmin(request);
-    const tipo = url.searchParams.get("tipo") || "video";
+    const claims = await requireAdmin(request);
+    const tipo = url.searchParams.get("tipo") === "pdf" ? "pdf" : "video";
     const id = url.searchParams.get("id") || "";
-    if (!id || !["video", "pdf"].includes(tipo)) return new Response("Parâmetros inválidos.", { status: 400 });
+    if (!id) return new Response("Parâmetros inválidos.", { status: 400 });
 
     const sb = supabaseAdmin();
-    const tabela = tipo === "pdf" ? "portal_treinamentos_pdfs" : "portal_treinamentos_videos";
-    const { data: item } = await sb.from(tabela).select("*").eq("id", id).maybeSingle();
-    if (!item) return new Response("Treinamento não encontrado.", { status: 404 });
+    const nome = await nomeDoUsuario(sb, (claims as any).sub, (claims as any).email);
+    const token = await assinarTreinoToken({ vtipo: tipo, id, nome });
 
-    const original = tipo === "pdf" ? item.url : item.url_video;
-    const assinada = await urlAssinadaTreino(sb, original);
-    if (!assinada) return new Response("Arquivo indisponível.", { status: 404 });
-
-    return new Response(null, { status: 302, headers: { location: assinada, "cache-control": "no-store" } });
+    return new Response(null, { status: 302, headers: { location: `/treino/${token}`, "cache-control": "no-store" } });
   } catch {
     return new Response("Faça login na plataforma para abrir o treinamento.", { status: 401 });
   }
