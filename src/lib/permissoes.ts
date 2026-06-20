@@ -153,6 +153,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   { id: "operacoes", label: "Operações & Obras", itens: [
     { key: "ativos", label: "Ativos Patrimoniais", icon: "🏷️", href: "/admin/ativos" },
     { key: "obras", label: "Obras & Projetos", icon: "🏗️", href: "/admin/obras" },
+    { key: "vobi-projetos", label: "Projetos Ativos (Vobi)", icon: "🔗", href: "/admin/vobi-projetos" },
     { key: "depositos", label: "Depósitos", icon: "📦", href: "/admin/depositos" },
     { key: "orcamentos", label: "Orçamentos", icon: "🧮", href: "/admin/orcamentos" },
   ] },

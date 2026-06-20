@@ -185,3 +185,66 @@ export async function vobiComercial(ano: number | null): Promise<VobiComercial> 
     };
   });
 }
+
+// ──────────────────────────── PROJETOS / OBRAS ──────────────────────────────
+// Projetos ATIVOS = refurbish NÃO-arquivados (o /refurbish padrão já exclui os
+// arquivados = perdidas/canceladas/históricas). Lista ao vivo p/ Operações & Obras.
+
+export type VobiProjeto = {
+  id: number; nome: string; valor: number; fase: string; faseCor: string;
+  ganho: boolean; ganhoEm: string | null; inicio: string | null; previsao: string | null;
+  cidade: string | null; uf: string | null; cliente: string | null; criadoEm: string | null;
+};
+export type VobiProjetos = {
+  total: number; valorTotal: number;
+  emExecucao: number; valorExecucao: number; // ganhos (winnerDate preenchido)
+  porFase: { fase: string; cor: string; n: number; valor: number }[];
+  projetos: VobiProjeto[];
+};
+
+export async function vobiProjetos(): Promise<VobiProjetos> {
+  return cached("projetos-ativos", 5 * 60 * 1000, async () => {
+    const [steps, customers, raw] = await Promise.all([
+      getAll("step"),
+      getAll("companyCustomer"), // clientes (idCompanyCustomer -> nome)
+      getAll("refurbish"), // não-arquivados = ativos
+    ]);
+    const nome = new Map<number, string>(steps.map((s) => [s.id, s.name]));
+    const cor = new Map<number, string>(steps.map((s) => [s.id, s.color || "#94A3B8"]));
+    const cliNome = new Map<number, string>(customers.map((c: any) => [c.id, c.name || c.legalName]));
+
+    const projetos: VobiProjeto[] = raw.map((r) => {
+      return {
+        id: r.id,
+        nome: r.name || "(sem nome)",
+        valor: n(r.budget ?? r.total),
+        fase: (r.idStep != null && nome.get(r.idStep)) || "Sem fase",
+        faseCor: (r.idStep != null && cor.get(r.idStep)) || "#94A3B8",
+        ganho: !!r.winnerDate,
+        ganhoEm: r.winnerDate || null,
+        inicio: r.startDate || r.startPrediction || null,
+        previsao: r.predictionDate || null,
+        cidade: r.city || null,
+        uf: r.state || null,
+        cliente: (r.idCompanyCustomer != null && cliNome.get(r.idCompanyCustomer)) || null,
+        criadoEm: r.createdAt || r.creationDate || null,
+      };
+    });
+    projetos.sort((a, b) => b.valor - a.valor);
+
+    const valorTotal = projetos.reduce((t, p) => t + p.valor, 0);
+    const won = projetos.filter((p) => p.ganho);
+    const faseMap = new Map<string, { fase: string; cor: string; n: number; valor: number }>();
+    for (const p of projetos) {
+      const f = faseMap.get(p.fase) || { fase: p.fase, cor: p.faseCor, n: 0, valor: 0 };
+      f.n++; f.valor += p.valor; faseMap.set(p.fase, f);
+    }
+    const porFase = [...faseMap.values()].sort((a, b) => b.n - a.n);
+
+    return {
+      total: projetos.length, valorTotal,
+      emExecucao: won.length, valorExecucao: won.reduce((t, p) => t + p.valor, 0),
+      porFase, projetos,
+    };
+  });
+}

@@ -1,0 +1,114 @@
+---
+import Admin from "../../layouts/Admin.astro";
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+---
+<Admin title="Projetos Ativos (Vobi)" current="vobi-projetos">
+  <div class="toolbar">
+    <span class="toolbar-title">Projetos & Obras ativos — Vobi <span class="live">ao vivo</span></span>
+    <select id="faseSel" class="filter-select"><option value="">Todas as fases</option></select>
+    <button class="btn btn-secondary btn-sm" id="btnReload"><i class="ti ti-refresh" aria-hidden="true"></i> Atualizar</button>
+  </div>
+
+  <div id="vpStatus" class="loading"><span class="spinner"></span> Consultando a Vobi…</div>
+
+  <div id="vpContent" style="display:none">
+    <div class="kpi-grid" id="vpKpis"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="chart-title">Projetos ativos por fase</div>
+      <div id="vpFases"></div>
+    </div>
+    <div class="card">
+      <div class="chart-title" id="vpTabTitle">Projetos</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Projeto</th><th>Cliente</th><th>Cidade</th><th>Fase</th><th style="text-align:right">Valor</th><th>Início / previsão</th></tr></thead>
+          <tbody id="vpRows"></tbody>
+        </table>
+      </div>
+      <p class="nota">Ao vivo da API da Vobi (somente leitura). <b>Ativos</b> = projetos não-arquivados (a Vobi exclui os arquivados = perdidos/cancelados/históricos). <b>Em execução</b> = projetos com data de fechamento (ganho) preenchida. Use o filtro de fase para focar (ex.: "EM ANDAMENTO", "FATURADA").</p>
+    </div>
+  </div>
+
+  <script>
+    const fmt = (v) => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+    const el = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const dt = (s) => { if (!s) return "—"; const d = new Date(s); return isNaN(+d) ? "—" : d.toLocaleDateString("pt-BR"); };
+    function statCard(valor, label, sub, cor) {
+      return `<div class="stat-card"><div class="stat-value" style="color:${cor || "var(--ink)"};font-size:1.6rem;line-height:1.15">${valor}</div><div class="stat-label">${label}</div>${sub ? `<div style="font-size:.74rem;color:var(--ink-light);margin-top:5px;font-weight:600">${sub}</div>` : ""}</div>`;
+    }
+    const txtOn = (hex) => { const c = String(hex || "").replace("#", ""); if (c.length < 6) return "#fff"; const r = parseInt(c.slice(0,2),16), g = parseInt(c.slice(2,4),16), b = parseInt(c.slice(4,6),16); return (0.299*r+0.587*g+0.114*b) > 150 ? "#1A1D24" : "#fff"; };
+
+    let DADOS = null;
+
+    function renderTabela() {
+      const fase = el("faseSel").value;
+      const lista = DADOS.projetos.filter((p) => !fase || p.fase === fase);
+      el("vpTabTitle").textContent = `Projetos${fase ? " — " + fase : ""} (${lista.length})`;
+      el("vpRows").innerHTML = lista.length ? lista.map((p) => `
+        <tr>
+          <td style="max-width:300px"><strong style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nome)}</strong>${p.ganho ? '<span style="font-size:11px;color:#16A34A;font-weight:700">● em execução</span>' : ""}</td>
+          <td>${esc(p.cliente) || "—"}</td>
+          <td>${esc(p.cidade) || "—"}${p.uf ? "/" + esc(p.uf) : ""}</td>
+          <td><span class="badge" style="background:${esc(p.faseCor)};color:${txtOn(p.faseCor)}">${esc(p.fase)}</span></td>
+          <td style="text-align:right;font-weight:700;white-space:nowrap">${fmt(p.valor)}</td>
+          <td style="white-space:nowrap;font-size:.82rem">${dt(p.inicio)} ${p.previsao ? "→ " + dt(p.previsao) : ""}</td>
+        </tr>`).join("") : '<tr><td colspan="6" style="text-align:center;color:#999;padding:28px">Nenhum projeto nesta fase.</td></tr>';
+    }
+
+    async function carregar() {
+      el("vpStatus").style.display = "flex";
+      el("vpStatus").innerHTML = '<span class="spinner"></span> Consultando a Vobi…';
+      el("vpContent").style.display = "none";
+      let d;
+      try {
+        const r = await fetch("/api/admin/vobi/projetos");
+        d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Falha ao consultar a Vobi.");
+      } catch (e) {
+        el("vpStatus").innerHTML = `<div class="erro"><strong>Não foi possível carregar.</strong><br>${e.message}</div>`;
+        return;
+      }
+      DADOS = d;
+      el("vpKpis").innerHTML = [
+        statCard(d.total, "Projetos ativos", fmt(d.valorTotal) + " em valor", "var(--ink)"),
+        statCard(d.emExecucao, "Em execução (ganhos)", fmt(d.valorExecucao), "#16A34A"),
+        statCard(d.total - d.emExecucao, "Em negociação / outras fases", fmt(d.valorTotal - d.valorExecucao), "#1D4ED8"),
+        statCard(d.porFase.length, "Fases com projetos", "distribuídos no pipeline", "#7C3AED"),
+      ].join("");
+
+      const maxN = Math.max(1, ...d.porFase.map((f) => f.n));
+      el("vpFases").innerHTML = d.porFase.map((f) => {
+        const w = 26 + 74 * (f.n / maxN);
+        return `<div class="fase-bar" style="width:${w.toFixed(1)}%;background:${esc(f.cor)};color:${txtOn(f.cor)}" title="${esc(f.fase)} — ${f.n} projeto(s) · ${fmt(f.valor)}" onclick="document.getElementById('faseSel').value='${esc(f.fase)}';window.__rt()">
+          <span style="font-weight:700;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.fase)}</span>
+          <span style="font-weight:700;font-size:.8rem;white-space:nowrap">${f.n} <span style="opacity:.7">· ${fmt(f.valor)}</span></span>
+        </div>`;
+      }).join("");
+
+      const sel = el("faseSel");
+      sel.innerHTML = '<option value="">Todas as fases</option>' + d.porFase.map((f) => `<option value="${esc(f.fase)}">${esc(f.fase)} (${f.n})</option>`).join("");
+
+      renderTabela();
+      el("vpStatus").style.display = "none";
+      el("vpContent").style.display = "block";
+    }
+    (window).__rt = renderTabela;
+    el("faseSel").addEventListener("change", renderTabela);
+    el("btnReload").addEventListener("click", carregar);
+    carregar();
+  </script>
+
+  <style>
+    .live { background: #FFEDD5; color: #9A3412; font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 99px; vertical-align: middle; margin-left: 6px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .chart-title { font-family: 'Montserrat', sans-serif; font-size: .9rem; font-weight: 700; margin-bottom: 14px; color: var(--ink); }
+    #vpFases { display: flex; flex-direction: column; gap: 6px; }
+    .fase-bar { min-width: 220px; min-height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 16px; box-shadow: var(--shadow-xs); cursor: pointer; transition: transform .15s; }
+    .fase-bar:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+    .nota { font-size: .76rem; color: var(--ink-light); margin-top: 14px; line-height: 1.5; }
+    .erro { background: var(--danger-bg); color: var(--danger-fg); border: 1px solid #FECACA; border-radius: 10px; padding: 14px 16px; font-size: .9rem; }
+    .loading { min-height: 120px; }
+  </style>
+</Admin>
