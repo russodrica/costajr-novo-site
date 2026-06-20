@@ -2186,6 +2186,43 @@ PROXIMA SESSAO: pedir (1) nome da plataforma de VoIP, (2) acesso a API (token/cr
 docs), (3) o que deve fazer no portal. Sem isso nao da pra integrar. (Eu NAO digito API keys
 em sistemas externos; ela cola na Vercel, igual Vobi/Telegram/Groq.)
 
+## Atualizacao 20/06/2026 — Status "EM DESLIGAMENTO" (corta acessos auto + tarefas p/ TI)
+
+**Pedido da Adriana:** status RH "EM DESLIGAMENTO" que, ao setar, cancela os acessos do
+colaborador. Decisoes dela: **botao na ficha** (nao dropdown) + **Vobi/Rotaexata/ControlID
+viram TAREFA com link** (mapeei a API da Vobi: e SO LEITURA, nao da pra inativar por fora).
+
+**Feito (commit 77d9aee; migration 073 RODADA via Management API/Chrome):**
+- **Migration 073:** status constraint += 'em_desligamento' (agora ativo|ferias|afastado|
+  congelado|em_desligamento|desligado) + tabela `rh_desligamento_tarefas` (colaborador_id FK,
+  sistema, categoria, acao, descricao, link, status pendente|concluida, concluida_em/por). IDs
+  TEXT. RLS ligado.
+- **src/lib/desligamento.ts `iniciarDesligamento(db, colabId, admin)`** — o MOTOR:
+  (1) **PortalCJR** corta automatico: portal_profiles.approval_status='rejected' + delete
+  portal_sessoes + invalidarSessoesPortal. (2) **Telegram** corta: acha telegram_sessoes onde
+  dados.colaborador_id == colab, banChatMember nos grupos registrados (grupo_rh/grupo_base,
+  chat_id em dados; bot por dados.bot_modo) e APAGA as sessoes (corta os bots). (3) rh_acessos
+  ativos -> revogado (historico preservado). (4) **gera TAREFAS** p/ cada acesso ativo (menos
+  PortalCJR): Bancos->cancelar conta; Vobi->inativar (link app.vobi.com.br); Rotaexata/ControlID
+  ->excluir usuario; demais->cancelar/trocar senha. (5) status->em_desligamento. (6) e-mail TI
+  (RH_ALERT_EMAIL) + Telegram ADM + auditoria.
+- **APIs:** POST /api/admin/rh/desligamentos/iniciar {colaborador_id}; GET/PATCH
+  /api/admin/rh/desligamentos/tarefas (lista + marcar feito/reabrir). bloqueioSeSoLeitura(rh).
+- **UI (rh.astro):** nova aba **"🚪 Desligamento"** na ficha: botao "Iniciar desligamento
+  (cortar acessos)" (confirm) quando status normal; quando em_desligamento, mostra o aviso +
+  a lista de **tarefas da TI** (checkbox marca feito, link "abrir plataforma"). stColab/
+  badgeColab += em_desligamento (🚪, badge-yellow). PATCH colaboradores/[id] aceita o status.
+- **NAO confundir com o "Desligar" final** (finalizar.ts) que exige devolucao de ativos/EPIs e
+  poe status=desligado. EM DESLIGAMENTO e ANTES: corta digital na hora; o desligado vem depois.
+- **Reativar** (se marcar errado): re-aprovar manual em /admin/membros (a revogacao do portal
+  nao e auto-revertida pelo dropdown). em_desligamento conta como ativo (status!=desligado) ->
+  segue nas listas de ativos.
+- **Alertas (ferias/EPI/avaliacoes/docs) NAO foram pausados p/ em_desligamento** (pessoa ainda
+  trabalha no aviso); se a Adriana quiser pausar, adicionar status==='em_desligamento' nas
+  exclusoes (igual congelado), em ferias.ts/rhVencimentos.ts/epi.ts/avaliacoes.ts.
+- Build limpo; deploy live (endpoint=401 sem login; tabela=200 no PostgREST). **TESTAR no
+  FUNCIONARIO TESTE** (corta acesso de verdade — nao testar em colaborador real).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
