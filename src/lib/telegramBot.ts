@@ -946,15 +946,16 @@ async function onMessageJunia(db: any, B: Bot, msg: any) {
 }
 
 async function claimsDeColaborador(db: any, colabId: string, email?: string | null): Promise<any> {
-  let sub = "tg-" + colabId, role = "operacional", roles: string[] = ["operacional"], trabalhista = false;
+  let sub = "tg-" + colabId, role = "operacional", roles: string[] = ["operacional"];
   try {
     const { data: c } = await db.from("rh_colaboradores").select("profile_id").eq("id", colabId).maybeSingle();
     if (c?.profile_id) {
-      const { data: p } = await db.from("portal_profiles").select("id, role, roles, trabalhista").eq("id", c.profile_id).maybeSingle();
-      if (p) { sub = p.id; role = p.role || role; roles = Array.isArray(p.roles) && p.roles.length ? p.roles : [role]; trabalhista = !!p.trabalhista; }
+      const { data: p } = await db.from("portal_profiles").select("id, role, roles").eq("id", c.profile_id).maybeSingle();
+      if (p) { sub = p.id; role = p.role || role; roles = Array.isArray(p.roles) && p.roles.length ? p.roles : [role]; }
     }
   } catch { /* usa defaults */ }
-  return { sub, role, roles, trabalhista, email: email || null, tipo: "admin" };
+  // trabalhista: admin/rh já liberam via temPerfil dentro de responderJuniaIA (sem coluna própria)
+  return { sub, role, roles, trabalhista: false, email: email || null, tipo: "admin" };
 }
 
 async function responderPerguntaJunia(db: any, B: Bot, msg: any, chatId: number, sessao: Sessao, pergunta: string) {
