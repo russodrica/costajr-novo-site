@@ -72,15 +72,25 @@ export function detectarValidade(texto: string): string | null {
   return null;
 }
 
-// Casa um texto (nome do arquivo) com a lista de colaboradores por nome.
-// Retorna { id, nome, score } do melhor casamento, ou null.
+// Palavras que NÃO ajudam a identificar a pessoa/empresa e poluem o casamento:
+// o nome da própria empresa (aparece em TODO documento, e "Costa Júnior" = nome do
+// fundador → casava balancete da empresa com a pessoa) e marcadores de plataforma de
+// assinatura / genéricos (D4Sign, Clicksign… no nome do arquivo).
+const STOP_NOME = new Set([
+  "costa", "junior", "engenharia", "construcoes", "construcao", "ltda", "eireli", "epp",
+  "d4sign", "clicksign", "docusign", "zapsign", "digiforte", "assinado", "assinada", "signed", "rubrica",
+  "balancete", "documento", "arquivo", "scan", "camscanner", "digitalizado", "via", "pdf",
+]);
+
+// Casa um texto (nome do arquivo / conteúdo) com a lista de colaboradores (ou empresas)
+// por nome. Retorna { id, nome, score } do melhor casamento, ou null.
 export function casarColaborador(
   texto: string,
   colaboradores: { id: string; nome: string }[],
 ): { id: string; nome: string; score: number } | null {
-  const alvo = norm(texto);
+  const tokensAlvo = norm(texto).split(" ").filter((w) => w.length >= 3 && !STOP_NOME.has(w));
+  const alvo = tokensAlvo.join(" ");
   if (!alvo) return null;
-  const tokensAlvo = alvo.split(" ").filter((w) => w.length >= 3);
   let melhor: { id: string; nome: string; score: number } | null = null;
   const porPrimeiroNome: { id: string; nome: string }[] = [];
   for (const c of colaboradores) {
