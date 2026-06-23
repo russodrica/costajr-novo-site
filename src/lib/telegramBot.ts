@@ -527,19 +527,26 @@ async function onDocumentoRecebido(db: any, B: Bot, sessao: Sessao, chatId: numb
 
   const { data: colabs } = await db.from("rh_colaboradores").select("id, nome").neq("status", "desligado").limit(3000);
   const lista = (colabs || []).map((c: any) => ({ id: c.id, nome: c.nome }));
+  // ── Identificação em 3 CAMADAS: (1) nome do arquivo → (2) texto (legenda + camada de
+  // texto do PDF) → (3) ler o documento (OCR/visão). Cada camada melhora a anterior.
+  // CAMADA 1 — nome do arquivo
   let slotKey = detectarSlotPorTexto(nome);
   let validade = detectarValidade(nome);
   let match = casarColaborador(nome, lista);
-  // Nome do arquivo nem sempre vem — lê a LEGENDA + o TEXTO do documento (PDF) e
-  // completa o que faltou (tipo, validade e a quem pertence).
-  const textoExtra = [(msg.caption || "").trim(), await extrairTextoConteudo(buf, ctL, nome)].filter(Boolean).join("  ");
+  // CAMADA 2 — legenda da mensagem + camada de texto do PDF (unpdf, sem IA)
+  const textoConteudo = await extrairTextoConteudo(buf, ctL, nome);
+  const textoExtra = [(msg.caption || "").trim(), textoConteudo].filter(Boolean).join("  ");
   if (textoExtra) {
     if (!slotKey) slotKey = detectarSlotPorTexto(textoExtra);
     if (!validade) validade = detectarValidade(textoExtra);
-    if (!match) match = casarColaborador(textoExtra, lista);
+    const m2 = casarColaborador(textoExtra, lista);
+    if (m2 && (!match || m2.score > match.score)) match = m2; // melhora palpite fraco do nome
   }
+  // CAMADA 3 — LER o documento (Gemini/visão): fallback p/ escaneado (sem texto) ou quando
+  // ainda falta identificar. PDF com texto já foi resolvido na camada 2 (evita custo/latência).
   let ia = false;
-  if (geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+  const precisaLer = !textoConteudo || !match || !slotKey;
+  if (precisaLer && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
     try {
       const system = `Você lê um documento de RH de um colaborador da construtora Costa Júnior e extrai metadados. Responda APENAS JSON: {"nome_pessoa":"nome completo ou vazio","tipo":"um de: ASO, CNH, RG, Contrato, CTPS, Titulo de Eleitor, Certidao, Comprovante de Residencia, NR-35, NR-10, NR-06, NR-01, Advertencia, Suspensao, Ordem de Servico, Outro","validade":"AAAA-MM-DD ou vazio"}`;
       const raw = await lerDocumentoGemini(system, "Extraia os metadados deste documento.", buf.toString("base64"), ct);
@@ -803,18 +810,24 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
 
   const { data: colabs } = await db.from("rh_colaboradores").select("id, nome").neq("status", "desligado").limit(3000);
   const lista = (colabs || []).map((c: any) => ({ id: c.id, nome: c.nome }));
+  // ── Identificação em 3 CAMADAS: (1) nome do arquivo → (2) texto → (3) ler (OCR).
+  // CAMADA 1 — nome do arquivo
   let slotKey = detectarSlotPorTexto(nome);
   let validade = detectarValidade(nome);
   let match = casarColaborador(nome, lista);
-  // Nome do arquivo nem sempre vem — lê a LEGENDA + o TEXTO do documento (PDF).
-  const textoExtra = [(msg.caption || "").trim(), await extrairTextoConteudo(buf, ctL, nome)].filter(Boolean).join("  ");
+  // CAMADA 2 — legenda + camada de texto do PDF (unpdf, sem IA)
+  const textoConteudo = await extrairTextoConteudo(buf, ctL, nome);
+  const textoExtra = [(msg.caption || "").trim(), textoConteudo].filter(Boolean).join("  ");
   if (textoExtra) {
     if (!slotKey) slotKey = detectarSlotPorTexto(textoExtra);
     if (!validade) validade = detectarValidade(textoExtra);
-    if (!match) match = casarColaborador(textoExtra, lista);
+    const m2 = casarColaborador(textoExtra, lista);
+    if (m2 && (!match || m2.score > match.score)) match = m2; // melhora palpite fraco do nome
   }
+  // CAMADA 3 — LER o documento (Gemini/visão): fallback p/ escaneado ou identificação incompleta
   let ia = false, iaNome = "";
-  if (geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+  const precisaLer = !textoConteudo || !match || !slotKey;
+  if (precisaLer && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
     try {
       const raw = await lerDocumentoGemini(SYS_LER_DOC, "Extraia os metadados deste documento.", buf.toString("base64"), ct);
       const o = raw ? extrairJson(raw) : null;
