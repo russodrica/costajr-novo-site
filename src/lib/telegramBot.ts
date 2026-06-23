@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { supabaseAdmin } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
-import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador } from "./slotsDoc";
+import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, ehDocEmpresa } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
 import { aplicarEntregaEpiDaFicha, type EpiAplicado } from "./epiLeitura";
 import { registrarAcao } from "./auditoria";
@@ -552,6 +552,9 @@ async function onDocumentoRecebido(db: any, B: Bot, sessao: Sessao, chatId: numb
       }
     } catch { /* IA falhou → segue pela heurística do nome */ }
   }
+  // Documento contábil/da empresa (balancete, DRE…) traz o nome do sócio no corpo →
+  // não sugere PESSOA; cai no fluxo "é da empresa".
+  if (ehDocEmpresa(`${nome} ${textoExtra}`)) match = null;
   const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
   const nd = {
     ...idBaseDe(sessao.dados || {}), doc_path: storagePath, doc_nome: nome,
@@ -823,6 +826,8 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
       }
     } catch { /* segue pela heurística do nome */ }
   }
+  // Documento contábil/da empresa (balancete, DRE…) → não sugere PESSOA.
+  if (ehDocEmpresa(`${nome} ${textoExtra}`)) match = null;
   const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
   const token = Date.now().toString(36);
   const dados = {

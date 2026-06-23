@@ -62,6 +62,14 @@ export function detectarSlotPorTexto(texto: string): string | null {
   return null;
 }
 
+// Detecta documento CONTÁBIL/DA EMPRESA pelo tipo (balancete, DRE, contrato social…).
+// Esses docs trazem o nome do sócio/dono (ex.: José Ferreira da Costa Júnior) no corpo,
+// o que fazia o robô sugerir a PESSOA errada. Quando bate aqui, não se sugere pessoa.
+export function ehDocEmpresa(texto: string): boolean {
+  const t = norm(texto);
+  return /\bbalancete\b|balanco patrimonial|\bbalanco\b|\bdre\b|demonstrac|razao contabil|livro (caixa|diario)|fluxo de caixa|contrato social|alteracao contratual|cartao cnpj|faturamento|apuracao|recibo de entrega de(c|claracao)|escritura/.test(t);
+}
+
 // Extrai uma data de validade (dd/mm/aaaa, dd-mm-aaaa, aaaa-mm-dd) de um texto, em ISO (aaaa-mm-dd).
 export function detectarValidade(texto: string): string | null {
   const t = String(texto || "");
