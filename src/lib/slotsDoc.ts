@@ -78,6 +78,7 @@ export function casarColaborador(
   if (!alvo) return null;
   const tokensAlvo = alvo.split(" ").filter((w) => w.length >= 3);
   let melhor: { id: string; nome: string; score: number } | null = null;
+  const porPrimeiroNome: { id: string; nome: string }[] = [];
   for (const c of colaboradores) {
     const nomeN = norm(c.nome);
     if (!nomeN) continue;
@@ -92,6 +93,12 @@ export function casarColaborador(
       if (casados >= 2 || (partes.length === 1 && casados === 1)) score = 40 + casados * 15;
     }
     if (score > 0 && (!melhor || score > melhor.score)) melhor = { id: c.id, nome: c.nome, score };
+    // candidato por PRIMEIRO NOME (fallback p/ legenda tipo "Givanildo - desconto folha")
+    if (partes[0] && tokensAlvo.includes(partes[0])) porPrimeiroNome.push({ id: c.id, nome: c.nome });
   }
-  return melhor;
+  if (melhor) return melhor;
+  // Sem casamento forte: aceita o PRIMEIRO NOME só se houver UM único colaborador com
+  // esse primeiro nome (evita ambiguidade — se dois "Givanildo", não chuta).
+  if (porPrimeiroNome.length === 1) return { ...porPrimeiroNome[0], score: 30 };
+  return null;
 }

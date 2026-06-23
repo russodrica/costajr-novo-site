@@ -565,7 +565,7 @@ async function onDocumentoRecebido(db: any, B: Bot, sessao: Sessao, chatId: numb
 async function cardDoc(B: Bot, chatId: number, d: any) {
   const pessoa = d.sug_colab_nome ? `<b>${escTg(d.sug_colab_nome)}</b>` : "<i>(não identifiquei a pessoa)</i>";
   const venc = d.sug_tem_validade ? `\nValidade: ${d.sug_validade ? escTg(d.sug_validade) : "<i>não detectei</i>"}` : "";
-  const origem = d.ia ? "🔮 li o documento" : "📄 sugerido pelo nome do arquivo";
+  const origem = d.ia ? "🔮 li o documento" : "📄 sugestão automática";
   const linhas: { text: string; callback_data: string }[][] = [];
   if (d.sug_colab_id) linhas.push([{ text: "✅ Anexar na ficha", callback_data: "danex" }]);
   linhas.push([{ text: "👤 Trocar pessoa", callback_data: "dpess" }, { text: "🏷️ Trocar tipo", callback_data: "dtipo" }]);
@@ -813,7 +813,7 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
 
 async function cardDocGrupo(B: Bot, chatId: number, token: string, d: any) {
   const venc = d.sug_tem_validade ? `\nValidade: ${d.sug_validade ? escTg(d.sug_validade) : "<i>não detectei</i>"}` : "";
-  const origem = d.ia ? "🔮 li o documento" : "📄 pelo nome do arquivo";
+  const origem = d.ia ? "🔮 li o documento" : "📄 sugestão automática";
   if (d.sug_colab_id) {
     const primeiro = String(d.sug_colab_nome || "").split(" ")[0];
     await enviar(B, chatId,
