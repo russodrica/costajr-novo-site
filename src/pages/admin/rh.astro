@@ -168,6 +168,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       </select>
       <button class="btn btn-outline" id="btnExportColab" onclick="exportarColabs()" title="Baixar a lista em CSV">⬇️ Exportar</button>
       <button class="btn btn-outline" onclick="document.getElementById('modalImportColab').classList.add('open')" title="Cadastrar/atualizar vários de uma vez por planilha">⬆️ Importar</button>
+      <button class="btn btn-outline" onclick="abrirCAs()" title="Conferir os CAs dos EPIs: validade, status e consulta oficial">🦺 Conferir CAs</button>
       <button class="btn btn-primary" onclick="abrirModalColab()">+ Novo colaborador</button>
     </div>
     {!colaboradores.length && <div class="card"><div class="empty-state"><strong>Nenhum colaborador cadastrado</strong>Clique em “+ Novo colaborador” para começar.</div></div>}
@@ -582,6 +583,18 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <button type="button" class="btn btn-secondary" onclick="fecharModal('modalImportColab')">Fechar</button>
         <button type="button" class="btn btn-outline" id="btnAnalisarColab" onclick="analisarImportColab()">Analisar</button>
         <button type="button" class="btn btn-primary" id="btnConfirmarImportColab" style="display:none" onclick="confirmarImportColab()">Confirmar importação</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════ MODAL CONFERIR CAs (EPI) ════════ -->
+  <div class="modal-overlay" id="modalCAs">
+    <div class="modal" style="max-width:800px">
+      <div class="modal-title">🦺 Conferir CAs dos EPIs</div>
+      <p style="color:var(--ink-mid);font-size:13px;margin:0 0 12px">Cada <strong>CA</strong> é o Certificado de Aprovação do EPI. Confira a validade no site oficial (ícone 🔎) e ajuste aqui — a data vale para <strong>todas</strong> as entregas que usam aquele CA.</p>
+      <div id="casBox" style="max-height:62vh;overflow:auto">Carregando…</div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModal('modalCAs')">Fechar</button>
       </div>
     </div>
   </div>
@@ -1313,6 +1326,50 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).exportarColabs = exportarColabs;
     (window as any).analisarImportColab = analisarImportColab;
     (window as any).confirmarImportColab = confirmarImportColab;
+
+    // ── Conferir CAs dos EPIs ──
+    async function abrirCAs() {
+      document.getElementById("modalCAs")!.classList.add("open");
+      await carregarCAs();
+    }
+    async function carregarCAs() {
+      const box = document.getElementById("casBox")!;
+      box.innerHTML = "Carregando…";
+      try {
+        const r = await fetch("/api/admin/rh/epi/cas");
+        if (!r.ok) { box.innerHTML = "<p style='color:#B91C1C'>Erro ao carregar os CAs.</p>"; return; }
+        const cas = await r.json();
+        if (!cas.length) { box.innerHTML = "<p style='color:#6B7280'>Nenhum CA cadastrado nos EPIs ainda.</p>"; return; }
+        const fmt = (v: string | null) => (v ? v.split("-").reverse().join("/") : "—");
+        const badge = (s: string, v: string | null) => {
+          if (s === "vencido") return `<span class="badge badge-red">🔴 Vencido ${fmt(v)}</span>`;
+          if (s === "sem_validade") return `<span class="badge badge-gray">⚠ Sem validade</span>`;
+          if (s === "vencendo") return `<span class="badge badge-orange">🟠 Vence ${fmt(v)}</span>`;
+          return `<span class="badge badge-green">🟢 Válido ${fmt(v)}</span>`;
+        };
+        box.innerHTML = `<div class="table-wrap"><table style="width:100%"><thead><tr>
+          <th>CA</th><th>EPI(s)</th><th style="text-align:center">Pessoas</th><th>Validade</th><th>Status</th><th></th></tr></thead><tbody>${
+          cas.map((c: any) => `<tr>
+            <td><strong>${c.ca}</strong> <a href="${c.consulta_url}" target="_blank" rel="noopener" title="Consultar o CA no site oficial" style="text-decoration:none">🔎</a></td>
+            <td style="font-size:12.5px;color:#4B5563">${(c.epis || []).join(", ")}</td>
+            <td style="text-align:center">${c.n_colaboradores}</td>
+            <td><input type="date" id="ca-${c.ca}" value="${c.validade || ""}" style="font-size:13px;padding:4px 6px" /></td>
+            <td>${badge(c.situacao, c.validade)}</td>
+            <td><button class="btn btn-primary btn-sm" onclick="salvarCA('${c.ca}')">Salvar</button></td>
+          </tr>`).join("")
+        }</tbody></table></div>`;
+      } catch { box.innerHTML = "<p style='color:#B91C1C'>Falha ao carregar.</p>"; }
+    }
+    async function salvarCA(ca: string) {
+      const input = document.getElementById("ca-" + ca) as HTMLInputElement;
+      const data_validade = input?.value || "";
+      const r = await fetch("/api/admin/rh/epi/cas", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ca, data_validade }) });
+      if (r.ok) { const d = await r.json(); alert(`CA ${ca}: validade atualizada em ${d.atualizados} entrega(s). ✅`); await carregarCAs(); }
+      else { alert((await r.json().catch(() => ({}))).error || "Erro ao salvar."); }
+    }
+    (window as any).abrirCAs = abrirCAs;
+    (window as any).carregarCAs = carregarCAs;
+    (window as any).salvarCA = salvarCA;
 
     // badge da aba (carrega só o resumo no load da página)
     fetch("/api/admin/rh/alertas").then(r => r.ok ? r.json() : null).then(d => {
