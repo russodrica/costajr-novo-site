@@ -62,13 +62,18 @@ export function detectarSlotPorTexto(texto: string): string | null {
   return null;
 }
 
-// Detecta documento CONTÁBIL/DA EMPRESA pelo tipo (balancete, DRE, contrato social…).
-// Esses docs trazem o nome do sócio/dono (ex.: José Ferreira da Costa Júnior) no corpo,
-// o que fazia o robô sugerir a PESSOA errada. Quando bate aqui, não se sugere pessoa.
-export function ehDocEmpresa(texto: string): boolean {
+// Detecta documento DA EMPRESA pelo TIPO e já devolve a CATEGORIA do módulo
+// "Documentos da Empresa" onde ele deve ser arquivado. Esses docs trazem o nome do
+// sócio/dono (ex.: José Ferreira da Costa Júnior) no corpo, o que fazia o robô sugerir
+// a PESSOA errada — quando bate aqui, não se sugere pessoa e dá p/ arquivar direto.
+export function categoriaEmpresaPorTexto(texto: string): { categoria: string; rotulo: string } | null {
   const t = norm(texto);
-  return /\bbalancete\b|balanco patrimonial|\bbalanco\b|\bdre\b|demonstrac|razao contabil|livro (caixa|diario)|fluxo de caixa|contrato social|alteracao contratual|cartao cnpj|faturamento|apuracao|recibo de entrega de(c|claracao)|escritura/.test(t);
+  if (/\bbalancete\b|balanco patrimonial|\bbalanco\b|\bdre\b|demonstrac|razao contabil|livro (caixa|diario)|fluxo de caixa|apuracao|faturamento/.test(t)) return { categoria: "Documentos Contábeis", rotulo: "documento contábil" };
+  if (/contrato social|alteracao contratual|cartao cnpj|escritura|estatuto social|recibo de entrega de(c|claracao)/.test(t)) return { categoria: "Documentos Institucionais", rotulo: "documento institucional" };
+  if (/nota fiscal|\bnf-?e\b|\bdarf\b|guia de recolhimento|\bsped\b|imposto/.test(t)) return { categoria: "Documento Fiscal", rotulo: "documento fiscal" };
+  return null;
 }
+export function ehDocEmpresa(texto: string): boolean { return categoriaEmpresaPorTexto(texto) !== null; }
 
 // Extrai uma data de validade (dd/mm/aaaa, dd-mm-aaaa, aaaa-mm-dd) de um texto, em ISO (aaaa-mm-dd).
 export function detectarValidade(texto: string): string | null {

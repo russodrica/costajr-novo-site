@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { supabaseAdmin } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
-import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, ehDocEmpresa } from "./slotsDoc";
+import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, ehDocEmpresa, categoriaEmpresaPorTexto } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
 import { aplicarEntregaEpiDaFicha, type EpiAplicado } from "./epiLeitura";
 import { registrarAcao } from "./auditoria";
@@ -925,6 +925,23 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const lista = (emps || []).map((e: any) => ({ id: e.id, nome: e.nome }));
     const m = casarColaborador(`${d.doc_nome} ${d.ia_nome || ""}`, lista);
     if (!m) {
+      // Não é fornecedor/cliente cadastrado — mas se for documento contábil/fiscal/
+      // institucional, arquiva DIRETO na categoria certa (cria/reusa um card) em vez
+      // de mandar pro painel.
+      const cat = categoriaEmpresaPorTexto(`${d.doc_nome} ${d.ia_nome || ""}`);
+      if (cat) {
+        const nomeCard = (`${d.doc_nome}`.replace(/\.(pdf|docx?|xlsx?|jpe?g|png|webp)$/i, "").replace(/[-_ ]*(pdf|d4sign|clicksign|docusign|zapsign|digiforte|assinado|assinada|signed)[-_ ]*/gi, " ").replace(/\s+/g, " ").trim().slice(0, 60)) || cat.rotulo;
+        let empId: string | null = null, empNome = nomeCard;
+        const { data: ja } = await db.from("doc_empresa").select("id, nome").eq("categoria", cat.categoria).ilike("nome", nomeCard).limit(1);
+        if (ja && ja[0]) { empId = ja[0].id; empNome = ja[0].nome; }
+        else { const { data: novo } = await db.from("doc_empresa").insert({ categoria: cat.categoria, nome: nomeCard, arquivado: false, validade_na: true, criado_por: d.autor }).select("id").single(); empId = novo?.id || null; }
+        if (empId) {
+          await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: empId, emp_nome: empNome, emp_cat: cat.categoria } }).eq("telegram_user_id", "gdoc:" + token);
+          await enviar(B, chatId, `📊 Parece <b>${escTg(cat.rotulo)}</b>. Arquivar em <b>${escTg(cat.categoria)}</b> (como "${escTg(empNome)}")?`,
+            inline([[{ text: "✅ Sim, arquivar", callback_data: "gempok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+          return;
+        }
+      }
       await enviar(B, chatId, "🏢 Não consegui identificar a empresa/contrato pelo nome do arquivo. Anexe pelo painel <b>Documentos da Empresa</b> (Jurídico), ou renomeie o arquivo com o nome da empresa e reenvie.");
       return;
     }
@@ -950,7 +967,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
       descricao: `Telegram (grupo): anexou "${d.doc_nome}" ao documento da empresa ${d.emp_nome}`, dados: { doc_id: d.emp_id },
     });
     await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gdoc:" + token);
-    await enviar(B, chatId, `✅ <b>Anexado!</b> "${escTg(d.doc_nome)}" → empresa <b>${escTg(d.emp_nome)}</b> (Jurídico). 🙌`);
+    await enviar(B, chatId, `✅ <b>Arquivado!</b> "${escTg(d.doc_nome)}" → <b>${escTg(d.emp_nome)}</b> (${escTg(d.emp_cat || "Documentos da Empresa")}). 🙌`);
     return;
   }
 }
