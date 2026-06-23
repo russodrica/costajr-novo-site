@@ -488,6 +488,21 @@ async function baixarArquivoTg(B: Bot, fileId: string): Promise<Buffer | null> {
   } catch { return null; }
 }
 
+// Lê o TEXTO de dentro do documento (camada de texto do PDF, via unpdf — sem LLM)
+// para detectar tipo/validade/colaborador quando o NOME do arquivo não ajuda
+// (ex.: arquivo enviado sem nome, "documento.pdf", "foto-telegram.jpg").
+async function extrairTextoConteudo(buf: Buffer, ctL: string, nome: string): Promise<string> {
+  try {
+    if (ctL === "application/pdf" || /\.pdf$/i.test(nome)) {
+      const { extractText, getDocumentProxy } = await import("unpdf");
+      const pdf = await getDocumentProxy(new Uint8Array(buf));
+      const { text } = await extractText(pdf, { mergePages: true });
+      return String(text || "").replace(/\s+/g, " ").trim().slice(0, 8000);
+    }
+  } catch { /* PDF escaneado/sem camada de texto → cai no Gemini se houver */ }
+  return "";
+}
+
 async function onDocumentoRecebido(db: any, B: Bot, sessao: Sessao, chatId: number, msg: any) {
   await enviar(B, chatId, "📎 Recebi! Analisando o documento… ⏳");
   let fileId = "", nome = "documento", ct = "application/octet-stream";
@@ -514,6 +529,14 @@ async function onDocumentoRecebido(db: any, B: Bot, sessao: Sessao, chatId: numb
   let slotKey = detectarSlotPorTexto(nome);
   let validade = detectarValidade(nome);
   let match = casarColaborador(nome, lista);
+  // Nome do arquivo nem sempre vem — lê a LEGENDA + o TEXTO do documento (PDF) e
+  // completa o que faltou (tipo, validade e a quem pertence).
+  const textoExtra = [(msg.caption || "").trim(), await extrairTextoConteudo(buf, ctL, nome)].filter(Boolean).join("  ");
+  if (textoExtra) {
+    if (!slotKey) slotKey = detectarSlotPorTexto(textoExtra);
+    if (!validade) validade = detectarValidade(textoExtra);
+    if (!match) match = casarColaborador(textoExtra, lista);
+  }
   let ia = false;
   if (geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
     try {
@@ -757,6 +780,13 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
   let slotKey = detectarSlotPorTexto(nome);
   let validade = detectarValidade(nome);
   let match = casarColaborador(nome, lista);
+  // Nome do arquivo nem sempre vem — lê a LEGENDA + o TEXTO do documento (PDF).
+  const textoExtra = [(msg.caption || "").trim(), await extrairTextoConteudo(buf, ctL, nome)].filter(Boolean).join("  ");
+  if (textoExtra) {
+    if (!slotKey) slotKey = detectarSlotPorTexto(textoExtra);
+    if (!validade) validade = detectarValidade(textoExtra);
+    if (!match) match = casarColaborador(textoExtra, lista);
+  }
   let ia = false, iaNome = "";
   if (geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
     try {
