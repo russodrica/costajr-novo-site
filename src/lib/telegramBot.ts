@@ -597,7 +597,12 @@ async function epiDaFichaAnexada(db: any, colaboradorId: string, docPath: string
     const ct = /\.pdf$/i.test(docNome || docPath) ? "application/pdf" : "image/jpeg";
     const aplicados: EpiAplicado[] = await aplicarEntregaEpiDaFicha(db, colaboradorId, buf, ct, docNome || "ficha.pdf");
     if (!aplicados.length) return "";
-    const linhas = aplicados.map((a) => `• ${escTg(a.epi)} — CA ${escTg(a.ca)}${a.validade ? ` (vence ${escTg(a.validade.split("-").reverse().join("/"))})` : " <i>(defina o vencimento)</i>"}`).join("\n");
+    const fmtD = (v: string) => v.split("-").reverse().join("/");
+    const linhas = aplicados.map((a) => {
+      let l = `• ${escTg(a.epi)} — CA ${escTg(a.ca)}${a.validade ? ` (vence ${escTg(fmtD(a.validade))})` : " <i>(defina o vencimento)</i>"}`;
+      if (a.antesCA) l += `\n   ⚠️ <b>confira o CA</b> — antes era ${escTg(a.antesCA)}${a.antesValidade ? ` (vencia ${escTg(fmtD(a.antesValidade))})` : ""}`;
+      return l;
+    }).join("\n");
     return `\n\n🦺 <b>Atualizei ${aplicados.length} EPI(s)</b> na ficha do colaborador:\n${linhas}`;
   } catch { return ""; }
 }

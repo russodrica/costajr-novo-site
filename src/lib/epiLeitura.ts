@@ -74,10 +74,15 @@ export async function extrairItensEpi(buf: Buffer, ct: string, nome: string): Pr
   return out;
 }
 
-export type EpiAplicado = { epi: string; ca: string; validade: string | null; novoCA: boolean };
+export type EpiAplicado = {
+  epi: string; ca: string; validade: string | null; novoCA: boolean;
+  antesCA?: string | null; antesValidade?: string | null; // p/ alertar troca suspeita (erro de leitura)
+};
 
 // Aplica a entrega: upsert em epi_entregas (1 por colaborador+epi). Vencimento = validade
 // conhecida do CA (entrega mais recente com esse CA, de qualquer colaborador); CA novo → null.
+// Se o CA lido for DIFERENTE do que já estava cadastrado p/ aquele EPI, devolve o CA anterior
+// (antesCA) para avisar — pega erro de OCR que troca dígitos do CA num documento escaneado.
 export async function aplicarEntregaEpiDaFicha(
   db: any, colaboradorId: string, buf: Buffer, ct: string, nome: string,
 ): Promise<EpiAplicado[]> {
@@ -86,6 +91,14 @@ export async function aplicarEntregaEpiDaFicha(
   const hoje = new Date().toISOString().slice(0, 10);
   const aplicados: EpiAplicado[] = [];
   for (const it of itens) {
+    // estado atual desse EPI (p/ detectar troca suspeita de CA)
+    let antesCA: string | null = null, antesValidade: string | null = null;
+    try {
+      const { data: cur } = await db.from("epi_entregas")
+        .select("ca, data_validade").eq("colaborador_id", colaboradorId).eq("epi", it.epi).limit(1);
+      if (cur && cur[0]) { antesCA = normCA(cur[0].ca) || null; antesValidade = cur[0].data_validade || null; }
+    } catch { /* sem registro anterior */ }
+    // validade conhecida do CA novo
     let validade: string | null = null;
     try {
       const comPonto = it.ca.length > 3 ? `${it.ca.slice(0, -3)}.${it.ca.slice(-3)}` : it.ca;
@@ -99,7 +112,8 @@ export async function aplicarEntregaEpiDaFicha(
       data_entrega: it.data_entrega || hoje, data_validade: validade,
       status: "ativo", aviso_15: false, updated_at: new Date().toISOString(),
     }, { onConflict: "colaborador_id,epi" });
-    aplicados.push({ epi: it.epi, ca: it.ca, validade, novoCA: !validade });
+    const trocou = !!antesCA && antesCA !== it.ca;
+    aplicados.push({ epi: it.epi, ca: it.ca, validade, novoCA: !validade, antesCA: trocou ? antesCA : null, antesValidade: trocou ? antesValidade : null });
   }
   return aplicados;
 }
