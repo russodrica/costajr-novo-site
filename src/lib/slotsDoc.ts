@@ -25,6 +25,7 @@ export const SLOTS_DOC: SlotDoc[] = [
   { key: "nr01", label: "NR-01 · GRO/PGR", tipo: "certificado", prefixo: "NR01", validade: true },
   { key: "advertencia", label: "Advertência", tipo: "advertencia", prefixo: "Advertência", validade: false },
   { key: "suspensao", label: "Suspensão", tipo: "outro", prefixo: "Suspensão", validade: false },
+  { key: "ficha_epi", label: "Ficha de EPI", tipo: "ficha_epi", prefixo: "Ficha de EPI", validade: false },
   { key: "outro", label: "Outro documento", tipo: "outro", prefixo: "Documento", validade: false },
 ];
 
@@ -38,6 +39,9 @@ export function detectarSlotPorTexto(texto: string): string | null {
   const t = norm(texto);
   if (!t) return null;
   // Mais específico primeiro
+  // Ficha de EPI ANTES do NR-06: o documento "Controle/Entrega de EPI" vai para a
+  // aba EPIs (tipo ficha_epi), mesmo quando o nome cita "NR6" junto.
+  if (/ficha de epi|ficha epi|entrega de epi|controle de epi|controle de entrega de epi/.test(t)) return "ficha_epi";
   if (/\bnr\s*35\b|altura/.test(t)) return "nr35";
   if (/\bnr\s*10\b|eletric/.test(t)) return "nr10";
   if (/\bnr\s*0?6\b/.test(t)) return "nr06";
