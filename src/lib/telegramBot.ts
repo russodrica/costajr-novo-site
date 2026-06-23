@@ -11,6 +11,7 @@ import { supabaseAdmin } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
 import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
+import { aplicarEntregaEpiDaFicha, type EpiAplicado } from "./epiLeitura";
 import { registrarAcao } from "./auditoria";
 import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
@@ -585,6 +586,22 @@ async function buscarPessoaDoc(db: any, B: Bot, sessao: Sessao, chatId: number, 
   await enviar(B, chatId, "De quem é o documento?", inline(linhas));
 }
 
+// Após anexar uma Ficha de EPI, baixa o arquivo, lê os itens (EPI + CA) e atualiza
+// os EPIs do colaborador. Retorna um trecho de mensagem (vazio se nada foi lido).
+async function epiDaFichaAnexada(db: any, colaboradorId: string, docPath: string, docNome: string): Promise<string> {
+  try {
+    const dl = await db.storage.from("rh").download(docPath);
+    const blob = dl?.data;
+    if (!blob) return "";
+    const buf = Buffer.from(await blob.arrayBuffer());
+    const ct = /\.pdf$/i.test(docNome || docPath) ? "application/pdf" : "image/jpeg";
+    const aplicados: EpiAplicado[] = await aplicarEntregaEpiDaFicha(db, colaboradorId, buf, ct, docNome || "ficha.pdf");
+    if (!aplicados.length) return "";
+    const linhas = aplicados.map((a) => `• ${escTg(a.epi)} — CA ${escTg(a.ca)}${a.validade ? ` (vence ${escTg(a.validade.split("-").reverse().join("/"))})` : " <i>(defina o vencimento)</i>"}`).join("\n");
+    return `\n\n🦺 <b>Atualizei ${aplicados.length} EPI(s)</b> na ficha do colaborador:\n${linhas}`;
+  } catch { return ""; }
+}
+
 async function anexarDoc(db: any, B: Bot, sessao: Sessao, chatId: number) {
   const d = sessao.dados || {};
   if (!d.doc_path || !d.sug_colab_id) { await enviar(B, chatId, "Faltou a pessoa. Toque em 👤 Trocar pessoa."); return; }
@@ -601,7 +618,8 @@ async function anexarDoc(db: any, B: Bot, sessao: Sessao, chatId: number) {
     acao: "criar", entidade: "rh_documentos", registro_id: row?.id ?? null,
     descricao: `Telegram: anexou "${slot.label}" a ${d.sug_colab_nome}`, dados: { tipo: slot.tipo, validade },
   });
-  await enviar(B, chatId, `✅ <b>Anexado!</b>\n${escTg(slot.label)} → ficha de <b>${escTg(d.sug_colab_nome)}</b>. 🙌`,
+  const epiMsg = slot.tipo === "ficha_epi" && d.sug_colab_id ? await epiDaFichaAnexada(db, d.sug_colab_id, d.doc_path, d.doc_nome) : "";
+  await enviar(B, chatId, `✅ <b>Anexado!</b>\n${escTg(slot.label)} → ficha de <b>${escTg(d.sug_colab_nome)}</b>. 🙌${epiMsg}`,
     inline([[{ text: "📄 Enviar outro", callback_data: "menu:doc" }]]));
   await salvarSessao(db, { ...sessao, estado: "pronto", dados: idBaseDe(d) });
 }
@@ -874,7 +892,8 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
       descricao: `Telegram (grupo): anexou "${slot.label}" a ${d.sug_colab_nome}`, dados: { tipo: slot.tipo, validade },
     });
     await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gdoc:" + token);
-    await enviar(B, chatId, `✅ <b>Anexado!</b> ${escTg(slot.label)} → ficha de <b>${escTg(d.sug_colab_nome)}</b>. 🙌`);
+    const epiMsgG = slot.tipo === "ficha_epi" && d.sug_colab_id ? await epiDaFichaAnexada(db, d.sug_colab_id, d.doc_path, d.doc_nome) : "";
+    await enviar(B, chatId, `✅ <b>Anexado!</b> ${escTg(slot.label)} → ficha de <b>${escTg(d.sug_colab_nome)}</b>. 🙌${epiMsgG}`);
     return;
   }
   // ── EMPRESA / JURÍDICO (doc_empresa + doc_empresa_arquivos) ──
