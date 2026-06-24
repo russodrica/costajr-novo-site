@@ -940,8 +940,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         for (const d of byCat[c]) {
           for (const a of d.arquivos) {
             const lbl = `${d.nome}${d.arquivos.length > 1 ? " — " + (a.nome || "arquivo") : ""}`;
-            const txt = (d.nome + " " + (a.nome || "")).toLowerCase().replace(/"/g, "&quot;");
-            html += `<label class="env-item" data-txt="${txt}" style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">
+            html += `<label class="env-item" style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">
               <input type="checkbox" class="env-chk" value="${a.id}" onchange="envCountUpd()" />
               <span>📄 ${lbl.replace(/</g, "&lt;")}</span></label>`;
           }
@@ -957,7 +956,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     function filtrarEnvio() {
       const t = (document.getElementById("envBusca") as HTMLInputElement).value.toLowerCase().trim();
       document.querySelectorAll("#envLista .env-item").forEach((el) => {
-        (el as HTMLElement).style.display = !t || ((el as HTMLElement).dataset.txt || "").includes(t) ? "" : "none";
+        (el as HTMLElement).style.display = !t || (el.textContent || "").toLowerCase().includes(t) ? "" : "none";
       });
     }
     async function enviarDocs() {
