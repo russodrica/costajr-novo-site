@@ -20,13 +20,16 @@ const docsArquivados = docs.filter((d: any) => d.arquivado);
 
 // As 8 abas da plataforma (categorização macro). Também é a ordem de exibição.
 const ABAS = [
-  { nome: "Certidões", icon: "📜" },
   { nome: "Documentos da Empresa", icon: "🏢" },
+  { nome: "Certidões", icon: "📜" },
+  { nome: "Contratos de Consultoria", icon: "💼" },
+  { nome: "Contratos Recorrentes", icon: "🔁" },
+  { nome: "Plataformas", icon: "🖥️" },
+  { nome: "Seguros", icon: "🛡️" },
+  { nome: "Empresas Fornecedoras", icon: "🏬" },
+  { nome: "Clientes", icon: "🤝" },
   { nome: "Guias e Obrigações Fiscais", icon: "🧾" },
   { nome: "Documentos Contábeis", icon: "📊" },
-  { nome: "Clientes", icon: "🤝" },
-  { nome: "Empresas Fornecedoras", icon: "🏬" },
-  { nome: "Seguros", icon: "🛡️" },
   { nome: "Documentos Institucionais", icon: "🏛️" },
 ];
 const CATEGORIAS = ABAS.map((a) => a.nome);
@@ -90,16 +93,14 @@ for (const d of (porCat.get("Documento Fiscal") || [])) {
 
 // Sub-grupos de "Empresas Fornecedoras"
 const GRUPOS_FORNECEDOR = [
-  { key: "Consultoria",  label: "Consultoria" },
   { key: "Benefícios",   label: "Benefícios" },
-  { key: "Recorrentes",  label: "Recorrentes" },
-  { key: "Plataformas",  label: "Plataformas" },
   { key: "Locações",     label: "Locações" },
+  { key: "Diversos",     label: "Diversos" },
 ];
 const porGrupoFornecedor = new Map<string, any[]>();
 for (const { key } of GRUPOS_FORNECEDOR) porGrupoFornecedor.set(key, []);
 for (const d of (porCat.get("Empresas Fornecedoras") || [])) {
-  const gk = d.grupo || "Recorrentes";
+  const gk = d.grupo || "Diversos";
   if (!porGrupoFornecedor.has(gk)) porGrupoFornecedor.set(gk, []);
   porGrupoFornecedor.get(gk)!.push(d);
 }
@@ -173,7 +174,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     return (
       <div class="card doc-sec" data-cat={c} style="padding:0;overflow:hidden;margin-bottom:18px">
         <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:#FAFBFC">
-          <span class="section-title" style="font-size:1rem">{c}</span>
+          <span class="section-title doc-cat-title">{c}</span>
           <span class="badge badge-gray">{docsInCat.length}</span>
         </div>
         {isFiscal ? (
@@ -182,7 +183,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
             const docsGrupo = porGrupoFiscal.get(key) || [];
             return docsGrupo.length > 0 ? (
               <div class="doc-subgrupo" data-grupo={key}>
-                <div style="padding:7px 18px;font-size:12.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.04em;background:#F5F5F7;border-bottom:1px solid var(--border)">{label}</div>
+                <div style="padding:7px 18px;font-size:13.5px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.04em;background:#F5F5F7;border-bottom:1px solid var(--border)">{label}</div>
                 <div class="table-wrap">
                   <table>
                     <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
@@ -240,7 +241,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                   if (!docsGrupo.length) return [] as any[];
                   const labelRow = (
                     <tr class="sg-label-row" data-sg-forn-label={key}>
-                      <td colspan={6} style="padding:7px 18px;font-size:12.5px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.04em;background:#F5F5F7;border-bottom:1px solid var(--border)">{label}</td>
+                      <td colspan={6} style="padding:7px 18px;font-size:13.5px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.04em;background:#F5F5F7;border-bottom:1px solid var(--border)">{label}</td>
                     </tr>
                   );
                   const dataRows = docsGrupo.map((d: any) => {
@@ -344,7 +345,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     ) : catsArq.map((c) => (
       <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px">
         <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:#FAFBFC">
-          <span class="section-title" style="font-size:1rem">{c}</span>
+          <span class="section-title doc-cat-title">{c}</span>
           <span class="badge badge-gray">{porCatArq.get(c)!.length}</span>
         </div>
         <div class="table-wrap">
@@ -504,7 +505,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       if (grupoSel && (isFisc || isForn)) {
         const opts = isFisc
           ? [["CND","CND — Federal, Estadual e Municipal"],["Trabalhistas","Trabalhistas — FGTS, INSS e outros"],["Sócios","Sócios — RG, CNH, IR, Comprovante de Residência"],["Diversos","Diversos"]]
-          : [["Consultoria","Consultoria"],["Benefícios","Benefícios"],["Recorrentes","Recorrentes"],["Plataformas","Plataformas"],["Locações","Locações"]];
+          : [["Benefícios","Benefícios"],["Locações","Locações"],["Diversos","Diversos"]];
         grupoSel.innerHTML = opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join("");
       }
     }
@@ -538,7 +539,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       val.disabled = na.checked;
       toggleGrupo();
       const grupoSel = document.getElementById("grupoSel") as HTMLSelectElement;
-      if (grupoSel) grupoSel.value = d.grupo || (d.categoria === "Documento Fiscal" ? "Diversos" : "Recorrentes");
+      if (grupoSel) grupoSel.value = d.grupo || "Diversos";
       const vmInput = f.querySelector("[name=valor_mensal]") as HTMLInputElement;
       if (vmInput) vmInput.value = d.valor_mensal != null ? String(d.valor_mensal) : "";
       document.getElementById("modalDocTitle")!.textContent = "Editar documento";
@@ -758,19 +759,33 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       if (c) return c;
       return a.created_at ? String(a.created_at).slice(0, 10).split("-").reverse().join("/") : "sem competência";
     }
+    function anoDoArq(a: any): string {
+      const c = String(a.competencia || "");
+      const m = c.match(/^(\d{4})/);
+      if (m) return m[1];
+      return a.created_at ? String(a.created_at).slice(0, 4) : "Sem ano";
+    }
     function renderCompetencias(id: string): string {
       const d = docById(id); if (!d) return "";
-      const arqs = (d.arquivos || []).slice().sort((a: any, b: any) =>
-        String(b.competencia || b.created_at || "").localeCompare(String(a.competencia || a.created_at || "")));
+      const arqs = (d.arquivos || []).slice();
       if (!arqs.length) return `<p style="color:#9CA3AF;font-size:13px;margin:4px 0">Nenhuma competência anexada ainda. Use <strong>+ Anexar</strong>.</p>`;
       const linha = (a: any) => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-light)">
         <span style="flex:1;font-size:13.5px">📄 <strong>${rotuloCompetencia(a)}</strong> <span style="color:#9CA3AF;font-size:12px">${String(a.nome || "").replace(/</g, "&lt;")}</span></span>
         <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
         <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button></div>`;
-      const recentes = arqs.slice(0, 12), antigos = arqs.slice(12);
-      let html = recentes.map(linha).join("");
-      if (antigos.length) html += `<details style="margin-top:8px"><summary style="cursor:pointer;color:#6B7280;font-size:13px;font-weight:600">📦 Histórico — ${antigos.length} competência(s) mais antiga(s)</summary><div style="margin-top:6px">${antigos.map(linha).join("")}</div></details>`;
-      return html;
+      // Agrupa por ANO → meses (competências) dentro de cada ano (pedido da Adriana)
+      const byAno: Record<string, any[]> = {};
+      for (const a of arqs) { const y = anoDoArq(a); (byAno[y] = byAno[y] || []).push(a); }
+      const anos = Object.keys(byAno).sort((a, b) => b.localeCompare(a));
+      const anoAtual = String(new Date().getFullYear());
+      return anos.map((ano) => {
+        const items = byAno[ano].sort((a, b) => String(b.competencia || b.created_at || "").localeCompare(String(a.competencia || a.created_at || "")));
+        const aberto = ano === anoAtual ? " open" : "";
+        return `<details${aberto} style="border:1px solid var(--border);border-radius:8px;margin:6px 0;overflow:hidden">
+          <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#FAFBFC;font-weight:700">📅 ${ano} <span class="badge badge-blue" style="font-size:10.5px">${items.length} competência(s)</span></summary>
+          <div style="padding:4px 12px 8px">${items.map(linha).join("")}</div>
+        </details>`;
+      }).join("");
     }
     function togglePeriodo(id: string) {
       const box = document.getElementById("per-" + id) as HTMLElement; const exp = document.getElementById("exp-" + id);
@@ -781,4 +796,16 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 
     Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo });
   </script>
+
+  <style>
+    /* Título da categoria em VERMELHO, CAIXA ALTA e maior que as linhas abaixo (pedido da Adriana) */
+    .doc-cat-title {
+      text-transform: uppercase;
+      font-size: 1.2rem !important;
+      font-weight: 800;
+      color: var(--brand);
+      letter-spacing: .02em;
+      line-height: 1.2;
+    }
+  </style>
 </Admin>
