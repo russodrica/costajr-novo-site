@@ -912,7 +912,8 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     if (!blob) { await enviar(B, chatId, "❌ Não achei o arquivo. Reenvie o documento."); return; }
     const buf = Buffer.from(await blob.arrayBuffer());
     const ext = (d.doc_path || "").split(".").pop() || "pdf";
-    const newPath = `extratos/${d.ano}/${String(d.mes).padStart(2, "0")}/${d.banco}/${Date.now()}.${ext}`;
+    const bancoSlug = String(d.banco).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const newPath = `extratos/${d.ano}/${String(d.mes).padStart(2, "0")}/${bancoSlug}/${Date.now()}.${ext}`;
     const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
     if (eUp) { await enviar(B, chatId, "❌ Falha ao arquivar: " + escTg(eUp.message)); return; }
     const { data: row, error } = await db.from("doc_extratos_bancarios").insert({
