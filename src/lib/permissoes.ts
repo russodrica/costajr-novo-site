@@ -176,6 +176,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   ] },
   { id: "juridico", label: "Jurídico & Documentos", itens: [
     { key: "doc-empresa", label: "Documentos da Empresa", icon: "📑", href: "/admin/doc-empresa" },
+    { key: "doc-extratos", label: "Extratos Bancários", icon: "🏦", href: "/admin/doc-extratos" },
     { key: "assinaturas", label: "Assinaturas (D4Sign)", icon: "✍️", href: "/admin/assinaturas" },
   ] },
   { id: "portal", label: "Portal Colaborador", itens: [

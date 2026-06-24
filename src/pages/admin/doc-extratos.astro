@@ -1,0 +1,201 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, temPerfil, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!temPerfil(claims, ["admin", "financeiro", "juridico"])) return Astro.redirect("/admin");
+
+// Os 7 bancos da empresa (ordem de exibição em cada mês).
+const BANCOS = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank"];
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+const db = supabaseAdmin();
+const { data: rows } = await db.from("doc_extratos_bancarios").select("*").order("ano", { ascending: false }).order("mes", { ascending: false });
+const extratos: any[] = rows || [];
+
+// Mapa ano -> mes -> banco -> [arquivos]
+const mapa: Record<number, Record<number, Record<string, any[]>>> = {};
+for (const e of extratos) {
+  ((mapa[e.ano] ||= {})[e.mes] ||= {})[e.banco] ||= [];
+  mapa[e.ano][e.mes][e.banco].push(e);
+}
+
+const hoje = new Date();
+const anoVigente = hoje.getFullYear();
+// Anos a exibir: dados existentes ∪ {vigente, anterior}; pode estender p/ trás via ?desde=
+const desde = Number(Astro.url.searchParams.get("desde")) || (anoVigente - 1);
+const anosData = Object.keys(mapa).map(Number);
+const minAno = Math.min(desde, anoVigente - 1, ...(anosData.length ? anosData : [anoVigente]));
+const anos: number[] = [];
+for (let a = anoVigente; a >= minAno; a--) anos.push(a);
+const anoAnteriorBtn = minAno - 1;
+
+function totalAno(a: number) { return Object.values(mapa[a] || {}).reduce((s, m) => s + Object.values(m).reduce((x, arr) => x + arr.length, 0), 0); }
+function bancosPreenchidosMes(a: number, m: number) { const mm = mapa[a]?.[m] || {}; return BANCOS.filter((b) => (mm[b] || []).length > 0).length; }
+function totalMes(a: number, m: number) { const mm = mapa[a]?.[m] || {}; return Object.values(mm).reduce((s, arr) => s + arr.length, 0); }
+const fdata = (s: string) => (s ? String(s).split("T")[0].split("-").reverse().join("/") : "");
+---
+
+<Admin title="Extratos Bancários" current="doc-extratos">
+  <div class="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="flex:1;min-width:200px">
+      <p style="margin:0;color:var(--muted);font-size:13.5px">Extratos organizados por <b>Ano → Mês → Banco</b>. Cada mês reúne os extratos dos 7 bancos. Arquivos no cofre privado da empresa.</p>
+    </div>
+    <a class="btn btn-outline btn-sm" href="/admin/doc-empresa">← Documentos da Empresa</a>
+    <button class="btn btn-primary" onclick="abrirAnexar()" data-requer-edicao>📎 Anexar extrato</button>
+  </div>
+
+  <input type="file" id="fileExtrato" accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx,.csv,.ofx" style="display:none" />
+
+  {anos.map((a) => (
+    <details class="card ano-card" open={a === anoVigente} style="margin-bottom:12px;padding:0;overflow:hidden">
+      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:14px 18px;background:var(--gray-50);font-weight:700;font-size:16px">
+        <span class="chev">▸</span>
+        <span style="flex:1">📅 {a}{a === anoVigente ? ' · ano vigente' : ''}</span>
+        <span class="badge badge-gray">{totalAno(a)} extrato{totalAno(a) === 1 ? '' : 's'}</span>
+      </summary>
+      <div style="padding:10px 14px 16px">
+        {MESES.map((nome, idx) => {
+          const m = idx + 1;
+          const futuro = a === anoVigente && m > (hoje.getMonth() + 1);
+          const preench = bancosPreenchidosMes(a, m);
+          return (
+            <details class="mes-card" style={`margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden;${futuro ? 'opacity:.55' : ''}`}>
+              <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:10px 14px;font-weight:600">
+                <span class="chev">▸</span>
+                <span style="flex:1">{nome}</span>
+                <span class={`badge ${preench === BANCOS.length ? 'badge-green' : preench === 0 ? 'badge-gray' : 'badge-orange'}`}>{preench}/{BANCOS.length} bancos</span>
+              </summary>
+              <div class="bancos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;padding:12px 14px;background:var(--gray-50)">
+                {BANCOS.map((banco) => {
+                  const arqs = mapa[a]?.[m]?.[banco] || [];
+                  return (
+                    <div class="banco-cell" style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 12px">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <b style="flex:1;font-size:13.5px">{banco}</b>
+                        {arqs.length > 0
+                          ? <span class="badge badge-green" style="font-size:10.5px">✓ {arqs.length}</span>
+                          : <span class="badge badge-gray" style="font-size:10.5px">falta</span>}
+                      </div>
+                      {arqs.map((x) => (
+                        <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12.5px;border-top:1px dashed var(--border-light)">
+                          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={x.nome_arquivo || ''}>📄 {x.nome_arquivo || 'arquivo'}</span>
+                          <a href={`/api/admin/doc-empresa/extratos/${x.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a>
+                          <button onclick={`excluirExtrato('${x.id}', this)`} title="Excluir" data-requer-edicao style="background:none;border:none;cursor:pointer">🗑️</button>
+                        </div>
+                      ))}
+                      <button class="btn btn-outline btn-sm" style="width:100%;margin-top:7px" data-requer-edicao
+                        onclick={`anexarCelula(${a},${m},${JSON.stringify(banco)})`}>📎 Anexar</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </details>
+  ))}
+
+  {anoAnteriorBtn >= 2015 && (
+    <div style="text-align:center;margin-top:10px">
+      <a class="btn btn-outline btn-sm" href={`?desde=${anoAnteriorBtn}`}>➕ Mostrar {anoAnteriorBtn}</a>
+    </div>
+  )}
+
+  <!-- Modal anexar (escolhe ano/mês/banco e dispara o seletor de arquivo) -->
+  <div id="modalAnexar" class="modal-overlay" style="display:none">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-head"><h3 style="margin:0">📎 Anexar extrato</h3><button class="modal-x" onclick="fecharAnexar()">×</button></div>
+      <div class="modal-body" style="display:grid;gap:12px">
+        <label>Ano<br/><input id="anAno" type="number" min="2015" max={anoVigente + 1} value={anoVigente} class="inp" style="width:100%" /></label>
+        <label>Mês<br/>
+          <select id="anMes" class="inp" style="width:100%">
+            {MESES.map((nome, i) => <option value={i + 1} selected={i === hoje.getMonth()}>{nome}</option>)}
+          </select>
+        </label>
+        <label>Banco<br/>
+          <select id="anBanco" class="inp" style="width:100%">{BANCOS.map((b) => <option value={b}>{b}</option>)}</select>
+        </label>
+        <button class="btn btn-primary" onclick="anexarDoModal()">Escolher arquivo e enviar</button>
+      </div>
+    </div>
+  </div>
+</Admin>
+
+<style>
+  details.ano-card > summary::-webkit-details-marker, details.mes-card > summary::-webkit-details-marker { display:none; }
+  details[open] > summary .chev { transform: rotate(90deg); }
+  .chev { transition: transform .15s; display:inline-block; }
+  .inp { padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px; }
+  .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000; }
+  .modal { background:#fff;border-radius:14px;width:92%;box-shadow:var(--shadow-lg); }
+  .modal-head { display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border); }
+  .modal-body { padding:18px; }
+  .modal-x { background:none;border:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1; }
+</style>
+
+<script>
+  let pend: { ano: number; mes: number; banco: string } | null = null;
+  const fileInput = () => document.getElementById("fileExtrato") as HTMLInputElement;
+
+  function abrirAnexar() { (document.getElementById("modalAnexar") as HTMLElement).style.display = "flex"; }
+  function fecharAnexar() { (document.getElementById("modalAnexar") as HTMLElement).style.display = "none"; }
+
+  function anexarDoModal() {
+    const ano = Number((document.getElementById("anAno") as HTMLInputElement).value);
+    const mes = Number((document.getElementById("anMes") as HTMLSelectElement).value);
+    const banco = (document.getElementById("anBanco") as HTMLSelectElement).value;
+    if (!ano || !mes || !banco) { alert("Preencha ano, mês e banco."); return; }
+    fecharAnexar();
+    dispararUpload(ano, mes, banco);
+  }
+  function anexarCelula(ano: number, mes: number, banco: string) { dispararUpload(ano, mes, banco); }
+
+  function dispararUpload(ano: number, mes: number, banco: string) {
+    pend = { ano, mes, banco };
+    const fi = fileInput();
+    fi.value = "";
+    fi.click();
+  }
+
+  fileInput().addEventListener("change", async () => {
+    const fi = fileInput();
+    const arquivo = fi.files && fi.files[0];
+    if (!arquivo || !pend) return;
+    if (arquivo.size > 45 * 1024 * 1024) { alert("Arquivo muito grande (máx. 45 MB)."); return; }
+    const ctx = pend;
+    try {
+      const r1 = await fetch("/api/admin/doc-empresa/extratos/upload-url", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ano: ctx.ano, mes: ctx.mes, banco: ctx.banco, nome: arquivo.name }),
+      });
+      if (!r1.ok) throw new Error((await r1.json().catch(() => ({}))).error || "Erro ao preparar upload");
+      const { signed_url, path, nome_original } = await r1.json();
+      const r2 = await fetch(signed_url, { method: "PUT", headers: { "content-type": arquivo.type || "application/octet-stream" }, body: arquivo });
+      if (!r2.ok) throw new Error(`Falha no envio (HTTP ${r2.status}).`);
+      const r3 = await fetch("/api/admin/doc-empresa/extratos", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ano: ctx.ano, mes: ctx.mes, banco: ctx.banco, storage_path: path, nome_arquivo: nome_original }),
+      });
+      if (!r3.ok) throw new Error((await r3.json().catch(() => ({}))).error || "Falhou ao registrar");
+      location.reload();
+    } catch (err: any) {
+      alert("Erro: " + (err?.message || "tente novamente"));
+    }
+  });
+
+  async function excluirExtrato(id: string, btn: HTMLButtonElement) {
+    if (!confirm("Excluir este extrato? (vai para a Lixeira por 30 dias)")) return;
+    btn.disabled = true;
+    const res = await fetch(`/api/admin/doc-empresa/extratos/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+    if (res.ok) location.reload(); else { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; }
+  }
+
+  Object.assign(window, { abrirAnexar, fecharAnexar, anexarDoModal, anexarCelula, excluirExtrato });
+</script>
