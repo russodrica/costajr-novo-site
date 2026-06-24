@@ -59,11 +59,12 @@ function situacao(d: any, cat?: string): string {
 function badge(d: any, cat?: string): { cls: string; txt: string } {
   if (cat && CATS_SEM_ALERTA.has(cat)) return { cls: "badge-gray", txt: "—" };
   if (d.validade_na) return { cls: "badge-gray", txt: "N/A — sem validade" };
-  if (!d.validade) return { cls: "badge-gray", txt: "⚠ Definir validade" };
+  const emit = d.data_emissao ? `📅 ${String(d.data_emissao).split("-").reverse().join("/")} · ` : "";
+  if (!d.validade) return { cls: "badge-gray", txt: `${emit}⚠ Definir validade` };
   const f = String(d.validade).split("-").reverse().join("/");
-  if (d.validade < hoje) return { cls: "badge-red", txt: `Vencido ${f}` };
-  if (d.validade <= em30) return { cls: "badge-orange", txt: `Vence ${f}` };
-  return { cls: "badge-green", txt: `Válido até ${f}` };
+  if (d.validade < hoje) return { cls: "badge-red", txt: `${emit}Vencido ${f}` };
+  if (d.validade <= em30) return { cls: "badge-orange", txt: `${emit}Vence ${f}` };
+  return { cls: "badge-green", txt: `${emit}Válido até ${f}` };
 }
 
 // KPIs apenas de documentos ativos (Empreiteiros/Terceiros não contam em vencido/vencendo)
@@ -109,7 +110,7 @@ const catsArq = [...CATEGORIAS.filter((c) => porCatArq.has(c)), ...[...porCatArq
 // em ambas as abas (passamos o id no onclick, o docById resolve pelo JSON).
 const docsJs = docs.map((d: any) => ({
   id: d.id, categoria: d.categoria, grupo: d.grupo || null, nome: d.nome, periodicidade: d.periodicidade,
-  validade: d.validade, validade_na: d.validade_na, site: d.site, observacoes: d.observacoes,
+  validade: d.validade, validade_na: d.validade_na, data_emissao: d.data_emissao, site: d.site, observacoes: d.observacoes,
   arquivado: d.arquivado, valor_mensal: d.valor_mensal ?? null,
   arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome })),
 }));
@@ -382,6 +383,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           <input type="number" name="valor_mensal" min="0" step="0.01" placeholder="0,00" style="max-width:180px" />
         </div>
         <div class="form-row">
+          <div class="form-group"><label>Data de emissão</label><input type="date" name="data_emissao" id="fldEmissao" /></div>
           <div class="form-group"><label>Validade (vencimento)</label><input type="date" name="validade" id="fldValidade" /></div>
           <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:24px">
             <input type="checkbox" id="fldValidadeNA" name="validade_na" style="width:auto" onchange="toggleNA()" />
@@ -504,6 +506,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const val = document.getElementById("fldValidade") as HTMLInputElement;
       na.checked = !!d.validade_na;
       val.value = d.validade || "";
+      (document.getElementById("fldEmissao") as HTMLInputElement).value = d.data_emissao || "";
       val.disabled = na.checked;
       toggleGrupo();
       const grupoSel = document.getElementById("grupoSel") as HTMLSelectElement;

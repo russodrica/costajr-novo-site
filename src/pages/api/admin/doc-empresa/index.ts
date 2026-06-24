@@ -43,12 +43,14 @@ export const POST: APIRoute = async ({ request }) => {
 
     const validade_na = body.validade_na === true || body.validade_na === "true" || body.validade_na === "on";
     const validade = validade_na ? null : (String(body.validade || "").trim() || null);
+    const data_emissao = String(body.data_emissao || "").trim() || null;
 
     const row: Record<string, unknown> = {
       nome,
       categoria,
       validade_na,
       validade,
+      data_emissao,
       periodicidade: String(body.periodicidade || "").trim() || null,
       site: String(body.site || "").trim() || null,
       observacoes: String(body.observacoes || "").trim() || null,
