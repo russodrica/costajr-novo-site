@@ -2296,6 +2296,31 @@ Clientes · Guias e Obrigacoes Fiscais · Documentos Contabeis · Documentos Ins
   "VIA VAREJO" em Clientes (mesmo grupo) — oferecer unir. E a parte de "Processos da Empresa"
   que ela vai especificar.
 
+## Atualizacao 24/06/2026 (parte 3) — Jurídico em 3 áreas (Empresa / Contratual / Seguros) via ?view
+
+A Adriana pediu pra separar dentro de Jurídico & Documentos como o Documentos Bancários
+(uma entrada de menu por área). **Commit 512b3fe.** ARQUITETURA: as 3 áreas sao a MESMA
+pagina `/admin/doc-empresa` filtrada por `?view=` (empresa|contratos|seguros) — compartilham
+a mesma base (doc_empresa) e as MESMAS APIs (1 modulo de permissao p/ a trava read-only ser
+consistente). doc-empresa.astro: `VIEW`/`naView`/`VIEW_META`/`vmeta`; `ABAS` derivada de
+`ABAS_ALL` por `naView`; `current` e titulo dinamicos; doc novo ja vem com a categoria da area.
+- **Menu (grupo Juridico):** Documentos da Empresa (`/admin/doc-empresa`, key doc-empresa) ·
+  Documentos Contratuais (`?view=contratos`, key **doc-contratos**) · Documentos Bancarios
+  (pagina separada) · Seguros (`?view=seguros`, key **doc-seguros**) · Assinaturas.
+- **Particao das categorias por view:** contratos = {Contratos, Clientes}; seguros = {Seguros};
+  **empresa = TODO O RESTO** (Documentos da Empresa, Certidoes, Processos da Empresa, Guias,
+  Contabeis, Institucionais + qualquer categoria nula/desconhecida). Nenhum doc some.
+- doc-contratos/doc-seguros registrados em GRUPOS_ADMIN (permissoes.ts) grupo juridico ->
+  gating correto (admin/juridico/financeiro veem; rh/operacional nao; comercial so ve a view
+  "empresa" via MODULO_ROLES_EXTRA). Revisado por agente (5 checagens: sem lockout, sem
+  vazamento de menu, sem banner read-only indevido, particao completa, sem erro JSX).
+- **NUANCE de permissao (documentada):** editar Contrato/Seguro chama o CRUD /api/admin/
+  doc-empresa/* -> middleware mapeia p/ modulo **doc-empresa**. Entao as celulas doc-contratos/
+  doc-seguros na matriz por-usuario governam VISIBILIDADE/acesso a pagina, mas a trava de
+  EDICAO (ver vs editar) e a do doc-empresa (API compartilhada). No caso padrao (sem override
+  divergente) tudo coincide. Se a Adriana quiser travar edicao SO de contratos, precisaria de
+  API/modulo proprio.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
