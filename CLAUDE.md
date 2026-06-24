@@ -2223,6 +2223,49 @@ viram TAREFA com link** (mapeei a API da Vobi: e SO LEITURA, nao da pra inativar
 - Build limpo; deploy live (endpoint=401 sem login; tabela=200 no PostgREST). **TESTAR no
   FUNCIONARIO TESTE** (corta acesso de verdade — nao testar em colaborador real).
 
+## Atualizacao 24/06/2026 — Documentacao da Empresa reorganizada + Documentos Bancarios
+
+**Pedido da Adriana (continuacao).** Tres frentes, todas no ar:
+
+**1) Reorg do /admin/doc-empresa (commit 60ee9d5):** as sub-categorias de "Empresas
+Fornecedoras" viraram ABAS proprias: **Contratos de Consultoria**, **Contratos
+Recorrentes**, **Plataformas** (Seguros ja tinha aba). Fornecedoras ficou com
+**Beneficios/Locacoes/Diversos** (default null->"Diversos"; render dobra grupo legado
+em Diversos p/ nada sumir; POST de doc tambem usa "Diversos"). Titulo da categoria em
+**VERMELHO/CAIXA ALTA/maior** (.doc-cat-title, <style> scoped). **Guias e Contabeis**
+(CATS_PERIODO) expandem por **Ano -> competencias (mes)** (renderCompetencias agrupa por
+anoDoArq). Contratos/Plataformas entraram em CATS_SEM_ALERTA (nao cobram "definir validade").
+
+**2) Limpeza de dados (via Management API, reversivel — categoria/arquivado sao campos):**
+NDA da Claro (id 09ef78cb) -> categoria Clientes, nome "CLARO — NDA (Confidencialidade)";
+"Contrato Costa Junior" (fe9f1b5d, contrato com a TNT) -> arquivado; "CONTRATO SOCIAL -
+5 ALT" (cd35b539) -> renomeado "Contrato Social (vigente — 5a alteracao)"; stub vazio
+"Certidoes (pasta)" (a2aa91b6) -> arquivado. **PENDENTE de decisao da Adriana:** certidoes
+nao tem duplicata exata — so o trio trabalhista (Acoes Trabalhistas / Eletronica Digital /
+Processo Fisico) e o stub vazio "TJSP - Acoes Criminais" (0 arq) sao candidatos a
+consolidar; aguardando ela confirmar. E o doc "Voce tem um documento para assinatura - ID
+El" (e9ec3bdf, nome de DocuSign) precisa ser identificado/renomeado.
+
+**3) Documentos Bancarios (/admin/doc-bancarios, commit 2488016) — area SENSIVEL** no menu
+Juridico. Renomeou /admin/doc-extratos. **3 abas:** Extratos (Ano->Mes->7 bancos: BB, Caixa,
+Santander, Sicoob, Bradesco, Itau, Nubank — migration 074 doc_extratos_bancarios), Faturas
+de Cartao (Ano->Mes->faturas: cartao/valor/vencimento), Emprestimos & Financiamentos
+(registro CRUD tipo/banco/valor/parcelas/status + contrato anexavel + KPIs). Migration **075**
+(doc_cartao_faturas, doc_emprestimos). 9 endpoints sob `/api/admin/doc-empresa/{extratos,
+faturas,emprestimos}/*`, bucket PRIVADO `doc-empresa`, gate admin/financeiro/juridico,
+lixeira+auditoria. Migrations 074 e 075 RODADAS.
+
+**Revisao adversarial (workflow 11 agentes) + fixes (commit 618f158):**
+- **LICAO/ARMADILHA:** quando os endpoints de um modulo ficam fisicamente sob a pasta de
+  OUTRO modulo (aqui doc-empresa/), o `moduloDaRotaApi` (permissoes.ts) resolve pela pasta
+  e a trava read-only do middleware avalia o modulo ERRADO. Fix: tratar o sub-segmento
+  (`if seg==='doc-empresa' && sub in [extratos,faturas,emprestimos] -> 'doc-bancarios'`).
+  **Padrao:** sempre conferir moduloDaRotaApi quando criar API aninhada sob outra pasta.
+- **LGPD:** GETs sensiveis (lista + download assinado) agora chamam
+  `bloqueioSeSemLeitura(admin,"doc-bancarios")` — override "nenhum" por usuario barra a
+  leitura (o middleware so cobre mutacoes). Mesmo padrao ja usado em RH/ativos.
+- build tsc+astro limpos; deploy live; sem regressao (page 302, APIs 401).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
