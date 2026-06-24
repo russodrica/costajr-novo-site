@@ -2266,6 +2266,36 @@ lixeira+auditoria. Migrations 074 e 075 RODADAS.
   leitura (o middleware so cobre mutacoes). Mesmo padrao ja usado em RH/ativos.
 - build tsc+astro limpos; deploy live; sem regressao (page 302, APIs 401).
 
+## Atualizacao 24/06/2026 (parte 2) — Jurídico reorganizado: aba "Contratos" + "Processos da Empresa"
+
+**SUPERSEDE a parte 1:** a Adriana pediu pra NAO ter abas separadas de Consultoria/
+Recorrentes/Plataformas. **Estrutura FINAL das abas de /admin/doc-empresa (commit a99be73):**
+Documentos da Empresa · Certidoes · **Processos da Empresa** · **Contratos** · Seguros ·
+Clientes · Guias e Obrigacoes Fiscais · Documentos Contabeis · Documentos Institucionais.
+- **Aba "Contratos"** = UMA categoria (`categoria='Contratos'`) com sub-tipos pelo campo
+  `grupo`: **Consultoria, Recorrentes, Plataformas, Empresas** ("Contratos de Empresas" =
+  ex-Fornecedoras benefícios/locações/diversos). Render reusa a logica antiga de
+  "Empresas Fornecedoras" (tabela ordenavel + coluna $/Mes; classes JS `forn-*`/`sortForn`
+  mantidas como hooks internos). `isFornecedor` agora = `c==='Contratos'`. GRUPOS_FORNECEDOR
+  (nome de var mantido) = os 4 sub-tipos. POST default grupo='Empresas'; valor_mensal so p/
+  Contratos. CATS_SEM_ALERTA inclui Contratos + Processos da Empresa (nao cobram validade).
+- **Aba "Processos da Empresa"** (novo): recebeu os 3 processos trabalhistas (Acoes
+  Trabalhistas / Eletronica Digital / Processo Fisico). A Adriana vai detalhar essa parte
+  DEPOIS (provavel rastreio de processos: numero/vara/status — ainda nao feito).
+- **Dados (Management API, reversivel):** TJSP Acoes Criminais (vazia) arquivada; doc com
+  nome de DocuSign IDENTIFICADO via download+unpdf = **"Termo de Servicos" com a Casas Bahia
+  (Via Varejo)** -> renomeado e movido p/ Clientes. Contagem final ativos: Contratos 27,
+  Processos da Empresa 3, Certidoes 15, Clientes 12 (+Casas Bahia), Docs Empresa 21, Seguros 7.
+- **LICAO (ler PDF do bucket privado):** a chave `SUPABASE_SERVICE_ROLE_KEY` e formato NOVO
+  `sb_secret_...` (nao-JWT) -> o endpoint storage `/object/authenticated/` recusa ("Invalid
+  Compact JWS"). Funciona via `POST /storage/v1/object/sign/<bucket>/<path>` com headers
+  `apikey`+`Authorization: Bearer <sb_secret>`+`User-Agent: cjr-cli/1.0` -> retorna signedURL
+  -> baixar `/storage/v1<signedURL>`. Extrair texto com `unpdf` (script DENTRO do projeto p/
+  resolver node_modules; pdftoppm/pdftotext nao instalados nesta maquina).
+- **PENDENTE p/ a Adriana:** "Casas Bahia (Via Varejo)" virou cliente proprio mas ja existe
+  "VIA VAREJO" em Clientes (mesmo grupo) — oferecer unir. E a parte de "Processos da Empresa"
+  que ela vai especificar.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
