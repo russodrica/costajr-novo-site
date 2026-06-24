@@ -110,8 +110,8 @@ const MESES_PT: Record<string, number> = {
 };
 const BANCOS_MAP: [RegExp, string][] = [
   [/banco\s+do\s+brasil|\bbb\b/, "BB"],
-  [/caixa\s+econom|cef\b|caixa\s+federal|\bcaixa\b/, "Caixa"],
-  [/santander/, "Santander"],
+  [/caixa\s+econom|\bcef\b|caixa\s+federal/, "Caixa"],   // sem \bcaixa\b (palavra genérica → falso positivo)
+  [/santan/, "Santander"],                                // tolera typos: santandar, santanader…
   [/sicoob/, "Sicoob"],
   [/bradesco/, "Bradesco"],
   [/ita[u]/, "Itaú"],
