@@ -2321,6 +2321,32 @@ consistente). doc-empresa.astro: `VIEW`/`naView`/`VIEW_META`/`vmeta`; `ABAS` der
   divergente) tudo coincide. Se a Adriana quiser travar edicao SO de contratos, precisaria de
   API/modulo proprio.
 
+## Atualizacao 24/06/2026 (parte 4) — Contábil por ano/mês, CAIXA ALTA, certidões trabalhistas
+
+**Commit a29ac48.** Refinamentos pedidos pela Adriana:
+- **CAIXA ALTA** em todos os titulos de /admin/doc-empresa (.toolbar-title, .pills .pill,
+  .doc-sec/.doc-row strong via <style> scoped; slots periodicos via inline pois sao innerHTML).
+- **Categorias periodicas (Guias/Contabeis) por SLOTS:** ANUAL = 1 doc por ano com slots
+  desde **2017** ate o ano atual; MENSAL = **ultimos 12 meses**. Cada slot (ano/mes) tem botao
+  Anexar que sobe direto naquele periodo (competencia preservada via #fileSlot -> /[id]/upload-url
+  -> PUT -> /[id]/upload). Decidido por `periodicidade` do doc (Anual vs resto). renderCompetencias
+  reescrita (slotPeriodo). ANO_INICIO_ANUAL=2017 (constante).
+- **Dados (Management API):** BALANCO/DRE/ECF = Anual; FATURAMENTO -> Anual + criado
+  "FATURAMENTO — ÚLTIMOS 12 MESES" (Mensal); BALANCETE+BALANCETES unificados (Mensal, 2 anexos);
+  Procuracao unifica anexos num doc so (duplicata "Procuração Empresa 3" arquivada); "Links de
+  acompanhamento de dividas" arquivado. ("BRE" que a Adriana falou = DRE, erro de voz.)
+- **Certidões trabalhistas — DECISAO IMPORTANTE:** a Adriana achou que eram o mesmo doc e pediu
+  "manter so o ultimo vigente". VERIFIQUEI os PDFs (download via signed-url + unpdf): NAO sao o
+  mesmo — ha **TRT-2 (SP capital) eletronica** em 2 versoes (uma com prefixo 0SEMVAL=superada,
+  outra com processos de 2026) + **TRT-15 (Campinas)** + uma "processo fisico" (PDF imagem, sem
+  texto). Sao jurisdicoes/tipos diferentes. Por seguranca **NAO apaguei nenhuma** (certidao legal);
+  so movi as 3 de volta p/ **Certidões** (a Adriana disse que certidao de acao trabalhista e
+  certidao normal). A pasta **"Processos"** (aba renomeada, antes "Processos da Empresa") fica p/
+  PROCESSOS de fato (os numeros de acao) — vazia por ora; a Adriana vai especificar o rastreio.
+  PENDENTE: ela confirmar qual(is) certidao(oes) trabalhista(s) manter p/ eu consolidar.
+- LICAO reforcada: a chave `sb_secret_` lê PDF do bucket privado via POST /storage/v1/object/sign
+  + headers apikey/Bearer + UA nao-navegador; extrair com unpdf (script dentro do projeto).
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
