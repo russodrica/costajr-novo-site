@@ -865,10 +865,10 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     function slotPeriodo(id: string, comp: string, arqs: any[]): string {
       const files = arqs.filter((a: any) => String(a.competencia || "") === comp);
       const ok = files.length > 0;
-      return `<div style="border:1px solid var(--border);border-radius:8px;margin:6px 0;padding:9px 12px;background:${ok ? "#fff" : "#FAFBFC"}">
+      return `<div class="slot-drop" data-slot-doc="${id}" data-slot-comp="${comp}" style="border:1px solid var(--border);border-radius:8px;margin:6px 0;padding:9px 12px;background:${ok ? "#fff" : "#FAFBFC"};transition:.12s">
         <div style="display:flex;align-items:center;gap:10px">
           <strong style="flex:1;font-size:13.5px;text-transform:uppercase">${rotuloCompetencia({ competencia: comp })}</strong>
-          ${ok ? `<span class="badge badge-green" style="font-size:10.5px">✓ ${files.length}</span>` : `<span class="badge badge-gray" style="font-size:10.5px">vazio</span>`}
+          ${ok ? `<span class="badge badge-green" style="font-size:10.5px">✓ ${files.length}</span>` : `<span class="badge badge-gray" style="font-size:10.5px">arraste aqui ou</span>`}
           <button class="btn btn-outline btn-sm" onclick="anexarSlot('${id}','${comp}')">📎 Anexar</button>
         </div>${files.map(linhaArq).join("")}</div>`;
     }
@@ -925,27 +925,46 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       if (hist.length) html += `<details style="margin-top:8px"><summary style="cursor:pointer;color:#6B7280;font-size:13px;font-weight:600">📦 Substituídos / histórico (${hist.length})</summary><div style="margin-top:6px">${hist.map((a: any) => `<div style="border-bottom:1px dashed var(--border-light);padding:3px 0"><span style="font-size:12px;color:#9CA3AF;text-transform:uppercase">${rotuloCompetencia(a)}</span>${linhaArq(a)}</div>`).join("")}</div></details>`;
       return html;
     }
-    // upload direto num slot (ano/mês), preservando a competência
+    // upload num slot (ano/mês/bimestre), preservando a competência — por clique OU arrastar
+    async function subirSlot(docId: string, comp: string, arquivo: File) {
+      if (!arquivo || !docId) return;
+      if (arquivo.size > 45 * 1024 * 1024) { alert("Arquivo muito grande (máx. 45 MB)."); return; }
+      try {
+        const r1 = await fetch(`/api/admin/doc-empresa/${docId}/upload-url`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nome: arquivo.name, content_type: arquivo.type }) });
+        if (!r1.ok) throw new Error((await r1.json().catch(() => ({}))).error || "Erro ao preparar upload");
+        const { signed_url, path, nome_original } = await r1.json();
+        const r2 = await fetch(signed_url, { method: "PUT", headers: { "content-type": arquivo.type || "application/octet-stream" }, body: arquivo });
+        if (!r2.ok) throw new Error(`Falha no envio (HTTP ${r2.status}).`);
+        const r3 = await fetch(`/api/admin/doc-empresa/${docId}/upload`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ storage_path: path, nome: nome_original, competencia: comp }) });
+        if (!r3.ok) throw new Error((await r3.json().catch(() => ({}))).error || "Falhou ao registrar");
+        reloadComAba();
+      } catch (e: any) { alert("Erro: " + (e?.message || "tente novamente")); }
+    }
     let pendSlot: { docId: string; comp: string } | null = null;
     function anexarSlot(docId: string, comp: string) {
       pendSlot = { docId, comp };
       const fi = document.getElementById("fileSlot") as HTMLInputElement;
       fi.value = ""; fi.click();
     }
-    document.getElementById("fileSlot")!.addEventListener("change", async (ev) => {
-      const fi = ev.target as HTMLInputElement; const arquivo = fi.files && fi.files[0];
-      if (!arquivo || !pendSlot) return; const ctx = pendSlot;
-      if (arquivo.size > 45 * 1024 * 1024) { alert("Arquivo muito grande (máx. 45 MB)."); return; }
-      try {
-        const r1 = await fetch(`/api/admin/doc-empresa/${ctx.docId}/upload-url`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nome: arquivo.name, content_type: arquivo.type }) });
-        if (!r1.ok) throw new Error((await r1.json().catch(() => ({}))).error || "Erro ao preparar upload");
-        const { signed_url, path, nome_original } = await r1.json();
-        const r2 = await fetch(signed_url, { method: "PUT", headers: { "content-type": arquivo.type || "application/octet-stream" }, body: arquivo });
-        if (!r2.ok) throw new Error(`Falha no envio (HTTP ${r2.status}).`);
-        const r3 = await fetch(`/api/admin/doc-empresa/${ctx.docId}/upload`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ storage_path: path, nome: nome_original, competencia: ctx.comp }) });
-        if (!r3.ok) throw new Error((await r3.json().catch(() => ({}))).error || "Falhou ao registrar");
-        reloadComAba();
-      } catch (e: any) { alert("Erro: " + (e?.message || "tente novamente")); }
+    document.getElementById("fileSlot")!.addEventListener("change", (ev) => {
+      const arquivo = (ev.target as HTMLInputElement).files?.[0];
+      if (arquivo && pendSlot) subirSlot(pendSlot.docId, pendSlot.comp, arquivo);
+    });
+    // arrastar-e-soltar direto num slot (ano/mês/bimestre) — vale p/ DRE, Balanço, Balancete, etc.
+    document.addEventListener("dragover", (e: any) => {
+      const s = (e.target as HTMLElement).closest?.(".slot-drop") as HTMLElement | null;
+      if (s) { e.preventDefault(); s.style.outline = "2px dashed var(--brand)"; s.style.outlineOffset = "1px"; }
+    });
+    document.addEventListener("dragleave", (e: any) => {
+      const s = (e.target as HTMLElement).closest?.(".slot-drop") as HTMLElement | null;
+      if (s) s.style.outline = "";
+    });
+    document.addEventListener("drop", (e: any) => {
+      const s = (e.target as HTMLElement).closest?.(".slot-drop") as HTMLElement | null;
+      if (!s) return;
+      e.preventDefault(); s.style.outline = "";
+      const f = e.dataTransfer?.files?.[0];
+      if (f) subirSlot(s.dataset.slotDoc || "", s.dataset.slotComp || "", f);
     });
     function togglePeriodo(id: string) {
       const box = document.getElementById("per-" + id) as HTMLElement; const exp = document.getElementById("exp-" + id);

@@ -626,6 +626,9 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
   </script>
 
   <script>
+    // mantém a posição de rolagem após inserir/recarregar (não pula pro topo)
+    function reloadKeepScroll() { try { sessionStorage.setItem("ativoScroll", String(window.scrollY)); } catch {} window.location.reload(); }
+    (function () { try { const s = sessionStorage.getItem("ativoScroll"); if (s != null) { sessionStorage.removeItem("ativoScroll"); requestAnimationFrame(() => window.scrollTo(0, parseInt(s, 10) || 0)); } } catch {} })();
     const ativoId = location.pathname.split("/").filter(Boolean).pop();
     function fecharModais() { document.querySelectorAll(".modal-overlay").forEach(m => m.classList.remove("open")); }
     function abrirModal(id) {
@@ -706,7 +709,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
             method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
           });
           const d = await res.json();
-          if (res.ok) { window.location.reload(); }
+          if (res.ok) { reloadKeepScroll(); }
           else {
             fecharModais();
             document.getElementById("msgAcao")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro na ação"}</div>`;
@@ -744,7 +747,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
           method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
         });
         const d = await res.json();
-        if (res.ok) window.location.reload();
+        if (res.ok) reloadKeepScroll();
         else document.getElementById("msgEditar")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar"}</div>`;
       } catch {
         document.getElementById("msgEditar")!.innerHTML = `<div class="alert alert-error">Erro de conexão.</div>`;
@@ -801,7 +804,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       try {
         const res = await fetch(`/api/admin/termos/${termoD4SignId}/enviar-d4sign`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cofre_uuid: cofre }) });
         const d = await res.json();
-        if (res.ok) { alert("Termo enviado para assinatura! O colaborador vai receber por e-mail."); window.location.reload(); }
+        if (res.ok) { alert("Termo enviado para assinatura! O colaborador vai receber por e-mail."); reloadKeepScroll(); }
         else document.getElementById("d4Msg")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao enviar para a D4Sign"}</div>`;
       } finally { btn.disabled = false; btn.textContent = "Enviar para assinatura"; }
     }
@@ -816,7 +819,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       const txt = btn?.textContent; if (btn) { btn.disabled = true; btn.textContent = "Criando..."; }
       try {
         const res = await fetch(`/api/admin/ativos/${ativoId}/planos`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-        if (res.ok) window.location.reload();
+        if (res.ok) reloadKeepScroll();
         else alert((await res.json()).error || "Erro ao criar plano");
       } finally {
         if (btn) { btn.disabled = false; if (txt) btn.textContent = txt; }
@@ -825,12 +828,12 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     async function executarPlano(id) {
       if (!confirm("Registrar que esta manutenção preventiva foi executada hoje? A próxima será reprogramada automaticamente.")) return;
       const res = await fetch(`/api/admin/ativos/${ativoId}/planos`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, acao: "executar" }) });
-      if (res.ok) window.location.reload(); else alert((await res.json()).error || "Erro");
+      if (res.ok) reloadKeepScroll(); else alert((await res.json()).error || "Erro");
     }
     async function desativarPlano(id) {
       if (!confirm("Desativar este plano de manutenção?")) return;
       const res = await fetch(`/api/admin/ativos/${ativoId}/planos`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, acao: "desativar" }) });
-      if (res.ok) window.location.reload(); else alert((await res.json()).error || "Erro");
+      if (res.ok) reloadKeepScroll(); else alert((await res.json()).error || "Erro");
     }
 
     // fotos do ativo
@@ -853,7 +856,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({ imagem_base64, content_type: file.type }),
           });
-          if (res.ok) window.location.reload();
+          if (res.ok) reloadKeepScroll();
           else alert((await res.json().catch(() => ({}))).error || "Erro ao enviar foto");
         } finally {
           if (btn) { btn.disabled = false; if (txt) btn.textContent = txt; }
@@ -864,7 +867,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     async function removerFoto(url) {
       if (!confirm("Remover esta foto?")) return;
       const res = await fetch(`/api/admin/ativos/${ativoId}/fotos?url=${encodeURIComponent(url)}`, { method: "DELETE", headers: { "content-type": "application/json" } });
-      if (res.ok) window.location.reload(); else alert("Erro ao remover foto");
+      if (res.ok) reloadKeepScroll(); else alert("Erro ao remover foto");
     }
 
     // nota fiscal (cofre privado)
@@ -887,7 +890,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
             method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({ arquivo_base64, content_type: file.type }),
           });
-          if (res.ok) window.location.reload();
+          if (res.ok) reloadKeepScroll();
           else alert((await res.json().catch(() => ({}))).error || "Erro ao anexar a NF");
         } finally { if (btn) { btn.disabled = false; if (txt) btn.textContent = txt; } }
       };
@@ -896,7 +899,7 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     async function removerNf() {
       if (!confirm("Remover a nota fiscal do cofre? Esta ação não pode ser desfeita.")) return;
       const res = await fetch(`/api/admin/ativos/${ativoId}/nota-fiscal`, { method: "DELETE", headers: { "content-type": "application/json" } });
-      if (res.ok) window.location.reload(); else alert("Erro ao remover a NF");
+      if (res.ok) reloadKeepScroll(); else alert("Erro ao remover a NF");
     }
     (window as any).anexarNf = anexarNf;
     (window as any).removerNf = removerNf;
