@@ -168,8 +168,10 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
           {e.banco && <span>🏦 {e.banco}</span>}
           {e.valor_total != null && <span>💰 {brl(e.valor_total)}</span>}
           {e.num_parcelas != null && <span>📆 {e.num_parcelas}x{e.valor_parcela != null ? ` de ${brl(e.valor_parcela)}` : ''}</span>}
-          {e.data_contratacao && <span>🗓️ Contratado {fdata(e.data_contratacao)}</span>}
+          {e.numero_contrato && <span>📋 Nº {e.numero_contrato}</span>}
+          {e.data_contratacao && <span>🗓️ Assinado {fdata(e.data_contratacao)}</span>}
           {e.data_primeira_parcela && <span>1ª parcela {fdata(e.data_primeira_parcela)}</span>}
+          {e.data_vencimento && <span style={`font-weight:600;color:${new Date(e.data_vencimento) < new Date() ? '#DC2626' : '#059669'}`}>⏳ Encerra {fdata(e.data_vencimento)}</span>}
         </div>
         {e.observacao && <div style="font-size:12.5px;color:#9CA3AF;margin-top:6px">{e.observacao}</div>}
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
@@ -228,9 +230,11 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
         <label style="flex:1">Nº parcelas<br/><input id="empNP" type="number" min="0" class="inp" style="width:100%" /></label>
         <label style="flex:1">Valor parcela (R$)<br/><input id="empVP" type="number" min="0" step="0.01" class="inp" style="width:100%" /></label>
       </div>
+      <label>Nº do Contrato<br/><input id="empNC" class="inp" style="width:100%" placeholder="Ex.: 1623146 / 16627049" /></label>
       <div style="display:flex;gap:10px">
-        <label style="flex:1">Contratação<br/><input id="empDC" type="date" class="inp" style="width:100%" /></label>
+        <label style="flex:1">Assinatura<br/><input id="empDC" type="date" class="inp" style="width:100%" /></label>
         <label style="flex:1">1ª parcela<br/><input id="empD1" type="date" class="inp" style="width:100%" /></label>
+        <label style="flex:1">Encerramento<br/><input id="empDV" type="date" class="inp" style="width:100%" /></label>
       </div>
       <label>Observações<br/><textarea id="empObs" class="inp" style="width:100%;min-height:60px"></textarea></label>
       <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-secondary" onclick="fecharM('modalEmp')">Cancelar</button><button class="btn btn-primary" onclick="salvarEmp()">Salvar</button></div>
@@ -329,7 +333,7 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
   function abrirNovoEmp() {
     (document.getElementById("empId") as HTMLInputElement).value = "";
     (document.getElementById("empTitle") as HTMLElement).textContent = "Novo empréstimo/financiamento";
-    ["empDesc", "empBanco", "empValor", "empNP", "empVP", "empDC", "empD1", "empObs"].forEach((id) => (document.getElementById(id) as HTMLInputElement).value = "");
+    ["empDesc", "empBanco", "empValor", "empNP", "empVP", "empDC", "empD1", "empDV", "empNC", "empObs"].forEach((id) => (document.getElementById(id) as HTMLInputElement).value = "");
     (document.getElementById("empTipo") as HTMLSelectElement).value = "emprestimo";
     (document.getElementById("empStatus") as HTMLSelectElement).value = "ativo";
     abrirM("modalEmp");
@@ -346,6 +350,8 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
     (document.getElementById("empVP") as HTMLInputElement).value = e.valor_parcela ?? "";
     (document.getElementById("empDC") as HTMLInputElement).value = e.data_contratacao || "";
     (document.getElementById("empD1") as HTMLInputElement).value = e.data_primeira_parcela || "";
+    (document.getElementById("empDV") as HTMLInputElement).value = e.data_vencimento || "";
+    (document.getElementById("empNC") as HTMLInputElement).value = e.numero_contrato || "";
     (document.getElementById("empObs") as HTMLTextAreaElement).value = e.observacao || "";
     abrirM("modalEmp");
   }
@@ -361,6 +367,8 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
       valor_parcela: (document.getElementById("empVP") as HTMLInputElement).value,
       data_contratacao: (document.getElementById("empDC") as HTMLInputElement).value,
       data_primeira_parcela: (document.getElementById("empD1") as HTMLInputElement).value,
+      data_vencimento: (document.getElementById("empDV") as HTMLInputElement).value,
+      numero_contrato: (document.getElementById("empNC") as HTMLInputElement).value.trim(),
       observacao: (document.getElementById("empObs") as HTMLTextAreaElement).value,
     };
     if (!body.descricao) { alert("Informe a descrição."); return; }
