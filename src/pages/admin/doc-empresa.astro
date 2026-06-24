@@ -454,7 +454,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         <form id="formUpload" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
           <input type="hidden" name="doc_id" />
           <div id="upCompetenciaRow" style="display:none;margin-bottom:8px">
-            <label style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Competência (mês de referência)</label>
+            <label id="upCompetenciaLabel" style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Mês de emissão / competência</label>
             <input type="month" id="upCompetencia" style="max-width:200px" />
           </div>
           <label style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Anexar arquivo (PDF, imagem, DOC, XLS — até 45 MB)</label>
@@ -613,6 +613,15 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       // competência só nas categorias periódicas (Guias / Contábeis)
       const ehPeriodo = !!(d && ["Guias e Obrigações Fiscais", "Documentos Contábeis"].includes(d.categoria));
       (document.getElementById("upCompetenciaRow") as HTMLElement).style.display = ehPeriodo ? "" : "none";
+      if (ehPeriodo) {
+        // Anual → informa o ANO (exercício); Mensal → mês de emissão. A última competência = VIGENTE.
+        const anual = String((d && d.periodicidade) || "").toLowerCase() === "anual";
+        const inp = document.getElementById("upCompetencia") as HTMLInputElement;
+        const lab = document.getElementById("upCompetenciaLabel");
+        const hj = new Date();
+        if (anual) { inp.type = "number"; inp.min = "2017"; inp.max = String(hj.getFullYear() + 1); inp.value = String(hj.getFullYear()); if (lab) lab.textContent = "Ano (exercício)"; }
+        else { inp.type = "month"; inp.value = `${hj.getFullYear()}-${String(hj.getMonth() + 1).padStart(2, "0")}`; if (lab) lab.textContent = "Mês de emissão / competência"; }
+      }
       overlay("modalArq").classList.add("open");
     }
     function renderArq(arquivos: any[]) {
@@ -800,24 +809,36 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           <button class="btn btn-outline btn-sm" onclick="anexarSlot('${id}','${comp}')">📎 Anexar</button>
         </div>${files.map(linhaArq).join("")}</div>`;
     }
+    // chave de ordenação por competência (mês de emissão) — última = VIGENTE
+    function compKey(a: any): string {
+      const c = String(a.competencia || "");
+      if (c) return c.length === 4 ? c + "-13" : c;        // ano puro fica após os meses
+      return a.created_at ? String(a.created_at).slice(0, 7) : "0000-00";
+    }
     function renderCompetencias(id: string): string {
       const d = docById(id); if (!d) return "";
       const arqs = (d.arquivos || []).slice();
       const anual = String(d.periodicidade || "").toLowerCase() === "anual";
       const hoje = new Date();
-      const slots: string[] = [];
       if (anual) {
+        // ANUAL: um documento por ano — slots desde 2017 até o ano atual
+        const slots: string[] = [];
         for (let y = hoje.getFullYear(); y >= ANO_INICIO_ANUAL; y--) slots.push(String(y));
-      } else {
-        const dt = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-        for (let i = 0; i < 12; i++) { slots.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`); dt.setMonth(dt.getMonth() - 1); }
+        const usados = new Set(slots);
+        const resto = arqs.filter((a: any) => !usados.has(String(a.competencia || "")));
+        let html = `<p style="margin:2px 0 6px;color:#6B7280;font-size:12.5px">Um documento por ano (desde ${ANO_INICIO_ANUAL})</p>`;
+        html += slots.map((s) => slotPeriodo(id, s, arqs)).join("");
+        if (resto.length) html += `<details style="margin-top:8px"><summary style="cursor:pointer;color:#6B7280;font-size:13px;font-weight:600">📦 Outros anexos (${resto.length})</summary><div style="margin-top:6px">${resto.map(linhaArq).join("")}</div></details>`;
+        return html;
       }
-      const usados = new Set(slots);
-      const resto = arqs.filter((a: any) => !usados.has(String(a.competencia || "")));
-      const titulo = anual ? `Um documento por ano (desde ${ANO_INICIO_ANUAL})` : "Últimos 12 meses";
-      let html = `<p style="margin:2px 0 6px;color:#6B7280;font-size:12.5px">${titulo}</p>`;
-      html += slots.map((s) => slotPeriodo(id, s, arqs)).join("");
-      if (resto.length) html += `<details style="margin-top:8px"><summary style="cursor:pointer;color:#6B7280;font-size:13px;font-weight:600">📦 Outros anexos (${resto.length})</summary><div style="margin-top:6px">${resto.map(linhaArq).join("")}</div></details>`;
+      // MENSAL: arquivo ÚNICO VIGENTE (último mês de emissão) + histórico dos substituídos.
+      const ord = arqs.sort((a: any, b: any) => compKey(b).localeCompare(compKey(a)));
+      if (!ord.length) return `<p style="color:#9CA3AF;font-size:13px;margin:4px 0">Nenhum arquivo ainda. Use <strong>+ Anexar</strong> e informe o <strong>mês de emissão</strong> — o mais recente fica como VIGENTE.</p>`;
+      const vig = ord[0], hist = ord.slice(1);
+      let html = `<div style="border:1.5px solid #6EE7B7;background:#ECFDF5;border-radius:8px;padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px"><span class="badge badge-green" style="font-size:10.5px">✓ VIGENTE</span><strong style="text-transform:uppercase">${rotuloCompetencia(vig)}</strong></div>
+        ${linhaArq(vig)}</div>`;
+      if (hist.length) html += `<details style="margin-top:8px"><summary style="cursor:pointer;color:#6B7280;font-size:13px;font-weight:600">📦 Substituídos / histórico (${hist.length})</summary><div style="margin-top:6px">${hist.map((a: any) => `<div style="border-bottom:1px dashed var(--border-light);padding:3px 0"><span style="font-size:12px;color:#9CA3AF;text-transform:uppercase">${rotuloCompetencia(a)}</span>${linhaArq(a)}</div>`).join("")}</div></details>`;
       return html;
     }
     // upload direto num slot (ano/mês), preservando a competência
