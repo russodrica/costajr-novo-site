@@ -49,13 +49,14 @@ const fdata = (s: string) => (s ? String(s).split("T")[0].split("-").reverse().j
 const brl = (v: any) => (v != null && v !== "" ? "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—");
 const TIPO_LABEL: Record<string, string> = { emprestimo: "Empréstimo", financiamento: "Financiamento" };
 const STATUS_BADGE: Record<string, string> = { ativo: "badge-blue", quitado: "badge-green", renegociado: "badge-orange" };
+const STATUS_LABEL: Record<string, string> = { ativo: "Ativo", quitado: "Quitado", renegociado: "Renegociado" };
 const empAtivos = emprestimos.filter((e) => e.status === "ativo");
 const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0), 0);
 ---
 
 <Admin title="Documentos Bancários" current="doc-bancarios">
   <div class="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px">
-    <span style="font-size:1.05rem;font-weight:700;color:var(--brand)">🏦 Documentos Bancários</span>
+    <span style="font-size:1.3rem;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.02em">🏦 Documentos Bancários</span>
     <span style="flex:1"></span>
     <a class="btn btn-outline btn-sm" href="/admin/doc-empresa">← Documentos da Empresa</a>
   </div>
@@ -159,7 +160,7 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span class="badge badge-gray">{TIPO_LABEL[e.tipo] || e.tipo}</span>
           <b style="font-size:15px;flex:1">{e.descricao}</b>
-          <span class={`badge ${STATUS_BADGE[e.status] || 'badge-gray'}`}>{e.status}</span>
+          <span class={`badge ${STATUS_BADGE[e.status] || 'badge-gray'}`}>{STATUS_LABEL[e.status] || e.status}</span>
         </div>
         <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--ink-mid)">
           {e.banco && <span>🏦 {e.banco}</span>}
@@ -239,8 +240,9 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
   details.ano-card > summary::-webkit-details-marker, details.mes-card > summary::-webkit-details-marker { display:none; }
   details[open] > summary .chev { transform: rotate(90deg); }
   .chev { transition: transform .15s; display:inline-block; }
-  .ano-sum { cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:14px 18px;background:var(--gray-50);font-weight:700;font-size:16px; }
-  .mes-sum { cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:10px 14px;font-weight:600; }
+  .ano-sum { cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:14px 18px;background:var(--gray-50);font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:.01em; }
+  .mes-sum { cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:10px 14px;font-weight:600;text-transform:uppercase;letter-spacing:.01em; }
+  .cell-head b { text-transform:uppercase; }
   .grid-cells { display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;padding:12px 14px;background:var(--gray-50); }
   .cell { background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 12px; }
   .cell-head { display:flex;align-items:center;gap:8px;margin-bottom:6px; }

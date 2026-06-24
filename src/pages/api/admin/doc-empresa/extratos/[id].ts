@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { excluirComLixeira } from "../../../../../lib/auditoria";
+import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 const PERFIS = ["admin", "financeiro", "juridico"];
@@ -11,6 +12,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
     if (!temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
+    const ro = await bloqueioSeSemLeitura(admin, "doc-bancarios"); if (ro) return ro;
     const db = supabaseAdmin();
     const { data: row } = await db.from("doc_extratos_bancarios").select("storage_path").eq("id", params.id!).maybeSingle();
     if (!row?.storage_path) return jsonErr(404, "Extrato não encontrado.");

@@ -37,7 +37,7 @@ const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 
 // Categorias por PERÍODO/CONTRATO — não geram alerta de vencimento (validade não se aplica).
 // As de validade (Certidões, Documentos da Empresa, Seguros, Fornecedoras) seguem com alerta.
-const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais"]);
+const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais", "Contratos de Consultoria", "Contratos Recorrentes", "Plataformas"]);
 const CAT_SEM_ALERTA = "Empreiteiros / Terceiros"; // legado (categoria arquivada)
 // Categorias PERIÓDICAS — cada card é um TIPO (PGDAS, Balancete…) com competências (meses);
 // renderizadas como cards expansíveis ("+") em vez de tabela.
@@ -100,8 +100,8 @@ const GRUPOS_FORNECEDOR = [
 const porGrupoFornecedor = new Map<string, any[]>();
 for (const { key } of GRUPOS_FORNECEDOR) porGrupoFornecedor.set(key, []);
 for (const d of (porCat.get("Empresas Fornecedoras") || [])) {
-  const gk = d.grupo || "Diversos";
-  if (!porGrupoFornecedor.has(gk)) porGrupoFornecedor.set(gk, []);
+  // grupos legados (Consultoria/Recorrentes/Plataformas viraram abas próprias) caem em "Diversos"
+  const gk = GRUPOS_FORNECEDOR.some((g) => g.key === d.grupo) ? d.grupo : "Diversos";
   porGrupoFornecedor.get(gk)!.push(d);
 }
 
@@ -437,7 +437,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
             <label style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Competência (mês de referência)</label>
             <input type="month" id="upCompetencia" style="max-width:200px" />
           </div>
-          <label style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Anexar arquivo (PDF, imagem, DOC, XLS — até 25 MB)</label>
+          <label style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Anexar arquivo (PDF, imagem, DOC, XLS — até 45 MB)</label>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="file" name="arquivo" required accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,application/pdf" style="flex:1" />
             <button type="submit" class="btn btn-primary" id="btnUpload">Enviar</button>

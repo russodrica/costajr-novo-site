@@ -59,7 +59,7 @@ export const POST: APIRoute = async ({ request }) => {
     // "grupo" vale para Documento Fiscal (sub-grupo) e Empresas Fornecedoras (tipo)
     let grupo: string | null = null;
     if (categoria === "Documento Fiscal") grupo = String(body.grupo || "").trim() || "Diversos";
-    else if (categoria === "Empresas Fornecedoras") grupo = String(body.grupo || "").trim() || "Recorrentes";
+    else if (categoria === "Empresas Fornecedoras") grupo = String(body.grupo || "").trim() || "Diversos";
     if (grupo) row.grupo = grupo;
 
     // valor_mensal: só para Empresas Fornecedoras; requer migration 069

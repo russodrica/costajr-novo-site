@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 const PERFIS = ["admin", "financeiro", "juridico"];
@@ -11,6 +12,7 @@ export const GET: APIRoute = async ({ request }) => {
   try {
     const admin = await requireAdminCookie(request);
     if (!temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
+    const ro = await bloqueioSeSemLeitura(admin, "doc-bancarios"); if (ro) return ro;
     const db = supabaseAdmin();
     const { data } = await db.from("doc_cartao_faturas").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }).order("cartao");
     return jsonOk(data || []);
