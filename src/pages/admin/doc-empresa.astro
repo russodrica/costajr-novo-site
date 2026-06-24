@@ -26,6 +26,7 @@ const ABAS_ALL = [
   { nome: "Certidões", icon: "📜" },
   { nome: "Processos", icon: "⚖️" },
   { nome: "Contratos", icon: "📝" },
+  { nome: "Consórcios", icon: "🪙" },
   { nome: "Seguros", icon: "🛡️" },
   { nome: "Clientes", icon: "🤝" },
   { nome: "Guias e Obrigações Fiscais", icon: "🧾" },
@@ -35,7 +36,7 @@ const ABAS_ALL = [
 const CATEGORIAS = ABAS_ALL.map((a) => a.nome);
 
 const VIEW = (Astro.url.searchParams.get("view") || "empresa").toLowerCase();
-const CONTRATOS_CATS = new Set(["Contratos", "Clientes"]);
+const CONTRATOS_CATS = new Set(["Contratos", "Clientes", "Consórcios"]);
 const SEGUROS_CATS = new Set(["Seguros"]);
 const naView = (cat: string) => {
   if (VIEW === "contratos") return CONTRATOS_CATS.has(cat);
@@ -57,7 +58,7 @@ const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 
 // Categorias por PERÍODO/CONTRATO — não geram alerta de vencimento (validade não se aplica).
 // As de validade (Certidões, Documentos da Empresa, Seguros, Fornecedoras) seguem com alerta.
-const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais", "Contratos", "Processos"]);
+const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais", "Contratos", "Processos", "Consórcios"]);
 const CAT_SEM_ALERTA = "Empreiteiros / Terceiros"; // legado (categoria arquivada)
 // Categorias PERIÓDICAS — cada card é um TIPO (PGDAS, Balancete…) com competências (meses);
 // renderizadas como cards expansíveis ("+") em vez de tabela.
