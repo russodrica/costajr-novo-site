@@ -22,11 +22,9 @@ const docsArquivados = docs.filter((d: any) => d.arquivado);
 const ABAS = [
   { nome: "Documentos da Empresa", icon: "🏢" },
   { nome: "Certidões", icon: "📜" },
-  { nome: "Contratos de Consultoria", icon: "💼" },
-  { nome: "Contratos Recorrentes", icon: "🔁" },
-  { nome: "Plataformas", icon: "🖥️" },
+  { nome: "Processos da Empresa", icon: "⚖️" },
+  { nome: "Contratos", icon: "📝" },
   { nome: "Seguros", icon: "🛡️" },
-  { nome: "Empresas Fornecedoras", icon: "🏬" },
   { nome: "Clientes", icon: "🤝" },
   { nome: "Guias e Obrigações Fiscais", icon: "🧾" },
   { nome: "Documentos Contábeis", icon: "📊" },
@@ -37,7 +35,7 @@ const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 
 // Categorias por PERÍODO/CONTRATO — não geram alerta de vencimento (validade não se aplica).
 // As de validade (Certidões, Documentos da Empresa, Seguros, Fornecedoras) seguem com alerta.
-const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais", "Contratos de Consultoria", "Contratos Recorrentes", "Plataformas"]);
+const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais", "Contratos", "Processos da Empresa"]);
 const CAT_SEM_ALERTA = "Empreiteiros / Terceiros"; // legado (categoria arquivada)
 // Categorias PERIÓDICAS — cada card é um TIPO (PGDAS, Balancete…) com competências (meses);
 // renderizadas como cards expansíveis ("+") em vez de tabela.
@@ -91,17 +89,18 @@ for (const d of (porCat.get("Documento Fiscal") || [])) {
   porGrupoFiscal.get(gk)!.push(d);
 }
 
-// Sub-grupos de "Empresas Fornecedoras"
+// Sub-grupos da aba "Contratos"
 const GRUPOS_FORNECEDOR = [
-  { key: "Benefícios",   label: "Benefícios" },
-  { key: "Locações",     label: "Locações" },
-  { key: "Diversos",     label: "Diversos" },
+  { key: "Consultoria", label: "Contratos de Consultoria" },
+  { key: "Recorrentes", label: "Contratos Recorrentes" },
+  { key: "Plataformas", label: "Plataformas" },
+  { key: "Empresas",    label: "Contratos de Empresas (benefícios, locações e diversos)" },
 ];
 const porGrupoFornecedor = new Map<string, any[]>();
 for (const { key } of GRUPOS_FORNECEDOR) porGrupoFornecedor.set(key, []);
-for (const d of (porCat.get("Empresas Fornecedoras") || [])) {
-  // grupos legados (Consultoria/Recorrentes/Plataformas viraram abas próprias) caem em "Diversos"
-  const gk = GRUPOS_FORNECEDOR.some((g) => g.key === d.grupo) ? d.grupo : "Diversos";
+for (const d of (porCat.get("Contratos") || [])) {
+  // sub-tipos antigos (Benefícios/Locações/Diversos) caem em "Empresas"
+  const gk = GRUPOS_FORNECEDOR.some((g) => g.key === d.grupo) ? d.grupo : "Empresas";
   porGrupoFornecedor.get(gk)!.push(d);
 }
 
@@ -168,7 +167,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 
   {cats.map((c) => {
     const isFiscal = c === "Documento Fiscal";
-    const isFornecedor = c === "Empresas Fornecedoras";
+    const isFornecedor = c === "Contratos";
     const isPeriodo = CATS_PERIODO.has(c);
     const docsInCat = porCat.get(c)!;
     return (
@@ -222,12 +221,12 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
             ) : null;
           })
         ) : isFornecedor ? (
-          // ── Empresas Fornecedoras: tabela por sub-tipo com coluna $/Mês e cabeçalhos ordenáveis ──
+          // ── Contratos: tabela por sub-tipo com coluna $/Mês e cabeçalhos ordenáveis ──
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th data-forn-th="nome" onclick="sortForn('nome')" style="cursor:pointer;user-select:none">Fornecedor <span class="sort-arr">↕</span></th>
+                  <th data-forn-th="nome" onclick="sortForn('nome')" style="cursor:pointer;user-select:none">Contrato <span class="sort-arr">↕</span></th>
                   <th>Periodicidade</th>
                   <th data-forn-th="validade" onclick="sortForn('validade')" style="cursor:pointer;user-select:none">Validade <span class="sort-arr">↕</span></th>
                   <th data-forn-th="val" onclick="sortForn('val')" style="cursor:pointer;user-select:none;text-align:right">$/Mês <span class="sort-arr">↕</span></th>
@@ -494,18 +493,18 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     function toggleGrupo() {
       const catVal = (document.querySelector("[name=categoria]") as HTMLSelectElement)?.value || "";
       const isFisc = catVal === "Documento Fiscal";
-      const isForn = catVal === "Empresas Fornecedoras";
+      const isForn = catVal === "Contratos";
       const grupoRow = document.getElementById("grupoRow");
       const grupoLabel = document.getElementById("grupoLabel");
       const grupoSel = document.getElementById("grupoSel") as HTMLSelectElement;
       const valorMensalRow = document.getElementById("valorMensalRow");
       if (grupoRow) grupoRow.style.display = (isFisc || isForn) ? "" : "none";
       if (valorMensalRow) valorMensalRow.style.display = isForn ? "" : "none";
-      if (grupoLabel) grupoLabel.textContent = isFisc ? "Sub-grupo (Documento Fiscal)" : "Tipo";
+      if (grupoLabel) grupoLabel.textContent = isFisc ? "Sub-grupo (Documento Fiscal)" : "Tipo de contrato";
       if (grupoSel && (isFisc || isForn)) {
         const opts = isFisc
           ? [["CND","CND — Federal, Estadual e Municipal"],["Trabalhistas","Trabalhistas — FGTS, INSS e outros"],["Sócios","Sócios — RG, CNH, IR, Comprovante de Residência"],["Diversos","Diversos"]]
-          : [["Benefícios","Benefícios"],["Locações","Locações"],["Diversos","Diversos"]];
+          : [["Consultoria","Contratos de Consultoria"],["Recorrentes","Contratos Recorrentes"],["Plataformas","Plataformas"],["Empresas","Contratos de Empresas"]];
         grupoSel.innerHTML = opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join("");
       }
     }
@@ -539,7 +538,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       val.disabled = na.checked;
       toggleGrupo();
       const grupoSel = document.getElementById("grupoSel") as HTMLSelectElement;
-      if (grupoSel) grupoSel.value = d.grupo || "Diversos";
+      if (grupoSel) grupoSel.value = d.grupo || (d.categoria === "Contratos" ? "Empresas" : "Diversos");
       const vmInput = f.querySelector("[name=valor_mensal]") as HTMLInputElement;
       if (vmInput) vmInput.value = d.valor_mensal != null ? String(d.valor_mensal) : "";
       document.getElementById("modalDocTitle")!.textContent = "Editar documento";
@@ -552,10 +551,10 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const fd = new FormData(f);
       const body: Record<string, any> = Object.fromEntries(fd.entries());
       body.validade_na = (f.querySelector("[name=validade_na]") as HTMLInputElement).checked;
-      // grupo vale para Fiscal (sub-grupo) e Fornecedoras (tipo); zera nas demais
-      if (body.categoria !== "Documento Fiscal" && body.categoria !== "Empresas Fornecedoras") body.grupo = null;
-      // valor_mensal só para Fornecedoras; converte para número
-      body.valor_mensal = (body.categoria === "Empresas Fornecedoras" && body.valor_mensal !== "")
+      // grupo vale para Fiscal (sub-grupo) e Contratos (tipo); zera nas demais
+      if (body.categoria !== "Documento Fiscal" && body.categoria !== "Contratos") body.grupo = null;
+      // valor_mensal só para Contratos; converte para número
+      body.valor_mensal = (body.categoria === "Contratos" && body.valor_mensal !== "")
         ? parseFloat(String(body.valor_mensal)) || null : null;
       const id = body.id; delete body.id;
       const url = id ? `/api/admin/doc-empresa/${id}` : "/api/admin/doc-empresa";

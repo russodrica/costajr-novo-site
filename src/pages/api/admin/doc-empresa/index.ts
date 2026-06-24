@@ -59,11 +59,11 @@ export const POST: APIRoute = async ({ request }) => {
     // "grupo" vale para Documento Fiscal (sub-grupo) e Empresas Fornecedoras (tipo)
     let grupo: string | null = null;
     if (categoria === "Documento Fiscal") grupo = String(body.grupo || "").trim() || "Diversos";
-    else if (categoria === "Empresas Fornecedoras") grupo = String(body.grupo || "").trim() || "Diversos";
+    else if (categoria === "Contratos") grupo = String(body.grupo || "").trim() || "Empresas";
     if (grupo) row.grupo = grupo;
 
-    // valor_mensal: só para Empresas Fornecedoras; requer migration 069
-    if (categoria === "Empresas Fornecedoras" && body.valor_mensal != null && body.valor_mensal !== "") {
+    // valor_mensal: só para Contratos (custo mensal recorrente); requer migration 069
+    if (categoria === "Contratos" && body.valor_mensal != null && body.valor_mensal !== "") {
       const vm = parseFloat(String(body.valor_mensal));
       if (!isNaN(vm) && vm >= 0) row.valor_mensal = vm;
     }
