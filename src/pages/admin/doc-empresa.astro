@@ -15,11 +15,11 @@ const db = supabaseAdmin();
 const { data: docsRaw } = await db.from("doc_empresa")
   .select("*, doc_empresa_arquivos(id,nome,created_at,competencia)").order("nome");
 const docs: any[] = docsRaw || [];
-const docsAtivos    = docs.filter((d: any) => !d.arquivado);
-const docsArquivados = docs.filter((d: any) => d.arquivado);
 
-// As 8 abas da plataforma (categorização macro). Também é a ordem de exibição.
-const ABAS = [
+// Catálogo completo de abas. A VIEW (?view=) decide quais aparecem — assim
+// "Documentos da Empresa", "Documentos Contratuais" e "Seguros" são entradas de
+// menu distintas que compartilham a MESMA base (doc_empresa) e as mesmas APIs.
+const ABAS_ALL = [
   { nome: "Documentos da Empresa", icon: "🏢" },
   { nome: "Certidões", icon: "📜" },
   { nome: "Processos da Empresa", icon: "⚖️" },
@@ -30,7 +30,27 @@ const ABAS = [
   { nome: "Documentos Contábeis", icon: "📊" },
   { nome: "Documentos Institucionais", icon: "🏛️" },
 ];
-const CATEGORIAS = ABAS.map((a) => a.nome);
+const CATEGORIAS = ABAS_ALL.map((a) => a.nome);
+
+const VIEW = (Astro.url.searchParams.get("view") || "empresa").toLowerCase();
+const CONTRATOS_CATS = new Set(["Contratos", "Clientes"]);
+const SEGUROS_CATS = new Set(["Seguros"]);
+const naView = (cat: string) => {
+  if (VIEW === "contratos") return CONTRATOS_CATS.has(cat);
+  if (VIEW === "seguros") return SEGUROS_CATS.has(cat);
+  return !CONTRATOS_CATS.has(cat) && !SEGUROS_CATS.has(cat); // empresa = o restante
+};
+const VIEW_META: Record<string, { titulo: string; current: string; icon: string }> = {
+  empresa:   { titulo: "Documentos da Empresa",  current: "doc-empresa",   icon: "📑" },
+  contratos: { titulo: "Documentos Contratuais", current: "doc-contratos", icon: "📝" },
+  seguros:   { titulo: "Seguros",                current: "doc-seguros",   icon: "🛡️" },
+};
+const vmeta = VIEW_META[VIEW] || VIEW_META.empresa;
+const viewDefaultCat = VIEW === "contratos" ? "Contratos" : VIEW === "seguros" ? "Seguros" : "Documentos da Empresa";
+const ABAS = ABAS_ALL.filter((a) => naView(a.nome));
+
+const docsAtivos    = docs.filter((d: any) => !d.arquivado && naView(d.categoria || ""));
+const docsArquivados = docs.filter((d: any) => d.arquivado && naView(d.categoria || ""));
 const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 
 // Categorias por PERÍODO/CONTRATO — não geram alerta de vencimento (validade não se aplica).
@@ -119,9 +139,9 @@ const docsJs = docs.map((d: any) => ({
 }));
 const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 ---
-<Admin title="Documentos da Empresa" current="doc-empresa">
+<Admin title={vmeta.titulo} current={vmeta.current}>
   <div class="toolbar">
-    <span class="toolbar-title">📑 Documentos da Empresa</span>
+    <span class="toolbar-title">{vmeta.icon} {vmeta.titulo}</span>
     <input class="search-input" id="busca" placeholder="Buscar documento…" oninput="filtrar()" />
     <!-- filtro de categoria virou abas (pills) logo abaixo -->
     <select class="filter-select" id="fSit" onchange="filtrar()">
@@ -133,7 +153,6 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       <option value="na">⚪ Não aplicável</option>
     </select>
     <button class="btn btn-secondary" onclick="enviarResumo(this)" title="Envia agora o e-mail de vencimentos para o financeiro/jurídico + Telegram">📧 Enviar resumo</button>
-    <a class="btn btn-outline" href="/admin/doc-bancarios" title="Extratos, faturas de cartão e empréstimos/financiamentos">🏦 Documentos Bancários</a>
     <button class="btn btn-primary" onclick="abrirNovo()">+ Novo documento</button>
   </div>
 
@@ -390,7 +409,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           <div class="form-group">
             <label>Categoria *</label>
             <select name="categoria" required onchange="toggleGrupo()">
-              {CATEGORIAS.map((c) => <option value={c}>{c}</option>)}
+              {CATEGORIAS.map((c) => <option value={c} selected={c === viewDefaultCat}>{c}</option>)}
             </select>
           </div>
           <div class="form-group">
