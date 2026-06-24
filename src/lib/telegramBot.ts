@@ -844,7 +844,7 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
   const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
   const token = Date.now().toString(36);
   const dados = {
-    doc_path: storagePath, doc_nome: nome, ct, ia_nome: iaNome, autor: `${nomeRemetente(msg.from)} (via grupo Telegram)`,
+    doc_path: storagePath, doc_nome: nome, ct, ia_nome: iaNome || (msg.caption || "").trim(), autor: `${nomeRemetente(msg.from)} (via grupo Telegram)`,
     sug_colab_id: match?.id || null, sug_colab_nome: match?.nome || null,
     sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade, sug_validade: validade || null, ia,
   };
