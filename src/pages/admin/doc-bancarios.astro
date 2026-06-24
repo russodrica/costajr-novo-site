@@ -1,0 +1,383 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, temPerfil, type AdminClaims } from "../../lib/auth";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!temPerfil(claims, ["admin", "financeiro", "juridico"])) return Astro.redirect("/admin");
+
+const BANCOS = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank"];
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+const db = supabaseAdmin();
+const [{ data: exRows }, { data: ftRows }, { data: empRows }] = await Promise.all([
+  db.from("doc_extratos_bancarios").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
+  db.from("doc_cartao_faturas").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
+  db.from("doc_emprestimos").select("*").order("status").order("data_contratacao", { ascending: false }),
+]);
+const extratos: any[] = exRows || [];
+const faturas: any[] = ftRows || [];
+const emprestimos: any[] = empRows || [];
+
+// Mapa extratos: ano -> mes -> banco -> [arq]
+const mapaEx: Record<number, Record<number, Record<string, any[]>>> = {};
+for (const e of extratos) { ((mapaEx[e.ano] ||= {})[e.mes] ||= {})[e.banco] ||= []; mapaEx[e.ano][e.mes][e.banco].push(e); }
+// Mapa faturas: ano -> mes -> [faturas]
+const mapaFt: Record<number, Record<number, any[]>> = {};
+for (const f of faturas) ((mapaFt[f.ano] ||= {})[f.mes] ||= []).push(f);
+
+const hoje = new Date();
+const anoVigente = hoje.getFullYear();
+const desde = Number(Astro.url.searchParams.get("desde")) || (anoVigente - 1);
+function anosDe(mapa: Record<number, any>): number[] {
+  const dataAnos = Object.keys(mapa).map(Number);
+  const minAno = Math.min(desde, anoVigente - 1, ...(dataAnos.length ? dataAnos : [anoVigente]));
+  const out: number[] = []; for (let a = anoVigente; a >= minAno; a--) out.push(a); return out;
+}
+const anosEx = anosDe(mapaEx);
+const anosFt = anosDe(mapaFt);
+const anoAnteriorBtn = Math.min(desde, anoVigente - 1) - 1;
+
+function totalAnoEx(a: number) { return Object.values(mapaEx[a] || {}).reduce((s, m) => s + Object.values(m).reduce((x, arr) => x + arr.length, 0), 0); }
+function bancosMes(a: number, m: number) { const mm = mapaEx[a]?.[m] || {}; return BANCOS.filter((b) => (mm[b] || []).length > 0).length; }
+function totalAnoFt(a: number) { return Object.values(mapaFt[a] || {}).reduce((s, arr) => s + arr.length, 0); }
+const fdata = (s: string) => (s ? String(s).split("T")[0].split("-").reverse().join("/") : "—");
+const brl = (v: any) => (v != null && v !== "" ? "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—");
+const TIPO_LABEL: Record<string, string> = { emprestimo: "Empréstimo", financiamento: "Financiamento" };
+const STATUS_BADGE: Record<string, string> = { ativo: "badge-blue", quitado: "badge-green", renegociado: "badge-orange" };
+const empAtivos = emprestimos.filter((e) => e.status === "ativo");
+const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0), 0);
+---
+
+<Admin title="Documentos Bancários" current="doc-bancarios">
+  <div class="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px">
+    <span style="font-size:1.05rem;font-weight:700;color:var(--brand)">🏦 Documentos Bancários</span>
+    <span style="flex:1"></span>
+    <a class="btn btn-outline btn-sm" href="/admin/doc-empresa">← Documentos da Empresa</a>
+  </div>
+  <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Área sensível: extratos, faturas de cartão e empréstimos/financiamentos. Arquivos no cofre privado da empresa (link temporário). Acesso: admin, financeiro e jurídico.</p>
+
+  <div class="pills" id="bancPills" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px">
+    <button type="button" class="pill active" data-tab="extratos" onclick="setTab(this)">🏦 Extratos</button>
+    <button type="button" class="pill" data-tab="faturas" onclick="setTab(this)">💳 Faturas de Cartão</button>
+    <button type="button" class="pill" data-tab="emprestimos" onclick="setTab(this)">🏛️ Empréstimos &amp; Financiamentos</button>
+  </div>
+
+  <input type="file" id="fileExtrato" accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx,.csv,.ofx" style="display:none" />
+  <input type="file" id="fileFatura" accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx,.csv,.ofx" style="display:none" />
+  <input type="file" id="fileContrato" accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx,.csv" style="display:none" />
+
+  <!-- ════════ EXTRATOS ════════ -->
+  <section data-sec="extratos">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <button class="btn btn-primary" onclick="abrirAnexarExtrato()" data-requer-edicao>📎 Anexar extrato</button>
+    </div>
+    {anosEx.map((a) => (
+      <details class="card ano-card" open={a === anoVigente} style="margin-bottom:12px;padding:0;overflow:hidden">
+        <summary class="ano-sum"><span class="chev">▸</span><span style="flex:1">📅 {a}{a === anoVigente ? ' · ano vigente' : ''}</span><span class="badge badge-gray">{totalAnoEx(a)} extrato{totalAnoEx(a) === 1 ? '' : 's'}</span></summary>
+        <div style="padding:10px 14px 16px">
+          {MESES.map((nome, idx) => {
+            const m = idx + 1; const preench = bancosMes(a, m);
+            const futuro = a === anoVigente && m > (hoje.getMonth() + 1);
+            return (
+              <details class="mes-card" style={`margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden;${futuro ? 'opacity:.55' : ''}`}>
+                <summary class="mes-sum"><span class="chev">▸</span><span style="flex:1">{nome}</span><span class={`badge ${preench === BANCOS.length ? 'badge-green' : preench === 0 ? 'badge-gray' : 'badge-orange'}`}>{preench}/{BANCOS.length} bancos</span></summary>
+                <div class="grid-cells">
+                  {BANCOS.map((banco) => {
+                    const arqs = mapaEx[a]?.[m]?.[banco] || [];
+                    return (
+                      <div class="cell">
+                        <div class="cell-head"><b style="flex:1;font-size:13.5px">{banco}</b>{arqs.length > 0 ? <span class="badge badge-green" style="font-size:10.5px">✓ {arqs.length}</span> : <span class="badge badge-gray" style="font-size:10.5px">falta</span>}</div>
+                        {arqs.map((x) => (
+                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={x.nome_arquivo || ''}>📄 {x.nome_arquivo || 'arquivo'}</span><a href={`/api/admin/doc-empresa/extratos/${x.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`excluirItem('extratos','${x.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
+                        ))}
+                        <button class="btn btn-outline btn-sm" style="width:100%;margin-top:7px" data-requer-edicao onclick={`anexarCelula(${a},${m},${JSON.stringify(banco)})`}>📎 Anexar</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      </details>
+    ))}
+    {anoAnteriorBtn >= 2015 && <div style="text-align:center;margin-top:6px"><a class="btn btn-outline btn-sm" href={`?desde=${anoAnteriorBtn}`}>➕ Mostrar {anoAnteriorBtn}</a></div>}
+  </section>
+
+  <!-- ════════ FATURAS DE CARTÃO ════════ -->
+  <section data-sec="faturas" style="display:none">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <button class="btn btn-primary" onclick="abrirAnexarFatura()" data-requer-edicao>📎 Anexar fatura</button>
+    </div>
+    {anosFt.map((a) => (
+      <details class="card ano-card" open={a === anoVigente} style="margin-bottom:12px;padding:0;overflow:hidden">
+        <summary class="ano-sum"><span class="chev">▸</span><span style="flex:1">📅 {a}{a === anoVigente ? ' · ano vigente' : ''}</span><span class="badge badge-gray">{totalAnoFt(a)} fatura{totalAnoFt(a) === 1 ? '' : 's'}</span></summary>
+        <div style="padding:10px 14px 16px">
+          {MESES.map((nome, idx) => {
+            const m = idx + 1; const fts = mapaFt[a]?.[m] || [];
+            const futuro = a === anoVigente && m > (hoje.getMonth() + 1);
+            return (
+              <details class="mes-card" open={fts.length > 0} style={`margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden;${futuro ? 'opacity:.55' : ''}`}>
+                <summary class="mes-sum"><span class="chev">▸</span><span style="flex:1">{nome}</span><span class={`badge ${fts.length ? 'badge-green' : 'badge-gray'}`}>{fts.length} fatura{fts.length === 1 ? '' : 's'}</span></summary>
+                <div style="padding:10px 14px;background:var(--gray-50)">
+                  {fts.length === 0 && <p style="margin:0 0 8px;color:var(--muted);font-size:12.5px">Nenhuma fatura neste mês.</p>}
+                  {fts.map((f) => (
+                    <div class="cell-file" style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+                      <span style="flex:1"><b>{f.cartao}</b>{f.valor != null ? ` · ${brl(f.valor)}` : ''}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''} <span style="color:#9CA3AF;font-size:12px">{f.nome_arquivo || ''}</span></span>
+                      <a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a>
+                      <button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button>
+                    </div>
+                  ))}
+                  <button class="btn btn-outline btn-sm" data-requer-edicao onclick={`anexarFaturaMes(${a},${m})`}>📎 Anexar fatura neste mês</button>
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      </details>
+    ))}
+  </section>
+
+  <!-- ════════ EMPRÉSTIMOS / FINANCIAMENTOS ════════ -->
+  <section data-sec="emprestimos" style="display:none">
+    <div class="card-grid" style="margin-bottom:12px">
+      <div class="stat-card"><div class="stat-value">{empAtivos.length}</div><div class="stat-label">Ativos</div></div>
+      <div class="stat-card"><div class="stat-value" style="font-size:1.4rem">{brl(totalDevendo)}</div><div class="stat-label">Valor contratado (ativos)</div></div>
+      <div class="stat-card"><div class="stat-value">{emprestimos.length}</div><div class="stat-label">Total (incl. quitados)</div></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <button class="btn btn-primary" onclick="abrirNovoEmp()" data-requer-edicao>+ Novo empréstimo/financiamento</button>
+    </div>
+    {emprestimos.length === 0 && <div class="card"><div class="empty-state" style="padding:36px"><strong>Nenhum empréstimo ou financiamento cadastrado</strong><p>Use o botão acima para cadastrar.</p></div></div>}
+    {emprestimos.map((e) => (
+      <div class="card" style="padding:14px 16px;margin-bottom:10px" data-emp-id={e.id}>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="badge badge-gray">{TIPO_LABEL[e.tipo] || e.tipo}</span>
+          <b style="font-size:15px;flex:1">{e.descricao}</b>
+          <span class={`badge ${STATUS_BADGE[e.status] || 'badge-gray'}`}>{e.status}</span>
+        </div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--ink-mid)">
+          {e.banco && <span>🏦 {e.banco}</span>}
+          {e.valor_total != null && <span>💰 {brl(e.valor_total)}</span>}
+          {e.num_parcelas != null && <span>📆 {e.num_parcelas}x{e.valor_parcela != null ? ` de ${brl(e.valor_parcela)}` : ''}</span>}
+          {e.data_contratacao && <span>🗓️ Contratado {fdata(e.data_contratacao)}</span>}
+          {e.data_primeira_parcela && <span>1ª parcela {fdata(e.data_primeira_parcela)}</span>}
+        </div>
+        {e.observacao && <div style="font-size:12.5px;color:#9CA3AF;margin-top:6px">{e.observacao}</div>}
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          {e.storage_path
+            ? <a class="btn btn-outline btn-sm" href={`/api/admin/doc-empresa/emprestimos/${e.id}`} target="_blank" rel="noopener">📄 Ver contrato</a>
+            : <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px" data-requer-edicao onclick={`anexarContrato('${e.id}')`}>📎 Anexar contrato</button>}
+          {e.storage_path && <button class="btn btn-outline btn-sm" data-requer-edicao onclick={`anexarContrato('${e.id}')`}>Trocar contrato</button>}
+          <button class="btn btn-secondary btn-sm" data-requer-edicao onclick={`editarEmp(${JSON.stringify(e)})`}>Editar</button>
+          <button class="btn btn-danger btn-sm" data-requer-edicao onclick={`excluirItem('emprestimos','${e.id}', this)`}>Excluir</button>
+        </div>
+      </div>
+    ))}
+  </section>
+
+  <!-- Modal: anexar extrato -->
+  <div id="modalExt" class="modal-overlay" style="display:none"><div class="modal" style="max-width:440px">
+    <div class="modal-head"><h3 style="margin:0">📎 Anexar extrato</h3><button class="modal-x" onclick="fecharM('modalExt')">×</button></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <label>Ano<br/><input id="exAno" type="number" min="2015" max={anoVigente + 1} value={anoVigente} class="inp" style="width:100%" /></label>
+      <label>Mês<br/><select id="exMes" class="inp" style="width:100%">{MESES.map((nome, i) => <option value={i + 1} selected={i === hoje.getMonth()}>{nome}</option>)}</select></label>
+      <label>Banco<br/><select id="exBanco" class="inp" style="width:100%">{BANCOS.map((b) => <option value={b}>{b}</option>)}</select></label>
+      <button class="btn btn-primary" onclick="extDoModal()">Escolher arquivo e enviar</button>
+    </div>
+  </div></div>
+
+  <!-- Modal: anexar fatura -->
+  <div id="modalFt" class="modal-overlay" style="display:none"><div class="modal" style="max-width:460px">
+    <div class="modal-head"><h3 style="margin:0">📎 Anexar fatura de cartão</h3><button class="modal-x" onclick="fecharM('modalFt')">×</button></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <div style="display:flex;gap:10px">
+        <label style="flex:1">Ano<br/><input id="ftAno" type="number" min="2015" max={anoVigente + 1} value={anoVigente} class="inp" style="width:100%" /></label>
+        <label style="flex:1">Mês<br/><select id="ftMes" class="inp" style="width:100%">{MESES.map((nome, i) => <option value={i + 1} selected={i === hoje.getMonth()}>{nome}</option>)}</select></label>
+      </div>
+      <label>Cartão *<br/><input id="ftCartao" class="inp" style="width:100%" placeholder="Ex.: Itaú Visa final 1234 / Bradesco PJ" /></label>
+      <div style="display:flex;gap:10px">
+        <label style="flex:1">Valor (R$)<br/><input id="ftValor" type="number" min="0" step="0.01" class="inp" style="width:100%" placeholder="0,00" /></label>
+        <label style="flex:1">Vencimento<br/><input id="ftVenc" type="date" class="inp" style="width:100%" /></label>
+      </div>
+      <button class="btn btn-primary" onclick="ftDoModal()">Escolher arquivo e enviar</button>
+    </div>
+  </div></div>
+
+  <!-- Modal: empréstimo/financiamento -->
+  <div id="modalEmp" class="modal-overlay" style="display:none"><div class="modal" style="max-width:560px">
+    <div class="modal-head"><h3 style="margin:0" id="empTitle">Novo empréstimo/financiamento</h3><button class="modal-x" onclick="fecharM('modalEmp')">×</button></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <input type="hidden" id="empId" />
+      <div style="display:flex;gap:10px">
+        <label style="flex:1">Tipo<br/><select id="empTipo" class="inp" style="width:100%"><option value="emprestimo">Empréstimo</option><option value="financiamento">Financiamento</option></select></label>
+        <label style="flex:1">Status<br/><select id="empStatus" class="inp" style="width:100%"><option value="ativo">Ativo</option><option value="quitado">Quitado</option><option value="renegociado">Renegociado</option></select></label>
+      </div>
+      <label>Descrição *<br/><input id="empDesc" class="inp" style="width:100%" placeholder="Ex.: Financiamento Veículo HB20 / Capital de giro" /></label>
+      <label>Banco / Instituição<br/><input id="empBanco" class="inp" style="width:100%" placeholder="Ex.: Banco do Brasil" /></label>
+      <div style="display:flex;gap:10px">
+        <label style="flex:1">Valor total (R$)<br/><input id="empValor" type="number" min="0" step="0.01" class="inp" style="width:100%" /></label>
+        <label style="flex:1">Nº parcelas<br/><input id="empNP" type="number" min="0" class="inp" style="width:100%" /></label>
+        <label style="flex:1">Valor parcela (R$)<br/><input id="empVP" type="number" min="0" step="0.01" class="inp" style="width:100%" /></label>
+      </div>
+      <div style="display:flex;gap:10px">
+        <label style="flex:1">Contratação<br/><input id="empDC" type="date" class="inp" style="width:100%" /></label>
+        <label style="flex:1">1ª parcela<br/><input id="empD1" type="date" class="inp" style="width:100%" /></label>
+      </div>
+      <label>Observações<br/><textarea id="empObs" class="inp" style="width:100%;min-height:60px"></textarea></label>
+      <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-secondary" onclick="fecharM('modalEmp')">Cancelar</button><button class="btn btn-primary" onclick="salvarEmp()">Salvar</button></div>
+    </div>
+  </div></div>
+</Admin>
+
+<style>
+  details.ano-card > summary::-webkit-details-marker, details.mes-card > summary::-webkit-details-marker { display:none; }
+  details[open] > summary .chev { transform: rotate(90deg); }
+  .chev { transition: transform .15s; display:inline-block; }
+  .ano-sum { cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:14px 18px;background:var(--gray-50);font-weight:700;font-size:16px; }
+  .mes-sum { cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:10px 14px;font-weight:600; }
+  .grid-cells { display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;padding:12px 14px;background:var(--gray-50); }
+  .cell { background:#fff;border:1px solid var(--border);border-radius:10px;padding:11px 12px; }
+  .cell-head { display:flex;align-items:center;gap:8px;margin-bottom:6px; }
+  .cell-file { display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12.5px;border-top:1px dashed var(--border-light); }
+  .lixo { background:none;border:none;cursor:pointer; }
+  .inp { padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px; }
+  .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000; }
+  .modal { background:#fff;border-radius:14px;width:92%;box-shadow:var(--shadow-lg);max-height:92vh;overflow:auto; }
+  .modal-head { display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;background:#fff; }
+  .modal-body { padding:18px; }
+  .modal-x { background:none;border:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1; }
+</style>
+
+<script>
+  function setTab(btn: HTMLElement) {
+    document.querySelectorAll("#bancPills .pill").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    const tab = btn.dataset.tab;
+    document.querySelectorAll("section[data-sec]").forEach((s) => { (s as HTMLElement).style.display = (s as HTMLElement).dataset.sec === tab ? "" : "none"; });
+  }
+  function fecharM(id: string) { (document.getElementById(id) as HTMLElement).style.display = "none"; }
+  function abrirM(id: string) { (document.getElementById(id) as HTMLElement).style.display = "flex"; }
+
+  // ── Upload genérico (3 passos) ──
+  async function subir(arquivo: File, urlEndpoint: string, urlBody: any, registroEndpoint: string, registroExtra: any) {
+    if (arquivo.size > 45 * 1024 * 1024) { alert("Arquivo muito grande (máx. 45 MB)."); return false; }
+    const r1 = await fetch(urlEndpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...urlBody, nome: arquivo.name }) });
+    if (!r1.ok) throw new Error((await r1.json().catch(() => ({}))).error || "Erro ao preparar upload");
+    const { signed_url, path, nome_original } = await r1.json();
+    const r2 = await fetch(signed_url, { method: "PUT", headers: { "content-type": arquivo.type || "application/octet-stream" }, body: arquivo });
+    if (!r2.ok) throw new Error(`Falha no envio (HTTP ${r2.status}).`);
+    const method = registroExtra.__method || "POST";
+    const extra = { ...registroExtra }; delete extra.__method;
+    const r3 = await fetch(registroEndpoint, { method, headers: { "content-type": "application/json" }, body: JSON.stringify({ ...extra, storage_path: path, nome_arquivo: nome_original }) });
+    if (!r3.ok) throw new Error((await r3.json().catch(() => ({}))).error || "Falhou ao registrar");
+    return true;
+  }
+
+  // ── Extratos ──
+  let pendExt: { ano: number; mes: number; banco: string } | null = null;
+  function abrirAnexarExtrato() { abrirM("modalExt"); }
+  function extDoModal() {
+    const ano = Number((document.getElementById("exAno") as HTMLInputElement).value);
+    const mes = Number((document.getElementById("exMes") as HTMLSelectElement).value);
+    const banco = (document.getElementById("exBanco") as HTMLSelectElement).value;
+    if (!ano || !mes || !banco) { alert("Preencha ano, mês e banco."); return; }
+    fecharM("modalExt"); dispararExt(ano, mes, banco);
+  }
+  function anexarCelula(ano: number, mes: number, banco: string) { dispararExt(ano, mes, banco); }
+  function dispararExt(ano: number, mes: number, banco: string) { pendExt = { ano, mes, banco }; const fi = document.getElementById("fileExtrato") as HTMLInputElement; fi.value = ""; fi.click(); }
+  (document.getElementById("fileExtrato") as HTMLInputElement).addEventListener("change", async (ev) => {
+    const fi = ev.target as HTMLInputElement; const arquivo = fi.files && fi.files[0]; if (!arquivo || !pendExt) return; const c = pendExt;
+    try { if (await subir(arquivo, "/api/admin/doc-empresa/extratos/upload-url", { ano: c.ano, mes: c.mes, banco: c.banco }, "/api/admin/doc-empresa/extratos", { ano: c.ano, mes: c.mes, banco: c.banco })) location.reload(); }
+    catch (e: any) { alert("Erro: " + (e?.message || "tente novamente")); }
+  });
+
+  // ── Faturas ──
+  function abrirAnexarFatura() { abrirM("modalFt"); }
+  function anexarFaturaMes(ano: number, mes: number) {
+    (document.getElementById("ftAno") as HTMLInputElement).value = String(ano);
+    (document.getElementById("ftMes") as HTMLSelectElement).value = String(mes);
+    abrirM("modalFt");
+  }
+  function ftDoModal() {
+    const ano = Number((document.getElementById("ftAno") as HTMLInputElement).value);
+    const mes = Number((document.getElementById("ftMes") as HTMLSelectElement).value);
+    const cartao = (document.getElementById("ftCartao") as HTMLInputElement).value.trim();
+    if (!ano || !mes || !cartao) { alert("Preencha ano, mês e cartão."); return; }
+    const valor = (document.getElementById("ftValor") as HTMLInputElement).value;
+    const vencimento = (document.getElementById("ftVenc") as HTMLInputElement).value;
+    (window as any).__ftCtx = { ano, mes, cartao, valor, vencimento };
+    fecharM("modalFt");
+    const fi = document.getElementById("fileFatura") as HTMLInputElement; fi.value = ""; fi.click();
+  }
+  (document.getElementById("fileFatura") as HTMLInputElement).addEventListener("change", async (ev) => {
+    const fi = ev.target as HTMLInputElement; const arquivo = fi.files && fi.files[0]; const c = (window as any).__ftCtx; if (!arquivo || !c) return;
+    try { if (await subir(arquivo, "/api/admin/doc-empresa/faturas/upload-url", { ano: c.ano, mes: c.mes, cartao: c.cartao }, "/api/admin/doc-empresa/faturas", { ano: c.ano, mes: c.mes, cartao: c.cartao, valor: c.valor, vencimento: c.vencimento })) location.reload(); }
+    catch (e: any) { alert("Erro: " + (e?.message || "tente novamente")); }
+  });
+
+  // ── Empréstimos ──
+  function abrirNovoEmp() {
+    (document.getElementById("empId") as HTMLInputElement).value = "";
+    (document.getElementById("empTitle") as HTMLElement).textContent = "Novo empréstimo/financiamento";
+    ["empDesc", "empBanco", "empValor", "empNP", "empVP", "empDC", "empD1", "empObs"].forEach((id) => (document.getElementById(id) as HTMLInputElement).value = "");
+    (document.getElementById("empTipo") as HTMLSelectElement).value = "emprestimo";
+    (document.getElementById("empStatus") as HTMLSelectElement).value = "ativo";
+    abrirM("modalEmp");
+  }
+  function editarEmp(e: any) {
+    (document.getElementById("empId") as HTMLInputElement).value = e.id;
+    (document.getElementById("empTitle") as HTMLElement).textContent = "Editar " + (e.tipo === "financiamento" ? "financiamento" : "empréstimo");
+    (document.getElementById("empTipo") as HTMLSelectElement).value = e.tipo || "emprestimo";
+    (document.getElementById("empStatus") as HTMLSelectElement).value = e.status || "ativo";
+    (document.getElementById("empDesc") as HTMLInputElement).value = e.descricao || "";
+    (document.getElementById("empBanco") as HTMLInputElement).value = e.banco || "";
+    (document.getElementById("empValor") as HTMLInputElement).value = e.valor_total ?? "";
+    (document.getElementById("empNP") as HTMLInputElement).value = e.num_parcelas ?? "";
+    (document.getElementById("empVP") as HTMLInputElement).value = e.valor_parcela ?? "";
+    (document.getElementById("empDC") as HTMLInputElement).value = e.data_contratacao || "";
+    (document.getElementById("empD1") as HTMLInputElement).value = e.data_primeira_parcela || "";
+    (document.getElementById("empObs") as HTMLTextAreaElement).value = e.observacao || "";
+    abrirM("modalEmp");
+  }
+  async function salvarEmp() {
+    const id = (document.getElementById("empId") as HTMLInputElement).value;
+    const body = {
+      tipo: (document.getElementById("empTipo") as HTMLSelectElement).value,
+      status: (document.getElementById("empStatus") as HTMLSelectElement).value,
+      descricao: (document.getElementById("empDesc") as HTMLInputElement).value.trim(),
+      banco: (document.getElementById("empBanco") as HTMLInputElement).value.trim(),
+      valor_total: (document.getElementById("empValor") as HTMLInputElement).value,
+      num_parcelas: (document.getElementById("empNP") as HTMLInputElement).value,
+      valor_parcela: (document.getElementById("empVP") as HTMLInputElement).value,
+      data_contratacao: (document.getElementById("empDC") as HTMLInputElement).value,
+      data_primeira_parcela: (document.getElementById("empD1") as HTMLInputElement).value,
+      observacao: (document.getElementById("empObs") as HTMLTextAreaElement).value,
+    };
+    if (!body.descricao) { alert("Informe a descrição."); return; }
+    const res = await fetch(id ? `/api/admin/doc-empresa/emprestimos/${id}` : "/api/admin/doc-empresa/emprestimos", { method: id ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) location.reload(); else alert((await res.json().catch(() => ({}))).error || "Erro");
+  }
+  let pendContrato: string | null = null;
+  function anexarContrato(empId: string) { pendContrato = empId; const fi = document.getElementById("fileContrato") as HTMLInputElement; fi.value = ""; fi.click(); }
+  (document.getElementById("fileContrato") as HTMLInputElement).addEventListener("change", async (ev) => {
+    const fi = ev.target as HTMLInputElement; const arquivo = fi.files && fi.files[0]; if (!arquivo || !pendContrato) return; const empId = pendContrato;
+    try { if (await subir(arquivo, "/api/admin/doc-empresa/emprestimos/upload-url", { emprestimo_id: empId }, `/api/admin/doc-empresa/emprestimos/${empId}`, { __method: "PATCH" })) location.reload(); }
+    catch (e: any) { alert("Erro: " + (e?.message || "tente novamente")); }
+  });
+
+  // ── Excluir (extrato/fatura/empréstimo) ──
+  async function excluirItem(tipo: string, id: string, btn: HTMLButtonElement) {
+    if (!confirm("Excluir este item? (vai para a Lixeira por 30 dias)")) return;
+    btn.disabled = true;
+    const res = await fetch(`/api/admin/doc-empresa/${tipo}/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+    if (res.ok) location.reload(); else { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; }
+  }
+
+  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem });
+</script>
