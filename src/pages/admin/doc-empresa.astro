@@ -54,7 +54,7 @@ const ABAS = ABAS_ALL.filter((a) => naView(a.nome));
 
 const docsAtivos    = docs.filter((d: any) => !d.arquivado && naView(d.categoria || ""));
 const docsArquivados = docs.filter((d: any) => d.arquivado && naView(d.categoria || ""));
-const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
+const PERIODICIDADES = ["Mensal", "Bimestral", "Anual", "Consulta Mensal", "Sem validade"];
 
 // Categorias por PERÍODO/CONTRATO — não geram alerta de vencimento (validade não se aplica).
 // As de validade (Certidões, Documentos da Empresa, Seguros, Fornecedoras) seguem com alerta.
@@ -498,11 +498,20 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
   </div>
 
   <script type="application/json" id="docsData" set:html={docsJson} />
+  <script type="application/json" id="viewCfg" set:html={JSON.stringify({ view: VIEW, contratos: [...CONTRATOS_CATS], seguros: [...SEGUROS_CATS] })} />
 
   <script>
     const overlay = (id: string) => document.getElementById(id)!;
     const DOCS: any[] = JSON.parse((document.getElementById("docsData") as HTMLElement)?.textContent || "[]");
     const docById = (id: string) => DOCS.find((x: any) => x.id === id);
+    // config da VIEW atual (empresa | contratos | seguros) — usada p/ o envio por e-mail
+    const VCFG: any = JSON.parse((document.getElementById("viewCfg") as HTMLElement)?.textContent || "{}");
+    function naViewClient(cat: string): boolean {
+      const c = cat || "";
+      if (VCFG.view === "contratos") return (VCFG.contratos || []).includes(c);
+      if (VCFG.view === "seguros") return (VCFG.seguros || []).includes(c);
+      return !(VCFG.contratos || []).includes(c) && !(VCFG.seguros || []).includes(c);
+    }
     let abaAtiva = "";
     function setAba(btn: HTMLElement) {
       document.querySelectorAll("#abasPills .pill").forEach((p) => p.classList.remove("active"));
@@ -837,6 +846,8 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     const MESES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     function rotuloCompetencia(a: any): string {
       const c = String(a.competencia || "");
+      const mb = c.match(/^(\d{4})-B([1-6])$/);
+      if (mb) { const rg = ["", "Jan/Fev", "Mar/Abr", "Mai/Jun", "Jul/Ago", "Set/Out", "Nov/Dez"]; return `${mb[2]}º bim · ${rg[+mb[2]]}/${mb[1]}`; }
       let m = c.match(/^(\d{4})-(\d{2})/); if (m) return `${MESES[+m[2]] || m[2]}/${m[1]}`;
       if (/^\d{4}$/.test(c)) return `Exercício ${c}`;
       if (c) return c;
@@ -871,6 +882,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const d = docById(id); if (!d) return "";
       const arqs = (d.arquivos || []).slice();
       const anual = String(d.periodicidade || "").toLowerCase() === "anual";
+      const bim = String(d.periodicidade || "").toLowerCase() === "bimestral";
       const hoje = new Date();
       if (anual) {
         // ANUAL: um documento por ano — slots desde 2017 até o ano atual
@@ -881,6 +893,26 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         let html = `<p style="margin:2px 0 6px;color:#6B7280;font-size:12.5px">Um documento por ano (desde ${ANO_INICIO_ANUAL})</p>`;
         html += slots.map((s) => slotPeriodo(id, s, arqs)).join("");
         if (resto.length) html += `<details style="margin-top:8px"><summary style="cursor:pointer;color:#6B7280;font-size:13px;font-weight:600">📦 Outros anexos (${resto.length})</summary><div style="margin-top:6px">${resto.map(linhaArq).join("")}</div></details>`;
+        return html;
+      }
+      if (bim) {
+        // BIMESTRAL: ano atual por bimestre (6 slots); ano anterior livre; antes disso "mais anexos".
+        const anoAtual = hoje.getFullYear();
+        const anoAnt = anoAtual - 1;
+        const bimComps = [1, 2, 3, 4, 5, 6].map((n) => `${anoAtual}-B${n}`);
+        const usados = new Set(bimComps);
+        const f2025 = arqs.filter((a: any) => { const c = String(a.competencia || ""); return c.startsWith(`${anoAnt}-`) || c === String(anoAnt); });
+        const older = arqs.filter((a: any) => { const c = String(a.competencia || ""); return !usados.has(c) && !c.startsWith(`${anoAnt}-`) && c !== String(anoAnt); });
+        let html = `<p style="margin:2px 0 6px;color:#6B7280;font-size:12.5px">${anoAtual} — por bimestre</p>`;
+        html += bimComps.map((c) => slotPeriodo(id, c, arqs)).join("");
+        html += `<details style="margin-top:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden"${f2025.length ? " open" : ""}>
+          <summary style="cursor:pointer;list-style:none;padding:9px 12px;background:#FAFBFC;font-weight:700">📅 ${anoAnt} — anexar todos <span class="badge badge-gray" style="font-size:10.5px">${f2025.length}</span></summary>
+          <div style="padding:8px 12px">${f2025.map(linhaArq).join("") || `<p style="color:#9CA3AF;font-size:12.5px;margin:2px 0">Nenhum anexo de ${anoAnt} ainda.</p>`}
+          <button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="anexos('${id}')">📎 Anexar ${anoAnt} (informe o mês)</button></div></details>`;
+        html += `<details style="margin-top:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <summary style="cursor:pointer;list-style:none;padding:9px 12px;background:#FAFBFC;font-weight:700">📦 Anos anteriores — mais anexos <span class="badge badge-gray" style="font-size:10.5px">${older.length}</span></summary>
+          <div style="padding:8px 12px">${older.map(linhaArq).join("") || `<p style="color:#9CA3AF;font-size:12.5px;margin:2px 0">Nenhum anexo de anos anteriores.</p>`}
+          <button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="anexos('${id}')">📎 Anexar (informe o mês/ano)</button></div></details>`;
         return html;
       }
       // MENSAL: arquivo ÚNICO VIGENTE (último mês de emissão) + histórico dos substituídos.
@@ -930,7 +962,8 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     }
     function fecharEnviar() { overlay("modalEnviar").classList.remove("open"); }
     function renderEnvLista() {
-      const ativos = DOCS.filter((d: any) => !d.arquivado && (d.arquivos || []).length);
+      // só os documentos da ABA/área em que a pessoa está (empresa | contratos | seguros)
+      const ativos = DOCS.filter((d: any) => !d.arquivado && (d.arquivos || []).length && naViewClient(d.categoria));
       const byCat: Record<string, any[]> = {};
       for (const d of ativos) (byCat[d.categoria || "Outros"] = byCat[d.categoria || "Outros"] || []).push(d);
       const cats = Object.keys(byCat).sort();
