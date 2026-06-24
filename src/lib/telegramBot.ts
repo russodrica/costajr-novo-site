@@ -874,6 +874,16 @@ async function cardDocGrupo(B: Bot, chatId: number, token: string, d: any) {
   }
 }
 
+function extrairCompetenciaDoc(nome: string, iaNome?: string): string | null {
+  const texto = `${nome} ${iaNome || ""}`;
+  // Prefixo YYMMDD (certidões com data no nome, ex: 260330_)
+  const pref = nome.match(/^(\d{2})(\d{2})\d{2}_/);
+  if (pref) return `20${pref[1]}-${pref[2]}`;
+  // Ano de 4 dígitos (não rodeado por outros dígitos)
+  const anos = [...texto.matchAll(/(?<![0-9])(20\d{2}|19\d{2})(?![0-9])/g)].map(m => m[1]);
+  return anos.length ? anos[anos.length - 1] : null;
+}
+
 async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: string) {
   const acao = data.slice(0, data.indexOf(":"));
   const resto = data.slice(data.indexOf(":") + 1);
@@ -959,7 +969,8 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const newPath = `${d.emp_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
     if (eUp) { await enviar(B, chatId, "❌ Falha ao mover o arquivo: " + escTg(eUp.message)); return; }
-    const { data: row, error } = await db.from("doc_empresa_arquivos").insert({ doc_id: d.emp_id, nome: d.doc_nome, storage_path: newPath, criado_por: d.autor }).select().single();
+    const competenciaEmp = extrairCompetenciaDoc(d.doc_nome, d.ia_nome);
+    const { data: row, error } = await db.from("doc_empresa_arquivos").insert({ doc_id: d.emp_id, nome: d.doc_nome, storage_path: newPath, criado_por: d.autor, ...(competenciaEmp ? { competencia: competenciaEmp } : {}) }).select().single();
     if (error) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
     await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
     await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
