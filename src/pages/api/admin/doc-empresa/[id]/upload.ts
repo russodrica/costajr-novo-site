@@ -40,11 +40,12 @@ export const POST: APIRoute = async ({ request, params }) => {
       const body = await request.json();
       const storagePath = String(body.storage_path || "").trim();
       const nomeOriginal = String(body.nome || "arquivo").slice(0, 150);
+      const competencia = String(body.competencia || "").trim() || null; // mês de referência (Guias/Contábeis)
       if (!storagePath) return jsonErr(400, "storage_path obrigatório.");
 
       const { data, error } = await db
         .from("doc_empresa_arquivos")
-        .insert({ doc_id: docId, nome: nomeOriginal, storage_path: storagePath, criado_por: admin.email })
+        .insert({ doc_id: docId, nome: nomeOriginal, storage_path: storagePath, competencia, criado_por: admin.email })
         .select()
         .single();
       if (error) return jsonErr(400, error.message);

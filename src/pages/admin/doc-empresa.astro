@@ -13,7 +13,7 @@ if (!temPerfil(claims, ["admin", "financeiro", "juridico", "comercial"])) return
 const db = supabaseAdmin();
 // Carrega TODOS (ativos + arquivados) — a aba "Arquivados" filtra no cliente
 const { data: docsRaw } = await db.from("doc_empresa")
-  .select("*, doc_empresa_arquivos(id,nome,created_at)").order("nome");
+  .select("*, doc_empresa_arquivos(id,nome,created_at,competencia)").order("nome");
 const docs: any[] = docsRaw || [];
 const docsAtivos    = docs.filter((d: any) => !d.arquivado);
 const docsArquivados = docs.filter((d: any) => d.arquivado);
@@ -36,6 +36,9 @@ const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 // As de validade (Certidões, Documentos da Empresa, Seguros, Fornecedoras) seguem com alerta.
 const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais"]);
 const CAT_SEM_ALERTA = "Empreiteiros / Terceiros"; // legado (categoria arquivada)
+// Categorias PERIÓDICAS — cada card é um TIPO (PGDAS, Balancete…) com competências (meses);
+// renderizadas como cards expansíveis ("+") em vez de tabela.
+const CATS_PERIODO = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis"]);
 
 // Sub-grupos de "Documento Fiscal" (definidos aqui para usar no template; porGrupoFiscal calculado depois de porCat)
 const GRUPOS_FISCAL = [
@@ -112,7 +115,7 @@ const docsJs = docs.map((d: any) => ({
   id: d.id, categoria: d.categoria, grupo: d.grupo || null, nome: d.nome, periodicidade: d.periodicidade,
   validade: d.validade, validade_na: d.validade_na, data_emissao: d.data_emissao, site: d.site, observacoes: d.observacoes,
   arquivado: d.arquivado, valor_mensal: d.valor_mensal ?? null,
-  arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome })),
+  arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome, competencia: a.competencia || null, created_at: a.created_at || null })),
 }));
 const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 ---
@@ -164,6 +167,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
   {cats.map((c) => {
     const isFiscal = c === "Documento Fiscal";
     const isFornecedor = c === "Empresas Fornecedoras";
+    const isPeriodo = CATS_PERIODO.has(c);
     const docsInCat = porCat.get(c)!;
     return (
       <div class="card doc-sec" data-cat={c} style="padding:0;overflow:hidden;margin-bottom:18px">
@@ -269,6 +273,25 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                 }) as any)}
               </tbody>
             </table>
+          </div>
+        ) : isPeriodo ? (
+          <div style="padding:8px 12px">
+            {docsInCat.map((d: any) => {
+              const nArq = (d.doc_empresa_arquivos || []).length;
+              return (
+                <div class="doc-row" data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} style="border:1px solid var(--border);border-radius:8px;margin:7px 0;overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#FAFBFC;cursor:pointer" onclick={`togglePeriodo('${d.id}')`}>
+                    <span id={`exp-${d.id}`} style="font-weight:800;color:var(--brand);font-size:1.05rem;width:14px;text-align:center">+</span>
+                    <strong style="flex:1">{d.nome}</strong>
+                    <span class="badge badge-blue">{nArq} competência(s)</span>
+                    <button class="btn btn-outline btn-sm" onclick={`event.stopPropagation();anexos('${d.id}')`}>+ Anexar</button>
+                    <button class="btn btn-secondary btn-sm" onclick={`event.stopPropagation();editar('${d.id}')`}>Editar</button>
+                    <button class="btn btn-danger btn-sm" onclick={`event.stopPropagation();excluir('${d.id}')`}>Excluir</button>
+                  </div>
+                  <div id={`per-${d.id}`} style="display:none;padding:8px 16px 14px"></div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div class="table-wrap">
@@ -408,6 +431,10 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         <div id="listaArq"></div>
         <form id="formUpload" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
           <input type="hidden" name="doc_id" />
+          <div id="upCompetenciaRow" style="display:none;margin-bottom:8px">
+            <label style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Competência (mês de referência)</label>
+            <input type="month" id="upCompetencia" style="max-width:200px" />
+          </div>
           <label style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Anexar arquivo (PDF, imagem, DOC, XLS — até 25 MB)</label>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="file" name="arquivo" required accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,application/pdf" style="flex:1" />
@@ -559,14 +586,19 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       renderArq(arquivos);
       (document.getElementById("formUpload") as HTMLFormElement).reset();
       (document.querySelector("#formUpload [name=doc_id]") as HTMLInputElement).value = id;
+      // competência só nas categorias periódicas (Guias / Contábeis)
+      const ehPeriodo = !!(d && ["Guias e Obrigações Fiscais", "Documentos Contábeis"].includes(d.categoria));
+      (document.getElementById("upCompetenciaRow") as HTMLElement).style.display = ehPeriodo ? "" : "none";
       overlay("modalArq").classList.add("open");
     }
     function renderArq(arquivos: any[]) {
       const box = document.getElementById("listaArq")!;
       if (!arquivos || !arquivos.length) { box.innerHTML = `<p style="color:#9CA3AF;font-size:13px">Nenhum arquivo anexado ainda.</p>`; return; }
-      box.innerHTML = arquivos.map((a) => `
+      // mais recente primeiro → marca a VERSÃO VIGENTE
+      const ord = arquivos.slice().sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+      box.innerHTML = ord.map((a, i) => `
         <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span style="flex:1;font-size:13.5px">📄 ${(a.nome || "arquivo").replace(/</g, "&lt;")}</span>
+          <span style="flex:1;font-size:13.5px">📄 ${(a.nome || "arquivo").replace(/</g, "&lt;")}${i === 0 ? ' <span class="badge badge-green" style="font-size:10.5px;margin-left:4px">✓ Vigente</span>' : ''}</span>
           <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
           <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button>
         </div>`).join("");
@@ -607,11 +639,12 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           body: arquivo,
         });
         if (!r2.ok) throw new Error(`Falha no envio do arquivo (HTTP ${r2.status}).`);
-        // Passo 3: registrar no banco
+        // Passo 3: registrar no banco (com competência, se for categoria periódica)
+        const competencia = (document.getElementById("upCompetencia") as HTMLInputElement)?.value || null;
         const r3 = await fetch(`/api/admin/doc-empresa/${id}/upload`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ storage_path: path, nome: nome_original }),
+          body: JSON.stringify({ storage_path: path, nome: nome_original, competencia }),
         });
         if (!r3.ok) {
           let msg = "Arquivo enviado mas falhou ao registrar";
@@ -715,6 +748,36 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       btn.disabled = false; btn.textContent = orig;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn });
+    // ── Expansão por competência (categorias periódicas: Guias / Contábeis) ──
+    const MESES = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    function rotuloCompetencia(a: any): string {
+      const c = String(a.competencia || "");
+      let m = c.match(/^(\d{4})-(\d{2})/); if (m) return `${MESES[+m[2]] || m[2]}/${m[1]}`;
+      if (/^\d{4}$/.test(c)) return `Exercício ${c}`;
+      if (c) return c;
+      return a.created_at ? String(a.created_at).slice(0, 10).split("-").reverse().join("/") : "sem competência";
+    }
+    function renderCompetencias(id: string): string {
+      const d = docById(id); if (!d) return "";
+      const arqs = (d.arquivos || []).slice().sort((a: any, b: any) =>
+        String(b.competencia || b.created_at || "").localeCompare(String(a.competencia || a.created_at || "")));
+      if (!arqs.length) return `<p style="color:#9CA3AF;font-size:13px;margin:4px 0">Nenhuma competência anexada ainda. Use <strong>+ Anexar</strong>.</p>`;
+      const linha = (a: any) => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-light)">
+        <span style="flex:1;font-size:13.5px">📄 <strong>${rotuloCompetencia(a)}</strong> <span style="color:#9CA3AF;font-size:12px">${String(a.nome || "").replace(/</g, "&lt;")}</span></span>
+        <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
+        <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button></div>`;
+      const recentes = arqs.slice(0, 12), antigos = arqs.slice(12);
+      let html = recentes.map(linha).join("");
+      if (antigos.length) html += `<details style="margin-top:8px"><summary style="cursor:pointer;color:#6B7280;font-size:13px;font-weight:600">📦 Histórico — ${antigos.length} competência(s) mais antiga(s)</summary><div style="margin-top:6px">${antigos.map(linha).join("")}</div></details>`;
+      return html;
+    }
+    function togglePeriodo(id: string) {
+      const box = document.getElementById("per-" + id) as HTMLElement; const exp = document.getElementById("exp-" + id);
+      if (!box) return;
+      if (box.style.display === "none") { box.innerHTML = renderCompetencias(id); box.style.display = ""; if (exp) exp.textContent = "−"; }
+      else { box.style.display = "none"; if (exp) exp.textContent = "+"; }
+    }
+
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo });
   </script>
 </Admin>
