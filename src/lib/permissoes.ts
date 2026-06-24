@@ -258,6 +258,16 @@ export function nivelEfetivo(moduloKey: string, perfis: string[], overrides: Rec
   return padrao;
 }
 
+/** Como temPerfil, mas lê os perfis FRESCOS do banco (roles[]). Use no gate das
+ *  páginas: o token pode ter só o perfil PRINCIPAL, e um usuário multi-perfil tem
+ *  acesso por um perfil secundário (ex.: Renata é "manutencao_operacao" no token
+ *  mas tem "juridico"/"financeiro" no banco). Sem isso a página redireciona quem
+ *  o MENU já mostra (o menu usa perfisFrescos). */
+export async function temPerfilFresco(claims: AdminClaims, aceitos: string[]): Promise<boolean> {
+  const perfis = await perfisFrescos(claims);
+  return perfis.some((r) => aceitos.includes(r));
+}
+
 /** Perfis FRESCOS do usuário (lidos do banco; fallback no token). */
 export async function perfisFrescos(claims: AdminClaims): Promise<string[]> {
   let perfis = perfisDe(claims);

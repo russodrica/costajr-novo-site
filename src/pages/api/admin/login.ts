@@ -13,7 +13,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const db = supabaseAdmin();
     const { data: perfil, error } = await db
       .from("portal_profiles")
-      .select("id, email, display_name, role, approval_status, senha_hash, senha_troca_obrigatoria, token_version")
+      .select("id, email, display_name, role, roles, approval_status, senha_hash, senha_troca_obrigatoria, token_version")
       .eq("email", email.toLowerCase().trim())
       .single();
 
@@ -47,7 +47,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       }
     }
 
-    const token = await signToken({ sub: perfil.id, tipo: "admin", email: perfil.email, role: perfil.role, tv: typeof perfil.token_version === "number" ? perfil.token_version : 0 });
+    // inclui TODOS os perfis no token (multi-perfil) — senão pages com temPerfil(claims)
+    // só enxergam o perfil principal e bloqueiam quem tem acesso por um perfil secundário.
+    const rolesTk = ((perfil as any).roles && (perfil as any).roles.length ? (perfil as any).roles : [perfil.role]).filter(Boolean);
+    const token = await signToken({ sub: perfil.id, tipo: "admin", email: perfil.email, role: perfil.role, roles: rolesTk, tv: typeof perfil.token_version === "number" ? perfil.token_version : 0 });
 
     // Atualiza last_login
     await db.from("portal_profiles").update({ last_login_at: new Date().toISOString() }).eq("id", perfil.id);

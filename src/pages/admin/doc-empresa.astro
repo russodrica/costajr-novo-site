@@ -1,6 +1,7 @@
 ---
 import Admin from "../../layouts/Admin.astro";
-import { verifyToken, temPerfil, type AdminClaims } from "../../lib/auth";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
 
 const token = Astro.cookies.get("admin_token")?.value;
@@ -8,7 +9,8 @@ if (!token) return Astro.redirect("/admin/login");
 let claims: AdminClaims;
 try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
-if (!temPerfil(claims, ["admin", "financeiro", "juridico", "comercial"])) return Astro.redirect("/admin");
+// perfis FRESCOS (multi-perfil): o token pode ter só o perfil principal
+if (!(await temPerfilFresco(claims, ["admin", "financeiro", "juridico", "comercial"]))) return Astro.redirect("/admin");
 
 const db = supabaseAdmin();
 // Carrega TODOS (ativos + arquivados) — a aba "Arquivados" filtra no cliente
