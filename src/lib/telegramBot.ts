@@ -944,7 +944,18 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
         let empId: string | null = null, empNome = nomeCard;
         const { data: ja } = await db.from("doc_empresa").select("id, nome").eq("categoria", cat.categoria).ilike("nome", nomeCard).limit(1);
         if (ja && ja[0]) { empId = ja[0].id; empNome = ja[0].nome; }
-        else { const { data: novo } = await db.from("doc_empresa").insert({ categoria: cat.categoria, nome: nomeCard, arquivado: false, validade_na: true, criado_por: d.autor }).select("id").single(); empId = novo?.id || null; }
+        else {
+          // Fallback: substring do primeiro token do nomeCard (ex.: "Balancete 2022" → "%Balancete%")
+          const primTok = nomeCard.split(/\s+/)[0];
+          if (primTok && primTok.length >= 3) {
+            const { data: ja2 } = await db.from("doc_empresa").select("id, nome").eq("categoria", cat.categoria).ilike("nome", `%${primTok}%`).limit(1);
+            if (ja2 && ja2[0]) { empId = ja2[0].id; empNome = ja2[0].nome; }
+          }
+          if (!empId) {
+            const { data: novo } = await db.from("doc_empresa").insert({ categoria: cat.categoria, nome: nomeCard, arquivado: false, validade_na: true, criado_por: d.autor }).select("id").single();
+            empId = novo?.id || null;
+          }
+        }
         if (empId) {
           await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: empId, emp_nome: empNome, emp_cat: cat.categoria } }).eq("telegram_user_id", "gdoc:" + token);
           await enviar(B, chatId, `📊 Parece <b>${escTg(cat.rotulo)}</b>. Arquivar em <b>${escTg(cat.categoria)}</b> (como "${escTg(empNome)}")?`,

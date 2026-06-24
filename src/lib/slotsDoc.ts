@@ -31,8 +31,13 @@ export const SLOTS_DOC: SlotDoc[] = [
 
 export const slotPorKey = (key: string): SlotDoc | undefined => SLOTS_DOC.find((s) => s.key === key);
 
+// Colapsa siglas pontuadas de uma letra por vez: "D. R. E." → "DRE", "S.A." → "SA"
+// Exige pelo menos 2 componentes (X. Y.) para não tocar abreviações isoladas como "Dr."
+const colapsarSiglas = (s: string): string =>
+  s.replace(/\b((?:[A-Za-zÀ-ÿ]\. ?)+[A-Za-zÀ-ÿ]\.)/g, (m) => m.replace(/[. ]/g, ""));
+
 const norm = (s: string) =>
-  String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[_().-]/g, " ").replace(/\s+/g, " ").trim();
+  colapsarSiglas(String(s || "")).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[_().-]/g, " ").replace(/\s+/g, " ").trim();
 
 // Tenta deduzir o slot a partir de um texto (nome do arquivo, ou texto extraído pela IA).
 export function detectarSlotPorTexto(texto: string): string | null {
