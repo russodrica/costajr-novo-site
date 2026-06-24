@@ -271,7 +271,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                     const nArq = (d.doc_empresa_arquivos || []).length;
                     const vm = d.valor_mensal != null ? `R$ ${Number(d.valor_mensal).toLocaleString("pt-BR", {minimumFractionDigits: 2})}` : "—";
                     return (
-                      <tr class="doc-row forn-row" data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} data-val={String(d.valor_mensal || 0)} data-validade={d.validade || "9999-99-99"} data-forn-grp={key}>
+                      <tr class="doc-row forn-row" data-row-doc={d.id} data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} data-val={String(d.valor_mensal || 0)} data-validade={d.validade || "9999-99-99"} data-forn-grp={key}>
                         <td>
                           <strong>{d.nome}</strong>
                           {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
@@ -326,7 +326,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                   const b = badge(d, c);
                   const nArq = (d.doc_empresa_arquivos || []).length;
                   return (
-                    <tr class="doc-row" data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} style={d.arquivado ? "opacity:.55" : ""}>
+                    <tr class="doc-row" data-row-doc={d.id} data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} style={d.arquivado ? "opacity:.55" : ""}>
                       <td>
                         <strong>{d.nome}</strong>
                         {d.arquivado && <span class="badge badge-gray" style="margin-left:6px">Arquivado</span>}
@@ -950,26 +950,42 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const arquivo = (ev.target as HTMLInputElement).files?.[0];
       if (arquivo && pendSlot) subirSlot(pendSlot.docId, pendSlot.comp, arquivo);
     });
-    // arrastar-e-soltar direto num slot (ano/mês/bimestre) — vale p/ DRE, Balanço, Balancete, etc.
-    document.addEventListener("dragover", (e: any) => {
-      const s = (e.target as HTMLElement).closest?.(".slot-drop") as HTMLElement | null;
-      if (s) { e.preventDefault(); s.style.outline = "2px dashed var(--brand)"; s.style.outlineOffset = "1px"; }
-    });
-    document.addEventListener("dragleave", (e: any) => {
-      const s = (e.target as HTMLElement).closest?.(".slot-drop") as HTMLElement | null;
-      if (s) s.style.outline = "";
-    });
-    document.addEventListener("drop", (e: any) => {
-      const s = (e.target as HTMLElement).closest?.(".slot-drop") as HTMLElement | null;
-      if (!s) return;
-      e.preventDefault(); s.style.outline = "";
-      const f = e.dataTransfer?.files?.[0];
-      if (f) subirSlot(s.dataset.slotDoc || "", s.dataset.slotComp || "", f);
-    });
+    // arrastar-e-soltar direto num slot (ano/mês/bimestre) — listener DIRETO em cada slot
+    // (delegação no document não dispara o drop de forma confiável). Chamado ao expandir o card.
+    function ligarSlotsDrop(box: HTMLElement) {
+      box.querySelectorAll(".slot-drop").forEach((el) => {
+        const s = el as HTMLElement & { _drop?: boolean };
+        if (s._drop) return; s._drop = true;
+        const hi = () => { s.style.outline = "2px dashed var(--brand)"; s.style.outlineOffset = "1px"; };
+        const lo = () => { s.style.outline = ""; };
+        ["dragenter", "dragover"].forEach((ev) => s.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); hi(); }));
+        ["dragleave", "dragend"].forEach((ev) => s.addEventListener(ev, lo));
+        s.addEventListener("drop", (e: any) => {
+          e.preventDefault(); e.stopPropagation(); lo();
+          const f = e.dataTransfer?.files?.[0];
+          if (f) subirSlot(s.dataset.slotDoc || "", s.dataset.slotComp || "", f);
+        });
+      });
+    }
+    // arrastar-e-soltar direto na LINHA do documento (não-periódicos: certidões, contratos, seguros…)
+    function ligarRowsDrop() {
+      document.querySelectorAll("[data-row-doc]").forEach((el) => {
+        const r = el as HTMLElement & { _drop?: boolean };
+        if (r._drop) return; r._drop = true;
+        ["dragenter", "dragover"].forEach((ev) => r.addEventListener(ev, (e) => { e.preventDefault(); r.classList.add("row-drag"); }));
+        ["dragleave", "dragend"].forEach((ev) => r.addEventListener(ev, () => r.classList.remove("row-drag")));
+        r.addEventListener("drop", (e: any) => {
+          e.preventDefault(); r.classList.remove("row-drag");
+          const f = e.dataTransfer?.files?.[0];
+          if (f) subirSlot(r.dataset.rowDoc || "", "", f);
+        });
+      });
+    }
+    ligarRowsDrop();
     function togglePeriodo(id: string) {
       const box = document.getElementById("per-" + id) as HTMLElement; const exp = document.getElementById("exp-" + id);
       if (!box) return;
-      if (box.style.display === "none") { box.innerHTML = renderCompetencias(id); box.style.display = ""; if (exp) exp.textContent = "−"; }
+      if (box.style.display === "none") { box.innerHTML = renderCompetencias(id); box.style.display = ""; if (exp) exp.textContent = "−"; ligarSlotsDrop(box); }
       else { box.style.display = "none"; if (exp) exp.textContent = "+"; }
     }
 
@@ -1039,6 +1055,8 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
   </script>
 
   <style>
+    /* destaque ao arrastar um arquivo sobre a linha do documento */
+    tr.row-drag td { background: #EFF6FF !important; box-shadow: inset 0 2px 0 var(--brand), inset 0 -2px 0 var(--brand); }
     /* Todos os títulos em CAIXA ALTA (pedido da Adriana) */
     .toolbar-title { text-transform: uppercase; letter-spacing: .01em; }
     .pills .pill { text-transform: uppercase; letter-spacing: .02em; font-weight: 600; }
