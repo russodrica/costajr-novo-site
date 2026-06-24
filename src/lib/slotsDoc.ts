@@ -101,6 +101,40 @@ const STOP_NOME = new Set([
   "balancete", "documento", "arquivo", "scan", "camscanner", "digitalizado", "via", "pdf",
 ]);
 
+// Detecta extrato bancário pelo nome do arquivo / legenda. Devolve banco canônico + mês/ano.
+const MESES_PT: Record<string, number> = {
+  janeiro: 1, fevereiro: 2, marco: 3, abril: 4, maio: 5, junho: 6,
+  julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+  jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
+  jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12,
+};
+const BANCOS_MAP: [RegExp, string][] = [
+  [/banco\s+do\s+brasil|\bbb\b/, "BB"],
+  [/caixa\s+econom|cef\b|caixa\s+federal|\bcaixa\b/, "Caixa"],
+  [/santander/, "Santander"],
+  [/sicoob/, "Sicoob"],
+  [/bradesco/, "Bradesco"],
+  [/ita[u]/, "Itaú"],
+  [/nubank/, "Nubank"],
+];
+export function detectarExtratoBancario(texto: string): { banco: string; mes: number; ano: number } | null {
+  const t = norm(texto);
+  const ehExtrato = /extrato|comprovante\s+bancario|demonstrativo\s+bancario|saldo\s+bancario/.test(t);
+  if (!ehExtrato) return null;
+  let banco: string | null = null;
+  for (const [re, nome] of BANCOS_MAP) { if (re.test(t)) { banco = nome; break; } }
+  if (!banco) return null;
+  let mes = 0, ano = 0;
+  for (const [nomeMes, num] of Object.entries(MESES_PT)) {
+    const re = new RegExp(`\\b${nomeMes}\\b[\\s/\\-]*(20\\d{2})`, "i");
+    const m = t.match(re); if (m) { mes = num; ano = Number(m[1]); break; }
+  }
+  if (!mes) { const m = t.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/); if (m) { mes = Number(m[1]); ano = Number(m[2]); } }
+  if (!mes) { const m = t.match(/\b(20\d{2})-(0?[1-9]|1[0-2])\b/); if (m) { ano = Number(m[1]); mes = Number(m[2]); } }
+  if (!mes || !ano) return null;
+  return { banco, mes, ano };
+}
+
 // Casa um texto (nome do arquivo / conteúdo) com a lista de colaboradores (ou empresas)
 // por nome. Retorna { id, nome, score } do melhor casamento, ou null.
 export function casarColaborador(

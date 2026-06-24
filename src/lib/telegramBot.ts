@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { supabaseAdmin } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
-import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, ehDocEmpresa, categoriaEmpresaPorTexto } from "./slotsDoc";
+import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
 import { aplicarEntregaEpiDaFicha, type EpiAplicado } from "./epiLeitura";
 import { registrarAcao } from "./auditoria";
@@ -331,7 +331,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
   if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, cq, chatId, data);
-  if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
+  if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gbanc|gbancok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
   if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start para recomeçar.", botaoTelefone); return; }
@@ -839,8 +839,22 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
       }
     } catch { /* segue pela heurística do nome */ }
   }
+  // ── EXTRATO BANCÁRIO: detectar antes de pessoa/empresa ──
+  const textoDetect = `${nome} ${textoExtra}`.trim();
+  const extrato = detectarExtratoBancario(textoDetect);
+  if (extrato) {
+    const token = Date.now().toString(36);
+    const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    const mesNome = mesesNomes[(extrato.mes - 1)] || String(extrato.mes);
+    await salvarSessao(db, { telegram_user_id: "gbanc:" + token, chat_id: String(chatId), estado: "pendente", dados: { doc_path: storagePath, doc_nome: nome, ct, banco: extrato.banco, mes: extrato.mes, ano: extrato.ano, autor: `${nomeRemetente(msg.from)} (via grupo Telegram)` } });
+    await enviar(B, chatId,
+      `🏦 <b>Extrato bancário detectado!</b>\nBanco: <b>${escTg(extrato.banco)}</b>\nPeríodo: <b>${mesNome}/${extrato.ano}</b>\n\nÉ isso? Confirma para arquivar em <b>Documentos Bancários</b>.`,
+      inline([[{ text: `✅ Confirmar — ${extrato.banco} ${mesNome}/${extrato.ano}`, callback_data: "gbancok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+    return;
+  }
+
   // Documento contábil/da empresa (balancete, DRE…) → não sugere PESSOA.
-  if (ehDocEmpresa(`${nome} ${textoExtra}`)) match = null;
+  if (ehDocEmpresa(textoDetect)) match = null;
   const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
   const token = Date.now().toString(36);
   const dados = {
@@ -888,6 +902,45 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
   const acao = data.slice(0, data.indexOf(":"));
   const resto = data.slice(data.indexOf(":") + 1);
   const token = resto.split(":")[0];
+
+  // ── EXTRATO BANCÁRIO ───────────────────────────────────────────────────────
+  if (acao === "gbancok") {
+    const { data: pend } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gbanc:" + token).maybeSingle();
+    const d = pend?.dados;
+    if (!d) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
+    const { data: blob } = await db.storage.from("rh").download(d.doc_path);
+    if (!blob) { await enviar(B, chatId, "❌ Não achei o arquivo. Reenvie o documento."); return; }
+    const buf = Buffer.from(await blob.arrayBuffer());
+    const ext = (d.doc_path || "").split(".").pop() || "pdf";
+    const newPath = `extratos/${d.ano}/${String(d.mes).padStart(2, "0")}/${d.banco}/${Date.now()}.${ext}`;
+    const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
+    if (eUp) { await enviar(B, chatId, "❌ Falha ao arquivar: " + escTg(eUp.message)); return; }
+    const { data: row, error } = await db.from("doc_extratos_bancarios").insert({
+      ano: d.ano, mes: d.mes, banco: d.banco, storage_path: newPath, nome_arquivo: d.doc_nome, criado_por: d.autor,
+    }).select().single();
+    if (error) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não registrou: " + escTg(error.message)); return; }
+    await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
+    await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
+      acao: "criar", entidade: "doc_extratos_bancarios", registro_id: row?.id ?? null,
+      descricao: `Telegram (grupo): extrato ${d.banco} ${String(d.mes).padStart(2,"0")}/${d.ano} — "${d.doc_nome}"`, dados: { banco: d.banco, mes: d.mes, ano: d.ano },
+    });
+    await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gbanc:" + token);
+    const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    await enviar(B, chatId, `✅ <b>Extrato arquivado!</b> ${escTg(d.banco)} — ${escTg(mesesNomes[(d.mes - 1)] || String(d.mes))}/${d.ano}. 🏦`);
+    return;
+  }
+
+  // session para gcancel de extrato
+  if (acao === "gcancel") {
+    const { data: pb } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gbanc:" + token).maybeSingle();
+    if (pb?.dados) {
+      await db.storage.from("rh").remove([pb.dados.doc_path]).catch(() => {});
+      await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gbanc:" + token);
+      await enviar(B, chatId, "🗑️ Documento descartado.");
+      return;
+    }
+  }
+
   const { data: pend } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gdoc:" + token).maybeSingle();
   const d = pend?.dados;
   if (!d) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
