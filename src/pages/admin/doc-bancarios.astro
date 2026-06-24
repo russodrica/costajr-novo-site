@@ -158,23 +158,25 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
     </div>
     {emprestimos.length === 0 && <div class="card"><div class="empty-state" style="padding:36px"><strong>Nenhum empréstimo ou financiamento cadastrado</strong><p>Use o botão acima para cadastrar.</p></div></div>}
     {emprestimos.map((e) => (
-      <div class="card" style="padding:14px 16px;margin-bottom:10px" data-emp-id={e.id}>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="card" style="padding:16px 18px;margin-bottom:12px" data-emp-id={e.id}>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:1.3rem;font-weight:800;color:var(--brand);line-height:1.1">🏦 {e.banco || 'Banco não informado'}</span>
           <span class="badge badge-gray">{TIPO_LABEL[e.tipo] || e.tipo}</span>
-          <b style="font-size:15px;flex:1">{e.descricao}</b>
+          <span style="flex:1"></span>
           <span class={`badge ${STATUS_BADGE[e.status] || 'badge-gray'}`}>{STATUS_LABEL[e.status] || e.status}</span>
         </div>
-        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--ink-mid)">
-          {e.banco && <span>🏦 {e.banco}</span>}
-          {e.valor_total != null && <span>💰 {brl(e.valor_total)}</span>}
-          {e.num_parcelas != null && <span>📆 {e.num_parcelas}x{e.valor_parcela != null ? ` de ${brl(e.valor_parcela)}` : ''}</span>}
-          {e.numero_contrato && <span>📋 Nº {e.numero_contrato}</span>}
-          {e.data_contratacao && <span>🗓️ Assinado {fdata(e.data_contratacao)}</span>}
-          {e.data_primeira_parcela && <span>1ª parcela {fdata(e.data_primeira_parcela)}</span>}
-          {e.data_vencimento && <span style={`font-weight:600;color:${new Date(e.data_vencimento) < new Date() ? '#DC2626' : '#059669'}`}>⏳ Encerra {fdata(e.data_vencimento)}</span>}
+        {e.descricao && <div style="font-size:13.5px;color:var(--ink-mid);margin:4px 0 12px">{e.descricao}</div>}
+        <div class="emp-cols">
+          {e.valor_total != null && <div><div class="emp-lbl">Valor total</div><div class="emp-v">{brl(e.valor_total)}</div></div>}
+          {e.num_parcelas != null && <div><div class="emp-lbl">Parcelas</div><div class="emp-v">{e.num_parcelas}x</div></div>}
+          {e.valor_parcela != null && <div><div class="emp-lbl">Valor da parcela</div><div class="emp-v">{brl(e.valor_parcela)}</div></div>}
+          {e.numero_contrato && <div><div class="emp-lbl">Nº do contrato</div><div class="emp-v">{e.numero_contrato}</div></div>}
+          {e.data_contratacao && <div><div class="emp-lbl">Contratação</div><div class="emp-v">{fdata(e.data_contratacao)}</div></div>}
+          {e.data_primeira_parcela && <div><div class="emp-lbl">1ª parcela</div><div class="emp-v">{fdata(e.data_primeira_parcela)}</div></div>}
+          {e.data_vencimento && <div><div class="emp-lbl">Encerramento</div><div class="emp-v" style={`color:${new Date(e.data_vencimento) < new Date() ? '#DC2626' : '#059669'}`}>{fdata(e.data_vencimento)}</div></div>}
         </div>
-        {e.observacao && <div style="font-size:12.5px;color:#9CA3AF;margin-top:6px">{e.observacao}</div>}
-        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        {e.observacao && <div style="font-size:12.5px;color:#9CA3AF;margin-top:10px">{e.observacao}</div>}
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           {e.storage_path
             ? <a class="btn btn-outline btn-sm" href={`/api/admin/doc-empresa/emprestimos/${e.id}`} target="_blank" rel="noopener">📄 Ver contrato</a>
             : <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px" data-requer-edicao onclick={`anexarContrato('${e.id}')`}>📎 Anexar contrato</button>}
@@ -254,6 +256,9 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
   .cell-head { display:flex;align-items:center;gap:8px;margin-bottom:6px; }
   .cell-file { display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12.5px;border-top:1px dashed var(--border-light); }
   .lixo { background:none;border:none;cursor:pointer; }
+  .emp-cols { display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:14px;border-top:1px solid var(--border);padding-top:12px; }
+  .emp-lbl { font-size:11px;color:#9CA3AF;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px; }
+  .emp-v { font-size:14.5px;font-weight:700;color:var(--ink); }
   .inp { padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px; }
   .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000; }
   .modal { background:#fff;border-radius:14px;width:92%;box-shadow:var(--shadow-lg);max-height:92vh;overflow:auto; }
