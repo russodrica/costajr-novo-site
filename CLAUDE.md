@@ -2347,6 +2347,32 @@ consistente). doc-empresa.astro: `VIEW`/`naView`/`VIEW_META`/`vmeta`; `ABAS` der
 - LICAO reforcada: a chave `sb_secret_` lê PDF do bucket privado via POST /storage/v1/object/sign
   + headers apikey/Bearer + UA nao-navegador; extrair com unpdf (script dentro do projeto).
 
+## Atualizacao 24/06/2026 (parte 5) — BUG multi-perfil: token so tinha o perfil principal
+
+**Relato:** Renata (Gestor de Manutencao, acesso quase integral) nao via "Documentacao".
+**Diagnostico (so leitura, REST + service key):** portal_profiles dela = approved, roles =
+[manutencao_operacao, manutencao_administrativo, operacional, rh, financeiro, comercial,
+juridico] (7 perfis), SEM override bloqueando doc-*. Pelo codigo ela DEVERIA ver (juridico
+esta em GRUPO_ROLES.juridico).
+
+**CAUSA RAIZ (commit 6407f38):** o `/admin/login` (src/pages/api/admin/login.ts) mintava o
+token so com `role` (perfil PRINCIPAL = manutencao_operacao), SEM `roles[]`. As PAGINAS
+(doc-empresa.astro, doc-bancarios.astro) gateavam com `temPerfil(claims, [...])` — que le os
+perfis do TOKEN (perfisDe -> claims.roles||[claims.role]). Entao quem tinha acesso por um
+perfil SECUNDARIO (juridico/financeiro) era REDIRECIONADA, embora o MENU (Admin.astro, que
+usa `perfisFrescos` = roles do BANCO) MOSTRASSE o item. **Inconsistencia: menu=perfis frescos
+do banco x pagina=perfis do token.** (O portal/login.ts JA incluia roles[]; so o admin/login
+nao.)
+
+**FIX:** (1) `/admin/login` agora poe `roles[]` no token (select + signToken). (2) Novo
+`temPerfilFresco(claims, aceitos)` em permissoes.ts le os perfis FRESCOS do banco; doc-empresa
+e doc-bancarios passaram a usa-lo no gate -> usuario multi-perfil acessa SEM relogar (so
+hard-refresh). **LICAO:** todo gate de pagina por `temPerfil(claims,...)` herda esse bug p/
+usuario multi-perfil cujo perfil PRINCIPAL nao concede acesso — usar `temPerfilFresco` (async)
+nessas paginas, OU confiar no token agora que o login inclui roles[] (vale no PROXIMO login).
+Paginas RH/financeiro/etc. ainda usam temPerfil(claims); ficam corretas p/ a Renata quando ela
+relogar (token novo com roles) — ou migrar p/ temPerfilFresco se aparecer o mesmo sintoma.
+
 ## Convencoes desta pasta para o Claude Code
 
 - Sempre que iniciar uma sessao nesta pasta, leia este CLAUDE.md primeiro.
