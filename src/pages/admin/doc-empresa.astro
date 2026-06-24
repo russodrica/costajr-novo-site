@@ -156,6 +156,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       <option value="na">⚪ Não aplicável</option>
     </select>
     <button class="btn btn-secondary" onclick="enviarResumo(this)" title="Envia agora o e-mail de vencimentos para o financeiro/jurídico + Telegram">📧 Enviar resumo</button>
+    <button class="btn btn-secondary" onclick="abrirEnviarDocs()" title="Selecione vários documentos e envie todos num e-mail só">📨 Enviar documentos</button>
     <button class="btn btn-primary" onclick="abrirNovo()">+ Novo documento</button>
   </div>
 
@@ -459,8 +460,12 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
             <input type="month" id="upCompetencia" style="max-width:200px" />
           </div>
           <label style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Anexar arquivo (PDF, imagem, DOC, XLS — até 45 MB)</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input type="file" name="arquivo" required accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,application/pdf" style="flex:1" />
+          <div id="dropZone" style="border:2px dashed var(--border);border-radius:10px;padding:16px;text-align:center;background:#FAFBFC;cursor:pointer;transition:.15s">
+            <div style="font-size:13px;color:#6B7280">📥 <strong>Arraste o arquivo aqui</strong> que ele anexa sozinho<br/><span style="font-size:12px">— ou clique para escolher —</span></div>
+            <div id="dropFileName" style="font-size:12.5px;color:var(--brand);font-weight:700;margin-top:6px"></div>
+            <input type="file" name="arquivo" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,application/pdf" style="display:none" />
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:8px">
             <button type="submit" class="btn btn-primary" id="btnUpload">Enviar</button>
           </div>
         </form>
@@ -469,6 +474,28 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
   </div>
 
   <input type="file" id="fileSlot" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,application/pdf" style="display:none" />
+
+  <!-- Modal: enviar documentos por e-mail -->
+  <div class="modal-overlay" id="modalEnviar">
+    <div class="modal-box" style="max-width:680px">
+      <div class="modal-header"><h2>📨 Enviar documentos por e-mail</h2><button class="modal-close" onclick="fecharEnviar()">✕</button></div>
+      <div style="padding:16px 24px;max-height:82vh;overflow:auto">
+        <div class="form-group"><label>Para (um ou mais e-mails, separados por vírgula) *</label><input id="envTo" placeholder="cliente@email.com, contador@email.com" /></div>
+        <div class="form-group"><label>Assunto</label><input id="envSubject" placeholder="Documentos — Costa Júnior Engenharia" /></div>
+        <div class="form-group"><label>Mensagem (opcional)</label><textarea id="envMsg" rows="2" placeholder="Olá, seguem em anexo os documentos solicitados."></textarea></div>
+        <div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px">
+          <input class="search-input" id="envBusca" placeholder="Buscar documento…" oninput="filtrarEnvio()" style="flex:1" />
+          <span id="envCount" style="font-size:12.5px;color:#6B7280;white-space:nowrap">0 selecionado(s)</span>
+        </div>
+        <div id="envLista" style="border:1px solid var(--border);border-radius:8px;max-height:40vh;overflow:auto;padding:6px 12px"></div>
+        <div id="envMsgBox" style="margin-top:10px"></div>
+        <div class="modal-footer" style="margin-top:14px">
+          <button type="button" class="btn btn-secondary" onclick="fecharEnviar()">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btnEnviarDocs" onclick="enviarDocs()">📨 Enviar e-mail</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script type="application/json" id="docsData" set:html={docsJson} />
 
@@ -623,8 +650,32 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         if (anual) { inp.type = "number"; inp.min = "2017"; inp.max = String(hj.getFullYear() + 1); inp.value = String(hj.getFullYear()); if (lab) lab.textContent = "Ano (exercício)"; }
         else { inp.type = "month"; inp.value = `${hj.getFullYear()}-${String(hj.getMonth() + 1).padStart(2, "0")}`; if (lab) lab.textContent = "Mês de emissão / competência"; }
       }
+      // periódico precisa da competência → não anexa sozinho; espera o "Enviar"
+      (window as any).__upPeriodo = ehPeriodo;
+      const dfn = document.getElementById("dropFileName"); if (dfn) dfn.textContent = "";
       overlay("modalArq").classList.add("open");
     }
+    // ── Arrastar-e-soltar no anexo ──
+    function aplicarArquivoDrop(file: File) {
+      const dfn = document.getElementById("dropFileName"); if (dfn) dfn.textContent = "✓ " + file.name;
+      // documento simples (sem competência) anexa direto; periódico espera o botão Enviar
+      if (!(window as any).__upPeriodo) (document.getElementById("formUpload") as HTMLFormElement).requestSubmit();
+    }
+    (function initDrop() {
+      const dz = document.getElementById("dropZone");
+      const fi = () => document.querySelector("#formUpload [name=arquivo]") as HTMLInputElement;
+      if (!dz) return;
+      dz.addEventListener("click", () => fi().click());
+      fi().addEventListener("change", (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) aplicarArquivoDrop(f); });
+      ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); (dz as HTMLElement).style.background = "#EFF6FF"; (dz as HTMLElement).style.borderColor = "var(--brand)"; }));
+      ["dragleave", "dragend"].forEach((ev) => dz.addEventListener(ev, () => { (dz as HTMLElement).style.background = "#FAFBFC"; (dz as HTMLElement).style.borderColor = "var(--border)"; }));
+      dz.addEventListener("drop", (e: any) => {
+        e.preventDefault(); (dz as HTMLElement).style.background = "#FAFBFC"; (dz as HTMLElement).style.borderColor = "var(--border)";
+        const f = e.dataTransfer?.files?.[0]; if (!f) return;
+        const dt = new DataTransfer(); dt.items.add(f); fi().files = dt.files;
+        aplicarArquivoDrop(f);
+      });
+    })();
     function renderArq(arquivos: any[]) {
       const box = document.getElementById("listaArq")!;
       if (!arquivos || !arquivos.length) { box.innerHTML = `<p style="color:#9CA3AF;font-size:13px">Nenhum arquivo anexado ainda.</p>`; return; }
@@ -871,7 +922,69 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       else { box.style.display = "none"; if (exp) exp.textContent = "+"; }
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot });
+    // ── Enviar documentos por e-mail (vários de uma vez) ──
+    function abrirEnviarDocs() {
+      renderEnvLista();
+      (document.getElementById("envMsgBox") as HTMLElement).innerHTML = "";
+      overlay("modalEnviar").classList.add("open");
+    }
+    function fecharEnviar() { overlay("modalEnviar").classList.remove("open"); }
+    function renderEnvLista() {
+      const ativos = DOCS.filter((d: any) => !d.arquivado && (d.arquivos || []).length);
+      const byCat: Record<string, any[]> = {};
+      for (const d of ativos) (byCat[d.categoria || "Outros"] = byCat[d.categoria || "Outros"] || []).push(d);
+      const cats = Object.keys(byCat).sort();
+      let html = "";
+      for (const c of cats) {
+        html += `<div style="margin:8px 0 2px;font-weight:700;color:var(--brand);font-size:12px;text-transform:uppercase">${c.replace(/</g, "&lt;")}</div>`;
+        for (const d of byCat[c]) {
+          for (const a of d.arquivos) {
+            const lbl = `${d.nome}${d.arquivos.length > 1 ? " — " + (a.nome || "arquivo") : ""}`;
+            const txt = (d.nome + " " + (a.nome || "")).toLowerCase().replace(/"/g, "&quot;");
+            html += `<label class="env-item" data-txt="${txt}" style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">
+              <input type="checkbox" class="env-chk" value="${a.id}" onchange="envCountUpd()" />
+              <span>📄 ${lbl.replace(/</g, "&lt;")}</span></label>`;
+          }
+        }
+      }
+      (document.getElementById("envLista") as HTMLElement).innerHTML = html || `<p style="color:#9CA3AF;padding:10px">Nenhum documento com arquivo anexado.</p>`;
+      envCountUpd();
+    }
+    function envCountUpd() {
+      const n = document.querySelectorAll("#envLista .env-chk:checked").length;
+      (document.getElementById("envCount") as HTMLElement).textContent = `${n} selecionado(s)`;
+    }
+    function filtrarEnvio() {
+      const t = (document.getElementById("envBusca") as HTMLInputElement).value.toLowerCase().trim();
+      document.querySelectorAll("#envLista .env-item").forEach((el) => {
+        (el as HTMLElement).style.display = !t || ((el as HTMLElement).dataset.txt || "").includes(t) ? "" : "none";
+      });
+    }
+    async function enviarDocs() {
+      const to = (document.getElementById("envTo") as HTMLInputElement).value.trim();
+      const ids = Array.from(document.querySelectorAll("#envLista .env-chk:checked")).map((c) => (c as HTMLInputElement).value);
+      if (!to) { alert("Informe ao menos um e-mail."); return; }
+      if (!ids.length) { alert("Selecione ao menos um documento."); return; }
+      const btn = document.getElementById("btnEnviarDocs") as HTMLButtonElement; btn.disabled = true; const orig = btn.textContent; btn.textContent = "Enviando…";
+      const box = document.getElementById("envMsgBox") as HTMLElement;
+      try {
+        const res = await fetch("/api/admin/doc-empresa/enviar-email", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ to, subject: (document.getElementById("envSubject") as HTMLInputElement).value, message: (document.getElementById("envMsg") as HTMLTextAreaElement).value, arquivo_ids: ids }),
+        });
+        const d = await res.json();
+        if (res.ok) {
+          box.innerHTML = `<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;padding:10px 12px;color:#065F46;font-size:13px">✓ Enviado: ${d.enviados} documento(s) para ${(d.to || []).join(", ").replace(/</g, "&lt;")}.</div>`;
+          document.querySelectorAll("#envLista .env-chk:checked").forEach((c) => ((c as HTMLInputElement).checked = false));
+          envCountUpd();
+        } else {
+          box.innerHTML = `<div class="alert alert-error">${(d.error || "Erro ao enviar").replace(/</g, "&lt;")}</div>`;
+        }
+      } catch { box.innerHTML = `<div class="alert alert-error">Falha de rede ao enviar.</div>`; }
+      btn.disabled = false; btn.textContent = orig;
+    }
+
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, envCountUpd, filtrarEnvio });
   </script>
 
   <style>
