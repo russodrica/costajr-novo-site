@@ -108,10 +108,11 @@ const MESES_PT: Record<string, number> = {
   jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
   jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12,
 };
+// Nomes canônicos = BANCOS em doc-bancarios.astro (deve bater exato para filtrar corretamente)
 const BANCOS_MAP: [RegExp, string][] = [
-  [/banco\s+do\s+brasil|\bbb\b/, "BB"],
-  [/caixa\s+econom|\bcef\b|caixa\s+federal/, "Caixa"],   // sem \bcaixa\b (palavra genérica → falso positivo)
-  [/santan/, "Santander"],                                // tolera typos: santandar, santanader…
+  [/banco\s+do\s+brasil|\bbb\b/, "Banco do Brasil"],
+  [/caixa\s+econom|\bcef\b|caixa\s+federal/, "Caixa Econômica Federal"],
+  [/santan/, "Santander"],
   [/sicoob/, "Sicoob"],
   [/bradesco/, "Bradesco"],
   [/ita[u]/, "Itaú"],
