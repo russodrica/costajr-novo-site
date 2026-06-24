@@ -68,9 +68,10 @@ export function detectarSlotPorTexto(texto: string): string | null {
 // a PESSOA errada — quando bate aqui, não se sugere pessoa e dá p/ arquivar direto.
 export function categoriaEmpresaPorTexto(texto: string): { categoria: string; rotulo: string } | null {
   const t = norm(texto);
-  if (/\bbalancete\b|balanco patrimonial|\bbalanco\b|\bdre\b|demonstrac|razao contabil|livro (caixa|diario)|fluxo de caixa|apuracao|faturamento/.test(t)) return { categoria: "Documentos Contábeis", rotulo: "documento contábil" };
-  if (/contrato social|alteracao contratual|cartao cnpj|escritura|estatuto social|recibo de entrega de(c|claracao)/.test(t)) return { categoria: "Documentos Institucionais", rotulo: "documento institucional" };
-  if (/nota fiscal|\bnf-?e\b|\bdarf\b|guia de recolhimento|\bsped\b|imposto/.test(t)) return { categoria: "Documento Fiscal", rotulo: "documento fiscal" };
+  if (/\bcnd\b|certidao|certidoes|\bcrf\b|negativa de debito|regularidade do fgts/.test(t)) return { categoria: "Certidões", rotulo: "certidão" };
+  if (/\bpgdas\b|\bdefis\b|\bdarf\b|\bdctf\b|guia (de )?(inss|fgts|gfip)|\bissqn?\b|guia de recolhimento|obrigac(ao|oes) fiscal|\bgfip\b/.test(t)) return { categoria: "Guias e Obrigações Fiscais", rotulo: "guia/obrigação fiscal" };
+  if (/\bbalancete\b|balanco patrimonial|\bbalanco\b|\bdre\b|demonstrac|razao contabil|livro (caixa|diario)|fluxo de caixa|apuracao|\bsped\b|\becf\b|faturamento|analise patrimonial/.test(t)) return { categoria: "Documentos Contábeis", rotulo: "documento contábil" };
+  if (/contrato social|alteracao contratual|cartao cnpj|inscricao (estadual|municipal)|cadastro de contribuinte|escritura|estatuto social|ficha cadastral|domicilio bancario|situacao fiscal|\bduns\b|\bcrea\b|\bcau\b/.test(t)) return { categoria: "Documentos da Empresa", rotulo: "documento cadastral" };
   return null;
 }
 export function ehDocEmpresa(texto: string): boolean { return categoriaEmpresaPorTexto(texto) !== null; }

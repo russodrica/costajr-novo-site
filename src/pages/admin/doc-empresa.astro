@@ -18,21 +18,24 @@ const docs: any[] = docsRaw || [];
 const docsAtivos    = docs.filter((d: any) => !d.arquivado);
 const docsArquivados = docs.filter((d: any) => d.arquivado);
 
-// As 5 abas da plataforma (categorização macro). Também é a ordem de exibição.
+// As 8 abas da plataforma (categorização macro). Também é a ordem de exibição.
 const ABAS = [
-  { nome: "Documento Fiscal", icon: "🧾" },
+  { nome: "Certidões", icon: "📜" },
+  { nome: "Documentos da Empresa", icon: "🏢" },
+  { nome: "Guias e Obrigações Fiscais", icon: "🧾" },
   { nome: "Documentos Contábeis", icon: "📊" },
-  { nome: "Contrato com Cliente", icon: "🤝" },
-  { nome: "Empresas Fornecedoras", icon: "🏢" },
-  { nome: "Empreiteiros / Terceiros", icon: "👷" },
+  { nome: "Clientes", icon: "🤝" },
+  { nome: "Empresas Fornecedoras", icon: "🏬" },
   { nome: "Seguros", icon: "🛡️" },
   { nome: "Documentos Institucionais", icon: "🏛️" },
 ];
 const CATEGORIAS = ABAS.map((a) => a.nome);
 const PERIODICIDADES = ["Mensal", "Anual", "Consulta Mensal", "Sem validade"];
 
-// Categoria cujos documentos são por obra — sem alerta de vencimento
-const CAT_SEM_ALERTA = "Empreiteiros / Terceiros";
+// Categorias por PERÍODO/CONTRATO — não geram alerta de vencimento (validade não se aplica).
+// As de validade (Certidões, Documentos da Empresa, Seguros, Fornecedoras) seguem com alerta.
+const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais"]);
+const CAT_SEM_ALERTA = "Empreiteiros / Terceiros"; // legado (categoria arquivada)
 
 // Sub-grupos de "Documento Fiscal" (definidos aqui para usar no template; porGrupoFiscal calculado depois de porCat)
 const GRUPOS_FISCAL = [
@@ -46,7 +49,7 @@ const hoje = new Date().toISOString().slice(0, 10);
 const em30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 
 function situacao(d: any, cat?: string): string {
-  if (cat === CAT_SEM_ALERTA) return "na"; // por obra — sem alerta de vencimento
+  if (cat && CATS_SEM_ALERTA.has(cat)) return "na"; // por período/contrato — sem alerta de vencimento
   if (d.validade_na) return "na";
   if (!d.validade) return "definir";
   if (d.validade < hoje) return "vencido";
@@ -54,7 +57,7 @@ function situacao(d: any, cat?: string): string {
   return "valido";
 }
 function badge(d: any, cat?: string): { cls: string; txt: string } {
-  if (cat === CAT_SEM_ALERTA) return { cls: "badge-gray", txt: "📋 Por obra" };
+  if (cat && CATS_SEM_ALERTA.has(cat)) return { cls: "badge-gray", txt: "—" };
   if (d.validade_na) return { cls: "badge-gray", txt: "N/A — sem validade" };
   if (!d.validade) return { cls: "badge-gray", txt: "⚠ Definir validade" };
   const f = String(d.validade).split("-").reverse().join("/");
