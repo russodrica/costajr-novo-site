@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { enviarTelegram, escTg } from "~/lib/telegram";
-import { rhidConfigurado, agoraSP, montarDia, relatorioEntrada, trabalhamHoje, diagnostico } from "~/lib/rhid";
+import { rhidConfigurado, agoraSP, montarDia, resumoJornada, diagnostico } from "~/lib/rhid";
 
 export const prerender = false;
 
@@ -53,34 +53,33 @@ async function handle(request: Request, url: URL): Promise<Response> {
 
   try {
     const d = await montarDia(dataISO);
-    const { semEntrada, comEntrada } = relatorioEntrada(d);
-    const trab = trabalhamHoje(d);
+    const dias = d.dias.slice().sort((a, b) => a.pessoa.nome.localeCompare(b.pessoa.nome, "pt-BR"));
 
-    const lista = semEntrada
-      .slice()
-      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
-      .map((p) => `• ${escTg(p.nome)}`)
-      .join("\n");
+    // uma linha por colaborador ativo
+    const linhas = dias.map((x) => {
+      if (!x.trabalhaHoje) return `⚪ ${escTg(x.pessoa.nome)} — sem expediente hoje`;
+      const ent = resumoJornada(x.punches).entrada;
+      return ent ? `🟢 ${escTg(x.pessoa.nome)} — entrou ${ent}` : `🔴 ${escTg(x.pessoa.nome)} — <b>sem entrada</b>`;
+    });
+    const semEntrada = dias.filter((x) => x.trabalhaHoje && x.punches.length === 0);
 
     const resumo = {
       data: dataISO,
-      trabalhamHoje: trab,
-      comEntrada: comEntrada.length,
+      ativos: dias.length,
       semEntrada: semEntrada.length,
-      semEntradaNomes: semEntrada.map((p) => p.nome),
+      pessoas: dias.map((x) => ({ nome: x.pessoa.nome, trabalhaHoje: x.trabalhaHoje, entrada: resumoJornada(x.punches).entrada })),
     };
 
     if (url.searchParams.get("dry") === "1") return J({ ok: true, dry: true, resumo });
 
-    // Só alerta quando há quem não bateu entrada.
+    // Só dispara o alerta quando alguém com expediente ainda não bateu a entrada.
     if (semEntrada.length === 0) {
-      return J({ ok: true, enviado: false, motivo: "todos bateram entrada", resumo });
+      return J({ ok: true, enviado: false, motivo: "todos com expediente já bateram entrada", resumo });
     }
 
     const msg =
-      `⏰ <b>Ponto — Entrada (${dia(dataISO)})</b>\n` +
-      `Sem batida de entrada até as ${String(ag.hora).padStart(2, "0")}h:\n${lista}\n\n` +
-      `<i>${semEntrada.length} sem entrada · ${comEntrada.length} já bateram · ${trab} trabalham hoje</i>`;
+      `⏰ <b>Ponto — Entrada</b> · ${dia(dataISO)} (situação às ${String(ag.hora).padStart(2, "0")}h)\n\n` +
+      linhas.join("\n");
 
     const r = await enviarTelegram(msg, { canal: "ATIVOS" });
     return J({ ok: r.ok, enviado: r.ok, motivo: r.motivo, resumo }, r.ok ? 200 : 502);

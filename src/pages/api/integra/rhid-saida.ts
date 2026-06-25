@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { enviarTelegram, escTg } from "~/lib/telegram";
-import { rhidConfigurado, agoraSP, montarDia, relatorioSaida, auditarLocais, trabalhamHoje, diagnostico, probeAfdMobile } from "~/lib/rhid";
+import { rhidConfigurado, agoraSP, montarDia, resumoJornada, diagnostico, probeAfdMobile } from "~/lib/rhid";
 
 export const prerender = false;
 
@@ -61,47 +61,34 @@ async function handle(request: Request, url: URL): Promise<Response> {
 
   try {
     const d = await montarDia(dataISO);
-    const { bateuSaida, semSaida } = relatorioSaida(d);
-    const anomalias = url.searchParams.get("semAuditoria") === "1" ? [] : auditarLocais(d);
+    const dias = d.dias.slice().sort((a, b) => a.pessoa.nome.localeCompare(b.pessoa.nome, "pt-BR"));
+
+    // Bloco de cada colaborador: entrada · almoço · saída.
+    const blocos = dias.map((x) => {
+      const nome = `👤 <b>${escTg(x.pessoa.nome)}</b>`;
+      if (!x.trabalhaHoje) return `${nome}\n   <i>sem expediente hoje</i>`;
+      const j = resumoJornada(x.punches);
+      if (j.nBatidas === 0) return `${nome}\n   🔴 não bateu o ponto hoje`;
+      const almoco = j.almocoIni && j.almocoFim ? `${j.almocoIni}–${j.almocoFim}` : "—";
+      const saida = j.saida ? `${j.saida} ✅` : "⏳ pendente ⚠️";
+      return `${nome}\n   Entrada ${j.entrada || "—"} · Almoço ${almoco} · Saída ${saida}`;
+    });
 
     const resumo = {
       data: dataISO,
-      trabalhamHoje: trabalhamHoje(d),
-      bateuSaida: bateuSaida.length,
-      semSaida: semSaida.length,
-      semSaidaNomes: semSaida.map((x) => x.p.nome),
-      anomaliasLocal: anomalias.map((a) => ({ nome: a.p.nome, locais: a.locais.map((l) => l.nome) })),
+      ativos: dias.length,
+      emAberto: dias.filter((x) => x.trabalhaHoje && resumoJornada(x.punches).emAberto).length,
+      pessoas: dias.map((x) => ({ nome: x.pessoa.nome, ...resumoJornada(x.punches), trabalhaHoje: x.trabalhaHoje })),
     };
 
     if (url.searchParams.get("dry") === "1") return J({ ok: true, dry: true, resumo });
 
-    // Mensagem principal de saída — sempre enviada (é um resumo do fim do dia).
-    const blocoSaida =
-      `🌙 <b>Ponto — Saída (${dia(dataISO)})</b>\n` +
-      `✅ Bateram a saída: <b>${bateuSaida.length}</b>\n` +
-      (semSaida.length
-        ? `⚠️ Ainda SEM saída (${semSaida.length}):\n${listaNomes(semSaida.map((x) => `${x.p.nome} (entrou ${x.desde})`))}`
-        : `👍 Ninguém em aberto — todos que entraram já bateram a saída.`) +
-      `\n\n<i>${trabalhamHoje(d)} trabalham hoje</i>`;
+    const msg =
+      `🌙 <b>Ponto — Resumo do dia</b> · ${dia(dataISO)}\n\n` +
+      blocos.join("\n\n");
 
-    const r1 = await enviarTelegram(blocoSaida, { canal: "ATIVOS" });
-
-    // Auditoria de local — só alerta quando há batidas em locais diferentes.
-    let auditoriaEnviada = false;
-    if (anomalias.length) {
-      const linhas = anomalias
-        .slice()
-        .sort((a, b) => a.p.nome.localeCompare(b.p.nome, "pt-BR"))
-        .map((a) => `• <b>${escTg(a.p.nome)}</b>: ` + a.locais.map((l) => `${escTg(l.nome)} (${escTg(l.horas.join(", "))})`).join(" ↔ "))
-        .join("\n");
-      const blocoAud =
-        `📍 <b>Auditoria de local — ${dia(dataISO)}</b>\n` +
-        `Batidas em locais/equipamentos diferentes no mesmo dia:\n${linhas}`;
-      const r2 = await enviarTelegram(blocoAud, { canal: "ATIVOS" });
-      auditoriaEnviada = r2.ok;
-    }
-
-    return J({ ok: r1.ok, enviado: r1.ok, auditoriaEnviada, anomalias: anomalias.length, motivo: r1.motivo, resumo }, r1.ok ? 200 : 502);
+    const r = await enviarTelegram(msg, { canal: "ATIVOS" });
+    return J({ ok: r.ok, enviado: r.ok, motivo: r.motivo, resumo }, r.ok ? 200 : 502);
   } catch (e: any) {
     return J({ ok: false, error: String(e?.message || e) }, 502);
   }

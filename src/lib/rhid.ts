@@ -392,6 +392,22 @@ export function relatorioSaida(dia: DiaPonto): { bateuSaida: { p: Pessoa; ultima
   return { bateuSaida, semSaida };
 }
 
+// Resumo da jornada a partir das batidas reais: entrada / almoço / saída.
+// Sequência típica: [entrada, saída-almoço, volta-almoço, saída].
+export type Jornada = { entrada: string | null; almocoIni: string | null; almocoFim: string | null; saida: string | null; emAberto: boolean; nBatidas: number };
+export function resumoJornada(punches: Date[]): Jornada {
+  const h = (d?: Date) => (d ? hhmm(d) : null);
+  const n = punches.length;
+  return {
+    entrada: n >= 1 ? h(punches[0]) : null,
+    almocoIni: n >= 4 ? h(punches[1]) : null,
+    almocoFim: n >= 4 ? h(punches[2]) : null,
+    saida: n >= 2 && n % 2 === 0 ? h(punches[n - 1]) : null,
+    emAberto: n > 0 && n % 2 === 1, // nº ímpar = última batida é entrada, falta saída
+    nBatidas: n,
+  };
+}
+
 // AUDITORIA DE LOCAL: a apuração não traz GPS/equipamento por batida. Auditoria
 // por localização do app depende de outra fonte (a confirmar com a Control iD).
 // Desabilitada por ora — retorna vazio (não dispara alerta).
