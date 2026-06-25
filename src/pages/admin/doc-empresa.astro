@@ -15,7 +15,7 @@ if (!(await temPerfilFresco(claims, ["admin", "financeiro", "juridico", "comerci
 const db = supabaseAdmin();
 // Carrega TODOS (ativos + arquivados) — a aba "Arquivados" filtra no cliente
 const { data: docsRaw } = await db.from("doc_empresa")
-  .select("*, doc_empresa_arquivos(id,nome,created_at,competencia)").order("nome");
+  .select("*, doc_empresa_arquivos(id,nome,created_at,competencia,arquivado,arquivado_em)").order("nome");
 const docs: any[] = docsRaw || [];
 
 // Catálogo completo de abas. A VIEW (?view=) decide quais aparecem — assim
@@ -96,6 +96,10 @@ function badge(d: any, cat?: string): { cls: string; txt: string } {
   return (cat && CATS_SEM_ALERTA.has(cat)) ? { cls: "badge-gray", txt: "—" } : { cls: "badge-gray", txt: "⚠ Definir" };
 }
 const fmtData = (s: any) => (s ? String(s).split("T")[0].split("-").reverse().join("/") : "—");
+// Versões de um documento: VIGENTES (não arquivadas) x HISTÓRICO (arquivadas).
+// O painel mostra a contagem de vigentes; as antigas ficam no histórico do modal.
+const nVig  = (d: any) => (d.doc_empresa_arquivos || []).filter((a: any) => !a.arquivado).length;
+const nHist = (d: any) => (d.doc_empresa_arquivos || []).filter((a: any) =>  a.arquivado).length;
 
 // KPIs apenas de documentos ativos (Empreiteiros/Terceiros não contam em vencido/vencendo)
 const kpi = { total: docsAtivos.length, vencido: 0, vencendo: 0, na: 0, definir: 0 };
@@ -141,7 +145,7 @@ const docsJs = docs.map((d: any) => ({
   id: d.id, categoria: d.categoria, grupo: d.grupo || null, nome: d.nome, periodicidade: d.periodicidade,
   validade: d.validade, validade_na: d.validade_na, data_emissao: d.data_emissao, site: d.site, observacoes: d.observacoes,
   arquivado: d.arquivado, valor_mensal: d.valor_mensal ?? null,
-  arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome, competencia: a.competencia || null, created_at: a.created_at || null })),
+  arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome, competencia: a.competencia || null, created_at: a.created_at || null, arquivado: !!a.arquivado })),
 }));
 const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 ---
@@ -215,7 +219,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                     <tbody>
                       {docsGrupo.map((d: any) => {
                         const b = badge(d, c);
-                        const nArq = (d.doc_empresa_arquivos || []).length;
+                        const nArq = nVig(d), nHistArq = nHist(d);
                         return (
                           <tr class="doc-row" data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()}>
                             <td>
@@ -226,9 +230,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                             <td style="font-size:12.5px;color:#6B7280;white-space:nowrap">📅 {fmtData(d.data_emissao)}</td>
                             <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                             <td>
-                              {nArq === 0
+                              {(nArq + nHistArq) === 0
                                 ? <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px;cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600" onclick={`anexos('${d.id}')`} title="Nenhum arquivo anexado">📎 Sem anexo</button>
-                                : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} arquivo(s)`}>📎 {nArq}</button>}
+                                : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} vigente(s)${nHistArq ? ` · ${nHistArq} no histórico` : ""}`}>📎 {nArq}{nHistArq > 0 ? ` 📜${nHistArq}` : ""}</button>}
                             </td>
                             <td style="white-space:nowrap;text-align:right">
                               <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
@@ -271,7 +275,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                   );
                   const dataRows = docsGrupo.map((d: any) => {
                     const b = badge(d, c);
-                    const nArq = (d.doc_empresa_arquivos || []).length;
+                    const nArq = nVig(d), nHistArq = nHist(d);
                     const vm = d.valor_mensal != null ? `R$ ${Number(d.valor_mensal).toLocaleString("pt-BR", {minimumFractionDigits: 2})}` : "—";
                     return (
                       <tr class="doc-row forn-row" data-row-doc={d.id} data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} data-val={String(d.valor_mensal || 0)} data-validade={d.validade || "9999-99-99"} data-forn-grp={key}>
@@ -284,9 +288,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                         <td style="white-space:nowrap"><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                         <td style="text-align:right;font-weight:600;font-size:13px;white-space:nowrap">{vm}</td>
                         <td>
-                          {nArq === 0
+                          {(nArq + nHistArq) === 0
                             ? <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px;cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600" onclick={`anexos('${d.id}')`} title="Nenhum arquivo anexado">📎 Sem anexo</button>
-                            : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} arquivo(s)`}>📎 {nArq}</button>}
+                            : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} vigente(s)${nHistArq ? ` · ${nHistArq} no histórico` : ""}`}>📎 {nArq}{nHistArq > 0 ? ` 📜${nHistArq}` : ""}</button>}
                         </td>
                         <td style="white-space:nowrap;text-align:right">
                           <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
@@ -304,7 +308,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         ) : isPeriodo ? (
           <div style="padding:8px 12px">
             {docsInCat.map((d: any) => {
-              const nArq = (d.doc_empresa_arquivos || []).length;
+              const nArq = nVig(d);
               return (
                 <div class="doc-row" data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} style="border:1px solid var(--border);border-radius:8px;margin:7px 0;overflow:hidden">
                   <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#FAFBFC;cursor:pointer" onclick={`togglePeriodo('${d.id}')`}>
@@ -327,7 +331,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
               <tbody>
                 {docsInCat.map((d: any) => {
                   const b = badge(d, c);
-                  const nArq = (d.doc_empresa_arquivos || []).length;
+                  const nArq = nVig(d), nHistArq = nHist(d);
                   return (
                     <tr class="doc-row" data-row-doc={d.id} data-cat={c} data-sit={situacao(d, c)} data-nome={(d.nome || "").toLowerCase()} style={d.arquivado ? "opacity:.55" : ""}>
                       <td>
@@ -339,9 +343,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                       <td style="font-size:12.5px;color:#6B7280;white-space:nowrap">📅 {fmtData(d.data_emissao)}</td>
                       <td style="white-space:nowrap"><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                       <td>
-                        {nArq === 0
+                        {(nArq + nHistArq) === 0
                           ? <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px;cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600" onclick={`anexos('${d.id}')`} title="Nenhum arquivo anexado">📎 Sem anexo</button>
-                          : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} arquivo(s)`}>📎 {nArq}</button>}
+                          : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} vigente(s)${nHistArq ? ` · ${nHistArq} no histórico` : ""}`}>📎 {nArq}{nHistArq > 0 ? ` 📜${nHistArq}` : ""}</button>}
                       </td>
                       <td style="white-space:nowrap;text-align:right">
                         <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
@@ -544,7 +548,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     })();
 
     function fechar() { overlay("modalDoc").classList.remove("open"); }
-    function fecharArq() { overlay("modalArq").classList.remove("open"); }
+    function fecharArq() { overlay("modalArq").classList.remove("open"); if (DOC_DIRTY) { DOC_DIRTY = false; reloadComAba(); } }
 
     function toggleNA() {
       const na = document.getElementById("fldValidadeNA") as HTMLInputElement;
@@ -646,6 +650,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       const d = docById(id);
       const nome = (d && d.nome) || "";
       const arquivos = (d && d.arquivos) || [];
+      arqDocId = id;
       document.getElementById("modalArqTitle")!.textContent = `Anexos — ${nome}`;
       renderArq(arquivos);
       (document.getElementById("formUpload") as HTMLFormElement).reset();
@@ -688,18 +693,50 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         aplicarArquivoDrop(f);
       });
     })();
+    let arqDocId = "";
+    let DOC_DIRTY = false; // alguma versão foi arquivada/reativada → recarrega ao fechar p/ atualizar contadores
     function renderArq(arquivos: any[]) {
       const box = document.getElementById("listaArq")!;
       if (!arquivos || !arquivos.length) { box.innerHTML = `<p style="color:#9CA3AF;font-size:13px">Nenhum arquivo anexado ainda.</p>`; return; }
-      // mais recente primeiro → marca a VERSÃO VIGENTE
+      // mais recente primeiro; VIGENTES (não arquivados) em destaque, ANTIGOS vão p/ o histórico
       const ord = arquivos.slice().sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
-      box.innerHTML = ord.map((a, i) => `
+      const vig = ord.filter((a) => !a.arquivado);
+      const hist = ord.filter((a) => a.arquivado);
+      const esc = (s: any) => String(s || "arquivo").replace(/</g, "&lt;");
+      const linhaVig = (a: any, i: number) => `
         <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-light)">
-          <span style="flex:1;font-size:13.5px">📄 ${(a.nome || "arquivo").replace(/</g, "&lt;")}${i === 0 ? ' <span class="badge badge-green" style="font-size:10.5px;margin-left:4px">✓ Vigente</span>' : ''}</span>
+          <span style="flex:1;font-size:13.5px">📄 ${esc(a.nome)}${i === 0 ? ' <span class="badge badge-green" style="font-size:10.5px;margin-left:4px">✓ Vigente</span>' : ''}</span>
           <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
+          <button class="btn btn-secondary btn-sm" onclick="arquivarArq('${a.id}', this)" title="Mover para o histórico (versão antiga)">🗄 Arquivar</button>
           <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button>
-        </div>`).join("");
+        </div>`;
+      const linhaHist = (a: any) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--border-light)">
+          <span style="flex:1;font-size:12.5px;color:#9CA3AF">📄 ${esc(a.nome)}</span>
+          <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
+          <button class="btn btn-success btn-sm" onclick="reativarArq('${a.id}', this)" title="Tornar vigente novamente">↩ Reativar</button>
+          <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button>
+        </div>`;
+      let html = vig.length
+        ? vig.map(linhaVig).join("")
+        : `<p style="color:#9CA3AF;font-size:13px;margin:6px 0">Nenhuma versão vigente — tudo está no histórico abaixo.</p>`;
+      if (hist.length) html += `<details style="margin-top:10px"${vig.length ? "" : " open"}><summary style="cursor:pointer;color:#6B7280;font-size:13px;font-weight:600">📜 Histórico — versões antigas (${hist.length})</summary><div style="margin-top:6px">${hist.map(linhaHist).join("")}</div></details>`;
+      box.innerHTML = html;
     }
+    // Arquivar = mandar a versão antiga p/ o histórico; Reativar = trazer de volta.
+    // Re-renderiza o modal SEM fechar (permite arquivar várias seguidas). Ao fechar, recarrega p/ atualizar os contadores.
+    async function setArqArquivado(fid: string, arquivado: boolean, btn: HTMLButtonElement) {
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/doc-empresa/arquivos/${fid}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ arquivado }) });
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; return; }
+      const d = docById(arqDocId);
+      const a = d && (d.arquivos || []).find((x: any) => x.id === fid);
+      if (a) a.arquivado = arquivado;
+      DOC_DIRTY = true;
+      if (d) renderArq(d.arquivos);
+    }
+    function arquivarArq(fid: string, btn: HTMLButtonElement) { setArqArquivado(fid, true, btn); }
+    function reativarArq(fid: string, btn: HTMLButtonElement) { setArqArquivado(fid, false, btn); }
     async function excluirArq(fid: string, btn: HTMLButtonElement) {
       if (!confirm("Excluir este arquivo?")) return;
       btn.disabled = true;
@@ -883,7 +920,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     }
     function renderCompetencias(id: string): string {
       const d = docById(id); if (!d) return "";
-      const arqs = (d.arquivos || []).slice();
+      const arqs = (d.arquivos || []).filter((a: any) => !a.arquivado).slice(); // arquivados saem dos slots → ficam no histórico do modal
       const anual = String(d.periodicidade || "").toLowerCase() === "anual";
       const bim = String(d.periodicidade || "").toLowerCase() === "bimestral";
       const hoje = new Date();
@@ -1001,7 +1038,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     function fecharEnviar() { overlay("modalEnviar").classList.remove("open"); }
     function renderEnvLista() {
       // só os documentos da ABA/área em que a pessoa está (empresa | contratos | seguros)
-      const ativos = DOCS.filter((d: any) => !d.arquivado && (d.arquivos || []).length && naViewClient(d.categoria));
+      const ativos = DOCS.filter((d: any) => !d.arquivado && (d.arquivos || []).some((a: any) => !a.arquivado) && naViewClient(d.categoria));
       const byCat: Record<string, any[]> = {};
       for (const d of ativos) (byCat[d.categoria || "Outros"] = byCat[d.categoria || "Outros"] || []).push(d);
       const cats = Object.keys(byCat).sort();
@@ -1009,8 +1046,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       for (const c of cats) {
         html += `<div style="margin:8px 0 2px;font-weight:700;color:var(--brand);font-size:12px;text-transform:uppercase">${c.replace(/</g, "&lt;")}</div>`;
         for (const d of byCat[c]) {
-          for (const a of d.arquivos) {
-            const lbl = `${d.nome}${d.arquivos.length > 1 ? " — " + (a.nome || "arquivo") : ""}`;
+          const vigentes = (d.arquivos || []).filter((a: any) => !a.arquivado);
+          for (const a of vigentes) {
+            const lbl = `${d.nome}${vigentes.length > 1 ? " — " + (a.nome || "arquivo") : ""}`;
             html += `<label class="env-item" style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">
               <input type="checkbox" class="env-chk" value="${a.id}" onchange="envCountUpd()" />
               <span>📄 ${lbl.replace(/</g, "&lt;")}</span></label>`;
@@ -1054,7 +1092,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       btn.disabled = false; btn.textContent = orig;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, envCountUpd, filtrarEnvio });
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, envCountUpd, filtrarEnvio });
   </script>
 
   <style>

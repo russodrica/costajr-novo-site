@@ -24,6 +24,32 @@ export const GET: APIRoute = async ({ request, params }) => {
   }
 };
 
+// PATCH /api/admin/doc-empresa/arquivos/[fid] → arquiva/reativa uma VERSÃO do documento.
+// Arquivar = mandar a versão antiga p/ o histórico (some do painel; só o vigente aparece).
+// Reativar = trazer de volta. Não apaga nada — só alterna o flag (recuperável).
+export const PATCH: APIRoute = async ({ request, params }) => {
+  try {
+    const admin = await requireAdminCookie(request);
+    if (!temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
+    const b = await request.json().catch(() => ({}));
+    const arquivado = !!b.arquivado;
+    const db = supabaseAdmin();
+    const { data: arq } = await db.from("doc_empresa_arquivos").select("id, nome").eq("id", params.fid!).maybeSingle();
+    if (!arq) return jsonErr(404, "Arquivo não encontrado");
+    const { error } = await db.from("doc_empresa_arquivos")
+      .update({ arquivado, arquivado_em: arquivado ? new Date().toISOString() : null })
+      .eq("id", params.fid!);
+    if (error) return jsonErr(400, error.message);
+    await registrarAcao(db, { req: request, admin }, {
+      acao: "editar", entidade: "doc_empresa_arquivos", registro_id: params.fid!,
+      descricao: `${arquivado ? "Arquivou" : "Reativou"} a versão "${(arq as any).nome}"`,
+    }).catch(() => {});
+    return jsonOk({ ok: true, arquivado });
+  } catch (e: any) {
+    return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
+  }
+};
+
 // DELETE /api/admin/doc-empresa/arquivos/[fid] → remove anexo (linha + arquivo do storage).
 // Anexo de storage: só registrarAcao (sem lixeira) — convenção do projeto.
 export const DELETE: APIRoute = async ({ request, params }) => {
