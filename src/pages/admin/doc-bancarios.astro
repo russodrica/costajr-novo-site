@@ -57,7 +57,7 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
 
 // Itens disponíveis para envio por e-mail (apenas os que têm arquivo)
 const bancItems = [
-  ...extratos.map((e: any) => ({ tipo: "extrato", id: e.id, label: `${e.banco} — ${MESES[e.mes - 1]}/${e.ano}`, aba: "extratos" })),
+  ...extratos.map((e: any) => ({ tipo: "extrato", id: e.id, label: `${e.banco} — ${MESES[e.mes - 1]}/${e.ano}`, aba: "extratos", mes: e.mes, ano: e.ano })),
   ...faturas.map((f: any) => ({ tipo: "fatura", id: f.id, label: `${f.cartao} — ${MESES[f.mes - 1]}/${f.ano}`, aba: "faturas" })),
   ...emprestimos.filter((e: any) => e.storage_path).map((e: any) => ({ tipo: "emprestimo", id: e.id, label: [e.banco, e.descricao].filter(Boolean).join(" — ") || "Contrato", aba: "emprestimos" })),
 ];
@@ -209,6 +209,13 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
           <input class="search-input" id="benvBusca" placeholder="Buscar documento…" oninput="filtrarEnvBanc()" style="flex:1" />
           <span id="benvCount" style="font-size:12.5px;color:#6B7280;white-space:nowrap">0 selecionado(s)</span>
         </div>
+        <div style="background:var(--gray-50);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px">⚡ Atalho — mês completo de extratos</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="benvMesCompl" style="flex:2;min-width:170px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px"><option value="">— escolha o mês —</option></select>
+            <button type="button" class="btn btn-secondary" style="white-space:nowrap" onclick="selecionarMesCompleto()">Marcar todos os extratos</button>
+          </div>
+        </div>
         <div style="display:flex;gap:6px;margin-bottom:8px">
           <button type="button" class="pill active" data-benv-aba="" onclick="setBenvAba(this)">Todos</button>
           <button type="button" class="pill" data-benv-aba="extratos" onclick="setBenvAba(this)">🏦 Extratos</button>
@@ -313,7 +320,9 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
   function abrirEnviarDocs() {
     benvAbaAtiva = "";
     document.querySelectorAll("[data-benv-aba]").forEach((b) => b.classList.toggle("active", (b as HTMLElement).dataset.benvAba === ""));
+    (document.getElementById("benvBusca") as HTMLInputElement).value = "";
     renderBenvLista();
+    popularMesesCompl();
     (document.getElementById("benvMsgBox") as HTMLElement).innerHTML = "";
     abrirM("modalEnviarBanc");
   }
@@ -342,6 +351,47 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
     (document.getElementById("benvCount") as HTMLElement).textContent = `${n} selecionado(s)`;
   }
   function filtrarEnvBanc() { renderBenvLista(); }
+  function popularMesesCompl() {
+    const sel = document.getElementById("benvMesCompl") as HTMLSelectElement;
+    const MNOMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    const vistos = new Set<string>();
+    const combos: {mes: number; ano: number}[] = [];
+    for (const it of BANC_ITEMS) {
+      if (it.tipo === "extrato" && it.mes && it.ano) {
+        const k = `${it.mes}/${it.ano}`;
+        if (!vistos.has(k)) { vistos.add(k); combos.push({ mes: Number(it.mes), ano: Number(it.ano) }); }
+      }
+    }
+    combos.sort((a, b) => b.ano !== a.ano ? b.ano - a.ano : b.mes - a.mes);
+    sel.innerHTML = `<option value="">— escolha o mês —</option>` + combos.map((c) => `<option value="${c.mes}/${c.ano}">${MNOMES[c.mes - 1]} / ${c.ano}</option>`).join("");
+  }
+  function selecionarMesCompleto() {
+    const sel = document.getElementById("benvMesCompl") as HTMLSelectElement;
+    if (!sel.value) { alert("Selecione um mês antes de marcar."); return; }
+    const [mes, ano] = sel.value.split("/").map(Number);
+    const MNOMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    // Ativa aba Extratos e limpa busca
+    benvAbaAtiva = "extratos";
+    document.querySelectorAll("[data-benv-aba]").forEach((b) => b.classList.toggle("active", (b as HTMLElement).dataset.benvAba === "extratos"));
+    (document.getElementById("benvBusca") as HTMLInputElement).value = "";
+    renderBenvLista();
+    // Marca apenas os extratos do mês escolhido
+    let marcados = 0;
+    document.querySelectorAll("#benvLista .benv-chk").forEach((c) => {
+      const chk = c as HTMLInputElement;
+      const item = BANC_ITEMS.find((i: any) => i.id === chk.value);
+      const ok = item && item.tipo === "extrato" && Number(item.mes) === mes && Number(item.ano) === ano;
+      chk.checked = !!ok;
+      if (ok) marcados++;
+    });
+    benvCountUpd();
+    if (!marcados) {
+      alert(`Nenhum extrato de ${MNOMES[mes - 1]}/${ano} encontrado.`);
+    } else {
+      const subjEl = document.getElementById("benvSubject") as HTMLInputElement;
+      if (!subjEl.value.trim()) subjEl.value = `Extratos Bancários — ${MNOMES[mes - 1]}/${ano} — Costa Júnior`;
+    }
+  }
   async function enviarDocsBanc() {
     const to = (document.getElementById("benvTo") as HTMLInputElement).value.trim();
     const chks = Array.from(document.querySelectorAll("#benvLista .benv-chk:checked")) as HTMLInputElement[];
@@ -560,5 +610,5 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
     if (res.ok) location.reload(); else { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; }
   }
 
-  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc });
+  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, selecionarMesCompleto });
 </script>
