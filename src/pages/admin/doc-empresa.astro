@@ -504,6 +504,18 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     </div>
   </div>
 
+  <!-- Modal: mover arquivo para outro documento -->
+  <div class="modal-overlay" id="modalMover">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header"><h2>↗ Mover arquivo para outro local</h2><button class="modal-close" onclick="fecharMover()">✕</button></div>
+      <div style="padding:16px 24px;max-height:82vh;overflow:auto">
+        <p style="margin:0 0 8px;color:#6B7280;font-size:13px">Escolha o documento de <strong>destino</strong>. O arquivo <span id="moverNome" style="font-weight:600;color:var(--ink)"></span> sai do documento atual e passa a ficar no escolhido.</p>
+        <input class="search-input" id="moverBusca" placeholder="Buscar documento ou categoria…" oninput="filtrarMover()" style="width:100%;margin-bottom:8px" />
+        <div id="moverLista" style="border:1px solid var(--border);border-radius:8px;max-height:52vh;overflow:auto;padding:4px"></div>
+      </div>
+    </div>
+  </div>
+
   <script type="application/json" id="docsData" set:html={docsJson} />
   <script type="application/json" id="viewCfg" set:html={JSON.stringify({ view: VIEW, contratos: [...CONTRATOS_CATS], seguros: [...SEGUROS_CATS] })} />
 
@@ -707,6 +719,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-light)">
           <span style="flex:1;font-size:13.5px">📄 ${esc(a.nome)}${i === 0 ? ' <span class="badge badge-green" style="font-size:10.5px;margin-left:4px">✓ Vigente</span>' : ''}</span>
           <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
+          <button class="btn btn-outline btn-sm" onclick="moverArq('${a.id}')" title="Mover para outro documento (anexado no lugar errado)">↗ Mover</button>
           <button class="btn btn-secondary btn-sm" onclick="arquivarArq('${a.id}', this)" title="Mover para o histórico (versão antiga)">🗄 Arquivar</button>
           <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button>
         </div>`;
@@ -737,6 +750,73 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     }
     function arquivarArq(fid: string, btn: HTMLButtonElement) { setArqArquivado(fid, true, btn); }
     function reativarArq(fid: string, btn: HTMLButtonElement) { setArqArquivado(fid, false, btn); }
+
+    // ── Mover arquivo para OUTRO documento (foi anexado no lugar errado) ──
+    const CATS_PERIODICAS = ["Guias e Obrigações Fiscais", "Documentos Contábeis"];
+    let moverFid = "";
+    function moverArq(fid: string) {
+      moverFid = fid;
+      const d = docById(arqDocId);
+      const a = d && (d.arquivos || []).find((x: any) => x.id === fid);
+      const nm = document.getElementById("moverNome");
+      if (nm) nm.textContent = a ? `“${a.nome || "arquivo"}”` : "";
+      const busca = document.getElementById("moverBusca") as HTMLInputElement;
+      if (busca) busca.value = "";
+      renderMoverLista();
+      overlay("modalMover").classList.add("open");
+      if (busca) setTimeout(() => busca.focus(), 50);
+    }
+    function fecharMover() { overlay("modalMover").classList.remove("open"); }
+    function renderMoverLista() {
+      const t = ((document.getElementById("moverBusca") as HTMLInputElement)?.value || "").toLowerCase().trim();
+      // destinos = todos os documentos ATIVOS, de QUALQUER área (o arquivo pode ter ido p/ a área errada),
+      // menos o documento atual.
+      const alvos = DOCS.filter((d: any) => d.id !== arqDocId && !d.arquivado);
+      const byCat: Record<string, any[]> = {};
+      for (const d of alvos) {
+        if (t && !(`${d.nome || ""} ${d.categoria || ""}`.toLowerCase().includes(t))) continue;
+        (byCat[d.categoria || "Outros"] = byCat[d.categoria || "Outros"] || []).push(d);
+      }
+      const cats = Object.keys(byCat).sort();
+      const esc = (s: any) => String(s || "").replace(/</g, "&lt;");
+      let html = "";
+      for (const c of cats) {
+        html += `<div style="padding:7px 8px 3px;font-size:11.5px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.03em">${esc(c)}</div>`;
+        for (const d of byCat[c].sort((a: any, b: any) => String(a.nome || "").localeCompare(String(b.nome || "")))) {
+          const tag = CATS_PERIODICAS.includes(d.categoria) ? ` <span style="font-size:11px;color:#9CA3AF">(por competência)</span>` : "";
+          html += `<button type="button" onclick="confirmarMover('${d.id}')" style="display:block;width:100%;text-align:left;border:none;background:none;padding:7px 10px;font-size:13.5px;cursor:pointer;border-radius:6px" onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background='none'">📄 ${esc(d.nome)}${tag}</button>`;
+        }
+      }
+      (document.getElementById("moverLista") as HTMLElement).innerHTML = html || `<p style="color:#9CA3AF;padding:12px;font-size:13px">Nenhum documento encontrado.</p>`;
+    }
+    function filtrarMover() { renderMoverLista(); }
+    async function confirmarMover(targetId: string) {
+      const target = docById(targetId);
+      if (!target || !moverFid) return;
+      const ehPeriodico = CATS_PERIODICAS.includes(target.categoria);
+      const msg = ehPeriodico
+        ? `Mover para “${target.nome}” (${target.categoria})?\n\nEsse documento organiza anexos por mês/ano. O arquivo entra no HISTÓRICO do destino — depois use “+ Anexar” lá para definir a competência.`
+        : `Mover este arquivo para “${target.nome}” (${target.categoria})?`;
+      if (!confirm(msg)) return;
+      const res = await fetch(`/api/admin/doc-empresa/arquivos/${moverFid}`, {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ doc_id: targetId }),
+      });
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || "Erro ao mover."); return; }
+      const resp = await res.json().catch(() => ({}));
+      // move EM MEMÓRIA (não recarrega a página) → permite corrigir vários arquivos seguidos sem perder a posição.
+      const origem = docById(arqDocId);
+      const idx = origem ? (origem.arquivos || []).findIndex((x: any) => x.id === moverFid) : -1;
+      const file = idx >= 0 ? origem.arquivos.splice(idx, 1)[0] : null;
+      if (file) {
+        file.arquivado = !!resp.arquivado; // destino periódico manda p/ histórico
+        if (!target.arquivos) target.arquivos = [];
+        target.arquivos.push(file);
+      }
+      DOC_DIRTY = true;        // ao fechar o modal de Anexos, recarrega p/ atualizar os contadores do painel
+      fecharMover();
+      if (origem) renderArq(origem.arquivos); // re-renderiza o modal do documento de ORIGEM, que continua aberto
+    }
     async function excluirArq(fid: string, btn: HTMLButtonElement) {
       if (!confirm("Excluir este arquivo?")) return;
       btn.disabled = true;
@@ -1092,7 +1172,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       btn.disabled = false; btn.textContent = orig;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, envCountUpd, filtrarEnvio });
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, moverArq, fecharMover, filtrarMover, confirmarMover, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, envCountUpd, filtrarEnvio });
   </script>
 
   <style>
