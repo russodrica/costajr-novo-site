@@ -353,7 +353,7 @@ export function moduloDaRotaApi(pathname: string): string | null {
     // os endpoints de extratos/faturas/empréstimos ficam fisicamente sob doc-empresa,
     // mas pertencem ao módulo (e à tela) "Documentos Bancários".
     const sub = (rest.split("/")[0] || "").replace(/\.ts$/, "");
-    if (["extratos", "faturas", "emprestimos"].includes(sub)) return "doc-bancarios";
+    if (["extratos", "faturas", "emprestimos", "bancarios-email"].includes(sub)) return "doc-bancarios";
     return "doc-empresa";
   }
   // demais: o 1º segmento já é a key do módulo (ativos, obras, clientes, leads, ...)

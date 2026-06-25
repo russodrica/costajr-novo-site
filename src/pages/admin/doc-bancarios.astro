@@ -54,12 +54,21 @@ const STATUS_BADGE: Record<string, string> = { ativo: "badge-blue", quitado: "ba
 const STATUS_LABEL: Record<string, string> = { ativo: "Ativo", quitado: "Quitado", renegociado: "Renegociado" };
 const empAtivos = emprestimos.filter((e) => e.status === "ativo");
 const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0), 0);
+
+// Itens disponíveis para envio por e-mail (apenas os que têm arquivo)
+const bancItems = [
+  ...extratos.map((e: any) => ({ tipo: "extrato", id: e.id, label: `${e.banco} — ${MESES[e.mes - 1]}/${e.ano}`, aba: "extratos" })),
+  ...faturas.map((f: any) => ({ tipo: "fatura", id: f.id, label: `${f.cartao} — ${MESES[f.mes - 1]}/${f.ano}`, aba: "faturas" })),
+  ...emprestimos.filter((e: any) => e.storage_path).map((e: any) => ({ tipo: "emprestimo", id: e.id, label: [e.banco, e.descricao].filter(Boolean).join(" — ") || "Contrato", aba: "emprestimos" })),
+];
+const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
 ---
 
 <Admin title="Documentos Bancários" current="doc-bancarios">
   <div class="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px">
     <span style="font-size:1.3rem;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.02em">🏦 Documentos Bancários</span>
     <span style="flex:1"></span>
+    <button class="btn btn-secondary" onclick="abrirEnviarDocs()" title="Selecione documentos e envie num e-mail só">📨 Enviar documentos</button>
     <a class="btn btn-outline btn-sm" href="/admin/doc-empresa">← Documentos da Empresa</a>
   </div>
   <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Área sensível: extratos, faturas de cartão e empréstimos/financiamentos. Arquivos no cofre privado da empresa (link temporário). Acesso: admin, financeiro e jurídico.</p>
@@ -188,6 +197,34 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
     ))}
   </section>
 
+  <!-- Modal: enviar documentos por e-mail -->
+  <div class="modal-overlay" id="modalEnviarBanc" style="display:none">
+    <div class="modal" style="max-width:680px">
+      <div class="modal-head"><h3 style="margin:0">📨 Enviar documentos por e-mail</h3><button class="modal-x" onclick="fecharEnviarBanc()">×</button></div>
+      <div class="modal-body">
+        <div class="form-group"><label>Para (um ou mais e-mails, separados por vírgula) *</label><input id="benvTo" placeholder="cliente@email.com, contador@email.com" /></div>
+        <div class="form-group"><label>Assunto</label><input id="benvSubject" placeholder="Documentos Bancários — Costa Júnior Engenharia" /></div>
+        <div class="form-group"><label>Mensagem (opcional)</label><textarea id="benvMsg" rows="2" placeholder="Olá, seguem em anexo os documentos solicitados."></textarea></div>
+        <div style="display:flex;align-items:center;gap:8px;margin:8px 0 4px">
+          <input class="search-input" id="benvBusca" placeholder="Buscar documento…" oninput="filtrarEnvBanc()" style="flex:1" />
+          <span id="benvCount" style="font-size:12.5px;color:#6B7280;white-space:nowrap">0 selecionado(s)</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button type="button" class="pill active" data-benv-aba="" onclick="setBenvAba(this)">Todos</button>
+          <button type="button" class="pill" data-benv-aba="extratos" onclick="setBenvAba(this)">🏦 Extratos</button>
+          <button type="button" class="pill" data-benv-aba="faturas" onclick="setBenvAba(this)">💳 Faturas</button>
+          <button type="button" class="pill" data-benv-aba="emprestimos" onclick="setBenvAba(this)">🏛️ Contratos</button>
+        </div>
+        <div id="benvLista" style="border:1px solid var(--border);border-radius:8px;max-height:35vh;overflow:auto;padding:6px 12px"></div>
+        <div id="benvMsgBox" style="margin-top:10px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+          <button type="button" class="btn btn-secondary" onclick="fecharEnviarBanc()">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btnEnviarBanc" onclick="enviarDocsBanc()">📨 Enviar e-mail</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: anexar extrato -->
   <div id="modalExt" class="modal-overlay" style="display:none"><div class="modal" style="max-width:440px">
     <div class="modal-head"><h3 style="margin:0">📎 Anexar extrato</h3><button class="modal-x" onclick="fecharM('modalExt')">×</button></div>
@@ -267,7 +304,76 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
   .modal-x { background:none;border:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1; }
 </style>
 
+<script type="application/json" id="bancItemsData" set:html={bancItemsJson} />
+
 <script>
+  const BANC_ITEMS: any[] = JSON.parse((document.getElementById("bancItemsData") as HTMLElement)?.textContent || "[]");
+  let benvAbaAtiva = "";
+
+  function abrirEnviarDocs() {
+    benvAbaAtiva = "";
+    document.querySelectorAll("[data-benv-aba]").forEach((b) => b.classList.toggle("active", (b as HTMLElement).dataset.benvAba === ""));
+    renderBenvLista();
+    (document.getElementById("benvMsgBox") as HTMLElement).innerHTML = "";
+    abrirM("modalEnviarBanc");
+  }
+  function fecharEnviarBanc() { fecharM("modalEnviarBanc"); }
+  function setBenvAba(btn: HTMLElement) {
+    document.querySelectorAll("[data-benv-aba]").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    benvAbaAtiva = btn.dataset.benvAba || "";
+    renderBenvLista();
+  }
+  function renderBenvLista() {
+    const busca = (document.getElementById("benvBusca") as HTMLInputElement)?.value.toLowerCase().trim() || "";
+    const visivel = BANC_ITEMS.filter((i: any) => (!benvAbaAtiva || i.aba === benvAbaAtiva) && (!busca || i.label.toLowerCase().includes(busca)));
+    const icons: Record<string, string> = { extrato: "🏦", fatura: "💳", emprestimo: "🏛️" };
+    let html = "";
+    for (const it of visivel) {
+      html += `<label class="benv-item" style="display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:13px;cursor:pointer">
+        <input type="checkbox" class="benv-chk" value="${it.id}" data-tipo="${it.tipo}" onchange="benvCountUpd()" />
+        <span>${icons[it.tipo] || "📄"} ${(it.label || "").replace(/</g, "&lt;")}</span></label>`;
+    }
+    (document.getElementById("benvLista") as HTMLElement).innerHTML = html || `<p style="color:#9CA3AF;padding:10px">Nenhum documento${benvAbaAtiva ? " nesta categoria" : ""} disponível.</p>`;
+    benvCountUpd();
+  }
+  function benvCountUpd() {
+    const n = document.querySelectorAll("#benvLista .benv-chk:checked").length;
+    (document.getElementById("benvCount") as HTMLElement).textContent = `${n} selecionado(s)`;
+  }
+  function filtrarEnvBanc() { renderBenvLista(); }
+  async function enviarDocsBanc() {
+    const to = (document.getElementById("benvTo") as HTMLInputElement).value.trim();
+    const chks = Array.from(document.querySelectorAll("#benvLista .benv-chk:checked")) as HTMLInputElement[];
+    if (!to) { alert("Informe ao menos um e-mail."); return; }
+    if (!chks.length) { alert("Selecione ao menos um documento."); return; }
+    const items = chks.map((c) => ({ tipo: c.dataset.tipo, id: c.value }));
+    const btn = document.getElementById("btnEnviarBanc") as HTMLButtonElement;
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = "Enviando…";
+    const box = document.getElementById("benvMsgBox") as HTMLElement;
+    try {
+      const res = await fetch("/api/admin/doc-empresa/bancarios-email", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          to,
+          subject: (document.getElementById("benvSubject") as HTMLInputElement).value.trim(),
+          message: (document.getElementById("benvMsg") as HTMLTextAreaElement).value.trim(),
+          items,
+        }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        box.innerHTML = `<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;padding:10px 12px;color:#065F46;font-size:13px">✓ Enviado: ${d.enviados} documento(s) para ${(d.to || []).join(", ").replace(/</g, "&lt;")}.</div>`;
+        chks.forEach((c) => { c.checked = false; }); benvCountUpd();
+      } else {
+        box.innerHTML = `<div class="alert alert-error">${(d.error || "Erro ao enviar").replace(/</g, "&lt;")}</div>`;
+      }
+    } catch (e: any) {
+      box.innerHTML = `<div class="alert alert-error">${(e?.message || "Erro de rede").replace(/</g, "&lt;")}</div>`;
+    }
+    btn.disabled = false; btn.textContent = orig;
+  }
+
   function setTab(btn: HTMLElement) {
     document.querySelectorAll("#bancPills .pill").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
@@ -454,5 +560,5 @@ const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0)
     if (res.ok) location.reload(); else { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; }
   }
 
-  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp });
+  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc });
 </script>
