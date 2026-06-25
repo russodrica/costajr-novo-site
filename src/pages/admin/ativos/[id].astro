@@ -626,6 +626,8 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
   </script>
 
   <script>
+    // marcador de carregamento do script desta página (diagnóstico) — vira true ao final
+    (window as any).__ativosReady = false;
     // mantém a posição de rolagem após inserir/recarregar (não pula pro topo)
     function reloadKeepScroll() { try { sessionStorage.setItem("ativoScroll", String(window.scrollY)); } catch {} window.location.reload(); }
     (function () { try { const s = sessionStorage.getItem("ativoScroll"); if (s != null) { sessionStorage.removeItem("ativoScroll"); requestAnimationFrame(() => window.scrollTo(0, parseInt(s, 10) || 0)); } } catch {} })();
@@ -638,6 +640,10 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
       if (id === "modalEditar") sincronizarCamposEdicao();
       document.getElementById(id)?.classList.add("open");
     }
+    // exposição ANTECIPADA dos handlers de modal (funções declaradas = hoisted) — garante
+    // que os botões de ação abram mesmo que algo mais abaixo no script venha a falhar.
+    (window as any).abrirModal = abrirModal;
+    (window as any).fecharModais = fecharModais;
 
     // mostra os campos específicos conforme a categoria escolhida na edição
     function sincronizarCamposEdicao() {
@@ -955,5 +961,6 @@ const camposEspecificos = Object.entries(ativo.campos || {}).filter(([, v]) => v
     (window as any).desativarPlano = desativarPlano;
     (window as any).enviarFoto = enviarFoto;
     (window as any).removerFoto = removerFoto;
+    (window as any).__ativosReady = true;
   </script>
 </Admin>
