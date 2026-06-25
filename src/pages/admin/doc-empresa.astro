@@ -58,7 +58,7 @@ const PERIODICIDADES = ["Mensal", "Bimestral", "Anual", "Consulta Mensal", "Sem 
 
 // Categorias por PERÍODO/CONTRATO — não geram alerta de vencimento (validade não se aplica).
 // As de validade (Certidões, Documentos da Empresa, Seguros, Fornecedoras) seguem com alerta.
-const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais", "Contratos", "Processos", "Consórcios"]);
+const CATS_SEM_ALERTA = new Set(["Guias e Obrigações Fiscais", "Documentos Contábeis", "Clientes", "Documentos Institucionais", "Processos"]);
 const CAT_SEM_ALERTA = "Empreiteiros / Terceiros"; // legado (categoria arquivada)
 // Categorias PERIÓDICAS — cada card é um TIPO (PGDAS, Balancete…) com competências (meses);
 // renderizadas como cards expansíveis ("+") em vez de tabela.
@@ -76,23 +76,26 @@ const hoje = new Date().toISOString().slice(0, 10);
 const em30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 
 function situacao(d: any, cat?: string): string {
-  if (cat && CATS_SEM_ALERTA.has(cat)) return "na"; // por período/contrato — sem alerta de vencimento
+  // ALERTA por DOCUMENTO: se tem data de vencimento, ela manda — independente da categoria.
   if (d.validade_na) return "na";
-  if (!d.validade) return "definir";
-  if (d.validade < hoje) return "vencido";
-  if (d.validade <= em30) return "vencendo";
-  return "valido";
+  if (d.validade) {
+    if (d.validade < hoje) return "vencido";
+    if (d.validade <= em30) return "vencendo";
+    return "valido";
+  }
+  return (cat && CATS_SEM_ALERTA.has(cat)) ? "na" : "definir"; // sem data: nas categorias de período/pasta não cobra
 }
 function badge(d: any, cat?: string): { cls: string; txt: string } {
-  if (cat && CATS_SEM_ALERTA.has(cat)) return { cls: "badge-gray", txt: "—" };
-  if (d.validade_na) return { cls: "badge-gray", txt: "N/A — sem validade" };
-  const emit = d.data_emissao ? `📅 ${String(d.data_emissao).split("-").reverse().join("/")} · ` : "";
-  if (!d.validade) return { cls: "badge-gray", txt: `${emit}⚠ Definir validade` };
-  const f = String(d.validade).split("-").reverse().join("/");
-  if (d.validade < hoje) return { cls: "badge-red", txt: `${emit}Vencido ${f}` };
-  if (d.validade <= em30) return { cls: "badge-orange", txt: `${emit}Vence ${f}` };
-  return { cls: "badge-green", txt: `${emit}Válido até ${f}` };
+  if (d.validade_na) return { cls: "badge-gray", txt: "Sem vencimento" };
+  if (d.validade) {
+    const f = String(d.validade).split("-").reverse().join("/");
+    if (d.validade < hoje) return { cls: "badge-red", txt: `⛔ Vencido ${f}` };
+    if (d.validade <= em30) return { cls: "badge-orange", txt: `🟠 Vence ${f}` };
+    return { cls: "badge-green", txt: `🟢 Válido ${f}` };
+  }
+  return (cat && CATS_SEM_ALERTA.has(cat)) ? { cls: "badge-gray", txt: "—" } : { cls: "badge-gray", txt: "⚠ Definir" };
 }
+const fmtData = (s: any) => (s ? String(s).split("T")[0].split("-").reverse().join("/") : "—");
 
 // KPIs apenas de documentos ativos (Empreiteiros/Terceiros não contam em vencido/vencendo)
 const kpi = { total: docsAtivos.length, vencido: 0, vencendo: 0, na: 0, definir: 0 };
@@ -208,7 +211,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                 <div style="padding:7px 18px;font-size:13.5px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.04em;background:#F5F5F7;border-bottom:1px solid var(--border)">{label}</div>
                 <div class="table-wrap">
                   <table>
-                    <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
+                    <thead><tr><th>Documento</th><th>Data de emissão</th><th>Data de vencimento</th><th>Anexos</th><th></th></tr></thead>
                     <tbody>
                       {docsGrupo.map((d: any) => {
                         const b = badge(d, c);
@@ -220,7 +223,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                               {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
                               {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
                             </td>
-                            <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
+                            <td style="font-size:12.5px;color:#6B7280;white-space:nowrap">📅 {fmtData(d.data_emissao)}</td>
                             <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                             <td>
                               {nArq === 0
@@ -250,8 +253,8 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
               <thead>
                 <tr>
                   <th data-forn-th="nome" onclick="sortForn('nome')" style="cursor:pointer;user-select:none">Contrato <span class="sort-arr">↕</span></th>
-                  <th>Periodicidade</th>
-                  <th data-forn-th="validade" onclick="sortForn('validade')" style="cursor:pointer;user-select:none">Validade <span class="sort-arr">↕</span></th>
+                  <th>Data de emissão</th>
+                  <th data-forn-th="validade" onclick="sortForn('validade')" style="cursor:pointer;user-select:none">Data de vencimento <span class="sort-arr">↕</span></th>
                   <th data-forn-th="val" onclick="sortForn('val')" style="cursor:pointer;user-select:none;text-align:right">$/Mês <span class="sort-arr">↕</span></th>
                   <th>Anexos</th>
                   <th></th>
@@ -277,8 +280,8 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                           {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
                           {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
                         </td>
-                        <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
-                        <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
+                        <td style="font-size:12.5px;color:#6B7280;white-space:nowrap">📅 {fmtData(d.data_emissao)}</td>
+                        <td style="white-space:nowrap"><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                         <td style="text-align:right;font-weight:600;font-size:13px;white-space:nowrap">{vm}</td>
                         <td>
                           {nArq === 0
@@ -320,7 +323,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         ) : (
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
+              <thead><tr><th>Documento</th><th>Data de emissão</th><th>Data de vencimento</th><th>Anexos</th><th></th></tr></thead>
               <tbody>
                 {docsInCat.map((d: any) => {
                   const b = badge(d, c);
@@ -333,8 +336,8 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                         {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
                         {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
                       </td>
-                      <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
-                      <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
+                      <td style="font-size:12.5px;color:#6B7280;white-space:nowrap">📅 {fmtData(d.data_emissao)}</td>
+                      <td style="white-space:nowrap"><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                       <td>
                         {nArq === 0
                           ? <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px;cursor:pointer;font-size:12px;padding:3px 10px;font-weight:600" onclick={`anexos('${d.id}')`} title="Nenhum arquivo anexado">📎 Sem anexo</button>
@@ -372,7 +375,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Documento</th><th>Periodicidade</th><th>Validade</th><th>Anexos</th><th></th></tr></thead>
+            <thead><tr><th>Documento</th><th>Data de emissão</th><th>Data de vencimento</th><th>Anexos</th><th></th></tr></thead>
             <tbody>
               {porCatArq.get(c)!.map((d: any) => {
                 const b = badge(d);
@@ -384,7 +387,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                       {d.site && <a href={d.site} target="_blank" rel="noopener" title="Link de emissão/consulta" style="margin-left:6px;text-decoration:none">🔗</a>}
                       {d.observacoes && <div style="font-size:12px;color:#9CA3AF;margin-top:2px">{d.observacoes}</div>}
                     </td>
-                    <td style="font-size:12.5px;color:#6B7280">{d.periodicidade || "—"}</td>
+                    <td style="font-size:12.5px;color:#6B7280;white-space:nowrap">📅 {fmtData(d.data_emissao)}</td>
                     <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                     <td><button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`}>📎 {nArq || 0}</button></td>
                     <td style="white-space:nowrap;text-align:right">
