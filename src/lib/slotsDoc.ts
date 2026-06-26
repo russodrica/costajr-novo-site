@@ -170,3 +170,35 @@ export function casarColaborador(
   if (porPrimeiroNome.length === 1) return { ...porPrimeiroNome[0], score: 30 };
   return null;
 }
+
+// Casa um TEXTO (nome do arquivo + legenda) com um DOCUMENTO da empresa (doc_empresa).
+// Diferente de casarColaborador (feito p/ nomes de pessoa, que dá score máximo a qualquer
+// nome contido como substring): aqui pontua por SOBREPOSIÇÃO DE TOKENS, então o nome mais
+// ESPECÍFICO vence — ex.: a legenda "faturamento últimos 12 meses" casa "FATURAMENTO — ÚLTIMOS
+// 12 MESES" (4 tokens) e não o genérico "FATURAMENTO" (1 token).
+const CONJ_DOC = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "as", "os", "em", "para", "por", "com"]);
+// descarta conectivos E tokens PURAMENTE NUMÉRICOS (anos/meses do nome do arquivo não devem
+// casar: ex. "faturamento 12/2024" não pode grudar em "...ÚLTIMOS 12 MESES" pelo número "12").
+const toksDoc = (s: string) => norm(s).split(" ").filter((w) => w.length >= 2 && !CONJ_DOC.has(w) && !/^\d+$/.test(w));
+export function casarDocEmpresa(
+  texto: string,
+  docs: { id: string; nome: string }[],
+): { id: string; nome: string; score: number; casados: number } | null {
+  const alvo = new Set(toksDoc(texto));
+  if (!alvo.size) return null;
+  let melhor: { id: string; nome: string; score: number; casados: number; cob: number } | null = null;
+  for (const d of docs) {
+    const tn = toksDoc(d.nome);
+    if (!tn.length) continue;
+    const casados = tn.filter((t) => alvo.has(t)).length;
+    if (!casados) continue;
+    const cob = casados / tn.length;                       // quanto do NOME do doc foi encontrado
+    const score = casados * 100 + Math.round(cob * 50);    // especificidade domina; cobertura desempata
+    // desempate DETERMINÍSTICO: maior score; em empate, nome menor (estável, independe da ordem do BD)
+    if (!melhor || score > melhor.score || (score === melhor.score && String(d.nome) < String(melhor.nome))) {
+      melhor = { id: d.id, nome: d.nome, score, casados, cob };
+    }
+  }
+  if (melhor && (melhor.casados >= 2 || melhor.cob >= 0.5)) return { id: melhor.id, nome: melhor.nome, score: melhor.score, casados: melhor.casados };
+  return null;
+}

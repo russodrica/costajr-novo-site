@@ -992,11 +992,19 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           <button class="btn btn-outline btn-sm" onclick="anexarSlot('${id}','${comp}')">📎 Anexar</button>
         </div>${files.map(linhaArq).join("")}</div>`;
     }
-    // chave de ordenação por competência (mês de emissão) — última = VIGENTE
+    // chave de ordenação CRONOLÓGICA por competência — a MAIOR = VIGENTE.
+    // Robusta a competência em TEXTO LIVRE (ex.: "Jan a Set/2024"): extrai ano-mês quando dá,
+    // senão usa o ano, senão a data de upload. Antes, "Jan a Set/2024" (texto) ordenava ACIMA
+    // de "2026-06" (string "J" > "2") e o documento ANTIGO virava vigente por engano.
     function compKey(a: any): string {
       const c = String(a.competencia || "");
-      if (c) return c.length === 4 ? c + "-13" : c;        // ano puro fica após os meses
-      return a.created_at ? String(a.created_at).slice(0, 7) : "0000-00";
+      const cr = a.created_at ? String(a.created_at) : "";
+      let ym = "";
+      const m = c.match(/(?:19|20)\d{2}-(?:0[1-9]|1[0-2])/); // AAAA-MM com mês VÁLIDO 01-12 (não casa "2025-2026")
+      if (m) ym = m[0];
+      else { const y = c.match(/(?:19|20)\d{2}/); if (y) ym = `${y[0]}-99`; } // texto livre c/ ano → fim do ano
+      if (!ym) ym = cr ? cr.slice(0, 7) : "0000-00";        // sem ano reconhecível → data de upload
+      return `${ym}|${cr}`;                                 // created_at como desempate
     }
     function renderCompetencias(id: string): string {
       const d = docById(id); if (!d) return "";

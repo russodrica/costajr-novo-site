@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { supabaseAdmin } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
-import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario } from "./slotsDoc";
+import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
 import { aplicarEntregaEpiDaFicha, type EpiAplicado } from "./epiLeitura";
 import { registrarAcao } from "./auditoria";
@@ -853,8 +853,9 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
     return;
   }
 
-  // Documento contábil/da empresa (balancete, DRE…) → não sugere PESSOA.
-  if (ehDocEmpresa(textoDetect)) match = null;
+  // Documento contábil/da empresa (balancete, DRE, faturamento…) → não sugere PESSOA.
+  const ehEmpresa = ehDocEmpresa(textoDetect);
+  if (ehEmpresa) match = null;
   const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
   const token = Date.now().toString(36);
   const dados = {
@@ -863,6 +864,9 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
     sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade, sug_validade: validade || null, ia,
   };
   await salvarSessao(db, { telegram_user_id: "gdoc:" + token, chat_id: String(chatId), estado: "pendente", dados });
+  // Se já PARECE documento da empresa (palavra-chave + legenda), casa com o cadastro e propõe o
+  // destino DIRETO — sem o passo "não identifiquei a pessoa". Usa a legenda p/ achar o mais específico.
+  if (ehEmpresa && await proporEmpresaMatch(db, B, chatId, token, dados, true)) return;
   await cardDocGrupo(B, chatId, token, dados);
 }
 
@@ -896,6 +900,24 @@ function extrairCompetenciaDoc(nome: string, iaNome?: string): string | null {
   // Ano de 4 dígitos (não rodeado por outros dígitos)
   const anos = [...texto.matchAll(/(?<![0-9])(20\d{2}|19\d{2})(?![0-9])/g)].map(m => m[1]);
   return anos.length ? anos[anos.length - 1] : null;
+}
+
+// Casa o documento com um cadastro da empresa (doc_empresa) pelo nome+legenda e propõe anexar.
+// Usado pelo botão "É da empresa" E proativamente quando o texto já parece doc da empresa.
+// Retorna true se achou e propôs (card enviado); false se não casou nenhum cadastro.
+async function proporEmpresaMatch(db: any, B: Bot, chatId: number, token: string, d: any, exigirForte = false): Promise<boolean> {
+  const { data: emps } = await db.from("doc_empresa").select("id, nome, categoria, periodicidade").eq("arquivado", false).order("nome").limit(3000);
+  const lista = (emps || []).map((e: any) => ({ id: e.id, nome: e.nome }));
+  const m = casarDocEmpresa(`${d.doc_nome} ${d.ia_nome || ""}`, lista);
+  if (!m) return false;
+  // proativo (sem a pessoa ter tocado em "É da empresa") só auto-propõe se o casamento for FORTE
+  // (>=2 tokens) — evita um doc de PESSOA grudar num cadastro genérico de nome curto.
+  if (exigirForte && (m.casados || 0) < 2) return false;
+  const full = (emps || []).find((e: any) => e.id === m.id) || {};
+  await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: m.id, emp_nome: m.nome, emp_cat: full.categoria || null, emp_periodicidade: full.periodicidade || null } }).eq("telegram_user_id", "gdoc:" + token);
+  await enviar(B, chatId, `🏢 Anexar este documento em <b>${escTg(m.nome)}</b>${full.categoria ? ` (${escTg(full.categoria)})` : ""}?`,
+    inline([[{ text: "✅ Sim, anexar", callback_data: "gempok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+  return true;
 }
 
 async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: string) {
@@ -985,44 +1007,37 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
   }
   // ── EMPRESA / JURÍDICO (doc_empresa + doc_empresa_arquivos) ──
   if (acao === "gemp") {
-    const { data: emps } = await db.from("doc_empresa").select("id, nome").eq("arquivado", false).limit(3000);
-    const lista = (emps || []).map((e: any) => ({ id: e.id, nome: e.nome }));
-    const m = casarColaborador(`${d.doc_nome} ${d.ia_nome || ""}`, lista);
-    if (!m) {
-      // Não é fornecedor/cliente cadastrado — mas se for documento contábil/fiscal/
-      // institucional, arquiva DIRETO na categoria certa (cria/reusa um card) em vez
-      // de mandar pro painel.
-      const cat = categoriaEmpresaPorTexto(`${d.doc_nome} ${d.ia_nome || ""}`);
-      if (cat) {
-        const nomeCard = (`${d.doc_nome}`.replace(/\.(pdf|docx?|xlsx?|jpe?g|png|webp)$/i, "").replace(/[-_ ]*(pdf|d4sign|clicksign|docusign|zapsign|digiforte|assinado|assinada|signed)[-_ ]*/gi, " ").replace(/\s+/g, " ").trim().slice(0, 60)) || cat.rotulo;
-        let empId: string | null = null, empNome = nomeCard;
-        const { data: ja } = await db.from("doc_empresa").select("id, nome").eq("categoria", cat.categoria).ilike("nome", nomeCard).limit(1);
-        if (ja && ja[0]) { empId = ja[0].id; empNome = ja[0].nome; }
-        else {
-          // Fallback: substring do primeiro token do nomeCard (ex.: "Balancete 2022" → "%Balancete%")
-          const primTok = nomeCard.split(/\s+/)[0];
-          if (primTok && primTok.length >= 3) {
-            const { data: ja2 } = await db.from("doc_empresa").select("id, nome").eq("categoria", cat.categoria).ilike("nome", `%${primTok}%`).limit(1);
-            if (ja2 && ja2[0]) { empId = ja2[0].id; empNome = ja2[0].nome; }
-          }
-          if (!empId) {
-            const { data: novo } = await db.from("doc_empresa").insert({ categoria: cat.categoria, nome: nomeCard, arquivado: false, validade_na: true, criado_por: d.autor }).select("id").single();
-            empId = novo?.id || null;
-          }
+    // 1) casa com um CADASTRO existente da empresa (nome do arquivo + legenda) — matcher específico
+    //    de documentos (prefere o nome MAIS ESPECÍFICO, ex.: "FATURAMENTO — ÚLTIMOS 12 MESES").
+    if (await proporEmpresaMatch(db, B, chatId, token, d)) return;
+    // 2) Não casou cadastro — se for documento contábil/fiscal/institucional, arquiva DIRETO
+    //    na categoria certa (cria/reusa um card) em vez de mandar pro painel.
+    const cat = categoriaEmpresaPorTexto(`${d.doc_nome} ${d.ia_nome || ""}`);
+    if (cat) {
+      const nomeCard = (`${d.doc_nome}`.replace(/\.(pdf|docx?|xlsx?|jpe?g|png|webp)$/i, "").replace(/[-_ ]*(pdf|d4sign|clicksign|docusign|zapsign|digiforte|assinado|assinada|signed)[-_ ]*/gi, " ").replace(/\s+/g, " ").trim().slice(0, 60)) || cat.rotulo;
+      let empId: string | null = null, empNome = nomeCard, empPer: string | null = null;
+      const { data: ja } = await db.from("doc_empresa").select("id, nome, periodicidade").eq("categoria", cat.categoria).ilike("nome", nomeCard).limit(1);
+      if (ja && ja[0]) { empId = ja[0].id; empNome = ja[0].nome; empPer = ja[0].periodicidade || null; }
+      else {
+        // Fallback: substring do primeiro token do nomeCard (ex.: "Balancete 2022" → "%Balancete%")
+        const primTok = nomeCard.split(/\s+/)[0];
+        if (primTok && primTok.length >= 3) {
+          const { data: ja2 } = await db.from("doc_empresa").select("id, nome, periodicidade").eq("categoria", cat.categoria).ilike("nome", `%${primTok}%`).limit(1);
+          if (ja2 && ja2[0]) { empId = ja2[0].id; empNome = ja2[0].nome; empPer = ja2[0].periodicidade || null; }
         }
-        if (empId) {
-          await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: empId, emp_nome: empNome, emp_cat: cat.categoria } }).eq("telegram_user_id", "gdoc:" + token);
-          await enviar(B, chatId, `📊 Parece <b>${escTg(cat.rotulo)}</b>. Arquivar em <b>${escTg(cat.categoria)}</b> (como "${escTg(empNome)}")?`,
-            inline([[{ text: "✅ Sim, arquivar", callback_data: "gempok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
-          return;
+        if (!empId) {
+          const { data: novo } = await db.from("doc_empresa").insert({ categoria: cat.categoria, nome: nomeCard, arquivado: false, validade_na: true, criado_por: d.autor }).select("id").single();
+          empId = novo?.id || null;
         }
       }
-      await enviar(B, chatId, "🏢 Não consegui identificar a empresa/contrato pelo nome do arquivo. Anexe pelo painel <b>Documentos da Empresa</b> (Jurídico), ou renomeie o arquivo com o nome da empresa e reenvie.");
-      return;
+      if (empId) {
+        await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: empId, emp_nome: empNome, emp_cat: cat.categoria, emp_periodicidade: empPer } }).eq("telegram_user_id", "gdoc:" + token);
+        await enviar(B, chatId, `📊 Parece <b>${escTg(cat.rotulo)}</b>. Arquivar em <b>${escTg(cat.categoria)}</b> (como "${escTg(empNome)}")?`,
+          inline([[{ text: "✅ Sim, arquivar", callback_data: "gempok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+        return;
+      }
     }
-    await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: m.id, emp_nome: m.nome } }).eq("telegram_user_id", "gdoc:" + token);
-    await enviar(B, chatId, `🏢 Anexar este documento ao cadastro da empresa <b>${escTg(m.nome)}</b>?`,
-      inline([[{ text: "✅ Sim, anexar", callback_data: "gempok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+    await enviar(B, chatId, "🏢 Não consegui identificar a empresa/contrato pelo nome do arquivo. Anexe pelo painel <b>Documentos da Empresa</b> (Jurídico), ou renomeie o arquivo com o nome da empresa e reenvie.");
     return;
   }
   if (acao === "gempok") {
@@ -1034,7 +1049,12 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const newPath = `${d.emp_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
     if (eUp) { await enviar(B, chatId, "❌ Falha ao mover o arquivo: " + escTg(eUp.message)); return; }
-    const competenciaEmp = extrairCompetenciaDoc(d.doc_nome, d.ia_nome);
+    let competenciaEmp = extrairCompetenciaDoc(d.doc_nome, d.ia_nome);
+    // doc MENSAL (ex.: "ÚLTIMOS 12 MESES"): se veio só o ANO (ou nada), usa o mês atual como
+    // competência → entra como a versão VIGENTE do mês corrente, não como "Exercício AAAA".
+    if (String(d.emp_periodicidade || "").toLowerCase() === "mensal" && (!competenciaEmp || /^\d{4}$/.test(competenciaEmp))) {
+      competenciaEmp = new Date().toISOString().slice(0, 7);
+    }
     const { data: row, error } = await db.from("doc_empresa_arquivos").insert({ doc_id: d.emp_id, nome: d.doc_nome, storage_path: newPath, criado_por: d.autor, ...(competenciaEmp ? { competencia: competenciaEmp } : {}) }).select().single();
     if (error) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
     await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
