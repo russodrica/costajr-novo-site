@@ -57,25 +57,35 @@ async function vobiToken() {
 }
 
 async function vobiGet(path) {
-  const token = await vobiToken();
-  const r = await fetch(`${VOBI}${path}`, { headers: { authorization: `Bearer ${token}` } });
-  if (!r.ok) throw new Error(`GET ${path}: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
-  return r.json();
+  for (;;) {
+    const token = await vobiToken();
+    const r = await fetch(`${VOBI}${path}`, { headers: { authorization: `Bearer ${token}` } });
+    if (r.status === 429) {
+      // Rate limit da Vobi: 1000 requests/hora. Espera o retryAfter e segue.
+      const j = await r.json().catch(() => ({}));
+      const seg = Math.min(Number(j.retryAfter) || 300, 3700);
+      console.log(`\n  ⏳ Rate limit da Vobi — aguardando ${Math.ceil(seg / 60)} min para continuar...`);
+      await new Promise((res) => setTimeout(res, (seg + 10) * 1000));
+      continue;
+    }
+    if (!r.ok) throw new Error(`GET ${path}: HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
+    return r.json();
+  }
 }
 
 /** Busca todas as páginas de um endpoint de listagem (limit máx 500). */
-async function vobiAll(endpoint, extra = "") {
+async function vobiAll(endpoint, extra = "", quiet = false) {
   const out = [];
   let offset = 0;
   for (;;) {
     const j = await vobiGet(`/${endpoint}?limit=500&offset=${offset}${extra}`);
     const rows = j.rows || j.data || (Array.isArray(j) ? j : []);
     out.push(...rows);
-    process.stdout.write(`\r  ${endpoint}: ${out.length} registros...`);
+    if (!quiet) process.stdout.write(`\r  ${endpoint}: ${out.length} registros...`);
     if (rows.length < 500) break;
     offset += 500;
   }
-  console.log();
+  if (!quiet) console.log();
   return out;
 }
 
@@ -175,6 +185,41 @@ function d(s) { return s ? String(s).slice(0, 10) : null; }
   const pagamentos = exportado ? exportado.pagamentos : await vobiAll("payment");
   const pagPorId = new Map(pagamentos.map((p) => [p.id, p]));
   const parcelas = exportado ? exportado.parcelas : await vobiAll("installment");
+
+  // 4b) Despesas SPLITADAS por projeto — resposta oficial da Vobi (jul/2026):
+  // a listagem geral de payment/installment retorna só UMA parte de cada split
+  // ("volta só uma para não duplicar a lista"); as partes irmãs (dos outros
+  // projetos) só aparecem filtrando por idRefurbish. Varre projeto a projeto
+  // (ativos + arquivados) e acrescenta os pagamentos/parcelas escondidos.
+  if (!exportado) {
+    console.log("\n■ Despesas splitadas por projeto (partes ocultas na listagem geral)");
+    const arquivados = await vobiAll("refurbish", "&where[idStep]=9999997");
+    const idsProjetos = [...new Set([...projetos, ...arquivados].map((p) => p.id))];
+    const idsParcelas = new Set(parcelas.map((i) => i.id));
+    let novosPags = 0, novasParcelas = 0, varridos = 0;
+    for (const idProj of idsProjetos) {
+      const pagsProj = await vobiAll("payment", `&where[idRefurbish]=${idProj}`, true);
+      // qualquer pagamento com split neste projeto: a listagem geral esconde
+      // tanto pagamentos irmãos quanto PARCELAS de pagamentos que até aparecem lá
+      const splitados = pagsProj.filter((p) => p.splitId);
+      varridos++;
+      process.stdout.write(`\r  projetos varridos: ${varridos}/${idsProjetos.length} (${novosPags} pags, ${novasParcelas} parcelas ocultas)...`);
+      if (!splitados.length) continue;
+      for (const p of splitados) {
+        if (!pagPorId.has(p.id)) { pagPorId.set(p.id, p); novosPags++; }
+      }
+      const idsSplit = new Set(splitados.map((p) => p.id));
+      const parcProj = await vobiAll("installment", `&where[$payment.idRefurbish$]=${idProj}`, true);
+      for (const i of parcProj) {
+        if (idsSplit.has(i.idPayment) && !idsParcelas.has(i.id)) {
+          idsParcelas.add(i.id);
+          parcelas.push(i);
+          novasParcelas++;
+        }
+      }
+    }
+    console.log(`\n  ✔ ${novosPags} pagamentos e ${novasParcelas} parcelas de split ocultos recuperados`);
+  }
 
   const parcelasPorPagamento = new Map();
   for (const i of parcelas) {
