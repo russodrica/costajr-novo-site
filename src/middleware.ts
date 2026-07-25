@@ -25,7 +25,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
     if (MUTACOES.has(req.method)) {
       const path = new URL(req.url).pathname;
       if (path.startsWith("/api/admin/")) {
-        const modulo = moduloDaRotaApi(path);
+        // Rotas de COMPARTILHAMENTO (e-mail / WhatsApp) são leitura+envio: quem tem acesso de
+        // "ver" ao módulo já pode BAIXAR cada documento, então também pode compartilhá-lo. O
+        // próprio endpoint gateia por perfil + bloqueioSeSemLeitura (recusa "nenhum"). Por isso
+        // NÃO exigimos "editar" nelas (senão o botão retornaria 403 para perfis só-leitura).
+        const ehCompartilhar = ["/enviar-email", "/bancarios-email", "/whatsapp-links", "/bancarios-whatsapp"].some((s) => path.endsWith(s));
+        const modulo = ehCompartilhar ? null : moduloDaRotaApi(path);
         if (modulo) {
           const tok = getAdminTokenFromCookie(req);
           if (tok) {

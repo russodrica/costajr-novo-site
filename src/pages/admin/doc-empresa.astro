@@ -486,7 +486,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
   <!-- Modal: enviar documentos por e-mail -->
   <div class="modal-overlay" id="modalEnviar">
     <div class="modal-box" style="max-width:680px">
-      <div class="modal-header"><h2>📨 Enviar documentos por e-mail</h2><button class="modal-close" onclick="fecharEnviar()">✕</button></div>
+      <div class="modal-header"><h2>📨 Enviar documentos (e-mail ou WhatsApp)</h2><button class="modal-close" onclick="fecharEnviar()">✕</button></div>
       <div style="padding:16px 24px;max-height:82vh;overflow:auto">
         <div class="form-group"><label>Para (um ou mais e-mails, separados por vírgula) *</label><input id="envTo" placeholder="cliente@email.com, contador@email.com" /></div>
         <div class="form-group"><label>Assunto</label><input id="envSubject" placeholder="Documentos — Costa Júnior Engenharia" /></div>
@@ -497,9 +497,15 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         </div>
         <div id="envLista" style="border:1px solid var(--border);border-radius:8px;max-height:40vh;overflow:auto;padding:6px 12px"></div>
         <div id="envMsgBox" style="margin-top:10px"></div>
-        <div class="modal-footer" style="margin-top:14px">
-          <button type="button" class="btn btn-secondary" onclick="fecharEnviar()">Cancelar</button>
-          <button type="button" class="btn btn-primary" id="btnEnviarDocs" onclick="enviarDocs()">📨 Enviar e-mail</button>
+        <div class="modal-footer" style="margin-top:14px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <input id="envZap" placeholder="WhatsApp (opcional)" title="Número com DDI+DDD, ex.: 5511999998888. Deixe vazio para escolher o contato no WhatsApp." style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;width:180px" />
+            <button type="button" class="btn" style="background:#25D366;color:#fff;border-color:#25D366" id="btnEnviarZap" onclick="enviarWhats()">📲 WhatsApp</button>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" onclick="fecharEnviar()">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnEnviarDocs" onclick="enviarDocs()">📨 Enviar e-mail</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1181,7 +1187,34 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       btn.disabled = false; btn.textContent = orig;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, moverArq, fecharMover, filtrarMover, confirmarMover, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, envCountUpd, filtrarEnvio });
+    // ── Enviar por WhatsApp (LINKS temporários — o WhatsApp não anexa arquivo) ──
+    async function enviarWhats() {
+      const ids = Array.from(document.querySelectorAll("#envLista .env-chk:checked")).map((c) => (c as HTMLInputElement).value);
+      if (!ids.length) { alert("Selecione ao menos um documento."); return; }
+      const zap = ((document.getElementById("envZap") as HTMLInputElement).value || "").replace(/\D/g, "");
+      const btn = document.getElementById("btnEnviarZap") as HTMLButtonElement; btn.disabled = true; const orig = btn.textContent; btn.textContent = "Gerando…";
+      const box = document.getElementById("envMsgBox") as HTMLElement;
+      try {
+        const res = await fetch("/api/admin/doc-empresa/whatsapp-links", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ arquivo_ids: ids }) });
+        const d = await res.json();
+        if (res.ok) { await mostrarWhats(box, d, zap); }
+        else { box.innerHTML = `<div class="alert alert-error">${(d.error || "Erro ao gerar links").replace(/</g, "&lt;")}</div>`; }
+      } catch { box.innerHTML = `<div class="alert alert-error">Falha de rede ao gerar links.</div>`; }
+      btn.disabled = false; btn.textContent = orig;
+    }
+    async function mostrarWhats(box: HTMLElement, d: any, zap: string) {
+      const url = "https://wa.me/" + (zap || "") + "?text=" + encodeURIComponent(d.message);
+      let copiada = false;
+      try { await (navigator as any).clipboard?.writeText(d.message); copiada = true; } catch {}
+      const aviso = (d.pulados && d.pulados > 0) ? `<div style="color:#B45309;font-size:12px;margin-bottom:6px">⚠️ ${d.count} de ${d.pedidos} documento(s) incluídos (${d.pulados} sem arquivo).</div>` : "";
+      box.innerHTML = `<div style="border:1.5px solid #25D366;background:#F0FFF4;border-radius:8px;padding:12px">
+        ${aviso}<div style="font-weight:700;color:#128C4B;margin-bottom:4px">📲 Links prontos!${copiada ? " (mensagem copiada)" : ""}</div>
+        <p style="font-size:12.5px;color:#555;margin:0 0 8px">Clique para abrir o WhatsApp${zap ? " no número informado" : " e escolher o contato"} e enviar. <b>Os links valem 3 dias — quem tiver o link acessa o documento.</b></p>
+        <a href="${url}" target="_blank" rel="noopener" class="btn" style="background:#25D366;color:#fff;text-decoration:none;border-color:#25D366">Abrir WhatsApp ↗</a>
+      </div>`;
+    }
+
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, moverArq, fecharMover, filtrarMover, confirmarMover, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, enviarWhats, envCountUpd, filtrarEnvio });
   </script>
 
   <style>

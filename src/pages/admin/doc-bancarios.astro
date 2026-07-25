@@ -200,7 +200,7 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
   <!-- Modal: enviar documentos por e-mail -->
   <div class="modal-overlay" id="modalEnviarBanc" style="display:none">
     <div class="modal" style="max-width:680px">
-      <div class="modal-head"><h3 style="margin:0">📨 Enviar documentos por e-mail</h3><button class="modal-x" onclick="fecharEnviarBanc()">×</button></div>
+      <div class="modal-head"><h3 style="margin:0">📨 Enviar documentos (e-mail ou WhatsApp)</h3><button class="modal-x" onclick="fecharEnviarBanc()">×</button></div>
       <div class="modal-body">
         <div class="form-group"><label>Para (um ou mais e-mails, separados por vírgula) *</label><input id="benvTo" placeholder="cliente@email.com, contador@email.com" /></div>
         <div class="form-group"><label>Assunto</label><input id="benvSubject" placeholder="Documentos Bancários — Costa Júnior Engenharia" /></div>
@@ -224,9 +224,15 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
         </div>
         <div id="benvLista" style="border:1px solid var(--border);border-radius:8px;max-height:35vh;overflow:auto;padding:6px 12px"></div>
         <div id="benvMsgBox" style="margin-top:10px"></div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
-          <button type="button" class="btn btn-secondary" onclick="fecharEnviarBanc()">Cancelar</button>
-          <button type="button" class="btn btn-primary" id="btnEnviarBanc" onclick="enviarDocsBanc()">📨 Enviar e-mail</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:6px">
+            <input id="benvZap" placeholder="WhatsApp (opcional)" title="Número com DDI+DDD, ex.: 5511999998888. Vazio = escolher contato no WhatsApp." style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;width:180px" />
+            <button type="button" class="btn" style="background:#25D366;color:#fff;border-color:#25D366" id="btnEnviarZapBanc" onclick="enviarWhatsBanc()">📲 WhatsApp</button>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" onclick="fecharEnviarBanc()">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnEnviarBanc" onclick="enviarDocsBanc()">📨 Enviar e-mail</button>
+          </div>
         </div>
       </div>
     </div>
@@ -424,6 +430,36 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
     btn.disabled = false; btn.textContent = orig;
   }
 
+  // ── Enviar por WhatsApp (LINKS temporários — o WhatsApp não anexa arquivo) ──
+  async function enviarWhatsBanc() {
+    const chks = Array.from(document.querySelectorAll("#benvLista .benv-chk:checked")) as HTMLInputElement[];
+    if (!chks.length) { alert("Selecione ao menos um documento."); return; }
+    const items = chks.map((c) => ({ tipo: c.dataset.tipo, id: c.value }));
+    const zap = ((document.getElementById("benvZap") as HTMLInputElement).value || "").replace(/\D/g, "");
+    const btn = document.getElementById("btnEnviarZapBanc") as HTMLButtonElement; btn.disabled = true; const orig = btn.textContent; btn.textContent = "Gerando…";
+    const box = document.getElementById("benvMsgBox") as HTMLElement;
+    try {
+      const res = await fetch("/api/admin/doc-empresa/bancarios-whatsapp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items }) });
+      const d = await res.json();
+      if (res.ok) {
+        const url = "https://wa.me/" + (zap || "") + "?text=" + encodeURIComponent(d.message);
+        let copiada = false;
+        try { await (navigator as any).clipboard?.writeText(d.message); copiada = true; } catch {}
+        const aviso = (d.pulados && d.pulados > 0) ? `<div style="color:#B45309;font-size:12px;margin-bottom:6px">⚠️ ${d.count} de ${d.pedidos} documento(s) incluídos (${d.pulados} sem arquivo).</div>` : "";
+        box.innerHTML = `<div style="border:1.5px solid #25D366;background:#F0FFF4;border-radius:8px;padding:12px">
+          ${aviso}<div style="font-weight:700;color:#128C4B;margin-bottom:4px">📲 Links prontos!${copiada ? " (mensagem copiada)" : ""}</div>
+          <p style="font-size:12.5px;color:#555;margin:0 0 8px">Clique para abrir o WhatsApp${zap ? " no número informado" : " e escolher o contato"} e enviar. <b>Os links valem 3 dias — quem tiver o link acessa o documento.</b></p>
+          <a href="${url}" target="_blank" rel="noopener" class="btn" style="background:#25D366;color:#fff;text-decoration:none;border-color:#25D366">Abrir WhatsApp ↗</a>
+        </div>`;
+      } else {
+        box.innerHTML = `<div class="alert alert-error">${(d.error || "Erro ao gerar links").replace(/</g, "&lt;")}</div>`;
+      }
+    } catch (e: any) {
+      box.innerHTML = `<div class="alert alert-error">${(e?.message || "Erro de rede").replace(/</g, "&lt;")}</div>`;
+    }
+    btn.disabled = false; btn.textContent = orig;
+  }
+
   function setTab(btn: HTMLElement) {
     document.querySelectorAll("#bancPills .pill").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
@@ -610,5 +646,5 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
     if (res.ok) location.reload(); else { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; }
   }
 
-  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, selecionarMesCompleto });
+  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, enviarWhatsBanc, selecionarMesCompleto });
 </script>
