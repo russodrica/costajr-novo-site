@@ -9,13 +9,28 @@ const PERFIS = ["admin", "financeiro", "juridico", "comercial"]; // comercial = 
 
 // GET /api/admin/doc-empresa/arquivos/[fid] → redireciona para URL assinada (10 min).
 // Bucket PRIVADO — documentos sensíveis (LGPD).
+// FORNECEDOR (externo): pode baixar SÓ documentos da view "empresa" — categorias de
+// contratos/clientes/consórcios/seguros são recusadas (espelha CONTRATOS_CATS/SEGUROS_CATS
+// da tela). Todo download de fornecedor é AUDITADO.
+const CATS_VEDADAS_FORNECEDOR = new Set(["Contratos", "Clientes", "Consórcios", "Seguros"]);
 export const GET: APIRoute = async ({ request, params }) => {
   try {
     const admin = await requireAdminCookie(request);
-    if (!temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
+    const ehForn = temPerfil(admin, ["fornecedor"]);
+    if (!ehForn && !temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
     const db = supabaseAdmin();
-    const { data: arq } = await db.from("doc_empresa_arquivos").select("storage_path").eq("id", params.fid!).maybeSingle();
+    const { data: arq } = await db.from("doc_empresa_arquivos").select("nome, storage_path, doc_id").eq("id", params.fid!).maybeSingle();
     if (!arq?.storage_path) return jsonErr(404, "Arquivo não encontrado");
+    if (ehForn) {
+      const { data: doc } = await db.from("doc_empresa").select("categoria, arquivado").eq("id", (arq as any).doc_id).maybeSingle();
+      if (!doc || (doc as any).arquivado || CATS_VEDADAS_FORNECEDOR.has((doc as any).categoria || "")) {
+        return jsonErr(403, "Acesso de fornecedor: este documento não está disponível.");
+      }
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar", entidade: "fornecedor_download", registro_id: params.fid!,
+        descricao: `Fornecedor ${admin.email} baixou "${(arq as any).nome}"`,
+      }).catch(() => {});
+    }
     const { data: assinada, error } = await db.storage.from("doc-empresa").createSignedUrl(arq.storage_path, 600);
     if (error || !assinada?.signedUrl) return jsonErr(500, error?.message || "Falha ao assinar URL");
     return new Response(null, { status: 302, headers: { location: assinada.signedUrl, "cache-control": "no-store" } });

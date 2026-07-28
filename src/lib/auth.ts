@@ -60,13 +60,19 @@ export async function invalidarSessoesPortal(profileId: string): Promise<void> {
  *  ausente NÃO derruba o acesso — só rejeita em divergência CONFIRMADA. */
 export async function assertSessaoValida(claims: AdminClaims): Promise<void> {
   const tv = typeof claims.tv === "number" ? claims.tv : 0;
-  let revogada = false;
+  let data: { token_version: number | null; approval_status: string | null } | null = null;
   try {
     const db = supabaseAdmin();
-    const { data } = await db.from("portal_profiles").select("token_version").eq("id", claims.sub).maybeSingle();
-    if (data && typeof data.token_version === "number" && data.token_version !== tv) revogada = true;
+    const r = await db.from("portal_profiles").select("token_version, approval_status").eq("id", claims.sub).maybeSingle();
+    if (r.error) return; // fail-open SÓ em erro de infra (não trava por indisponibilidade)
+    data = r.data as any;
   } catch { return; /* fail-open: não trava por erro de leitura */ }
-  if (revogada) throw new Error("Não autenticado");
+  // resposta OK sem linha = perfil EXCLUÍDO -> revogado (fail-closed).
+  if (!data) throw new Error("Não autenticado");
+  // acesso não-aprovado (bloqueado/pendente) -> revogado, mesmo sem bump de token_version.
+  if (data.approval_status !== "approved") throw new Error("Não autenticado");
+  // sessão invalidada por token_version.
+  if (typeof data.token_version === "number" && data.token_version !== tv) throw new Error("Não autenticado");
 }
 
 // SHA-256 hash de senha com salt fixo (portado de manut.web.js)
@@ -148,6 +154,9 @@ export async function requireAdmin(req: Request): Promise<AdminClaims> {
   }
   const claims = await verifyToken<AdminClaims>(tok);
   if (claims.tipo !== "admin") throw new Error("Token inválido");
+  // "fornecedor" (externo) NUNCA passa aqui — requireAdmin é a porta dos /api/portal/*
+  // (JunIA, notificações, treinamentos, perfil...). Deny-by-default: basta UM perfil externo.
+  if (perfisDe(claims).includes("fornecedor")) throw new Error("Sem permissão");
   // 8 perfis atuais + "coordenador" tolerado (legado) p/ não derrubar token ativo antigo.
   if (!["admin","manutencao_operacao","manutencao_administrativo","operacional","rh","financeiro","comercial","juridico","coordenador"].includes(claims.role)) {
     throw new Error("Sem permissão");

@@ -3,6 +3,7 @@ import {
   getPortalToken,
   getAdminTokenFromCookie,
   verifyToken,
+  perfisDe,
   hashSenha,
   jsonOk,
   jsonErr,
@@ -21,6 +22,7 @@ async function autenticar(request: Request): Promise<AdminClaims> {
   if (!tok) throw new Error("Não autenticado");
   const claims = await verifyToken<AdminClaims>(tok);
   if (claims.tipo !== "admin") throw new Error("Token inválido");
+  if (perfisDe(claims).includes("fornecedor")) throw new Error("Sem permissão"); // fornecedor externo não usa o portal
   return claims;
 }
 

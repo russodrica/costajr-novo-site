@@ -1,12 +1,16 @@
 ---
 import Admin from "../../layouts/Admin.astro";
-import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { verifyToken, assertSessaoValida, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
-try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); await assertSessaoValida(claims); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+// Orçamentos = módulo do grupo "operacoes" (BDI/margens/custos — NUNCA para externos).
+if (!(await temPerfilFresco(claims, ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"]))) return Astro.redirect("/admin");
 
 const db = supabaseAdmin();
 // Facetas e contagens (colunas leves) — base inteira p/ montar filtros e KPIs.

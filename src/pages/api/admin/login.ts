@@ -19,7 +19,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     if (error || !perfil) return jsonErr(401, "Credenciais inválidas");
     if (perfil.approval_status !== "approved") return jsonErr(403, "Acesso não aprovado");
-    if (!["admin", "manutencao_operacao", "manutencao_administrativo", "operacional", "rh", "financeiro", "comercial", "juridico", "coordenador"].includes(perfil.role)) {
+    // "fornecedor" = usuário EXTERNO: loga no painel, mas o acesso é deny-by-default
+    // (só Documentos da Empresa + Extratos Bancários, somente leitura — permissoes.ts).
+    if (!["admin", "manutencao_operacao", "manutencao_administrativo", "operacional", "rh", "financeiro", "comercial", "juridico", "coordenador", "fornecedor"].includes(perfil.role)) {
       return jsonErr(403, "Sem permissão de acesso");
     }
     if (!perfil.senha_hash) return jsonErr(401, "Senha não configurada. Contate o administrador.");

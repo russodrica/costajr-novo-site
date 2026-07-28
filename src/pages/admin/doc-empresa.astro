@@ -1,22 +1,27 @@
 ---
 import Admin from "../../layouts/Admin.astro";
-import { verifyToken, type AdminClaims } from "../../lib/auth";
-import { temPerfilFresco } from "../../lib/permissoes";
+import { verifyToken, assertSessaoValida, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco, perfisFrescos, ehFornecedorPerfis } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
 let claims: AdminClaims;
-try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); await assertSessaoValida(claims); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 // perfis FRESCOS (multi-perfil): o token pode ter só o perfil principal
-if (!(await temPerfilFresco(claims, ["admin", "financeiro", "juridico", "comercial"]))) return Astro.redirect("/admin");
+const perfisPg = await perfisFrescos(claims);
+// FORNECEDOR (externo): entra SÓ na view "empresa", somente leitura (deny-by-default
+// no permissoes.ts + cerca no middleware). Aqui: força a view, esconde envio/ações e
+// NÃO embute no HTML os metadados de contratos/seguros/arquivados (LGPD).
+const ehForn = ehFornecedorPerfis(perfisPg);
+if (!ehForn && !(await temPerfilFresco(claims, ["admin", "financeiro", "juridico", "comercial"]))) return Astro.redirect("/admin");
 
 const db = supabaseAdmin();
 // Carrega TODOS (ativos + arquivados) — a aba "Arquivados" filtra no cliente
 const { data: docsRaw } = await db.from("doc_empresa")
   .select("*, doc_empresa_arquivos(id,nome,created_at,competencia,arquivado,arquivado_em)").order("nome");
-const docs: any[] = docsRaw || [];
+let docs: any[] = docsRaw || [];
 
 // Catálogo completo de abas. A VIEW (?view=) decide quais aparecem — assim
 // "Documentos da Empresa", "Documentos Contratuais" e "Seguros" são entradas de
@@ -36,7 +41,7 @@ const ABAS_ALL = [
 ];
 const CATEGORIAS = ABAS_ALL.map((a) => a.nome);
 
-const VIEW = (Astro.url.searchParams.get("view") || "empresa").toLowerCase();
+const VIEW = ehForn ? "empresa" : (Astro.url.searchParams.get("view") || "empresa").toLowerCase();
 const CONTRATOS_CATS = new Set(["Contratos", "Clientes", "Consórcios"]);
 const SEGUROS_CATS = new Set(["Seguros"]);
 const naView = (cat: string) => {
@@ -50,6 +55,9 @@ const VIEW_META: Record<string, { titulo: string; current: string; icon: string 
   seguros:   { titulo: "Seguros",                current: "doc-seguros",   icon: "🛡️" },
 };
 const vmeta = VIEW_META[VIEW] || VIEW_META.empresa;
+// FORNECEDOR: só docs ATIVOS da view "empresa" chegam ao HTML/JSON — metadados de
+// contratos/clientes/consórcios/seguros e de arquivados NÃO são embutidos (LGPD).
+if (ehForn) docs = docs.filter((d: any) => !d.arquivado && naView(d.categoria || ""));
 const viewDefaultCat = VIEW === "contratos" ? "Contratos" : VIEW === "seguros" ? "Seguros" : "Documentos da Empresa";
 const ABAS = ABAS_ALL.filter((a) => naView(a.nome));
 
@@ -163,9 +171,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       <option value="definir">⚠ A definir validade</option>
       <option value="na">⚪ Não aplicável</option>
     </select>
-    <button class="btn btn-secondary" onclick="enviarResumo(this)" title="Envia agora o e-mail de vencimentos para o financeiro/jurídico + Telegram">📧 Enviar resumo</button>
-    <button class="btn btn-secondary" onclick="abrirEnviarDocs()" title="Selecione vários documentos e envie todos num e-mail só">📨 Enviar documentos</button>
-    <button class="btn btn-primary" onclick="abrirNovo()">+ Novo documento</button>
+    {!ehForn && <button class="btn btn-secondary" onclick="enviarResumo(this)" title="Envia agora o e-mail de vencimentos para o financeiro/jurídico + Telegram">📧 Enviar resumo</button>}
+    {!ehForn && <button class="btn btn-secondary" onclick="abrirEnviarDocs()" title="Selecione vários documentos e envie todos num e-mail só">📨 Enviar documentos</button>}
+    <button class="btn btn-primary" data-requer-edicao onclick="abrirNovo()">+ Novo documento</button>
   </div>
 
   <p style="color:var(--ink-mid);font-size:13px;margin:-4px 0 14px">
@@ -177,7 +185,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     {ABAS.map((a) => (
       <button type="button" class="pill" data-cat={a.nome} onclick="setAba(this)">{a.icon} {a.nome} <span class="count">{(porCat.get(a.nome) || []).length}</span></button>
     ))}
-    <button type="button" class="pill" data-cat="__arquivados__" onclick="setAba(this)">🗄️ Arquivados <span class="count">{docsArquivados.length}</span></button>
+    {!ehForn && <button type="button" class="pill" data-cat="__arquivados__" onclick="setAba(this)">🗄️ Arquivados <span class="count">{docsArquivados.length}</span></button>}
   </div>
 
   <div id="kpiBar" class="card-grid">
@@ -236,11 +244,11 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                                 : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} vigente(s)${nHistArq ? ` · ${nHistArq} no histórico` : ""}`}>📎 {nArq}{nHistArq > 0 ? ` 📜${nHistArq}` : ""}</button>}
                             </td>
                             <td style="white-space:nowrap;text-align:right">
-                              <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
+                              <button class="btn btn-secondary btn-sm" data-requer-edicao onclick={`editar('${d.id}')`}>Editar</button>
                               {d.arquivado
-                                ? <button class="btn btn-success btn-sm" onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
-                                : <button class="btn btn-outline btn-sm" onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>}
-                              <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                                ? <button class="btn btn-success btn-sm" data-requer-edicao onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
+                                : <button class="btn btn-outline btn-sm" data-requer-edicao onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>}
+                              <button class="btn btn-danger btn-sm" data-requer-edicao onclick={`excluir('${d.id}')`}>Excluir</button>
                             </td>
                           </tr>
                         );
@@ -294,9 +302,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                             : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} vigente(s)${nHistArq ? ` · ${nHistArq} no histórico` : ""}`}>📎 {nArq}{nHistArq > 0 ? ` 📜${nHistArq}` : ""}</button>}
                         </td>
                         <td style="white-space:nowrap;text-align:right">
-                          <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
-                          <button class="btn btn-outline btn-sm" onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>
-                          <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                          <button class="btn btn-secondary btn-sm" data-requer-edicao onclick={`editar('${d.id}')`}>Editar</button>
+                          <button class="btn btn-outline btn-sm" data-requer-edicao onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>
+                          <button class="btn btn-danger btn-sm" data-requer-edicao onclick={`excluir('${d.id}')`}>Excluir</button>
                         </td>
                       </tr>
                     );
@@ -316,9 +324,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                     <span id={`exp-${d.id}`} style="font-weight:800;color:var(--brand);font-size:1.05rem;width:14px;text-align:center">+</span>
                     <strong style="flex:1">{d.nome}</strong>
                     <span class="badge badge-blue">{nArq} competência(s)</span>
-                    <button class="btn btn-outline btn-sm" onclick={`event.stopPropagation();anexos('${d.id}')`}>+ Anexar</button>
-                    <button class="btn btn-secondary btn-sm" onclick={`event.stopPropagation();editar('${d.id}')`}>Editar</button>
-                    <button class="btn btn-danger btn-sm" onclick={`event.stopPropagation();excluir('${d.id}')`}>Excluir</button>
+                    <button class="btn btn-outline btn-sm" data-requer-edicao onclick={`event.stopPropagation();anexos('${d.id}')`}>+ Anexar</button>
+                    <button class="btn btn-secondary btn-sm" data-requer-edicao onclick={`event.stopPropagation();editar('${d.id}')`}>Editar</button>
+                    <button class="btn btn-danger btn-sm" data-requer-edicao onclick={`event.stopPropagation();excluir('${d.id}')`}>Excluir</button>
                   </div>
                   <div id={`per-${d.id}`} style="display:none;padding:8px 16px 14px"></div>
                 </div>
@@ -349,11 +357,11 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                           : <button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`} title={`${nArq} vigente(s)${nHistArq ? ` · ${nHistArq} no histórico` : ""}`}>📎 {nArq}{nHistArq > 0 ? ` 📜${nHistArq}` : ""}</button>}
                       </td>
                       <td style="white-space:nowrap;text-align:right">
-                        <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
+                        <button class="btn btn-secondary btn-sm" data-requer-edicao onclick={`editar('${d.id}')`}>Editar</button>
                         {d.arquivado
-                          ? <button class="btn btn-success btn-sm" onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
-                          : <button class="btn btn-outline btn-sm" onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>}
-                        <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                          ? <button class="btn btn-success btn-sm" data-requer-edicao onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
+                          : <button class="btn btn-outline btn-sm" data-requer-edicao onclick={`setArquivado('${d.id}', true)`}>Arquivar</button>}
+                        <button class="btn btn-danger btn-sm" data-requer-edicao onclick={`excluir('${d.id}')`}>Excluir</button>
                       </td>
                     </tr>
                   );
@@ -396,9 +404,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
                     <td><span class={`badge ${b.cls}`}>{b.txt}</span></td>
                     <td><button class="btn btn-outline btn-sm" onclick={`anexos('${d.id}')`}>📎 {nArq || 0}</button></td>
                     <td style="white-space:nowrap;text-align:right">
-                      <button class="btn btn-secondary btn-sm" onclick={`editar('${d.id}')`}>Editar</button>
-                      <button class="btn btn-success btn-sm" onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
-                      <button class="btn btn-danger btn-sm" onclick={`excluir('${d.id}')`}>Excluir</button>
+                      <button class="btn btn-secondary btn-sm" data-requer-edicao onclick={`editar('${d.id}')`}>Editar</button>
+                      <button class="btn btn-success btn-sm" data-requer-edicao onclick={`setArquivado('${d.id}', false)`}>Reativar</button>
+                      <button class="btn btn-danger btn-sm" data-requer-edicao onclick={`excluir('${d.id}')`}>Excluir</button>
                     </td>
                   </tr>
                 );
@@ -461,7 +469,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       <div class="modal-header"><h2 id="modalArqTitle">Anexos</h2><button class="modal-close" onclick="fecharArq()">✕</button></div>
       <div style="padding:16px 24px">
         <div id="listaArq"></div>
-        <form id="formUpload" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+        <form id="formUpload" data-requer-edicao style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
           <input type="hidden" name="doc_id" />
           <div id="upCompetenciaRow" style="display:none;margin-bottom:8px">
             <label id="upCompetenciaLabel" style="display:block;font-size:0.86rem;font-weight:600;color:#555;margin-bottom:5px">Mês de emissão / competência</label>
@@ -726,16 +734,16 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-light)">
           <span style="flex:1;font-size:13.5px">📄 ${esc(a.nome)}${i === 0 ? ' <span class="badge badge-green" style="font-size:10.5px;margin-left:4px">✓ Vigente</span>' : ''}</span>
           <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
-          <button class="btn btn-outline btn-sm" onclick="moverArq('${a.id}')" title="Mover para outro documento (anexado no lugar errado)">↗ Mover</button>
-          <button class="btn btn-secondary btn-sm" onclick="arquivarArq('${a.id}', this)" title="Mover para o histórico (versão antiga)">🗄 Arquivar</button>
-          <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button>
+          <button class="btn btn-outline btn-sm" data-requer-edicao onclick="moverArq('${a.id}')" title="Mover para outro documento (anexado no lugar errado)">↗ Mover</button>
+          <button class="btn btn-secondary btn-sm" data-requer-edicao onclick="arquivarArq('${a.id}', this)" title="Mover para o histórico (versão antiga)">🗄 Arquivar</button>
+          <button class="btn btn-danger btn-sm" data-requer-edicao onclick="excluirArq('${a.id}', this)">Excluir</button>
         </div>`;
       const linhaHist = (a: any) => `
         <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--border-light)">
           <span style="flex:1;font-size:12.5px;color:#9CA3AF">📄 ${esc(a.nome)}</span>
           <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
-          <button class="btn btn-success btn-sm" onclick="reativarArq('${a.id}', this)" title="Tornar vigente novamente">↩ Reativar</button>
-          <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button>
+          <button class="btn btn-success btn-sm" data-requer-edicao onclick="reativarArq('${a.id}', this)" title="Tornar vigente novamente">↩ Reativar</button>
+          <button class="btn btn-danger btn-sm" data-requer-edicao onclick="excluirArq('${a.id}', this)">Excluir</button>
         </div>`;
       let html = vig.length
         ? vig.map(linhaVig).join("")
@@ -987,7 +995,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
         <span style="flex:1;font-size:13px;color:#374151">📄 ${String(a.nome || "arquivo").replace(/</g, "&lt;")}</span>
         <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
-        <button class="btn btn-danger btn-sm" onclick="excluirArq('${a.id}', this)">Excluir</button></div>`;
+        <button class="btn btn-danger btn-sm" data-requer-edicao onclick="excluirArq('${a.id}', this)">Excluir</button></div>`;
     }
     function slotPeriodo(id: string, comp: string, arqs: any[]): string {
       const files = arqs.filter((a: any) => String(a.competencia || "") === comp);
@@ -996,7 +1004,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         <div style="display:flex;align-items:center;gap:10px">
           <strong style="flex:1;font-size:13.5px;text-transform:uppercase">${rotuloCompetencia({ competencia: comp })}</strong>
           ${ok ? `<span class="badge badge-green" style="font-size:10.5px">✓ ${files.length}</span>` : `<span class="badge badge-gray" style="font-size:10.5px">arraste aqui ou</span>`}
-          <button class="btn btn-outline btn-sm" onclick="anexarSlot('${id}','${comp}')">📎 Anexar</button>
+          <button class="btn btn-outline btn-sm" data-requer-edicao onclick="anexarSlot('${id}','${comp}')">📎 Anexar</button>
         </div>${files.map(linhaArq).join("")}</div>`;
     }
     // chave de ordenação CRONOLÓGICA por competência — a MAIOR = VIGENTE.

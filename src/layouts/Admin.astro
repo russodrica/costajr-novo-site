@@ -4,7 +4,7 @@ export interface Props {
   current?: string;
 }
 import { verifyToken, type AdminClaims } from "../lib/auth";
-import { nivelEfetivo, carregarOverridesUsuario, perfisFrescos, rotuloPerfil, type NivelPerm } from "../lib/permissoes";
+import { nivelEfetivo, carregarOverridesUsuario, perfisFrescos, rotuloPerfil, MODULO_GRUPO, type NivelPerm } from "../lib/permissoes";
 import { supabaseAdmin } from "../lib/supabase";
 const { title, current = "" } = Astro.props;
 
@@ -39,6 +39,8 @@ try {
   }
 } catch { /* sem perfis -> nao filtra; a propria pagina ja autentica */ }
 const temPerfis = perfisUser.length > 0;
+// FORNECEDOR (externo): sem sino de notificações (os /api/portal/* o rejeitam) e sem "Visão geral".
+const ehFornLayout = perfisUser.includes("fornecedor");
 
 // Identidade exibida no painel (cabeçalho + rodapé da sidebar).
 const perfilLabel = perfisUser.length ? rotuloPerfil(perfisUser[0]) : "";
@@ -99,6 +101,7 @@ const grupos: NavGroup[] = [
       { href: "/admin/obras", label: "Obras & Projetos", ic: "building-skyscraper", key: "obras" },
       { href: "/admin/vobi-projetos", label: "Projetos Ativos (Vobi)", ic: "building-community", key: "vobi-projetos" },
       { href: "/admin/depositos", label: "Depósitos", ic: "building-warehouse", key: "depositos" },
+      { href: "/admin/orcamentos", label: "Orçamentos", ic: "calculator", key: "orcamentos" },
     ],
   },
   {
@@ -160,6 +163,7 @@ const grupos: NavGroup[] = [
   {
     id: "sistema", label: "Sistema", cor: "#64748B",
     items: [
+      { href: "/admin/fornecedores", label: "Fornecedores (externo)", ic: "truck", key: "fornecedores" },
       { href: "/admin/logs", label: "Auditoria (Logs)", ic: "list-details", key: "logs" },
       { href: "/admin/lixeira", label: "Lixeira", ic: "trash", key: "lixeira" },
       { href: "/admin/telegram", label: "Bot Telegram", ic: "brand-telegram", key: "telegram" },
@@ -187,10 +191,12 @@ const grupoAtivo = grupos.find(g => g.items.some(i => i.key === current))?.id ??
 const gruposVisiveis = grupos
   .map(g => ({ ...g, items: g.items.filter(i => podeModulo(i.key)) }))
   .filter(g => g.items.length);
-const moduloDaPagina = current ? grupos.flatMap(g => g.items).find(i => i.key === current) : null;
 // Bloqueio REAL de acesso: o slot só renderiza se o módulo da página é acessível
-// (o redirect NÃO funciona dentro de um layout).
-const semAcessoPagina = !!(temPerfis && current && moduloDaPagina && !podeModulo(current));
+// (o redirect NÃO funciona dentro de um layout). FAIL-CLOSED: usa MODULO_GRUPO (fonte
+// única de permissoes.ts) — se o `current` NÃO é um módulo conhecido, BLOQUEIA (antes,
+// página fora do menu local escapava e renderizava tudo). "home" (Visão geral) e páginas
+// sem `current` (login/troca de senha) seguem livres.
+const semAcessoPagina = !!(temPerfis && current && current !== "home" && (!(current in MODULO_GRUPO) || !podeModulo(current)));
 
 // Modo SOMENTE-LEITURA: o usuário tem nível "ver" neste módulo (acessa, mas não edita).
 const nivelPaginaAtual: NivelPerm = (current && current !== "home") ? nivelDe(current) : "editar";
@@ -234,10 +240,10 @@ const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ve
         </button>
       </div>
       <nav class="sidebar-nav">
-        <a href="/admin" title="Visão geral" style="--area:#475569" class={`nav-item ${current === "home" ? "active" : ""}`}>
+        {!ehFornLayout && <a href="/admin" title="Visão geral" style="--area:#475569" class={`nav-item ${current === "home" ? "active" : ""}`}>
           <i class="ti ti-layout-dashboard nav-icon" aria-hidden="true"></i>
           <span class="nav-label">Visão geral</span>
-        </a>
+        </a>}
         {gruposVisiveis.map(g => (
           g.label === null
             ? g.items.map(item => (
@@ -286,6 +292,7 @@ const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ve
           <span>Buscar módulo…</span>
           <kbd>Ctrl K</kbd>
         </button>
+        {!ehFornLayout && (
         <div class="notif-wrap">
           <button class="btn-notif" id="btnNotif" title="Notificações" aria-label="Notificações" type="button">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -299,6 +306,7 @@ const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ve
             <div class="notif-list" id="notifList"><p class="notif-empty">Carregando...</p></div>
           </div>
         </div>
+        )}
         <div class="topbar-user" title={userEmail}>
           {userAvatar
             ? <img src={userAvatar} alt="" class="tb-avatar-img" />

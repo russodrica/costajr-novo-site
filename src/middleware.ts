@@ -1,6 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
 import { supabaseAdmin } from "./lib/supabase";
-import { getAdminTokenFromCookie, verifyToken, type AdminClaims } from "./lib/auth";
+import { getAdminTokenFromCookie, getPortalToken, verifyToken, type AdminClaims } from "./lib/auth";
 import { moduloDaRotaApi, nivelModuloUsuario, MODULO_LABEL } from "./lib/permissoes";
 import {
   isBot,
@@ -15,7 +15,55 @@ import {
 
 const MUTACOES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+// ── Cerca do FORNECEDOR (usuário externo) ────────────────────────────────────
+// Deny-by-default para TODA a superfície de API: um token com role "fornecedor"
+// só alcança a allowlist abaixo (downloads somente-leitura + logout). Qualquer
+// outra rota /api/* responde 403 ANTES do handler — defesa em profundidade além
+// do gate por perfil de cada endpoint e do cap em permissoes.ts.
+const FORNECEDOR_API_ALLOW: RegExp[] = [
+  /^\/api\/admin\/doc-empresa\/arquivos\/[^/]+$/,   // GET download de anexo (o handler restringe categoria e método)
+  /^\/api\/admin\/doc-empresa\/extratos\/[^/]+$/,   // GET download de extrato (o handler barra DELETE por perfil)
+  /^\/api\/admin\/logout$/,
+];
+function ehTokenFornecedor(claims: { role?: string; roles?: string[] } | null): boolean {
+  if (!claims) return false;
+  const perfis = (claims.roles && claims.roles.length ? claims.roles : [claims.role]).filter(Boolean) as string[];
+  return perfis.includes("fornecedor");
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
+  // ── Cerca do fornecedor: qualquer /api/* fora da allowlist → 403 ──
+  try {
+    const req = context.request;
+    const path = new URL(req.url).pathname;
+    if (path.startsWith("/api/")) {
+      // lê o token do MESMO jeito que os endpoints (cookie OU header x-portal-auth), senão o
+      // fornecedor contornaria a cerca mandando o token pelo header.
+      const tok = getPortalToken(req) || getAdminTokenFromCookie(req);
+      if (tok) {
+        try {
+          const claims = await verifyToken<AdminClaims>(tok);
+          if (claims.tipo === "admin" && ehTokenFornecedor(claims)) {
+            const permitido = FORNECEDOR_API_ALLOW.some((re) => re.test(path));
+            if (!permitido) {
+              return new Response(
+                JSON.stringify({ error: "Acesso de fornecedor: este recurso não está disponível." }),
+                { status: 403, headers: { "content-type": "application/json" } },
+              );
+            }
+            // mesmo na allowlist, fornecedor NUNCA muta (só GET; logout é POST permitido)
+            if (MUTACOES.has(req.method) && path !== "/api/admin/logout") {
+              return new Response(
+                JSON.stringify({ error: "Acesso de fornecedor é somente leitura." }),
+                { status: 403, headers: { "content-type": "application/json" } },
+              );
+            }
+          }
+        } catch { /* token inválido → o endpoint devolve 401 */ }
+      }
+    }
+  } catch { /* nunca derruba a request pela cerca */ }
+
   // ── Trava central "somente-leitura" por usuário ──
   // Recusa QUALQUER edição em /api/admin/<modulo> quando o nível efetivo do usuário
   // naquele módulo não é "editar" (ou seja, "ver" ou "nenhum"). Cobre TODOS os

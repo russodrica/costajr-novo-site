@@ -1,0 +1,138 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco } from "../../lib/permissoes";
+import { supabaseAdmin } from "../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
+
+const db = supabaseAdmin();
+const { data: fornecedores } = await db.from("portal_profiles")
+  .select("id, display_name, empresa, email, approval_status, last_login_at, created_at")
+  .eq("role", "fornecedor")
+  .order("created_at", { ascending: false });
+const lista: any[] = fornecedores || [];
+const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+---
+<Admin title="Fornecedores (acesso externo)" current="fornecedores">
+  <div class="toolbar">
+    <span class="toolbar-title">🚚 Fornecedores — acesso externo</span>
+    <span style="flex:1"></span>
+    <button class="btn btn-primary" onclick="abrirNovoForn()">+ Novo fornecedor</button>
+  </div>
+
+  <div class="card" style="padding:12px 16px;margin-bottom:14px;background:#FFFBEB;border:1px solid #FCD34D">
+    <strong>O que um fornecedor acessa:</strong> SOMENTE <b>Documentos da Empresa</b> (certidões, cadastrais, contábeis…) e <b>Extratos Bancários</b>, em modo <b>visualizar e baixar</b> — nunca inserir, editar ou excluir. Contratos, seguros, faturas de cartão, empréstimos, RH, financeiro e todo o resto do painel ficam <b>bloqueados</b>. Cada download de fornecedor fica registrado na auditoria.
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th>Empresa</th><th>E-mail (login)</th><th>Status</th><th>Último acesso</th><th></th></tr></thead>
+        <tbody>
+          {lista.length === 0 && (
+            <tr><td colspan="6" style="text-align:center;color:#9CA3AF;padding:28px">Nenhum fornecedor cadastrado ainda. Use <strong>+ Novo fornecedor</strong>.</td></tr>
+          )}
+          {lista.map((f: any) => (
+            <tr>
+              <td><strong>{f.display_name}</strong></td>
+              <td>{f.empresa || "—"}</td>
+              <td style="font-size:13px">{f.email}</td>
+              <td>{f.approval_status === "approved"
+                ? <span class="badge badge-green">✓ Ativo</span>
+                : <span class="badge badge-red">⛔ Bloqueado</span>}</td>
+              <td style="font-size:12.5px;color:#6B7280">{fdt(f.last_login_at)}</td>
+              <td style="white-space:nowrap;text-align:right">
+                {f.approval_status === "approved"
+                  ? <button class="btn btn-outline btn-sm" onclick={`acaoForn('${f.id}','bloquear', this)`}>Bloquear</button>
+                  : <button class="btn btn-success btn-sm" onclick={`acaoForn('${f.id}','aprovar', this)`}>Aprovar</button>}
+                <button class="btn btn-secondary btn-sm" onclick={`acaoForn('${f.id}','reset_senha', this)`}>Nova senha</button>
+                <button class="btn btn-danger btn-sm" onclick={`excluirForn('${f.id}', ${JSON.stringify(f.display_name || "")}, this)`}>Excluir</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="fornMsg" style="margin-top:12px"></div>
+
+  <!-- Modal: novo fornecedor -->
+  <div class="modal-overlay" id="modalForn">
+    <div class="modal-box" style="max-width:480px">
+      <div class="modal-header"><h2>+ Novo fornecedor</h2><button class="modal-close" onclick="fecharForn()">✕</button></div>
+      <form id="formForn" style="padding:16px 24px">
+        <div class="form-group"><label>Nome da pessoa *</label><input name="nome" required placeholder="Ex: João da Silva" /></div>
+        <div class="form-group"><label>Empresa fornecedora</label><input name="empresa" placeholder="Ex: Fornecedora XYZ Ltda" /></div>
+        <div class="form-group"><label>E-mail (será o login) *</label><input name="email" type="email" required placeholder="pessoa@fornecedora.com.br" /></div>
+        <p style="font-size:12.5px;color:#6B7280;margin:4px 0 10px">A senha é gerada automaticamente e mostrada <b>uma única vez</b> — copie e repasse ao fornecedor por canal seguro.</p>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="fecharForn()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnCriarForn">Criar acesso</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const overlayF = (id: string) => document.getElementById(id)!;
+    function abrirNovoForn() { (document.getElementById("formForn") as HTMLFormElement).reset(); overlayF("modalForn").classList.add("open"); }
+    function fecharForn() { overlayF("modalForn").classList.remove("open"); }
+    function msgBox() { return document.getElementById("fornMsg") as HTMLElement; }
+    function mostrarSenha(titulo: string, email: string, senha: string) {
+      msgBox().innerHTML = `<div class="card" style="border:1.5px solid #6EE7B7;background:#ECFDF5;padding:14px 18px">
+        <div style="font-weight:800;color:#065F46;margin-bottom:6px">${titulo}</div>
+        <div style="font-size:13.5px">Login: <b>${email.replace(/</g, "&lt;")}</b></div>
+        <div style="font-size:13.5px">Senha: <code style="font-size:15px;font-weight:800;background:#fff;padding:2px 8px;border-radius:6px;border:1px solid #6EE7B7">${senha}</code></div>
+        <p style="font-size:12px;color:#047857;margin:8px 0 0">⚠️ Esta senha não será mostrada de novo. Copie agora e envie ao fornecedor por canal seguro. Endereço de acesso: <b>https://www.costajr.com.br/admin/login</b></p>
+      </div>`;
+    }
+    document.getElementById("formForn")!.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const btn = document.getElementById("btnCriarForn") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Criando…";
+      try {
+        const body = Object.fromEntries(new FormData(f).entries());
+        const res = await fetch("/api/admin/fornecedores", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        const d = await res.json();
+        if (res.ok) {
+          fecharForn();
+          mostrarSenha(`✓ Acesso criado para ${String(body.nome)}`, String(body.email), d.senha);
+          setTimeout(() => location.reload(), 60000); // recarrega depois (dá tempo de copiar a senha)
+        } else { alert(d.error || "Erro ao criar."); }
+      } catch { alert("Falha de rede."); }
+      btn.disabled = false; btn.textContent = "Criar acesso";
+    });
+    async function acaoForn(id: string, acao: string, btn: HTMLButtonElement) {
+      const rotulos: Record<string, string> = { aprovar: "Aprovar o acesso deste fornecedor?", bloquear: "Bloquear o acesso deste fornecedor? As sessões ativas caem na hora.", reset_senha: "Gerar uma NOVA senha para este fornecedor? A antiga deixa de funcionar." };
+      if (!confirm(rotulos[acao] || "Confirmar?")) return;
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/fornecedores/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ acao }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(d.error || "Erro"); btn.disabled = false; return; }
+      if (acao === "reset_senha" && d.senha) {
+        const linha = btn.closest("tr");
+        const email = linha ? (linha.children[2] as HTMLElement).textContent || "" : "";
+        mostrarSenha("🔑 Nova senha gerada", email.trim(), d.senha);
+        btn.disabled = false;
+      } else { location.reload(); }
+    }
+    async function excluirForn(id: string, nome: string, btn: HTMLButtonElement) {
+      if (!confirm(`Excluir o fornecedor "${nome}"? O acesso morre na hora (recuperável na Lixeira por 30 dias).`)) return;
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/fornecedores/${id}`, { method: "DELETE", headers: { "content-type": "application/json" } });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(d.error || "Erro"); btn.disabled = false; return; }
+      if (d.aviso) alert(d.aviso);
+      location.reload();
+    }
+    Object.assign(window, { abrirNovoForn, fecharForn, acaoForn, excluirForn });
+  </script>
+</Admin>

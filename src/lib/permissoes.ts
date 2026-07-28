@@ -32,6 +32,23 @@ export const PERFIS = [
   "juridico",
 ] as const;
 
+// ── FORNECEDOR (usuário EXTERNO) ─────────────────────────────────────────────
+// Role à parte dos 8 perfis internos (NÃO entra em PERFIS de propósito: não
+// aparece na matriz de permissões, membros, público-alvo de conteúdo etc.).
+// Acesso DENY-BY-DEFAULT hard-coded: SOMENTE os módulos de NIVEL_FORNECEDOR,
+// nível máximo "ver" (visualizar + baixar; nunca inserir/editar/excluir).
+// Overrides por usuário NÃO elevam (cap absoluto — segurança de dados/LGPD).
+// Fica FORA da lista do requireAdmin (auth.ts) => /api/portal/* rejeitam.
+export const ROLE_FORNECEDOR = "fornecedor";
+export const NIVEL_FORNECEDOR: Record<string, NivelPerm> = {
+  "doc-empresa": "ver",    // Documentos da Empresa (SÓ a view "empresa"; contratos/seguros ficam fora)
+  "doc-bancarios": "ver",  // Documentos Bancários (a tela mostra SÓ extratos p/ fornecedor)
+};
+/** true se a lista de perfis contém o role fornecedor (externo). */
+export function ehFornecedorPerfis(perfis: string[]): boolean {
+  return perfis.includes(ROLE_FORNECEDOR);
+}
+
 /** Rótulo amigável de cada perfil (o que aparece na tela). */
 export const PERFIL_LABEL: Record<string, string> = {
   admin: "Administrador",
@@ -43,6 +60,7 @@ export const PERFIL_LABEL: Record<string, string> = {
   comercial: "Comercial",
   juridico: "Jurídico",
   coordenador: "Coordenador (legado)", // só p/ exibir dados antigos
+  fornecedor: "Fornecedor (externo)",
 };
 
 /** Classe de badge (cor) de cada perfil. */
@@ -56,6 +74,7 @@ export const PERFIL_BADGE: Record<string, string> = {
   comercial: "badge-orange",
   juridico: "badge-purple",
   coordenador: "badge-gray",
+  fornecedor: "badge-orange",
 };
 
 /** Lista de perfis válidos para acessar o painel admin (= PERFIS). */
@@ -196,6 +215,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     { key: "blog", label: "Blog", icon: "📝", href: "/admin/blog" },
   ] },
   { id: "sistema", label: "Sistema", itens: [
+    { key: "fornecedores", label: "Fornecedores (acesso externo)", icon: "🚚", href: "/admin/fornecedores" },
     { key: "logs", label: "Auditoria (Logs)", icon: "🧾", href: "/admin/logs" },
     { key: "lixeira", label: "Lixeira", icon: "🗑️", href: "/admin/lixeira" },
     { key: "telegram", label: "Bot Telegram", icon: "🤖", href: "/admin/telegram" },
@@ -248,6 +268,9 @@ export const MODULO_ROLES_EXTRA: Record<string, Record<string, NivelPerm>> = {
 };
 
 export function nivelEfetivo(moduloKey: string, perfis: string[], overrides: Record<string, NivelPerm>): NivelPerm {
+  // FORNECEDOR (externo): cap absoluto ANTES de tudo — deny-by-default, overrides
+  // não elevam, e vence até um eventual role interno na mesma conta (mais restritivo).
+  if (ehFornecedorPerfis(perfis)) return NIVEL_FORNECEDOR[moduloKey] || "nenhum";
   if (perfis.includes("admin")) return "editar";
   const ov = overrides[moduloKey];
   if (ov === "nenhum" || ov === "ver" || ov === "editar") return ov;

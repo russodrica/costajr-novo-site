@@ -17,6 +17,8 @@ try {
 } catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 
 const perfis = await perfisFrescos(claims);
+// FORNECEDOR (externo): não vê a Visão Geral — landing direto nos Documentos da Empresa.
+if (perfis.includes("fornecedor")) return Astro.redirect("/admin/doc-empresa");
 const overrides = await carregarOverridesUsuario(claims.sub);
 const pode = (key: string) => nivelEfetivo(key, perfis, overrides) !== "nenhum";
 

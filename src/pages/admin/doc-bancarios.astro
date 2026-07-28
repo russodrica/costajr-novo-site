@@ -1,16 +1,20 @@
 ---
 import Admin from "../../layouts/Admin.astro";
-import { verifyToken, type AdminClaims } from "../../lib/auth";
-import { temPerfilFresco } from "../../lib/permissoes";
+import { verifyToken, assertSessaoValida, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco, perfisFrescos, ehFornecedorPerfis } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
 let claims: AdminClaims;
-try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); await assertSessaoValida(claims); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 // perfis FRESCOS (multi-perfil): o token pode ter só o perfil principal
-if (!(await temPerfilFresco(claims, ["admin", "financeiro", "juridico"]))) return Astro.redirect("/admin");
+// FORNECEDOR (externo): entra SÓ para EXTRATOS, somente leitura — faturas de cartão e
+// empréstimos NÃO são buscados nem embutidos no HTML (LGPD); envio por e-mail/WhatsApp some.
+const perfisPg = await perfisFrescos(claims);
+const ehForn = ehFornecedorPerfis(perfisPg);
+if (!ehForn && !(await temPerfilFresco(claims, ["admin", "financeiro", "juridico"]))) return Astro.redirect("/admin");
 
 const BANCOS = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank"];
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -18,8 +22,8 @@ const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julh
 const db = supabaseAdmin();
 const [{ data: exRows }, { data: ftRows }, { data: empRows }] = await Promise.all([
   db.from("doc_extratos_bancarios").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
-  db.from("doc_cartao_faturas").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
-  db.from("doc_emprestimos").select("*").order("status").order("data_contratacao", { ascending: false }),
+  ehForn ? Promise.resolve({ data: [] as any[] }) : db.from("doc_cartao_faturas").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
+  ehForn ? Promise.resolve({ data: [] as any[] }) : db.from("doc_emprestimos").select("*").order("status").order("data_contratacao", { ascending: false }),
 ]);
 const extratos: any[] = exRows || [];
 const faturas: any[] = ftRows || [];
@@ -68,15 +72,15 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
   <div class="toolbar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px">
     <span style="font-size:1.3rem;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.02em">🏦 Documentos Bancários</span>
     <span style="flex:1"></span>
-    <button class="btn btn-secondary" onclick="abrirEnviarDocs()" title="Selecione documentos e envie num e-mail só">📨 Enviar documentos</button>
-    <a class="btn btn-outline btn-sm" href="/admin/doc-empresa">← Documentos da Empresa</a>
+    {!ehForn && <button class="btn btn-secondary" onclick="abrirEnviarDocs()" title="Selecione documentos e envie num e-mail só">📨 Enviar documentos</button>}
+    {!ehForn && <a class="btn btn-outline btn-sm" href="/admin/doc-empresa">← Documentos da Empresa</a>}
   </div>
-  <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Área sensível: extratos, faturas de cartão e empréstimos/financiamentos. Arquivos no cofre privado da empresa (link temporário). Acesso: admin, financeiro e jurídico.</p>
+  <p style="margin:0 0 12px;color:var(--muted);font-size:13px">{ehForn ? "Extratos bancários — acesso de fornecedor (somente visualização e download)." : "Área sensível: extratos, faturas de cartão e empréstimos/financiamentos. Arquivos no cofre privado da empresa (link temporário). Acesso: admin, financeiro e jurídico."}</p>
 
   <div class="pills" id="bancPills" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px">
     <button type="button" class="pill active" data-tab="extratos" onclick="setTab(this)">🏦 Extratos</button>
-    <button type="button" class="pill" data-tab="faturas" onclick="setTab(this)">💳 Faturas de Cartão</button>
-    <button type="button" class="pill" data-tab="emprestimos" onclick="setTab(this)">🏛️ Empréstimos &amp; Financiamentos</button>
+    {!ehForn && <button type="button" class="pill" data-tab="faturas" onclick="setTab(this)">💳 Faturas de Cartão</button>}
+    {!ehForn && <button type="button" class="pill" data-tab="emprestimos" onclick="setTab(this)">🏛️ Empréstimos &amp; Financiamentos</button>}
   </div>
 
   <input type="file" id="fileExtrato" accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx,.csv,.ofx" style="display:none" />
