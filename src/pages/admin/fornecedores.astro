@@ -51,6 +51,7 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
                 {f.approval_status === "approved"
                   ? <button class="btn btn-outline btn-sm" onclick={`acaoForn('${f.id}','bloquear', this)`}>Bloquear</button>
                   : <button class="btn btn-success btn-sm" onclick={`acaoForn('${f.id}','aprovar', this)`}>Aprovar</button>}
+                <button class="btn btn-outline btn-sm" onclick={`verAtividade('${f.id}', ${JSON.stringify(f.display_name || "")})`}>📋 Atividade</button>
                 <button class="btn btn-secondary btn-sm" onclick={`acaoForn('${f.id}','reset_senha', this)`}>Nova senha</button>
                 <button class="btn btn-danger btn-sm" onclick={`excluirForn('${f.id}', ${JSON.stringify(f.display_name || "")}, this)`}>Excluir</button>
               </td>
@@ -77,6 +78,16 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
           <button type="submit" class="btn btn-primary" id="btnCriarForn">Criar acesso</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal: atividade (acessos + downloads) -->
+  <div class="modal-overlay" id="modalAtiv">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header"><h2 id="ativTitulo">📋 Atividade</h2><button class="modal-close" onclick="fecharAtiv()">✕</button></div>
+      <div style="padding:16px 24px;max-height:78vh;overflow:auto" id="ativBody">
+        <p style="color:#9CA3AF">Carregando…</p>
+      </div>
     </div>
   </div>
 
@@ -133,6 +144,34 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
       if (d.aviso) alert(d.aviso);
       location.reload();
     }
-    Object.assign(window, { abrirNovoForn, fecharForn, acaoForn, excluirForn });
+    // ── Atividade do fornecedor: acessos (logins) + downloads ──
+    const fdt2 = (s: string) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+    function fecharAtiv() { overlayF("modalAtiv").classList.remove("open"); }
+    async function verAtividade(id: string, nome: string) {
+      (document.getElementById("ativTitulo") as HTMLElement).textContent = `📋 Atividade — ${nome}`;
+      const body = document.getElementById("ativBody") as HTMLElement;
+      body.innerHTML = `<p style="color:#9CA3AF">Carregando…</p>`;
+      overlayF("modalAtiv").classList.add("open");
+      try {
+        const res = await fetch(`/api/admin/fornecedores/${id}/atividade`);
+        const d = await res.json();
+        if (!res.ok) { body.innerHTML = `<div class="alert alert-error">${(d.error || "Erro").replace(/</g, "&lt;")}</div>`; return; }
+        const esc = (s: any) => String(s == null ? "" : s).replace(/</g, "&lt;");
+        const acessosHtml = (d.acessos || []).length
+          ? `<div style="border:1px solid var(--border);border-radius:8px;overflow:auto;max-height:26vh"><table style="width:100%"><thead><tr><th style="text-align:left;padding:6px 10px">Quando</th><th style="text-align:left;padding:6px 10px">IP</th></tr></thead><tbody>${(d.acessos).map((a: any) => `<tr><td style="padding:5px 10px;font-size:13px">${fdt2(a.ts)}</td><td style="padding:5px 10px;font-size:12.5px;color:#6B7280">${esc(a.ip) || "—"}</td></tr>`).join("")}</tbody></table></div>`
+          : `<p style="color:#9CA3AF;font-size:13px;margin:4px 0">Nenhum acesso registrado ainda.</p>`;
+        const downloadsHtml = (d.downloads || []).length
+          ? `<div style="border:1px solid var(--border);border-radius:8px;overflow:auto;max-height:34vh"><table style="width:100%"><thead><tr><th style="text-align:left;padding:6px 10px">Quando</th><th style="text-align:left;padding:6px 10px">Documento baixado</th></tr></thead><tbody>${(d.downloads).map((x: any) => { const doc = String(x.descricao || "").replace(/^Fornecedor[^"]*baixou\s*"?/, "").replace(/"$/, ""); return `<tr><td style="padding:5px 10px;font-size:12.5px;white-space:nowrap;color:#6B7280">${fdt2(x.ts)}</td><td style="padding:5px 10px;font-size:13px">📄 ${esc(doc)}</td></tr>`; }).join("")}</tbody></table></div>`
+          : `<p style="color:#9CA3AF;font-size:13px;margin:4px 0">Nenhum download registrado ainda.</p>`;
+        body.innerHTML = `
+          <div style="display:flex;gap:10px;margin-bottom:12px">
+            <div class="card" style="flex:1;padding:10px 14px;text-align:center"><div style="font-size:1.6rem;font-weight:800;color:var(--brand)">${d.totalAcessos || 0}</div><div style="font-size:12px;color:#6B7280">acessos</div></div>
+            <div class="card" style="flex:1;padding:10px 14px;text-align:center"><div style="font-size:1.6rem;font-weight:800;color:var(--brand)">${d.totalDownloads || 0}</div><div style="font-size:12px;color:#6B7280">downloads</div></div>
+          </div>
+          <div style="font-weight:700;margin:6px 0 6px">🔑 Acessos (logins)</div>${acessosHtml}
+          <div style="font-weight:700;margin:14px 0 6px">⬇️ Documentos baixados</div>${downloadsHtml}`;
+      } catch { body.innerHTML = `<div class="alert alert-error">Falha de rede.</div>`; }
+    }
+    Object.assign(window, { abrirNovoForn, fecharForn, acaoForn, excluirForn, verAtividade, fecharAtiv });
   </script>
 </Admin>

@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { signToken, hashSenha, jsonOk, jsonErr } from "../../../lib/auth";
 import { supabaseAdmin } from "../../../lib/supabase";
+import { registrarAcao } from "../../../lib/auditoria";
 import { clientIp, rateLimit } from "../../../lib/ratelimit";
 import { STEPUP_ATIVO, lerDeviceCookie, novoDeviceCookie, deviceConfiavel, tocarDevice, criarDesafioOtp, TD_COOKIE } from "../../../lib/stepup";
 
@@ -56,6 +57,14 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     // Atualiza last_login
     await db.from("portal_profiles").update({ last_login_at: new Date().toISOString() }).eq("id", perfil.id);
+
+    // FORNECEDOR (externo): registra o ACESSO na auditoria (visível no painel /admin/fornecedores).
+    if (rolesTk.includes("fornecedor")) {
+      await registrarAcao(db, { req: request, admin: { email: perfil.email, role: "fornecedor" } }, {
+        acao: "criar", entidade: "fornecedor_acesso", registro_id: perfil.id,
+        descricao: `Fornecedor ${perfil.display_name || perfil.email} acessou o painel`,
+      }).catch(() => {});
+    }
 
     // Remove um possível cookie-ponte antigo (escopo de domínio, do RH embutido no
     // portal) para que ele não sombreie esta sessão de admin recém-criada.
