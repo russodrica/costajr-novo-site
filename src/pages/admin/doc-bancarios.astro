@@ -16,7 +16,13 @@ const perfisPg = await perfisFrescos(claims);
 const ehForn = ehFornecedorPerfis(perfisPg);
 if (!ehForn && !(await temPerfilFresco(claims, ["admin", "financeiro", "juridico"]))) return Astro.redirect("/admin");
 
-const BANCOS = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank"];
+const BANCOS = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank", "Villelapay"];
+// Contas criadas depois: só aparecem nos extratos A PARTIR do mês informado (evita "falta" retroativo).
+const BANCO_DESDE: Record<string, string> = { "Villelapay": "2026-06" };
+const ymOf = (a: number, m: number) => `${a}-${String(m).padStart(2, "0")}`;
+const bancosDoMes = (a: number, m: number) => BANCOS.filter((b) => !BANCO_DESDE[b] || ymOf(a, m) >= BANCO_DESDE[b]);
+// Cartões de crédito com fatura MENSAL → slots fixos por mês (como os bancos dos extratos).
+const CARTOES = ["Nubank", "Itaú"];
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const db = supabaseAdmin();
@@ -35,6 +41,12 @@ for (const e of extratos) { ((mapaEx[e.ano] ||= {})[e.mes] ||= {})[e.banco] ||= 
 // Mapa faturas: ano -> mes -> [faturas]
 const mapaFt: Record<number, Record<number, any[]>> = {};
 for (const f of faturas) ((mapaFt[f.ano] ||= {})[f.mes] ||= []).push(f);
+// Faturas por CARTÃO (slots Nubank/Itaú) + "outros" (cartão fora da lista, p/ não sumir nada).
+const normC = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const cartaoDe = (f: any) => CARTOES.find((c) => normC(f.cartao).includes(normC(c))) || null;
+const mapaFtCartao: Record<number, Record<number, Record<string, any[]>>> = {};
+const mapaFtOutros: Record<number, Record<number, any[]>> = {};
+for (const f of faturas) { const c = cartaoDe(f); if (c) { (((mapaFtCartao[f.ano] ||= {})[f.mes] ||= {})[c] ||= []).push(f); } else { ((mapaFtOutros[f.ano] ||= {})[f.mes] ||= []).push(f); } }
 
 const hoje = new Date();
 const anoVigente = hoje.getFullYear();
@@ -49,7 +61,7 @@ const anosFt = anosDe(mapaFt);
 const anoAnteriorBtn = Math.min(desde, anoVigente - 1) - 1;
 
 function totalAnoEx(a: number) { return Object.values(mapaEx[a] || {}).reduce((s, m) => s + Object.values(m).reduce((x, arr) => x + arr.length, 0), 0); }
-function bancosMes(a: number, m: number) { const mm = mapaEx[a]?.[m] || {}; return BANCOS.filter((b) => (mm[b] || []).length > 0).length; }
+function bancosMes(a: number, m: number) { const mm = mapaEx[a]?.[m] || {}; return bancosDoMes(a, m).filter((b) => (mm[b] || []).length > 0).length; }
 function totalAnoFt(a: number) { return Object.values(mapaFt[a] || {}).reduce((s, arr) => s + arr.length, 0); }
 const fdata = (s: string) => (s ? String(s).split("T")[0].split("-").reverse().join("/") : "—");
 const brl = (v: any) => (v != null && v !== "" ? "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—");
@@ -101,9 +113,9 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
             const futuro = a === anoVigente && m > (hoje.getMonth() + 1);
             return (
               <details class="mes-card" style={`margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden;${futuro ? 'opacity:.55' : ''}`}>
-                <summary class="mes-sum"><span class="chev">▸</span><span style="flex:1">{nome}</span><span class={`badge ${preench === BANCOS.length ? 'badge-green' : preench === 0 ? 'badge-gray' : 'badge-orange'}`}>{preench}/{BANCOS.length} bancos</span></summary>
+                <summary class="mes-sum"><span class="chev">▸</span><span style="flex:1">{nome}</span><span class={`badge ${preench === bancosDoMes(a, m).length ? 'badge-green' : preench === 0 ? 'badge-gray' : 'badge-orange'}`}>{preench}/{bancosDoMes(a, m).length} bancos</span></summary>
                 <div class="grid-cells">
-                  {BANCOS.map((banco) => {
+                  {bancosDoMes(a, m).map((banco) => {
                     const arqs = mapaEx[a]?.[m]?.[banco] || [];
                     return (
                       <div class="cell" data-drop-ano={String(a)} data-drop-mes={String(m)} data-drop-banco={banco}>
@@ -140,17 +152,29 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
             return (
               <details class="mes-card" open={fts.length > 0} style={`margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden;${futuro ? 'opacity:.55' : ''}`}>
                 <summary class="mes-sum"><span class="chev">▸</span><span style="flex:1">{nome}</span><span class={`badge ${fts.length ? 'badge-green' : 'badge-gray'}`}>{fts.length} fatura{fts.length === 1 ? '' : 's'}</span></summary>
-                <div style="padding:10px 14px;background:var(--gray-50)" data-drop-ft-ano={String(a)} data-drop-ft-mes={String(m)}>
-                  {fts.length === 0 && <p style="margin:0 0 8px;color:var(--muted);font-size:12.5px">Nenhuma fatura neste mês.</p>}
-                  {fts.map((f) => (
-                    <div class="cell-file" style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px">
-                      <span style="flex:1"><b>{f.cartao}</b>{f.valor != null ? ` · ${brl(f.valor)}` : ''}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''} <span style="color:#9CA3AF;font-size:12px">{f.nome_arquivo || ''}</span></span>
-                      <a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a>
-                      <button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button>
-                    </div>
-                  ))}
-                  <button class="btn btn-outline btn-sm" data-requer-edicao onclick={`anexarFaturaMes(${a},${m})`}>📎 Anexar fatura neste mês</button>
+                <div class="grid-cells" data-drop-ft-ano={String(a)} data-drop-ft-mes={String(m)}>
+                  {CARTOES.map((cartao) => {
+                    const cfts = mapaFtCartao[a]?.[m]?.[cartao] || [];
+                    return (
+                      <div class="cell">
+                        <div class="cell-head"><b style="flex:1;font-size:13.5px">💳 {cartao}</b>{cfts.length > 0 ? <span class="badge badge-green" style="font-size:10.5px">✓ {cfts.length}</span> : <span class="badge badge-gray" style="font-size:10.5px">falta</span>}</div>
+                        {cfts.map((f) => (
+                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={f.nome_arquivo || ''}>📄 {f.valor != null ? brl(f.valor) : (f.nome_arquivo || 'fatura')}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''}</span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
+                        ))}
+                        <button class="btn btn-outline btn-sm" style="width:100%;margin-top:7px" data-requer-edicao onclick={`anexarFaturaCartao(${a},${m},${JSON.stringify(cartao)})`}>📎 Anexar</button>
+                      </div>
+                    );
+                  })}
                 </div>
+                {(mapaFtOutros[a]?.[m] || []).length > 0 && (
+                  <div style="padding:6px 14px 0">
+                    <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">Outros cartões</div>
+                    {(mapaFtOutros[a][m]).map((f) => (
+                      <div class="cell-file" style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px"><span style="flex:1"><b>{f.cartao}</b>{f.valor != null ? ` · ${brl(f.valor)}` : ''}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''} <span style="color:#9CA3AF;font-size:12px">{f.nome_arquivo || ''}</span></span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
+                    ))}
+                  </div>
+                )}
+                <div style="padding:6px 14px 10px"><button class="btn btn-outline btn-sm" data-requer-edicao onclick={`anexarFaturaMes(${a},${m})`}>📎 Outro cartão…</button></div>
               </details>
             );
           })}
@@ -519,6 +543,14 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
   function anexarFaturaMes(ano: number, mes: number) {
     (document.getElementById("ftAno") as HTMLInputElement).value = String(ano);
     (document.getElementById("ftMes") as HTMLSelectElement).value = String(mes);
+    (document.getElementById("ftCartao") as HTMLInputElement).value = "";
+    abrirM("modalFt");
+  }
+  // slot de cartão fixo (Nubank/Itaú) — já vem com o cartão preenchido
+  function anexarFaturaCartao(ano: number, mes: number, cartao: string) {
+    (document.getElementById("ftAno") as HTMLInputElement).value = String(ano);
+    (document.getElementById("ftMes") as HTMLSelectElement).value = String(mes);
+    (document.getElementById("ftCartao") as HTMLInputElement).value = cartao;
     abrirM("modalFt");
   }
   function ftDoModal() {
@@ -650,5 +682,5 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
     if (res.ok) location.reload(); else { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; }
   }
 
-  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, enviarWhatsBanc, selecionarMesCompleto });
+  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, anexarFaturaCartao, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, enviarWhatsBanc, selecionarMesCompleto });
 </script>
