@@ -23,8 +23,11 @@ const MUTACOES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const FORNECEDOR_API_ALLOW: RegExp[] = [
   /^\/api\/admin\/doc-empresa\/arquivos\/[^/]+$/,   // GET download de anexo (o handler restringe categoria e método)
   /^\/api\/admin\/doc-empresa\/extratos\/[^/]+$/,   // GET download de extrato (o handler barra DELETE por perfil)
+  /^\/api\/fornecedor\/trocar-senha$/,              // POST: troca da PRÓPRIA senha provisória (endpoint só-fornecedor)
   /^\/api\/admin\/logout$/,
 ];
+// Único POST que o fornecedor pode fazer além do logout (trocar a própria senha).
+const FORNECEDOR_MUTACAO_OK = new Set(["/api/admin/logout", "/api/fornecedor/trocar-senha"]);
 function ehTokenFornecedor(claims: { role?: string; roles?: string[] } | null): boolean {
   if (!claims) return false;
   const perfis = (claims.roles && claims.roles.length ? claims.roles : [claims.role]).filter(Boolean) as string[];
@@ -37,29 +40,34 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const req = context.request;
     const path = new URL(req.url).pathname;
     if (path.startsWith("/api/")) {
-      // lê o token do MESMO jeito que os endpoints (cookie OU header x-portal-auth), senão o
-      // fornecedor contornaria a cerca mandando o token pelo header.
-      const tok = getPortalToken(req) || getAdminTokenFromCookie(req);
-      if (tok) {
+      // Avalia AMBOS os tokens (header x-portal-auth E cookie admin_token). Um header
+      // INVÁLIDO não pode mascarar um cookie de fornecedor válido — senão a cerca seria
+      // contornável mandando x-portal-auth com lixo (o `||` pegava o header e o
+      // verifyToken lançava, pulando a cerca). Se QUALQUER token for de fornecedor, cerca.
+      const candidatos = [getPortalToken(req), getAdminTokenFromCookie(req)].filter(Boolean);
+      let ehForn = false;
+      for (const cand of candidatos) {
         try {
-          const claims = await verifyToken<AdminClaims>(tok);
-          if (claims.tipo === "admin" && ehTokenFornecedor(claims)) {
-            const permitido = FORNECEDOR_API_ALLOW.some((re) => re.test(path));
-            if (!permitido) {
-              return new Response(
-                JSON.stringify({ error: "Acesso de fornecedor: este recurso não está disponível." }),
-                { status: 403, headers: { "content-type": "application/json" } },
-              );
-            }
-            // mesmo na allowlist, fornecedor NUNCA muta (só GET; logout é POST permitido)
-            if (MUTACOES.has(req.method) && path !== "/api/admin/logout") {
-              return new Response(
-                JSON.stringify({ error: "Acesso de fornecedor é somente leitura." }),
-                { status: 403, headers: { "content-type": "application/json" } },
-              );
-            }
-          }
-        } catch { /* token inválido → o endpoint devolve 401 */ }
+          const claims = await verifyToken<AdminClaims>(cand);
+          if (claims.tipo === "admin" && ehTokenFornecedor(claims)) { ehForn = true; break; }
+        } catch { /* token inválido: tenta o próximo candidato */ }
+      }
+      if (ehForn) {
+        const permitido = FORNECEDOR_API_ALLOW.some((re) => re.test(path));
+        if (!permitido) {
+          return new Response(
+            JSON.stringify({ error: "Acesso de fornecedor: este recurso não está disponível." }),
+            { status: 403, headers: { "content-type": "application/json" } },
+          );
+        }
+        // mesmo na allowlist, fornecedor NUNCA muta (só GET), exceto logout e a
+        // troca da própria senha provisória.
+        if (MUTACOES.has(req.method) && !FORNECEDOR_MUTACAO_OK.has(path)) {
+          return new Response(
+            JSON.stringify({ error: "Acesso de fornecedor é somente leitura." }),
+            { status: 403, headers: { "content-type": "application/json" } },
+          );
+        }
       }
     }
   } catch { /* nunca derruba a request pela cerca */ }

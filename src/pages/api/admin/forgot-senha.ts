@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
-import { gerarSenhaInicial, hashSenha, jsonOk, jsonErr } from "~/lib/auth";
+import { gerarSenhaInicial, hashSenha, invalidarSessoesPortal, jsonOk, jsonErr } from "~/lib/auth";
 import { supabaseAdmin } from "~/lib/supabase";
-import { enviarSenhaReset } from "~/lib/mailer";
+import { enviarSenhaReset, enviarSenhaFornecedor } from "~/lib/mailer";
 
 export const prerender = false;
 
@@ -39,7 +39,7 @@ export const POST: APIRoute = async ({ request }) => {
     const db = supabaseAdmin();
     const { data: perfil } = await db
       .from("portal_profiles")
-      .select("id, email, display_name, full_name, role, approval_status")
+      .select("id, email, display_name, full_name, empresa, role, approval_status")
       .eq("email", alvo)
       .maybeSingle();
 
@@ -49,10 +49,14 @@ export const POST: APIRoute = async ({ request }) => {
       message: "Se o e-mail estiver cadastrado, enviaremos uma senha temporária em instantes.",
     });
 
+    // Fornecedor (externo) também pode se auto-recuperar — a senha é a única
+    // credencial dele. Sem isso, o link "Esqueci minha senha" fingia sucesso e
+    // nunca enviava e-mail (beco sem saída).
+    const ehFornecedor = !!perfil && perfil.role === "fornecedor";
     if (
       !perfil ||
       perfil.approval_status !== "approved" ||
-      !ROLES_PAINEL.includes(perfil.role)
+      (!ROLES_PAINEL.includes(perfil.role) && !ehFornecedor)
     ) {
       return respostaGenerica;
     }
@@ -65,9 +69,15 @@ export const POST: APIRoute = async ({ request }) => {
       .update({ senha_hash, senha_troca_obrigatoria: true })
       .eq("id", perfil.id);
 
-    const nome = perfil.display_name || perfil.full_name || "Colaborador";
+    const nome = perfil.display_name || perfil.full_name || (ehFornecedor ? "Fornecedor" : "Colaborador");
     try {
-      await enviarSenhaReset(perfil.email, nome, novaSenha, loginPath);
+      if (ehFornecedor) {
+        // Derruba sessões antigas e manda o e-mail do Portal do Fornecedor (link da intranet).
+        await invalidarSessoesPortal(perfil.id);
+        await enviarSenhaFornecedor(perfil.email, nome, (perfil as any).empresa || null, novaSenha, "reset");
+      } else {
+        await enviarSenhaReset(perfil.email, nome, novaSenha, loginPath);
+      }
     } catch (e: any) {
       console.error("[admin/forgot-senha] e-mail falhou:", e?.message);
       // Mantém resposta genérica mesmo se o e-mail falhar.

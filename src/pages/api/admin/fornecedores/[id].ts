@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, hashSenha, invalidarSessoesPortal, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao, excluirComLixeira } from "../../../../lib/auditoria";
+import { enviarSenhaFornecedor } from "../../../../lib/mailer";
 
 export const prerender = false;
 const PERFIS = ["admin"];
@@ -45,14 +46,22 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     if (acao === "reset_senha") {
       const senha = gerarSenhaForte();
-      const { error } = await db.from("portal_profiles").update({ senha_hash: await hashSenha(senha) }).eq("id", forn.id);
+      const { error } = await db.from("portal_profiles").update({ senha_hash: await hashSenha(senha), senha_troca_obrigatoria: true }).eq("id", forn.id);
       if (error) return jsonErr(400, error.message);
       await invalidarSessoesPortal(forn.id); // sessões antigas caem
       await registrarAcao(db, { req: request, admin }, {
         acao: "editar", entidade: "portal_profiles", registro_id: forn.id,
         descricao: `Resetou a senha do fornecedor ${forn.display_name} <${forn.email}>`,
       }).catch(() => {});
-      return jsonOk({ ok: true, senha }); // mostrada UMA vez
+      let emailEnviado = false;
+      let emailErro: string | undefined;
+      try {
+        await enviarSenhaFornecedor(forn.email, forn.display_name, forn.empresa || null, senha, "reset");
+        emailEnviado = true;
+      } catch (e: any) {
+        emailErro = e?.message || "Falha ao enviar o e-mail.";
+      }
+      return jsonOk({ ok: true, senha, emailEnviado, emailErro }); // senha = fallback se o e-mail falhar
     }
 
     // edição simples de nome/empresa

@@ -95,7 +95,12 @@ if (token) {
             btn.disabled = false; btn.textContent = "Entrar";
             return;
           }
-          window.location.href = data.troca ? "/admin/trocar-senha?forcado=1" : "/admin";
+          if (data.troca) {
+            // fornecedor externo troca a provisória numa tela própria (sem layout admin)
+            window.location.href = data.role === "fornecedor" ? "/fornecedor/trocar-senha" : "/admin/trocar-senha?forcado=1";
+          } else {
+            window.location.href = "/admin";
+          }
         } else {
           const data = await res.json();
           err.textContent = data.error || "Credenciais inválidas";
@@ -173,7 +178,11 @@ if (token) {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          window.location.href = data.troca ? "/admin/trocar-senha?forcado=1" : "/admin";
+          if (data.troca) {
+            window.location.href = data.role === "fornecedor" ? "/fornecedor/trocar-senha" : "/admin/trocar-senha?forcado=1";
+          } else {
+            window.location.href = "/admin";
+          }
         } else {
           oe.textContent = data.error || "Código incorreto.";
           oe.style.display = "block";

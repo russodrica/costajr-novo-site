@@ -1,0 +1,102 @@
+---
+// Tela dedicada do FORNECEDOR para criar a senha pessoal (troca da provisória).
+// Standalone (não usa o layout do /admin) → sem gate de módulo. Só um fornecedor
+// logado vê; qualquer outro cai no login.
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco } from "../../lib/permissoes";
+
+// Fonte de verdade = perfil FRESCO do banco (igual /admin/index.astro), não o token —
+// senão token defasado x banco poderia fechar um loop de redirecionamento.
+const token = Astro.cookies.get("admin_token")?.value;
+let ok = false;
+if (token) {
+  try {
+    const c = await verifyToken<AdminClaims>(token);
+    if (c.tipo === "admin" && (await temPerfilFresco(c, ["fornecedor"]))) ok = true;
+  } catch {}
+}
+if (!ok) return Astro.redirect("/admin/login");
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crie sua senha — Portal do Fornecedor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <meta name="robots" content="noindex,nofollow" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Open Sans', sans-serif; background: #1C1E22; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .box { background: #fff; border-radius: 14px; padding: 38px 34px; width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+    .logo { font-family: 'Montserrat', sans-serif; font-size: 2rem; font-weight: 700; color: #C41E3A; text-align: center; }
+    .logo-sub { text-align: center; font-size: 0.72rem; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+    h1 { font-size: 1.15rem; color: #2D2F36; text-align: center; margin: 14px 0 6px; }
+    .lead { font-size: 0.85rem; color: #6B7280; text-align: center; line-height: 1.5; margin-bottom: 22px; }
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 5px; }
+    input { width: 100%; padding: 10px 14px; border: 1px solid #D1D5DB; border-radius: 7px; font-size: 0.9rem; margin-bottom: 15px; outline: none; }
+    input:focus { border-color: #C41E3A; box-shadow: 0 0 0 3px rgba(196,30,58,0.1); }
+    button { width: 100%; padding: 11px; background: #C41E3A; color: #fff; border: none; border-radius: 7px; font-size: 0.95rem; font-weight: 600; cursor: pointer; font-family: 'Montserrat', sans-serif; margin-top: 4px; transition: opacity 0.15s; }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .hint { font-size: 0.75rem; color: #9CA3AF; margin: -8px 0 14px; }
+    .msg { border-radius: 7px; padding: 10px 14px; font-size: 0.85rem; margin-bottom: 14px; display: none; }
+    .msg.err { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+    .msg.ok { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="logo">CJR</div>
+    <div class="logo-sub">Portal do Fornecedor</div>
+    <h1>Crie sua senha pessoal</h1>
+    <p class="lead">Para sua segurança, defina uma senha própria. A senha provisória que você recebeu por e-mail deixa de valer depois disso.</p>
+    <div class="msg" id="msg"></div>
+    <form id="form">
+      <label for="atual">Senha provisória (recebida por e-mail)</label>
+      <input type="password" id="atual" autocomplete="current-password" required placeholder="••••••••" />
+      <label for="nova">Nova senha</label>
+      <input type="password" id="nova" autocomplete="new-password" required placeholder="mínimo 8 caracteres" />
+      <p class="hint">Use ao menos 8 caracteres. Evite senhas óbvias.</p>
+      <label for="conf">Repita a nova senha</label>
+      <input type="password" id="conf" autocomplete="new-password" required placeholder="••••••••" />
+      <button type="submit" id="btn">Salvar e entrar</button>
+    </form>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const msg = $("msg");
+    function showErr(t) { msg.className = "msg err"; msg.textContent = t; msg.style.display = "block"; }
+    $("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = $("btn");
+      const atual = $("atual").value;
+      const nova = $("nova").value;
+      const conf = $("conf").value;
+      msg.style.display = "none";
+      if (nova.length < 8) { showErr("A nova senha deve ter ao menos 8 caracteres."); return; }
+      if (nova !== conf) { showErr("As senhas não conferem."); return; }
+      if (nova === atual) { showErr("A nova senha deve ser diferente da provisória."); return; }
+      btn.disabled = true; btn.textContent = "Salvando...";
+      try {
+        const res = await fetch("/api/fornecedor/trocar-senha", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ senhaAtual: atual, novaSenha: nova }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          msg.className = "msg ok"; msg.textContent = "Senha criada! Entrando..."; msg.style.display = "block";
+          setTimeout(() => { window.location.href = "/admin"; }, 700);
+        } else {
+          showErr(data.error || "Não foi possível salvar. Tente novamente.");
+          btn.disabled = false; btn.textContent = "Salvar e entrar";
+        }
+      } catch {
+        showErr("Erro de conexão. Tente novamente.");
+        btn.disabled = false; btn.textContent = "Salvar e entrar";
+      }
+    });
+  </script>
+</body>
+</html>

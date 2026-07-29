@@ -172,11 +172,20 @@ export function getAdminTokenFromCookie(request: Request): string {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
-export async function requireAdminCookie(request: Request): Promise<AdminClaims> {
+export async function requireAdminCookie(
+  request: Request,
+  opts?: { permitirFornecedor?: boolean },
+): Promise<AdminClaims> {
   const tok = getAdminTokenFromCookie(request);
   if (!tok) throw new Error("Não autenticado");
   const claims = await verifyToken<AdminClaims>(tok);
   if (claims.tipo !== "admin") throw new Error("Token inválido");
+  // FORNECEDOR (externo) é deny-by-default TAMBÉM na porta do cookie: só os
+  // endpoints que EXPLICITAMENTE liberam ({ permitirFornecedor: true }, hoje só os
+  // GET de download de doc-empresa/extratos) o aceitam. Isso fecha a classe de
+  // GET /api/admin/* sem gate próprio (a cerca do middleware é só a 1ª linha, e um
+  // header x-portal-auth inválido não pode expor esses endpoints).
+  if (!opts?.permitirFornecedor && perfisDe(claims).includes("fornecedor")) throw new Error("Sem permissão");
   await assertSessaoValida(claims);
   return claims;
 }

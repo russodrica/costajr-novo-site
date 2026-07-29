@@ -141,6 +141,68 @@ export async function enviarSenhaResetRepresentante(email: string, nome: string,
   });
 }
 
+// Boas-vindas / nova senha do FORNECEDOR externo — senha provisória + link da
+// intranet + instruções de acesso. No 1º acesso ele cria a própria senha.
+export async function enviarSenhaFornecedor(
+  email: string,
+  nome: string,
+  empresa: string | null,
+  senha: string,
+  contexto: "boas-vindas" | "reset" = "boas-vindas",
+) {
+  const esc = (s: string) =>
+    String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const primeiro = esc((nome || "").trim().split(" ")[0] || nome || "");
+  const emailEsc = esc(email);
+  const empresaEsc = empresa ? esc(empresa) : "";
+  const site = SITE.replace(/^https?:\/\//, "");
+  const titulo = contexto === "boas-vindas" ? `Bem-vindo(a), ${primeiro}!` : `Nova senha de acesso, ${primeiro}`;
+  const subject = contexto === "boas-vindas"
+    ? "Bem-vindo(a) ao Portal do Fornecedor — Costa Júnior"
+    : "Nova senha de acesso — Portal do Fornecedor Costa Júnior";
+  const intro = contexto === "boas-vindas"
+    ? `Seu acesso ao <strong>Portal do Fornecedor</strong> da Costa Júnior foi criado${empresaEsc ? ` para <strong>${empresaEsc}</strong>` : ""}. Por ele você pode <strong>visualizar e baixar</strong> os documentos da empresa e extratos bancários disponibilizados para você — sem inserir, editar ou excluir nada.`
+    : `Geramos uma <strong>nova senha provisória</strong> para o seu acesso ao <strong>Portal do Fornecedor</strong> da Costa Júnior. A senha anterior deixou de funcionar.`;
+  return sendOrThrow({
+    to: email,
+    subject,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto;padding:32px 24px;background:#fff">
+        <img src="${SITE}/logo-cjr.png" alt="Costa Júnior" style="height:46px;margin-bottom:20px">
+        <div style="background:#FEF2F2;color:#7F1D1D;border:1px solid #FECACA;padding:5px 12px;border-radius:99px;display:inline-block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:16px">🔒 Portal do Fornecedor</div>
+        <h2 style="color:#2D2F36;margin:0 0 10px">${titulo}</h2>
+        <p style="color:#5B5F6B;margin:0 0 18px;line-height:1.6">${intro}</p>
+
+        <div style="background:#F4F6F9;border-radius:8px;padding:18px 22px;margin:0 0 18px">
+          <div style="font-size:12px;color:#5B5F6B;margin-bottom:4px">Seu login (e-mail)</div>
+          <div style="font-size:15px;color:#2D2F36;font-weight:600;margin-bottom:14px;user-select:all">${emailEsc}</div>
+          <div style="font-size:12px;color:#5B5F6B;margin-bottom:4px">Senha provisória</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;font-size:26px;font-weight:700;color:#C41E3A;letter-spacing:0.12em;user-select:all">${senha}</div>
+        </div>
+
+        <p style="color:#5B5F6B;margin:0 0 14px;line-height:1.6;font-size:14px"><strong>No primeiro acesso</strong> você será solicitado a criar uma <strong>senha pessoal</strong>. A senha provisória acima só serve para essa primeira entrada.</p>
+
+        <a href="${SITE}/intranet" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin:6px 0 22px">Acessar a Intranet →</a>
+
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:16px 20px;margin-bottom:20px">
+          <div style="font-weight:700;color:#2D2F36;font-size:14px;margin-bottom:8px">Como acessar</div>
+          <ol style="color:#5B5F6B;font-size:13.5px;line-height:1.7;padding-left:20px;margin:0">
+            <li>Abra <a href="${SITE}/intranet" style="color:#C41E3A">${site}/intranet</a> e clique em <strong>Portal do Fornecedor</strong>.</li>
+            <li>Entre com o <strong>e-mail</strong> e a <strong>senha provisória</strong> acima.</li>
+            <li>Crie sua <strong>senha pessoal</strong> quando for solicitado.</li>
+            <li>Pronto: consulte e baixe os <strong>Documentos da Empresa</strong> e <strong>Extratos Bancários</strong>.</li>
+          </ol>
+        </div>
+
+        <p style="color:#9CA3AF;font-size:12px;margin-top:8px;line-height:1.6">
+          Se você não esperava este acesso, ignore este e-mail ou fale com a Costa Júnior pelo WhatsApp <a href="https://wa.me/551123696462" style="color:#C41E3A">(11) 2369-6462</a>.<br>
+          Costa Júnior — Engenharia e Construções Ltda
+        </p>
+      </div>
+    `,
+  });
+}
+
 function ADMIN_EMAIL(): string {
   return import.meta.env.ADMIN_NOTIFICATION_EMAIL || "adriana@costajr.com.br";
 }

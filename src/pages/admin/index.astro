@@ -17,12 +17,16 @@ try {
 } catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 
 const perfis = await perfisFrescos(claims);
-// FORNECEDOR (externo): não vê a Visão Geral — landing direto nos Documentos da Empresa.
-if (perfis.includes("fornecedor")) return Astro.redirect("/admin/doc-empresa");
+const db = supabaseAdmin();
+// FORNECEDOR (externo): não vê a Visão Geral. Se ainda tem senha provisória, força a troca;
+// senão, landing direto nos Documentos da Empresa.
+if (perfis.includes("fornecedor")) {
+  const { data: fp } = await db.from("portal_profiles").select("senha_troca_obrigatoria").eq("id", claims.sub).maybeSingle();
+  if (fp?.senha_troca_obrigatoria) return Astro.redirect("/fornecedor/trocar-senha");
+  return Astro.redirect("/admin/doc-empresa");
+}
 const overrides = await carregarOverridesUsuario(claims.sub);
 const pode = (key: string) => nivelEfetivo(key, perfis, overrides) !== "nenhum";
-
-const db = supabaseAdmin();
 const hoje = new Date().toISOString().slice(0, 10);
 
 // Helper de contagem (Supabase não lança em erro de query — retorna count null).

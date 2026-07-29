@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, hashSenha, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
+import { enviarSenhaFornecedor } from "../../../../lib/mailer";
 
 export const prerender = false;
 const PERFIS = ["admin"]; // gestão de acesso externo é só do admin
@@ -54,6 +55,7 @@ export const POST: APIRoute = async ({ request }) => {
       role: "fornecedor", roles: ["fornecedor"],
       approval_status: "approved",
       senha_hash: await hashSenha(senha),
+      senha_troca_obrigatoria: true, // provisória: troca no 1º acesso
     }).select("id").single();
     if (error) return jsonErr(400, error.message);
 
@@ -63,7 +65,18 @@ export const POST: APIRoute = async ({ request }) => {
       dados: { role: "fornecedor", empresa },
     }).catch(() => {});
 
-    return jsonOk({ ok: true, id: row?.id, senha }); // senha mostrada UMA vez — não fica em log
+    // Envia a senha provisória por e-mail (boas-vindas + link da intranet + instruções).
+    let emailEnviado = false;
+    let emailErro: string | undefined;
+    try {
+      await enviarSenhaFornecedor(email, nome, empresa || null, senha, "boas-vindas");
+      emailEnviado = true;
+    } catch (e: any) {
+      emailErro = e?.message || "Falha ao enviar o e-mail.";
+    }
+
+    // Retorna a senha como FALLBACK (o admin repassa manualmente se o e-mail falhar).
+    return jsonOk({ ok: true, id: row?.id, senha, emailEnviado, emailErro });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }

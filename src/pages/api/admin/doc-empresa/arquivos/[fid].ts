@@ -15,7 +15,7 @@ const PERFIS = ["admin", "financeiro", "juridico", "comercial"]; // comercial = 
 const CATS_VEDADAS_FORNECEDOR = new Set(["Contratos", "Clientes", "Consórcios", "Seguros"]);
 export const GET: APIRoute = async ({ request, params }) => {
   try {
-    const admin = await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request, { permitirFornecedor: true });
     const ehForn = temPerfil(admin, ["fornecedor"]);
     if (!ehForn && !temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
     const db = supabaseAdmin();
