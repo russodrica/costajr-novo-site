@@ -40,6 +40,16 @@ const portais = [
     cta: "Acessar",
   },
   {
+    id: "fornecedor",
+    titulo: "Portal do Fornecedor",
+    descricao: "Consulte e baixe os documentos da empresa e extratos bancários disponibilizados para você. Somente visualização e download.",
+    publico: "Para fornecedores e parceiros externos autorizados.",
+    href: "/admin/login",
+    iconRaw: `<path d="M16.5 9.4l-9-5.19"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05"/><path d="M12 22.08V12"/>`,
+    cta: "Acessar",
+    badge: "🔒 Acesso externo",
+  },
+  {
     id: "admin",
     titulo: "Área Administrativa",
     descricao: "Gestão de clientes, contratos, faturamento, equipes e relatórios consolidados.",
@@ -71,7 +81,7 @@ const portais = [
           <article class="portal-card">
             {p.badge && <span class="portal-badge">{p.badge}</span>}
             <div class="portal-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={`<path d="${p.icon}"/>`}></svg>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={p.iconRaw || `<path d="${p.icon}"/>`}></svg>
             </div>
             <h3>{p.titulo}</h3>
             <p class="portal-desc">{p.descricao}</p>
