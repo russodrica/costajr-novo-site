@@ -16,9 +16,9 @@ const perfisPg = await perfisFrescos(claims);
 const ehForn = ehFornecedorPerfis(perfisPg);
 if (!ehForn && !(await temPerfilFresco(claims, ["admin", "financeiro", "juridico"]))) return Astro.redirect("/admin");
 
-const BANCOS = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank", "VillelaPay"];
+const BANCOS = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank", "VillelaPay", "Banco Inter"];
 // Contas criadas depois: só aparecem nos extratos A PARTIR do mês informado (evita "falta" retroativo).
-const BANCO_DESDE: Record<string, string> = { "VillelaPay": "2026-06" };
+const BANCO_DESDE: Record<string, string> = { "VillelaPay": "2026-06", "Banco Inter": "2024-01" };
 const ymOf = (a: number, m: number) => `${a}-${String(m).padStart(2, "0")}`;
 const bancosDoMes = (a: number, m: number) => BANCOS.filter((b) => !BANCO_DESDE[b] || ymOf(a, m) >= BANCO_DESDE[b]);
 // Cartões de crédito com fatura MENSAL → slots fixos por mês (como os bancos dos extratos).
