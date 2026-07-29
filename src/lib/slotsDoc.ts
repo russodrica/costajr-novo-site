@@ -118,22 +118,28 @@ const BANCOS_MAP: [RegExp, string][] = [
   [/ita[u]/, "Itaú"],
   [/nubank/, "Nubank"],
 ];
-export function detectarExtratoBancario(texto: string): { banco: string; mes: number; ano: number } | null {
+export function detectarExtratoBancario(texto: string): { banco: string; mes: number; ano: number; tipo: "extrato" | "fatura" } | null {
   const t = norm(texto);
-  const ehExtrato = /extrato|comprovante\s+bancario|demonstrativo\s+bancario|saldo\s+bancario/.test(t);
-  if (!ehExtrato) return null;
+  const ehFatura = /fatura|\bcartao\b|\bfat\b/.test(t);
   let banco: string | null = null;
   for (const [re, nome] of BANCOS_MAP) { if (re.test(t)) { banco = nome; break; } }
   if (!banco) return null;
+  // Extrai mês/ano: tenta PRIMEIRO no texto original (antes do norm) para pegar YYYY-MM-DD / YYYY_MM_DD
   let mes = 0, ano = 0;
-  for (const [nomeMes, num] of Object.entries(MESES_PT)) {
-    const re = new RegExp(`\\b${nomeMes}\\b[\\s/\\-]*(20\\d{2})`, "i");
-    const m = t.match(re); if (m) { mes = num; ano = Number(m[1]); break; }
+  const mOrig = texto.match(/\b(20\d{2})[_\-](0?[1-9]|1[0-2])(?:[_\-]\d{1,2})?\b/);
+  if (mOrig) { ano = Number(mOrig[1]); mes = Number(mOrig[2]); }
+  if (!mes) {
+    for (const [nomeMes, num] of Object.entries(MESES_PT)) {
+      const re = new RegExp(`\\b${nomeMes}\\b[\\s/\\-]*(20\\d{2})`, "i");
+      const m = t.match(re); if (m) { mes = num; ano = Number(m[1]); break; }
+    }
   }
   if (!mes) { const m = t.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/); if (m) { mes = Number(m[1]); ano = Number(m[2]); } }
   if (!mes) { const m = t.match(/\b(20\d{2})-(0?[1-9]|1[0-2])\b/); if (m) { ano = Number(m[1]); mes = Number(m[2]); } }
   if (!mes || !ano) return null;
-  return { banco, mes, ano };
+  // Banco + data suficientes (sem necessidade de keyword "extrato") — card de confirmação deixa o usuário descartar se errado
+  const tipo: "extrato" | "fatura" = ehFatura ? "fatura" : "extrato";
+  return { banco, mes, ano, tipo };
 }
 
 // Casa um texto (nome do arquivo / conteúdo) com a lista de colaboradores (ou empresas)

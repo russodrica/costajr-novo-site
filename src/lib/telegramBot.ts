@@ -562,6 +562,22 @@ async function onDocumentoRecebido(db: any, B: Bot, sessao: Sessao, chatId: numb
   // Documento contábil/da empresa (balancete, DRE…) traz o nome do sócio no corpo →
   // não sugere PESSOA; cai no fluxo "é da empresa".
   if (ehDocEmpresa(`${nome} ${textoExtra}`)) match = null;
+  // ── EXTRATO/FATURA BANCÁRIA: detectar antes de pessoa/empresa ──
+  const textoDetectPriv = `${nome} ${textoExtra}`.trim();
+  const extBanc = detectarExtratoBancario(textoDetectPriv);
+  if (extBanc) {
+    const mesesNomesPriv = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    const mesNomePriv = mesesNomesPriv[(extBanc.mes - 1)] || String(extBanc.mes);
+    const token = Date.now().toString(36);
+    const autorPriv = sessao.dados?.colaborador_nome ? `${sessao.dados.colaborador_nome} (via Telegram)` : "Telegram";
+    await salvarSessao(db, { telegram_user_id: "gbanc:" + token, chat_id: String(chatId), estado: "pendente", dados: { doc_path: storagePath, doc_nome: nome, ct, banco: extBanc.banco, mes: extBanc.mes, ano: extBanc.ano, tipo: extBanc.tipo, autor: autorPriv } });
+    const tipoLabelPriv = extBanc.tipo === "fatura" ? "💳 <b>Fatura de cartão detectada!</b>" : "🏦 <b>Extrato bancário detectado!</b>";
+    const bancoLabelPriv = extBanc.tipo === "fatura" ? "Cartão" : "Banco";
+    await enviar(B, chatId,
+      `${tipoLabelPriv}\n${bancoLabelPriv}: <b>${escTg(extBanc.banco)}</b>\nPeríodo: <b>${mesNomePriv}/${extBanc.ano}</b>\n\nÉ isso? Confirma para arquivar em <b>Documentos Bancários</b>.`,
+      inline([[{ text: `✅ Confirmar — ${extBanc.banco} ${mesNomePriv}/${extBanc.ano}`, callback_data: "gbancok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+    return;
+  }
   const slot = (slotKey && slotPorKey(slotKey)) || slotPorKey("outro")!;
   const nd = {
     ...idBaseDe(sessao.dados || {}), doc_path: storagePath, doc_nome: nome,
@@ -846,9 +862,11 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
     const token = Date.now().toString(36);
     const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
     const mesNome = mesesNomes[(extrato.mes - 1)] || String(extrato.mes);
-    await salvarSessao(db, { telegram_user_id: "gbanc:" + token, chat_id: String(chatId), estado: "pendente", dados: { doc_path: storagePath, doc_nome: nome, ct, banco: extrato.banco, mes: extrato.mes, ano: extrato.ano, autor: `${nomeRemetente(msg.from)} (via grupo Telegram)` } });
+    await salvarSessao(db, { telegram_user_id: "gbanc:" + token, chat_id: String(chatId), estado: "pendente", dados: { doc_path: storagePath, doc_nome: nome, ct, banco: extrato.banco, mes: extrato.mes, ano: extrato.ano, tipo: extrato.tipo, autor: `${nomeRemetente(msg.from)} (via grupo Telegram)` } });
+    const tipoLabel = extrato.tipo === "fatura" ? "💳 <b>Fatura de cartão detectada!</b>" : "🏦 <b>Extrato bancário detectado!</b>";
+    const bancoLabel = extrato.tipo === "fatura" ? "Cartão" : "Banco";
     await enviar(B, chatId,
-      `🏦 <b>Extrato bancário detectado!</b>\nBanco: <b>${escTg(extrato.banco)}</b>\nPeríodo: <b>${mesNome}/${extrato.ano}</b>\n\nÉ isso? Confirma para arquivar em <b>Documentos Bancários</b>.`,
+      `${tipoLabel}\n${bancoLabel}: <b>${escTg(extrato.banco)}</b>\nPeríodo: <b>${mesNome}/${extrato.ano}</b>\n\nÉ isso? Confirma para arquivar em <b>Documentos Bancários</b>.`,
       inline([[{ text: `✅ Confirmar — ${extrato.banco} ${mesNome}/${extrato.ano}`, callback_data: "gbancok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
     return;
   }
@@ -935,21 +953,34 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const buf = Buffer.from(await blob.arrayBuffer());
     const ext = (d.doc_path || "").split(".").pop() || "pdf";
     const bancoSlug = String(d.banco).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9_-]/g, "_");
-    const newPath = `extratos/${d.ano}/${String(d.mes).padStart(2, "0")}/${bancoSlug}/${Date.now()}.${ext}`;
+    const ehFatura = d.tipo === "fatura";
+    const pastaPrefixo = ehFatura ? "faturas" : "extratos";
+    const newPath = `${pastaPrefixo}/${d.ano}/${String(d.mes).padStart(2, "0")}/${bancoSlug}/${Date.now()}.${ext}`;
     const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
     if (eUp) { await enviar(B, chatId, "❌ Falha ao arquivar: " + escTg(eUp.message)); return; }
-    const { data: row, error } = await db.from("doc_extratos_bancarios").insert({
-      ano: d.ano, mes: d.mes, banco: d.banco, storage_path: newPath, nome_arquivo: d.doc_nome, criado_por: d.autor,
-    }).select().single();
-    if (error) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não registrou: " + escTg(error.message)); return; }
+    const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    let row: any = null, dbErr: any = null;
+    if (ehFatura) {
+      ({ data: row, error: dbErr } = await db.from("doc_cartao_faturas").insert({
+        ano: d.ano, mes: d.mes, cartao: d.banco, storage_path: newPath, nome_arquivo: d.doc_nome, criado_por: d.autor,
+      }).select().single());
+    } else {
+      ({ data: row, error: dbErr } = await db.from("doc_extratos_bancarios").insert({
+        ano: d.ano, mes: d.mes, banco: d.banco, storage_path: newPath, nome_arquivo: d.doc_nome, criado_por: d.autor,
+      }).select().single());
+    }
+    if (dbErr) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não registrou: " + escTg(dbErr.message)); return; }
     await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
+    const entidade = ehFatura ? "doc_cartao_faturas" : "doc_extratos_bancarios";
+    const tipoDesc = ehFatura ? "fatura" : "extrato";
     await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
-      acao: "criar", entidade: "doc_extratos_bancarios", registro_id: row?.id ?? null,
-      descricao: `Telegram (grupo): extrato ${d.banco} ${String(d.mes).padStart(2,"0")}/${d.ano} — "${d.doc_nome}"`, dados: { banco: d.banco, mes: d.mes, ano: d.ano },
+      acao: "criar", entidade, registro_id: row?.id ?? null,
+      descricao: `Telegram: ${tipoDesc} ${d.banco} ${String(d.mes).padStart(2,"0")}/${d.ano} — "${d.doc_nome}"`, dados: { banco: d.banco, mes: d.mes, ano: d.ano },
     });
     await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gbanc:" + token);
-    const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-    await enviar(B, chatId, `✅ <b>Extrato arquivado!</b> ${escTg(d.banco)} — ${escTg(mesesNomes[(d.mes - 1)] || String(d.mes))}/${d.ano}. 🏦`);
+    const emoji = ehFatura ? "💳" : "🏦";
+    const tipoLabel = ehFatura ? "Fatura arquivada!" : "Extrato arquivado!";
+    await enviar(B, chatId, `✅ <b>${tipoLabel}</b> ${emoji} ${escTg(d.banco)} — ${escTg(mesesNomes[(d.mes - 1)] || String(d.mes))}/${d.ano}.`);
     return;
   }
 
