@@ -1,10 +1,15 @@
 ---
-import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { verifyToken, perfisDe, type AdminClaims } from "../../lib/auth";
 export const prerender = false;
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
-try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+// FORNECEDOR externo troca a senha na tela PRÓPRIA (/fornecedor/trocar-senha). Esta página usa
+// /api/portal/trocar-senha, que a cerca veda ao fornecedor. Redirect no SERVIDOR = robusto a
+// cache (login antigo) e a navegação direta.
+if (perfisDe(claims).includes("fornecedor")) return Astro.redirect("/fornecedor/trocar-senha");
 const forcado = Astro.url.searchParams.get("forcado") === "1";
 ---
 <!doctype html>
