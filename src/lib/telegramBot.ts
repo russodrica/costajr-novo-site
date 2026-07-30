@@ -16,6 +16,7 @@ import { registrarAcao } from "./auditoria";
 import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
 import { assinarTreinoToken } from "./treinoStorage";
+import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial } from "./comercialFlow";
 
 const SITE_TREINO = "https://www.costajr.com.br";
 
@@ -49,8 +50,8 @@ function envVar(name: string): string {
 }
 
 // ── Identidade de cada bot ───────────────────────────────────────────────
-type Modo = "ativo" | "adm" | "junia";
-type Bot = { token: string; modo: Modo; pre: string; nome: string };
+export type Modo = "ativo" | "adm" | "junia" | "processos";
+export type Bot = { token: string; modo: Modo; pre: string; nome: string };
 function botPorModo(modo: Modo): Bot {
   if (modo === "adm") {
     return { token: envVar("TELEGRAM_BOT_TOKEN_ADM") || envVar("TELEGRAM_BOT_TOKEN"), modo, pre: "adm:", nome: "@cjr_adm_bot" };
@@ -58,11 +59,14 @@ function botPorModo(modo: Modo): Bot {
   if (modo === "junia") {
     return { token: envVar("TELEGRAM_BOT_TOKEN_JUNIA") || envVar("TELEGRAM_BOT_TOKEN"), modo, pre: "junia:", nome: "@CjrJunIA_bot" };
   }
+  if (modo === "processos") {
+    return { token: envVar("TELEGRAM_BOT_TOKEN_PROCESSOS"), modo, pre: "proc:", nome: "@cjr_processos_bot" };
+  }
   return { token: envVar("TELEGRAM_BOT_TOKEN"), modo: "ativo", pre: "", nome: "@cjr_ativo_bot" };
 }
 
 // ── Telegram API helpers (best-effort) ──────────────────────────────────
-async function tg(B: Bot, metodo: string, corpo: any): Promise<any> {
+export async function tg(B: Bot, metodo: string, corpo: any): Promise<any> {
   if (!B.token) return { ok: false };
   try {
     const r = await fetch(`https://api.telegram.org/bot${B.token}/${metodo}`, {
@@ -71,7 +75,7 @@ async function tg(B: Bot, metodo: string, corpo: any): Promise<any> {
     return await r.json().catch(() => ({}));
   } catch { return { ok: false }; }
 }
-function enviar(B: Bot, chatId: number | string, texto: string, teclado?: any) {
+export function enviar(B: Bot, chatId: number | string, texto: string, teclado?: any) {
   const corpo: any = { chat_id: chatId, text: texto, parse_mode: "HTML", disable_web_page_preview: true };
   if (teclado) corpo.reply_markup = teclado;
   return tg(B, "sendMessage", corpo);
@@ -79,10 +83,10 @@ function enviar(B: Bot, chatId: number | string, texto: string, teclado?: any) {
 function responderCallback(B: Bot, id: string, texto?: string) {
   return tg(B, "answerCallbackQuery", { callback_query_id: id, ...(texto ? { text: texto } : {}) });
 }
-const botaoTelefone = { keyboard: [[{ text: "📱 Compartilhar meu telefone", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true };
-const tirarTeclado = { remove_keyboard: true };
-function inline(linhas: { text: string; callback_data: string }[][]) { return { inline_keyboard: linhas }; }
-const btnCancelar = [{ text: "❌ Cancelar", callback_data: "cancel" }];
+export const botaoTelefone = { keyboard: [[{ text: "📱 Compartilhar meu telefone", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true };
+export const tirarTeclado = { remove_keyboard: true };
+export function inline(linhas: { text: string; callback_data: string }[][]) { return { inline_keyboard: linhas }; }
+export const btnCancelar = [{ text: "❌ Cancelar", callback_data: "cancel" }];
 
 // ── Telefone: normalização e match SEGURO ───────────────────────────────
 function soDigitos(s: unknown): string { return String(s ?? "").replace(/\D/g, ""); }
@@ -104,12 +108,12 @@ function telBate(a: unknown, b: unknown): boolean {
 }
 
 // ── Sessão (telegram_sessoes) — chave prefixada por bot (não colide) ─────
-type Sessao = { telegram_user_id: string; nome?: string; chat_id?: string; estado?: string; dados?: any };
-async function getSessao(db: any, B: Bot, userId: string): Promise<Sessao | null> {
+export type Sessao = { telegram_user_id: string; nome?: string; chat_id?: string; estado?: string; dados?: any };
+export async function getSessao(db: any, B: Bot, userId: string): Promise<Sessao | null> {
   const { data } = await db.from("telegram_sessoes").select("*").eq("telegram_user_id", B.pre + userId).maybeSingle();
   return data || null;
 }
-async function salvarSessao(db: any, s: Sessao) {
+export async function salvarSessao(db: any, s: Sessao) {
   await db.from("telegram_sessoes").upsert({
     telegram_user_id: s.telegram_user_id, nome: s.nome ?? null, chat_id: s.chat_id ?? null,
     estado: s.estado ?? null, dados: s.dados ?? {}, updated_at: new Date().toISOString(),
@@ -217,6 +221,7 @@ async function onMessage(db: any, B: Bot, msg: any) {
     return;
   }
   if (B.modo === "junia") return await onMessageJunia(db, B, msg);
+  if (B.modo === "processos") return await onMessageProcessos(db, B, msg);
   const userId = String(msg.from?.id || "");
   const chatId = chat.id;
   if (!userId) return;
@@ -264,7 +269,7 @@ async function onMessage(db: any, B: Bot, msg: any) {
   await mostrarMenu(db, B, chatId, sessao!.dados);
 }
 
-async function identificar(db: any, B: Bot, userId: string, chatId: number, telefone: string) {
+export async function identificar(db: any, B: Bot, userId: string, chatId: number, telefone: string) {
   const { data: colabs } = await db.from("rh_colaboradores")
     .select("id, nome, email, telefone, telefone_pessoal, status").neq("status", "desligado").limit(3000);
   const achado = (colabs || []).find((c: any) => telBate(telefone, c.telefone) || telBate(telefone, c.telefone_pessoal));
@@ -279,6 +284,14 @@ async function identificar(db: any, B: Bot, userId: string, chatId: number, tele
   await enviar(B, chatId, `✅ Identificado: <b>${escTg(achado.nome)}</b>!`, tirarTeclado);
   if (B.modo === "junia") {
     await enviar(B, chatId, "Sou a <b>JunIA</b> 🤖, a inteligência da Costa Júnior. Pode me perguntar sobre <b>processos, normas e rotinas</b> — eu respondo aqui na hora. Se eu não souber, encaminho pro time e te aviso por aqui assim que responderem.");
+    if (await ehComercial(db, achado.id)) {
+      await enviar(B, chatId, "Também posso te ajudar a montar uma <b>proposta comercial</b> — é só mandar <b>/comercial</b> quando quiser, ou tocar no botão:",
+        inline([[{ text: "📋 Nova proposta comercial", callback_data: "com:nova" }]]));
+    }
+    return;
+  }
+  if (B.modo === "processos") {
+    await mostrarMenuAreas(db, B, chatId, B.pre + userId, { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null });
     return;
   }
   await mostrarMenu(db, B, chatId, { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null });
@@ -334,6 +347,8 @@ async function onCallback(db: any, B: Bot, cq: any) {
   if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gbanc|gbancok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
+  const ehCallbackComercial = data === "cancel" || data.startsWith("area:") || data.startsWith("com:");
+  if (B.modo === "processos" || (B.modo === "junia" && ehCallbackComercial)) return await onCallbackProcessos(db, B, sessao, chatId, userId, data);
   if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start para recomeçar.", botaoTelefone); return; }
   const dados = sessao.dados || {};
   const idBase = idBaseDe(dados);
@@ -477,7 +492,7 @@ async function confirmar(db: any, B: Bot, sessao: Sessao, chatId: number) {
 // ════════════════════════════════════════════════════════════════════════
 
 // Baixa o conteúdo de um arquivo do Telegram (getFile → download).
-async function baixarArquivoTg(B: Bot, fileId: string): Promise<Buffer | null> {
+export async function baixarArquivoTg(B: Bot, fileId: string): Promise<Buffer | null> {
   if (!B.token) return null;
   try {
     const f = await tg(B, "getFile", { file_id: fileId });
@@ -1179,11 +1194,20 @@ async function onMessageJunia(db: any, B: Bot, msg: any) {
     return await identificar(db, B, userId, chatId, msg.contact.phone_number);
   }
 
-  const texto = String(msg.text || "").trim();
   const sessao = await getSessao(db, B, userId);
   if (!sessao?.dados?.colaborador_id) {
     await enviar(B, chatId, "Oi! 👋 Sou a <b>JunIA</b>, a inteligência da Costa Júnior. Pra eu te responder direitinho, preciso te identificar pelo seu telefone cadastrado.\n\nToque no botão abaixo:", botaoTelefone);
     return;
+  }
+
+  // Proposta comercial em andamento (ou recebendo projeto/planilha)? O roteiro
+  // "sequestra" a conversa até terminar ou ser cancelado.
+  if (await onMessageComercialRoteiro(db, B, sessao, chatId, msg)) return;
+
+  const texto = String(msg.text || "").trim();
+  if (/^\/comercial/i.test(texto)) {
+    if (!(await ehComercial(db, sessao.dados.colaborador_id))) { await enviar(B, chatId, "Esse recurso é restrito ao time Comercial."); return; }
+    return await iniciarNovaProposta(db, B, sessao, chatId);
   }
   if (/^\/(start|ajuda|help|nova)/i.test(texto)) {
     await salvarSessao(db, { ...sessao, dados: { ...(sessao.dados || {}), hist: [] } }); // recomeça a conversa
