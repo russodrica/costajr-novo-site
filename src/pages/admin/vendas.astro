@@ -1,0 +1,334 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco } from "../../lib/permissoes";
+import { supabaseAdmin } from "../../lib/supabase";
+import { normalizarConfig, avaliar, zonaMortaML } from "../../lib/precificacao";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
+
+const db = supabaseAdmin();
+const [{ data: produtos }, { data: alertas }, { data: execucoes }, { data: config }] = await Promise.all([
+  db.from("vendas_produtos").select("*").order("created_at", { ascending: false }).limit(300),
+  db.from("vendas_alertas").select("*, vendas_produtos(nome, sku_trazpraca)").eq("resolvido", false).order("created_at", { ascending: false }).limit(50),
+  db.from("vendas_sync_log").select("*").order("executado_em", { ascending: false }).limit(10),
+  db.from("vendas_config").select("*").eq("id", "default").maybeSingle(),
+]);
+const listaProdutos: any[] = produtos || [];
+const listaAlertas: any[] = alertas || [];
+const listaExecucoes: any[] = execucoes || [];
+
+const cfg = normalizarConfig(config as any);
+const zm = zonaMortaML(cfg);
+
+const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+const fmt$ = (n: any) => (n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+const pct = (n: any) => (n == null ? "—" : `${Number(n).toFixed(1).replace(".", ",")}%`);
+
+const STATUS_LABEL: Record<string, string> = { candidato: "Candidato", aprovado: "Aprovado", rejeitado: "Rejeitado", publicado: "Publicado", pausado: "Pausado" };
+const SEVERIDADE_BADGE: Record<string, string> = { info: "badge-blue", atencao: "badge-yellow", critico: "badge-red" };
+
+// Preço de referência: o que já está publicado vale mais que o sugerido.
+function precoRef(p: any): number | null {
+  const v = p.preco_ml ?? p.preco_shopee ?? p.preco_sugerido;
+  return v == null ? null : Number(v);
+}
+
+const linhas = listaProdutos.map((p) => {
+  const custo = p.custo == null ? null : Number(p.custo);
+  const preco = precoRef(p);
+  const av = custo != null && preco != null && preco > 0 ? avaliar(custo, preco, cfg) : null;
+  return { p, custo, preco, av };
+});
+
+const comPrejuizo = linhas.filter((l) => l.av?.temPrejuizo).length;
+const abaixoAlvo = linhas.filter((l) => l.av && !l.av.temPrejuizo && l.av.abaixoDoAlvo).length;
+const naZonaMorta = linhas.filter((l) => l.av?.naZonaMortaML).length;
+const totalCandidatos = listaProdutos.filter((p) => p.status === "candidato").length;
+
+const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? "#D97706" : "#059669");
+---
+<Admin title="Vendas — TrazPraCa / ML / Shopee" current="vendas">
+  <div class="toolbar">
+    <span class="toolbar-title">🛒 Vendas — Catálogo & Precificação</span>
+    <span style="flex:1"></span>
+    <button class="btn btn-outline" onclick="abrirConfig()">⚙️ Taxas e margem</button>
+    <button class="btn btn-primary" onclick="abrirNovoProduto()">+ Adicionar produto</button>
+  </div>
+
+  <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+    <div class="card" style="flex:1;min-width:130px;padding:12px 16px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:800">{listaProdutos.length}</div>
+      <div style="font-size:12px;color:#6B7280">no catálogo</div>
+    </div>
+    <div class="card" style="flex:1;min-width:130px;padding:12px 16px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:800">{totalCandidatos}</div>
+      <div style="font-size:12px;color:#6B7280">candidatos</div>
+    </div>
+    <div class="card" style="flex:1;min-width:130px;padding:12px 16px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:800;color:{comPrejuizo ? '#DC2626' : undefined}">{comPrejuizo}</div>
+      <div style="font-size:12px;color:#6B7280">dariam prejuízo</div>
+    </div>
+    <div class="card" style="flex:1;min-width:130px;padding:12px 16px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:800;color:{abaixoAlvo ? '#D97706' : undefined}">{abaixoAlvo}</div>
+      <div style="font-size:12px;color:#6B7280">abaixo de {pct(cfg.margem_alvo_pct)}</div>
+    </div>
+    <div class="card" style="flex:1;min-width:130px;padding:12px 16px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:800;color:{listaAlertas.length ? '#DC2626' : undefined}">{listaAlertas.length}</div>
+      <div style="font-size:12px;color:#6B7280">alertas abertos</div>
+    </div>
+  </div>
+
+  {zm && (
+    <div class="card" style="padding:12px 16px;margin-bottom:14px;background:#FFFBEB;border:1px solid #FDE68A">
+      <div style="font-weight:800;color:#92400E;margin-bottom:4px">⚠️ Zona morta do Mercado Livre: {fmt$(zm.de)} a {fmt$(zm.ate)}</div>
+      <div style="font-size:13px;color:#78350F">
+        Nessa faixa você lucra <strong>menos</strong> do que vendendo logo abaixo de {fmt$(cfg.ml_limite_frete_gratis)}, porque o frete grátis passa a ser obrigatório e você banca parte dele.
+        Vender a {fmt$(zm.de - 0.01)} rende o mesmo que vender a {fmt$(zm.ate)} — tudo no meio é dinheiro deixado na mesa.
+        {naZonaMorta > 0 && <strong> Hoje {naZonaMorta} produto(s) estão precificados nessa faixa.</strong>}
+      </div>
+    </div>
+  )}
+
+  {listaAlertas.length > 0 && (
+    <div class="card" style="padding:14px 16px;margin-bottom:14px;background:#FEF2F2;border:1px solid #FCA5A5">
+      <div style="font-weight:800;color:#7F1D1D;margin-bottom:8px">⚠️ Alertas abertos</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        {listaAlertas.map((a: any) => (
+          <div style="display:flex;align-items:center;gap:8px;font-size:13.5px">
+            <span class={`badge ${SEVERIDADE_BADGE[a.severidade] || "badge-gray"}`}>{a.severidade}</span>
+            <span>{a.mensagem || a.tipo}{a.vendas_produtos?.nome ? ` — ${a.vendas_produtos.nome}` : ""}</span>
+            {a.preco_detectado != null && <span style="color:#991B1B">({fmt$(a.preco_detectado)} vs {fmt$(a.preco_esperado)} esperado)</span>}
+            <span style="flex:1"></span>
+            <button class="btn btn-outline btn-sm" onclick={`resolverAlerta('${a.id}', this)`}>Marcar resolvido</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+    <div style="padding:10px 16px;border-bottom:1px solid #E5E7EB;font-size:12.5px;color:#6B7280">
+      Lucro já <strong>descontadas as taxas do canal</strong>. Base: ML {pct(cfg.ml_comissao_pct)} + {fmt$(cfg.ml_custo_fixo)} fixo (abaixo de {fmt$(cfg.ml_limite_frete_gratis)}) ou {fmt$(cfg.ml_frete_estimado)} de frete (acima) · Shopee por faixa de preço · margem alvo {pct(cfg.margem_alvo_pct)}.
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Produto</th>
+            <th>Custo</th>
+            <th>Preço</th>
+            <th>Lucro ML</th>
+            <th>Lucro Shopee</th>
+            <th>Preço mín. p/ {pct(cfg.margem_alvo_pct)}</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.length === 0 && (
+            <tr><td colspan="8" style="text-align:center;color:#9CA3AF;padding:28px">Nenhum produto ainda. Use <strong>+ Adicionar produto</strong> ou aguarde o scanner automático rodar.</td></tr>
+          )}
+          {linhas.map(({ p, custo, preco, av }) => (
+            <tr style={av?.temPrejuizo ? "background:#FEF2F2" : av?.naZonaMortaML ? "background:#FFFBEB" : undefined}>
+              <td>
+                <strong>{p.nome}</strong>
+                <div style="font-size:11.5px;color:#9CA3AF">
+                  {p.sku_trazpraca ? `SKU ${p.sku_trazpraca}` : ""}
+                  {av?.temPrejuizo && <span style="color:#DC2626;font-weight:700"> · PREJUÍZO</span>}
+                  {av && !av.temPrejuizo && av.naZonaMortaML && <span style="color:#B45309;font-weight:700"> · zona morta ML</span>}
+                </div>
+              </td>
+              <td style="font-size:13px;white-space:nowrap">{fmt$(custo)}</td>
+              <td style="font-size:13px;white-space:nowrap">
+                {fmt$(preco)}
+                {p.preco_ml == null && p.preco_shopee == null && preco != null && <div style="font-size:10.5px;color:#9CA3AF">sugerido</div>}
+              </td>
+              <td style="font-size:13px;white-space:nowrap">
+                {av ? (
+                  <>
+                    <strong style={`color:${corMargem(av.ml.margemPct)}`}>{fmt$(av.ml.lucro)}</strong>
+                    <div style="font-size:11px;color:#9CA3AF">{pct(av.ml.margemPct)} · taxa {fmt$(av.ml.taxas)}</div>
+                  </>
+                ) : "—"}
+              </td>
+              <td style="font-size:13px;white-space:nowrap">
+                {av ? (
+                  <>
+                    <strong style={`color:${corMargem(av.shopee.margemPct)}`}>{fmt$(av.shopee.lucro)}</strong>
+                    <div style="font-size:11px;color:#9CA3AF">{pct(av.shopee.margemPct)} · taxa {fmt$(av.shopee.taxas)}</div>
+                  </>
+                ) : "—"}
+              </td>
+              <td style="font-size:12.5px;white-space:nowrap">
+                {av ? (
+                  <>
+                    <div>ML <strong>{fmt$(av.precoMinimoML)}</strong></div>
+                    <div style="color:#6B7280">Shopee <strong>{fmt$(av.precoMinimoShopee)}</strong></div>
+                  </>
+                ) : <span style="color:#9CA3AF">informe o custo</span>}
+              </td>
+              <td>
+                <select class="input-sm" onchange={`mudarStatus('${p.id}', this.value)`} style="font-size:12.5px">
+                  {Object.entries(STATUS_LABEL).map(([v, l]) => <option value={v} selected={p.status === v}>{l}</option>)}
+                </select>
+              </td>
+              <td style="white-space:nowrap;text-align:right">
+                <button class="btn btn-danger btn-sm" onclick={`excluirProduto('${p.id}', ${JSON.stringify(p.nome)}, this)`}>Excluir</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px 16px">
+    <div style="font-weight:800;margin-bottom:8px">🔄 Últimas sincronizações</div>
+    {listaExecucoes.length === 0 ? (
+      <p style="color:#9CA3AF;font-size:13px">Nenhuma execução registrada ainda.</p>
+    ) : (
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Quando</th><th>Tipo</th><th>Status</th><th>Encontrados</th><th>Novos</th><th>Mensagem</th></tr></thead>
+          <tbody>
+            {listaExecucoes.map((e: any) => (
+              <tr>
+                <td style="font-size:12.5px;color:#6B7280;white-space:nowrap">{fdt(e.executado_em)}</td>
+                <td style="font-size:13px">{e.tipo}</td>
+                <td><span class={`badge ${e.status === "ok" ? "badge-green" : e.status === "alerta" ? "badge-yellow" : "badge-red"}`}>{e.status}</span></td>
+                <td style="font-size:13px">{e.itens_encontrados ?? "—"}</td>
+                <td style="font-size:13px">{e.itens_novos ?? "—"}</td>
+                <td style="font-size:12.5px;color:#6B7280">{e.mensagem || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+
+  <div id="vendasMsg" style="margin-top:12px"></div>
+
+  <!-- Modal: taxas e margem -->
+  <div class="modal-overlay" id="modalConfig">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header"><h2>⚙️ Taxas e margem</h2><button class="modal-close" onclick="fecharConfig()">✕</button></div>
+      <form id="formConfig" style="padding:16px 24px">
+        <p style="font-size:12.5px;color:#6B7280;margin-top:0">
+          Marketplace muda taxa com frequência. Ajuste aqui quando mudar — o cálculo da tela toda acompanha.
+        </p>
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:1"><label>Comissão ML (%)</label><input name="ml_comissao_pct" type="number" step="0.1" value={cfg.ml_comissao_pct} /></div>
+          <div class="form-group" style="flex:1"><label>Custo fixo ML (R$)</label><input name="ml_custo_fixo" type="number" step="0.01" value={cfg.ml_custo_fixo} /></div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:1"><label>Frete que você banca (R$)</label><input name="ml_frete_estimado" type="number" step="0.01" value={cfg.ml_frete_estimado} /></div>
+          <div class="form-group" style="flex:1"><label>Limite frete grátis (R$)</label><input name="ml_limite_frete_gratis" type="number" step="0.01" value={cfg.ml_limite_frete_gratis} /></div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:1"><label>Campanha Shopee (%)</label><input name="shopee_campanha_pct" type="number" step="0.1" value={cfg.shopee_campanha_pct} /></div>
+          <div class="form-group" style="flex:1"><label>Margem alvo líquida (%)</label><input name="margem_alvo_pct" type="number" step="0.5" value={cfg.margem_alvo_pct} /></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="fecharConfig()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnSalvarConfig">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: novo produto -->
+  <div class="modal-overlay" id="modalProduto">
+    <div class="modal-box" style="max-width:520px">
+      <div class="modal-header"><h2>+ Adicionar produto</h2><button class="modal-close" onclick="fecharProduto()">✕</button></div>
+      <form id="formProduto" style="padding:16px 24px">
+        <div class="form-group"><label>Nome *</label><input name="nome" required placeholder="Ex: Luminária 3D Snoopy" /></div>
+        <div class="form-group"><label>SKU TrazPraCa</label><input name="sku_trazpraca" placeholder="Ex: 10526" /></div>
+        <div class="form-group"><label>Categoria</label><input name="categoria" placeholder="Ex: Bar e Cozinha" /></div>
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:1"><label>Custo (R$)</label><input name="custo" type="number" step="0.01" /></div>
+          <div class="form-group" style="flex:1"><label>Preço sugerido (R$)</label><input name="preco_sugerido" type="number" step="0.01" /></div>
+        </div>
+        <div class="form-group"><label>Link na TrazPraCa</label><input name="url_trazpraca" placeholder="https://..." /></div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes" rows="2"></textarea></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="fecharProduto()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnCriarProduto">Adicionar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const overlayV = (id: string) => document.getElementById(id)!;
+    function abrirNovoProduto() { (document.getElementById("formProduto") as HTMLFormElement).reset(); overlayV("modalProduto").classList.add("open"); }
+    function fecharProduto() { overlayV("modalProduto").classList.remove("open"); }
+    function abrirConfig() { overlayV("modalConfig").classList.add("open"); }
+    function fecharConfig() { overlayV("modalConfig").classList.remove("open"); }
+    function msgBoxV() { return document.getElementById("vendasMsg") as HTMLElement; }
+    function avisoErro(texto: string) {
+      msgBoxV().innerHTML = `<div class="alert alert-error">${texto.replace(/</g, "&lt;")}</div>`;
+    }
+
+    document.getElementById("formProduto")!.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const btn = document.getElementById("btnCriarProduto") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Adicionando…";
+      try {
+        const body = Object.fromEntries(new FormData(f).entries());
+        const res = await fetch("/api/admin/vendas/produtos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        const d = await res.json();
+        if (res.ok) { fecharProduto(); location.reload(); }
+        else { avisoErro(d.error || "Erro ao adicionar."); }
+      } catch { avisoErro("Falha de rede."); }
+      btn.disabled = false; btn.textContent = "Adicionar";
+    });
+
+    document.getElementById("formConfig")!.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target as HTMLFormElement;
+      const btn = document.getElementById("btnSalvarConfig") as HTMLButtonElement;
+      btn.disabled = true; btn.textContent = "Salvando…";
+      try {
+        const body = Object.fromEntries(new FormData(f).entries());
+        const res = await fetch("/api/admin/vendas/config", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { location.reload(); }
+        else { avisoErro(d.error || "Erro ao salvar taxas."); }
+      } catch { avisoErro("Falha de rede."); }
+      btn.disabled = false; btn.textContent = "Salvar";
+    });
+
+    async function mudarStatus(id: string, status: string) {
+      const res = await fetch(`/api/admin/vendas/produtos/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) avisoErro(d.error || "Erro ao atualizar status.");
+    }
+
+    async function excluirProduto(id: string, nome: string, btn: HTMLButtonElement) {
+      if (!confirm(`Excluir "${nome}" do catálogo de Vendas? (recuperável na Lixeira por 30 dias)`)) return;
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/vendas/produtos/${id}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { avisoErro(d.error || "Erro ao excluir."); btn.disabled = false; return; }
+      location.reload();
+    }
+
+    async function resolverAlerta(id: string, btn: HTMLButtonElement) {
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/vendas/alertas/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ acao: "resolver" }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { avisoErro(d.error || "Erro ao resolver alerta."); btn.disabled = false; return; }
+      location.reload();
+    }
+
+    Object.assign(window, { abrirNovoProduto, fecharProduto, abrirConfig, fecharConfig, mudarStatus, excluirProduto, resolverAlerta });
+  </script>
+</Admin>
