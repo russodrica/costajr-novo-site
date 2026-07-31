@@ -24,6 +24,10 @@ on:
         description: 'Só mostrar o que faria, sem executar'
         type: boolean
         default: false
+      baseline:
+        description: 'Marcar TODAS como aplicadas sem executar (corrige controle inconsistente)'
+        type: boolean
+        default: false
 
 # evita duas execuções simultâneas mexendo no banco ao mesmo tempo
 concurrency:
@@ -60,4 +64,10 @@ jobs:
         if: ${{ github.event_name == 'push' || inputs.seco != true }}
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: npm run db:migrate
+          BASELINE: ${{ inputs.baseline }}
+        run: |
+          if [ "$BASELINE" = "true" ]; then
+            npm run db:migrate -- --baseline
+          else
+            npm run db:migrate
+          fi
