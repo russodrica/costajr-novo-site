@@ -131,6 +131,15 @@ const grupos: NavGroup[] = [
     ],
   },
   {
+    // Módulo de vendas TrazPraCa → Mercado Livre / Shopee. O grupo/módulo também
+    // está declarado em src/lib/permissoes.ts (GRUPOS_ADMIN, id "vendas"), que é
+    // quem faz o enforcement; este array aqui é só o MENU.
+    id: "vendas", label: "Vendas TrazPraCa", cor: "#0891B2",
+    items: [
+      { href: "/admin/vendas", label: "Catálogo & Preços", ic: "shopping-cart", key: "vendas" },
+    ],
+  },
+  {
     id: "juridico", label: "Jurídico & Documentos", cor: "#9333EA",
     items: [
       { href: "/admin/doc-empresa", label: "Documentos da Empresa", ic: "files", key: "doc-empresa" },
