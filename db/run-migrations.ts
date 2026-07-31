@@ -60,6 +60,9 @@ carregarEnvLocal();
 
 const args = process.argv.slice(2);
 const SECO = args.includes("--seco") || args.includes("--dry-run");
+/** Marca TODOS os arquivos como aplicados sem executar nenhum. Use quando o
+ *  controle ficar inconsistente e você souber que o banco já está em dia. */
+const BASELINE = args.includes("--baseline");
 const idxForcar = args.indexOf("--forcar");
 const FORCAR = idxForcar >= 0 ? args[idxForcar + 1] : null;
 
@@ -126,11 +129,42 @@ async function main() {
   await cli.connect();
 
   try {
-    // A tabela de controle já existia antes desta execução?
+    // ---- estado atual do controle ----
     const { rows: existe } = await cli.query(
       `select to_regclass('public._migrations_aplicadas') is not null as tem`
     );
     const jaTinhaControle = existe[0]?.tem === true;
+    let registradas = 0;
+    if (jaTinhaControle) {
+      const { rows } = await cli.query(`select count(*)::int as n from _migrations_aplicadas`);
+      registradas = rows[0]?.n ?? 0;
+    }
+    console.log(
+      `Controle de migrations: ${jaTinhaControle ? `existe, ${registradas} registrada(s)` : "ainda não existe"}\n`
+    );
+
+    // Faz baseline (marcar tudo como aplicado, sem executar) quando o controle
+    // ainda não existe OU existe mas está vazio. Também dá pra forçar com
+    // --baseline, útil se o controle ficou num estado inconsistente.
+    const precisaBaseline = BASELINE || !jaTinhaControle || registradas === 0;
+
+    // --------- modo prévia: não escreve NADA, nem a tabela de controle ---------
+    // (bug corrigido em 31/07/2026: antes a tabela era criada mesmo em --seco,
+    //  e a execução seguinte achava que já não era a primeira vez e tentava
+    //  reaplicar todo o histórico.)
+    if (SECO) {
+      if (precisaBaseline) {
+        console.log(`Faria BASELINE de ${arquivos.length} arquivo(s) — marcaria como aplicados sem executar nenhum.`);
+      } else {
+        const { rows } = await cli.query(`select arquivo from _migrations_aplicadas`);
+        const ja = new Set(rows.map((r: any) => r.arquivo));
+        const pend = arquivos.filter((f) => !ja.has(f));
+        if (!pend.length) console.log("✓ Nada pendente. Banco em dia.");
+        else { console.log(`Aplicaria ${pend.length} migration(s):`); pend.forEach((f) => console.log("   • " + f)); }
+      }
+      console.log("\n(--seco: nada foi escrito no banco)");
+      return;
+    }
 
     await cli.query(`
       create table if not exists _migrations_aplicadas (
@@ -140,12 +174,10 @@ async function main() {
       )
     `);
 
-    // --------- baseline na primeira execução ---------
-    if (!jaTinhaControle && !FORCAR) {
-      console.log("Primeira execução: criando controle de migrations.");
-      console.log(`Marcando ${arquivos.length} arquivo(s) já existentes como aplicados (baseline).`);
-      console.log("NADA foi executado — estes já haviam sido rodados à mão no SQL Editor.\n");
-      if (SECO) { console.log("(--seco: nem o baseline foi gravado)"); return; }
+    // --------- baseline ---------
+    if (precisaBaseline && !FORCAR) {
+      console.log(`Baseline: marcando ${arquivos.length} arquivo(s) como aplicados.`);
+      console.log("NADA será executado — estes já haviam sido rodados à mão no SQL Editor.\n");
       for (const f of arquivos) {
         await cli.query(
           `insert into _migrations_aplicadas (arquivo, aplicada_por)
