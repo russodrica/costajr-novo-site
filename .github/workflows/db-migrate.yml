@@ -1,0 +1,63 @@
+name: Migrations do banco (Supabase)
+
+# Aplica automaticamente as migrations novas de db/migrations/.
+#
+# Como funciona a segurança:
+#  - só roda quando algo em db/migrations/ muda (ou manualmente);
+#  - o runner recusa migration com comando destrutivo (regra do COMO_MIGRAR.md);
+#  - cada arquivo roda uma única vez, dentro de uma transação;
+#  - na primeira execução ele só marca as migrations já existentes como
+#    aplicadas (baseline) — não reexecuta nada que já foi rodado à mão.
+#
+# Secret necessário: SUPABASE_DB_URL
+#   Supabase → Project Settings → Database → Connection string → URI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'db/migrations/**'
+      - 'db/run-migrations.ts'
+  workflow_dispatch:
+    inputs:
+      seco:
+        description: 'Só mostrar o que faria, sem executar'
+        type: boolean
+        default: false
+
+# evita duas execuções simultâneas mexendo no banco ao mesmo tempo
+concurrency:
+  group: db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # `npm install` (e não `npm ci`) de propósito: o package-lock.json só é
+      # regenerado quando a Adriana roda npm install localmente, e o CI não
+      # pode quebrar por causa disso. Aqui só precisamos de tsx + pg.
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+
+      - name: Prévia (o que será aplicado)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: npm run db:migrate -- --seco
+
+      - name: Aplicar migrations
+        if: ${{ github.event_name == 'push' || inputs.seco != true }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: npm run db:migrate
