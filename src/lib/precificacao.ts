@@ -1,0 +1,219 @@
+/**
+ * Motor de precificação do módulo Vendas.
+ *
+ * Responde a pergunta que o "preço sugerido" da TrazPraCa NÃO responde:
+ * depois das taxas do canal, quanto sobra de verdade?
+ *
+ * O preço sugerido da TrazPraCa é sempre custo × 1,95 (95% de markup bruto).
+ * Depois das taxas do Mercado Livre / Shopee isso vira 15%–27% de margem real,
+ * e em produto barato pode virar quase nada. Este módulo calcula o número real.
+ *
+ * Todas as taxas ficam em `vendas_config` (banco), não no código — marketplace
+ * muda taxa com frequência e a Adriana precisa conseguir ajustar sem depender
+ * de deploy.
+ *
+ * Fontes das taxas padrão (jul/2026): comissão ML 11–14% clássico / 16–19%
+ * premium + custo fixo abaixo de R$79 + frete grátis obrigatório acima disso;
+ * Shopee em faixas (20%+R$4 até 79,99; 14% + fixo por faixa acima).
+ */
+
+export type FaixaShopee = {
+  /** teto da faixa; null = sem teto (última faixa) */
+  ate: number | null;
+  /** comissão percentual da faixa */
+  pct: number;
+  /** taxa fixa por item vendido, em reais */
+  fixo: number;
+};
+
+export type ConfigPrecificacao = {
+  ml_comissao_pct: number;
+  /** taxa fixa por item cobrada pelo ML abaixo do limite de frete grátis */
+  ml_custo_fixo: number;
+  /** quanto o vendedor banca de frete acima do limite (estimativa) */
+  ml_frete_estimado: number;
+  /** a partir deste preço o frete grátis vira obrigatório no ML */
+  ml_limite_frete_gratis: number;
+  shopee_faixas: FaixaShopee[];
+  /** adicional de comissão da Shopee durante campanhas */
+  shopee_campanha_pct: number;
+  /** margem líquida que a Adriana quer atingir, em % */
+  margem_alvo_pct: number;
+};
+
+export const CONFIG_PADRAO: ConfigPrecificacao = {
+  ml_comissao_pct: 13,
+  ml_custo_fixo: 6,
+  ml_frete_estimado: 22,
+  ml_limite_frete_gratis: 79,
+  shopee_faixas: [
+    { ate: 79.99, pct: 20, fixo: 4 },
+    { ate: 99.99, pct: 14, fixo: 16 },
+    { ate: 199.99, pct: 14, fixo: 20 },
+    { ate: 499.99, pct: 14, fixo: 26 },
+    { ate: null, pct: 14, fixo: 28 },
+  ],
+  shopee_campanha_pct: 0,
+  margem_alvo_pct: 30,
+};
+
+export type ItemTaxa = { rotulo: string; valor: number };
+
+export type Resultado = {
+  canal: "ml" | "shopee";
+  preco: number;
+  custo: number;
+  taxas: number;
+  detalhe: ItemTaxa[];
+  /** preço − custo − taxas */
+  lucro: number;
+  /** lucro ÷ preço, em % */
+  margemPct: number;
+};
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Mescla config vinda do banco (campos podem faltar) com os padrões. */
+export function normalizarConfig(bruto: Partial<ConfigPrecificacao> | null | undefined): ConfigPrecificacao {
+  const c = { ...CONFIG_PADRAO, ...(bruto || {}) };
+  const faixas = Array.isArray(c.shopee_faixas) && c.shopee_faixas.length
+    ? [...c.shopee_faixas]
+    : CONFIG_PADRAO.shopee_faixas;
+  // ordena por teto; faixa sem teto (null) sempre por último
+  faixas.sort((a, b) => (a.ate == null ? Infinity : a.ate) - (b.ate == null ? Infinity : b.ate));
+  return { ...c, shopee_faixas: faixas };
+}
+
+export function taxasML(preco: number, cfg: ConfigPrecificacao): ItemTaxa[] {
+  const comissao = preco * (cfg.ml_comissao_pct / 100);
+  if (preco < cfg.ml_limite_frete_gratis) {
+    return [
+      { rotulo: `Comissão ${cfg.ml_comissao_pct}%`, valor: r2(comissao) },
+      { rotulo: "Custo fixo (abaixo do limite)", valor: r2(cfg.ml_custo_fixo) },
+    ];
+  }
+  return [
+    { rotulo: `Comissão ${cfg.ml_comissao_pct}%`, valor: r2(comissao) },
+    { rotulo: "Frete grátis (estimado)", valor: r2(cfg.ml_frete_estimado) },
+  ];
+}
+
+export function faixaShopee(preco: number, cfg: ConfigPrecificacao): FaixaShopee {
+  for (const f of cfg.shopee_faixas) {
+    if (f.ate == null || preco <= f.ate) return f;
+  }
+  return cfg.shopee_faixas[cfg.shopee_faixas.length - 1];
+}
+
+export function taxasShopee(preco: number, cfg: ConfigPrecificacao): ItemTaxa[] {
+  const f = faixaShopee(preco, cfg);
+  const pctTotal = f.pct + (cfg.shopee_campanha_pct || 0);
+  const itens: ItemTaxa[] = [
+    { rotulo: `Comissão ${f.pct}%`, valor: r2(preco * (f.pct / 100)) },
+    { rotulo: "Taxa fixa por item", valor: r2(f.fixo) },
+  ];
+  if (cfg.shopee_campanha_pct) {
+    itens.push({ rotulo: `Campanha +${cfg.shopee_campanha_pct}%`, valor: r2(preco * (cfg.shopee_campanha_pct / 100)) });
+  }
+  void pctTotal;
+  return itens;
+}
+
+function montar(canal: "ml" | "shopee", custo: number, preco: number, detalhe: ItemTaxa[]): Resultado {
+  const taxas = detalhe.reduce((s, i) => s + i.valor, 0);
+  const lucro = preco - custo - taxas;
+  return {
+    canal, preco: r2(preco), custo: r2(custo), taxas: r2(taxas), detalhe,
+    lucro: r2(lucro),
+    margemPct: preco > 0 ? r2((lucro / preco) * 100) : 0,
+  };
+}
+
+export function resultadoML(custo: number, preco: number, cfg: ConfigPrecificacao): Resultado {
+  return montar("ml", custo, preco, taxasML(preco, cfg));
+}
+
+export function resultadoShopee(custo: number, preco: number, cfg: ConfigPrecificacao): Resultado {
+  return montar("shopee", custo, preco, taxasShopee(preco, cfg));
+}
+
+/**
+ * Menor preço no ML que atinge a margem alvo.
+ * Considera que abaixo do limite paga taxa fixa e acima paga frete.
+ */
+export function precoParaMargemML(custo: number, margemAlvoPct: number, cfg: ConfigPrecificacao): number | null {
+  const c = cfg.ml_comissao_pct / 100;
+  const m = margemAlvoPct / 100;
+  const denom = 1 - c - m;
+  if (denom <= 0) return null; // margem impossível: comissão + margem >= 100%
+
+  const pBaixo = (custo + cfg.ml_custo_fixo) / denom;
+  if (pBaixo < cfg.ml_limite_frete_gratis) return r2(pBaixo);
+
+  const pAlto = (custo + cfg.ml_frete_estimado) / denom;
+  if (pAlto >= cfg.ml_limite_frete_gratis) return r2(pAlto);
+
+  // vender exatamente no limite já supera a margem alvo
+  return r2(cfg.ml_limite_frete_gratis);
+}
+
+/** Menor preço na Shopee que atinge a margem alvo (respeitando as faixas). */
+export function precoParaMargemShopee(custo: number, margemAlvoPct: number, cfg: ConfigPrecificacao): number | null {
+  const m = margemAlvoPct / 100;
+  let piso = 0;
+  for (const f of cfg.shopee_faixas) {
+    const c = (f.pct + (cfg.shopee_campanha_pct || 0)) / 100;
+    const denom = 1 - c - m;
+    if (denom <= 0) { piso = f.ate ?? piso; continue; }
+    const p = (custo + f.fixo) / denom;
+    const teto = f.ate ?? Infinity;
+    if (p <= teto) return r2(Math.max(p, piso));
+    piso = teto;
+  }
+  return null;
+}
+
+/**
+ * "Zona morta" do Mercado Livre: faixa de preço onde vender MAIS caro rende
+ * MENOS, porque ao cruzar o limite o frete grátis passa a ser obrigatório.
+ * Nunca precificar dentro dela. Independe do custo.
+ */
+export function zonaMortaML(cfg: ConfigPrecificacao): { de: number; ate: number } | null {
+  const c = cfg.ml_comissao_pct / 100;
+  const limite = cfg.ml_limite_frete_gratis;
+  const abaixo = limite - 0.01;
+  const salto = cfg.ml_frete_estimado - cfg.ml_custo_fixo;
+  if (salto <= 0) return null; // frete não é mais caro que a taxa fixa: sem zona morta
+  const saida = abaixo + salto / (1 - c);
+  return { de: r2(limite), ate: r2(saida) };
+}
+
+export type Avaliacao = {
+  ml: Resultado;
+  shopee: Resultado;
+  melhorCanal: "ml" | "shopee";
+  /** true se o preço sugerido dá prejuízo em algum canal */
+  temPrejuizo: boolean;
+  /** true se a margem ficou abaixo do alvo em ambos os canais */
+  abaixoDoAlvo: boolean;
+  /** true se o preço cai na zona morta do ML */
+  naZonaMortaML: boolean;
+  precoMinimoML: number | null;
+  precoMinimoShopee: number | null;
+};
+
+/** Avaliação completa de um produto a um dado preço de venda. */
+export function avaliar(custo: number, preco: number, cfg: ConfigPrecificacao): Avaliacao {
+  const ml = resultadoML(custo, preco, cfg);
+  const shopee = resultadoShopee(custo, preco, cfg);
+  const zm = zonaMortaML(cfg);
+  return {
+    ml, shopee,
+    melhorCanal: ml.lucro >= shopee.lucro ? "ml" : "shopee",
+    temPrejuizo: ml.lucro < 0 || shopee.lucro < 0,
+    abaixoDoAlvo: ml.margemPct < cfg.margem_alvo_pct && shopee.margemPct < cfg.margem_alvo_pct,
+    naZonaMortaML: !!zm && preco >= zm.de && preco <= zm.ate,
+    precoMinimoML: precoParaMargemML(custo, cfg.margem_alvo_pct, cfg),
+    precoMinimoShopee: precoParaMargemShopee(custo, cfg.margem_alvo_pct, cfg),
+  };
+}

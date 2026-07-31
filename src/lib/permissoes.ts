@@ -193,6 +193,9 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     { key: "comercial", label: "Comercial (CRM)", icon: "📊", href: "/admin/comercial" },
     { key: "vobi-comercial", label: "Oportunidades Vobi", icon: "🔗", href: "/admin/vobi-comercial" },
   ] },
+  { id: "vendas", label: "Vendas TrazPraCa", itens: [
+    { key: "vendas", label: "Catálogo & Preços", icon: "🛒", href: "/admin/vendas" },
+  ] },
   { id: "juridico", label: "Jurídico & Documentos", itens: [
     { key: "doc-empresa", label: "Documentos da Empresa", icon: "📑", href: "/admin/doc-empresa" },
     { key: "doc-contratos", label: "Documentos Contratuais", icon: "📝", href: "/admin/doc-empresa?view=contratos" },
@@ -234,6 +237,8 @@ export const GRUPO_ROLES: Record<string, string[]> = {
   rh:         ["admin", "rh"],
   financeiro: ["admin", "financeiro"],
   comercial:  ["admin", "comercial"],
+  vendas:     ["admin"], // negócio pessoal da Adriana (TrazPraCa/ML/Shopee) — só admin por padrão;
+                          // dar acesso a outro perfil depois via /admin/permissoes (portal_perm_usuario)
   juridico:   ["admin", "juridico", "financeiro"],
   portal:     ["admin"],
   institucional: ["admin"],
