@@ -1,0 +1,450 @@
+---
+// Onde está publicado — cobertura por canal.
+//
+// Responde a UMA pergunta: este produto está no Mercado Livre, na Shopee, nos
+// dois, ou em nenhum? A fonte não é o que o portal tentou publicar, e sim o
+// que os canais responderam quando o inventário rodou (src/inventario_main.py
+// → tabela vendas_anuncios_canal). É essa diferença que faz aparecer a
+// publicação que falhou: o portal achava que tinha subido, o canal diz que não.
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { temPerfilFresco } from "../../../lib/permissoes";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
+
+const db = supabaseAdmin();
+const [prod, anun, exec] = await Promise.all([
+  db.from("vendas_produtos")
+    .select("id,nome,sku_trazpraca,sku_proprio,status,custo,preco_recomendado,pronto_para_publicar,inventariado_em")
+    .order("nome", { ascending: true }).limit(2000),
+  db.from("vendas_anuncios_canal").select("*").order("visto_em", { ascending: false }).limit(5000),
+  db.from("vendas_sync_log").select("*").eq("tipo", "inventario").order("executado_em", { ascending: false }).limit(1),
+]);
+
+// A tela precisa funcionar mesmo antes da migration 082 rodar — senão a
+// Adriana abre o menu e leva um erro 500 sem explicação.
+const faltaMigration = !!anun.error;
+const listaProdutos: any[] = prod.data || [];
+const listaAnuncios: any[] = anun.data || [];
+const ultimaExec: any = (exec.data || [])[0] || null;
+
+const NO_AR = new Set(["active", "paused"]);
+const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+const fmt$ = (n: any) => (n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+
+const SITUACAO_LABEL: Record<string, string> = {
+  active: "no ar", paused: "pausado", closed: "encerrado",
+  under_review: "em revisão", unlisted: "não listado",
+  desconhecida: "situação desconhecida",
+};
+const SITUACAO_COR: Record<string, string> = {
+  active: "#059669", paused: "#B45309", closed: "#DC2626",
+  under_review: "#6366F1", unlisted: "#DC2626", desconhecida: "#6B7280",
+};
+
+// Agrupa os anúncios por produto e canal. Quando há mais de um, vale o que
+// está no ar — anúncio encerrado ao lado de um ativo é histórico, não estado.
+const porProdutoCanal = new Map<string, any[]>();
+const orfaos: any[] = [];
+for (const a of listaAnuncios) {
+  if (!a.produto_id) { orfaos.push(a); continue; }
+  const chave = `${a.produto_id}|${a.canal}`;
+  if (!porProdutoCanal.has(chave)) porProdutoCanal.set(chave, []);
+  porProdutoCanal.get(chave)!.push(a);
+}
+const melhor = (lista: any[] | undefined) => {
+  if (!lista || lista.length === 0) return null;
+  return [...lista].sort((x, y) => {
+    const px = NO_AR.has(x.situacao) ? 0 : 1;
+    const py = NO_AR.has(y.situacao) ? 0 : 1;
+    return px !== py ? px - py : Number(y.preco || 0) - Number(x.preco || 0);
+  })[0];
+};
+
+type Cobertura = "ambos" | "so_ml" | "so_shopee" | "nenhum";
+const COBERTURA_LABEL: Record<Cobertura, string> = {
+  ambos: "Nos dois canais",
+  so_ml: "Só no Mercado Livre",
+  so_shopee: "Só na Shopee",
+  nenhum: "Em nenhum canal",
+};
+const COBERTURA_COR: Record<Cobertura, string> = {
+  ambos: "#059669", so_ml: "#2563EB", so_shopee: "#EA580C", nenhum: "#9CA3AF",
+};
+
+const linhas = listaProdutos.map((p) => {
+  const todosML = porProdutoCanal.get(`${p.id}|ml`) || [];
+  const todosSH = porProdutoCanal.get(`${p.id}|shopee`) || [];
+  const ml = melhor(todosML);
+  const sh = melhor(todosSH);
+  const noArML = !!ml && NO_AR.has(ml.situacao);
+  const noArSH = !!sh && NO_AR.has(sh.situacao);
+  const cobertura: Cobertura =
+    noArML && noArSH ? "ambos" : noArML ? "so_ml" : noArSH ? "so_shopee" : "nenhum";
+  // "Tropeço" = existe anúncio, mas nenhum no ar. É o retrato exato da
+  // publicação que falhou ou do anúncio que o ML derrubou sozinho.
+  const tropecou = (todosML.length > 0 && !noArML) || (todosSH.length > 0 && !noArSH);
+  return { p, ml, sh, noArML, noArSH, cobertura, tropecou, extrasML: todosML.length - 1, extrasSH: todosSH.length - 1 };
+});
+
+const conta = (c: Cobertura) => linhas.filter((l) => l.cobertura === c).length;
+const tropecos = linhas.filter((l) => l.tropecou).length;
+const anunciosML = listaAnuncios.filter((a) => a.canal === "ml").length;
+const anunciosSH = listaAnuncios.filter((a) => a.canal === "shopee").length;
+const shopeeEhSnapshot = listaAnuncios.some((a) => a.canal === "shopee" && a.fonte === "snapshot");
+const vistoShopee = listaAnuncios.find((a) => a.canal === "shopee")?.visto_em || null;
+---
+<Admin title="Onde está publicado — ML / Shopee" current="vendas-canais">
+  <div class="toolbar">
+    <span class="toolbar-title">📍 Onde está publicado</span>
+    <span style="flex:1"></span>
+    <button class="btn btn-outline" id="btnShopee">🛍️ Atualizar Shopee</button>
+    <a class="btn btn-outline" href="/admin/vendas">← Catálogo & Preços</a>
+  </div>
+
+  {faltaMigration && (
+    <div class="card" style="padding:14px 16px;margin-bottom:14px;background:#FEF2F2;border:1px solid #FCA5A5">
+      <div style="font-weight:800;color:#7F1D1D;margin-bottom:4px">A tabela do inventário ainda não existe no banco</div>
+      <div style="font-size:13px;color:#7F1D1D">
+        Falta aplicar a migration <strong>082_vendas_inventario_canais.sql</strong>. Rode as migrações e depois dispare o
+        workflow <strong>Vendas - Inventariar canais</strong> no GitHub. Até lá esta tela fica vazia.
+      </div>
+    </div>
+  )}
+
+  <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+    <div class="card kpi" data-filtro="ambos" style="flex:1;min-width:140px;padding:12px 16px;text-align:center;cursor:pointer">
+      <div style="font-size:1.6rem;font-weight:800;color:#059669">{conta("ambos")}</div>
+      <div style="font-size:12px;color:#6B7280">nos dois canais</div>
+    </div>
+    <div class="card kpi" data-filtro="so_ml" style="flex:1;min-width:140px;padding:12px 16px;text-align:center;cursor:pointer">
+      <div style="font-size:1.6rem;font-weight:800;color:#2563EB">{conta("so_ml")}</div>
+      <div style="font-size:12px;color:#6B7280">só no Mercado Livre</div>
+    </div>
+    <div class="card kpi" data-filtro="so_shopee" style="flex:1;min-width:140px;padding:12px 16px;text-align:center;cursor:pointer">
+      <div style="font-size:1.6rem;font-weight:800;color:#EA580C">{conta("so_shopee")}</div>
+      <div style="font-size:12px;color:#6B7280">só na Shopee</div>
+    </div>
+    <div class="card kpi" data-filtro="nenhum" style="flex:1;min-width:140px;padding:12px 16px;text-align:center;cursor:pointer">
+      <div style="font-size:1.6rem;font-weight:800">{conta("nenhum")}</div>
+      <div style="font-size:12px;color:#6B7280">em nenhum canal</div>
+    </div>
+    <div class="card kpi" data-filtro="tropecou" style="flex:1;min-width:140px;padding:12px 16px;text-align:center;cursor:pointer;border:1px solid #FCA5A5">
+      <div style="font-size:1.6rem;font-weight:800;color:{tropecos ? '#DC2626' : undefined}">{tropecos}</div>
+      <div style="font-size:12px;color:#6B7280">publicação que tropeçou</div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:12px 16px;margin-bottom:14px;font-size:12.5px;color:#4B5563">
+    Retrato de <strong>{anunciosML}</strong> anúncio(s) lidos no Mercado Livre e <strong>{anunciosSH}</strong> na Shopee.
+    O Mercado Livre é lido ao vivo pela API oficial — inclusive os encerrados e os que estão em revisão.
+    {shopeeEhSnapshot && (
+      <span> A Shopee <strong>não tem API de leitura liberada nesta conta</strong>: o número dela vem do arquivo
+      <code>_shopee_data.json</code>, tirado da sua sessão no Seller Centre em {fdt(vistoShopee)}. Se você mexeu na Shopee depois disso, o dado aqui está atrasado.</span>
+    )}
+    {ultimaExec && <span> · Último inventário: <strong>{fdt(ultimaExec.executado_em)}</strong> — {ultimaExec.mensagem}</span>}
+    {!ultimaExec && !faltaMigration && <span> · <strong>O inventário ainda não rodou.</strong> Dispare o workflow <em>Vendas - Inventariar canais</em> no GitHub.</span>}
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+    <div style="padding:10px 16px;border-bottom:1px solid #E5E7EB;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="busca" class="input-sm" placeholder="Buscar produto ou SKU…" style="min-width:220px;flex:1" />
+      <button class="btn btn-outline btn-sm filtro" data-filtro="todos">Todos</button>
+      <button class="btn btn-outline btn-sm filtro" data-filtro="ambos">Nos dois</button>
+      <button class="btn btn-outline btn-sm filtro" data-filtro="so_ml">Só ML</button>
+      <button class="btn btn-outline btn-sm filtro" data-filtro="so_shopee">Só Shopee</button>
+      <button class="btn btn-outline btn-sm filtro" data-filtro="nenhum">Em nenhum</button>
+      <button class="btn btn-outline btn-sm filtro" data-filtro="tropecou">Tropeçou</button>
+      <span id="contador" style="font-size:12px;color:#6B7280"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="tabelaCobertura">
+        <thead>
+          <tr>
+            <th>Produto</th>
+            <th>Mercado Livre</th>
+            <th>Shopee</th>
+            <th>Cobertura</th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.length === 0 && (
+            <tr><td colspan="4" style="text-align:center;color:#9CA3AF;padding:28px">Nenhum produto no catálogo ainda.</td></tr>
+          )}
+          {linhas.map(({ p, ml, sh, cobertura, tropecou, extrasML, extrasSH }) => (
+            <tr
+              data-cobertura={cobertura}
+              data-tropecou={tropecou ? "1" : "0"}
+              data-busca={`${p.nome || ""} ${p.sku_trazpraca || ""} ${p.sku_proprio || ""}`.toLowerCase()}
+              style={tropecou ? "background:#FEF2F2" : undefined}
+            >
+              <td>
+                <strong>{p.nome}</strong>
+                <div style="font-size:11.5px;color:#9CA3AF">
+                  {p.sku_trazpraca ? `SKU ${p.sku_trazpraca}` : "sem SKU"}
+                  {p.custo != null ? ` · custo ${fmt$(p.custo)}` : ""}
+                  {p.pronto_para_publicar ? " · ficha pronta" : ""}
+                </div>
+              </td>
+
+              <td style="font-size:12.5px;white-space:nowrap">
+                {ml ? (
+                  <>
+                    <span style={`font-weight:700;color:${SITUACAO_COR[ml.situacao] || "#6B7280"}`}>
+                      {SITUACAO_LABEL[ml.situacao] || ml.situacao}
+                    </span>
+                    <div style="color:#6B7280">
+                      {fmt$(ml.preco)}
+                      {ml.estoque != null ? ` · ${ml.estoque} un.` : ""}
+                      {ml.saude != null ? ` · qualidade ${Math.round(Number(ml.saude) * 100)}%` : ""}
+                    </div>
+                    <div style="font-size:10.5px;color:#9CA3AF">
+                      {ml.permalink ? <a href={ml.permalink} target="_blank" rel="noopener">{ml.item_id}</a> : ml.item_id}
+                      {ml.casado_por && ml.casado_por !== "ml_item_id" ? ` · casado por ${ml.casado_por}` : ""}
+                      {extrasML > 0 ? ` · +${extrasML} anúncio(s) antigo(s)` : ""}
+                    </div>
+                  </>
+                ) : <span style="color:#9CA3AF">não encontrado</span>}
+              </td>
+
+              <td style="font-size:12.5px;white-space:nowrap">
+                {sh ? (
+                  <>
+                    <span style={`font-weight:700;color:${SITUACAO_COR[sh.situacao] || "#6B7280"}`}>
+                      {SITUACAO_LABEL[sh.situacao] || sh.situacao}
+                    </span>
+                    <div style="color:#6B7280">{fmt$(sh.preco)}</div>
+                    <div style="font-size:10.5px;color:#9CA3AF">
+                      {sh.item_id}
+                      {sh.casado_por && sh.casado_por !== "shopee_item_id" ? ` · casado por ${sh.casado_por}` : ""}
+                      {extrasSH > 0 ? ` · +${extrasSH} anúncio(s)` : ""}
+                    </div>
+                  </>
+                ) : <span style="color:#9CA3AF">não encontrado</span>}
+              </td>
+
+              <td style="white-space:nowrap">
+                <span style={`font-weight:800;font-size:12.5px;color:${COBERTURA_COR[cobertura]}`}>
+                  {COBERTURA_LABEL[cobertura]}
+                </span>
+                {tropecou && <div style="font-size:11px;color:#DC2626;font-weight:700">anúncio existe mas não está no ar</div>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {orfaos.length > 0 && (
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+      <div style="padding:10px 16px;border-bottom:1px solid #E5E7EB">
+        <div style="font-weight:800">🧩 {orfaos.length} anúncio(s) no ar que o portal não reconhece</div>
+        <div style="font-size:12.5px;color:#6B7280">
+          Existem no marketplace, mas nenhum produto do catálogo bate com eles — nem por SKU, nem por título.
+          Costuma ser anúncio antigo, feito à mão ou do tempo do Bling. Não é erro: é o que falta trazer para o portal.
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Canal</th><th>Anúncio</th><th>SKU declarado</th><th>Preço</th><th>Situação</th></tr></thead>
+          <tbody>
+            {orfaos.slice(0, 400).map((a: any) => (
+              <tr>
+                <td style="font-size:12.5px">{a.canal === "ml" ? "Mercado Livre" : "Shopee"}</td>
+                <td style="font-size:12.5px;max-width:420px">
+                  {a.permalink ? <a href={a.permalink} target="_blank" rel="noopener">{a.titulo || a.item_id}</a> : (a.titulo || a.item_id)}
+                  <div style="font-size:10.5px;color:#9CA3AF">{a.item_id}</div>
+                </td>
+                <td style="font-size:12.5px">{a.sku || <span style="color:#DC2626">sem SKU</span>}</td>
+                <td style="font-size:12.5px;white-space:nowrap">{fmt$(a.preco)}</td>
+                <td style="font-size:12.5px">
+                  <span style={`color:${SITUACAO_COR[a.situacao] || "#6B7280"};font-weight:700`}>
+                    {SITUACAO_LABEL[a.situacao] || a.situacao}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {orfaos.length > 400 && (
+        <div style="padding:10px 16px;font-size:12px;color:#6B7280">Mostrando os 400 primeiros de {orfaos.length}.</div>
+      )}
+    </div>
+  )}
+
+  <!-- Modal: atualizar a Shopee ------------------------------------------ -->
+  <div class="modal-overlay" id="modalShopee">
+    <div class="modal-box" style="max-width:760px">
+      <div class="modal-header">
+        <h2>🛍️ Atualizar o retrato da Shopee</h2>
+        <button class="modal-close" id="fecharShopee">✕</button>
+      </div>
+      <div style="padding:16px 24px">
+        <p style="font-size:13px;color:#4B5563;margin-top:0">
+          A Shopee não tem API de leitura liberada para a sua conta — só a sua própria sessão logada consegue listar os anúncios.
+          Por isso a coleta é feita no seu navegador e o resultado é colado aqui. Nenhuma senha ou cookie da Shopee é guardado no portal.
+        </p>
+
+        <div style="font-weight:800;font-size:13px;margin-top:14px">1. Copie o coletor</div>
+        <button class="btn btn-outline btn-sm" id="btnCopiarColetor" style="margin:6px 0">Copiar o coletor</button>
+
+        <div style="font-weight:800;font-size:13px;margin-top:10px">2. Rode na Shopee</div>
+        <div style="font-size:12.5px;color:#4B5563">
+          Abra <a href="https://seller.shopee.com.br/portal/product/list/all" target="_blank" rel="noopener">a lista de produtos do Seller Centre</a>,
+          aperte <strong>F12</strong>, vá na aba <strong>Console</strong>, cole e aperte Enter. Ele varre todas as páginas e copia o resultado sozinho.
+        </div>
+
+        <div style="font-weight:800;font-size:13px;margin-top:10px">3. Cole aqui e envie</div>
+        <textarea id="caixaShopee" rows="6" class="input-sm" style="width:100%;font-family:monospace;font-size:11.5px"
+          placeholder="Cole aqui o texto que o coletor copiou (começa com [ e termina com ])"></textarea>
+
+        <div id="msgShopee" style="margin-top:10px"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelarShopee">Fechar</button>
+          <button type="button" class="btn btn-primary" id="enviarShopee">Enviar para o portal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px 16px">
+    <div style="font-weight:800;margin-bottom:6px">Como esta tela se atualiza</div>
+    <p style="font-size:13px;color:#4B5563;margin:0">
+      O inventário roda todo dia às 10h e pode ser disparado à mão no GitHub, em
+      <strong> Actions → Vendas - Inventariar canais → Run workflow</strong>. Ele pergunta aos dois marketplaces o que está no ar
+      e reescreve esta tela com a resposta. Se um produto aparecer aqui como <em>em nenhum canal</em> mas você jurar que publicou,
+      é porque o canal não confirmou — e é exatamente esse o caso que vale investigar.
+    </p>
+  </div>
+</Admin>
+
+<script is:inline>
+  (function () {
+    var linhas = Array.prototype.slice.call(document.querySelectorAll("#tabelaCobertura tbody tr[data-cobertura]"));
+    var busca = document.getElementById("busca");
+    var contador = document.getElementById("contador");
+    var filtroAtual = "todos";
+
+    function aplicar() {
+      var termo = (busca && busca.value ? busca.value : "").trim().toLowerCase();
+      var visiveis = 0;
+      linhas.forEach(function (tr) {
+        var okFiltro =
+          filtroAtual === "todos" ||
+          (filtroAtual === "tropecou" ? tr.dataset.tropecou === "1" : tr.dataset.cobertura === filtroAtual);
+        var okBusca = !termo || (tr.dataset.busca || "").indexOf(termo) !== -1;
+        var mostrar = okFiltro && okBusca;
+        tr.style.display = mostrar ? "" : "none";
+        if (mostrar) visiveis++;
+      });
+      if (contador) contador.textContent = visiveis + " de " + linhas.length + " produto(s)";
+    }
+
+    function selecionar(valor) {
+      filtroAtual = valor;
+      document.querySelectorAll(".filtro").forEach(function (b) {
+        b.classList.toggle("btn-primary", b.dataset.filtro === valor);
+        b.classList.toggle("btn-outline", b.dataset.filtro !== valor);
+      });
+      aplicar();
+    }
+
+    document.querySelectorAll(".filtro").forEach(function (b) {
+      b.addEventListener("click", function () { selecionar(b.dataset.filtro); });
+    });
+    document.querySelectorAll(".kpi").forEach(function (c) {
+      c.addEventListener("click", function () { selecionar(c.dataset.filtro); });
+    });
+    if (busca) busca.addEventListener("input", aplicar);
+    selecionar("todos");
+
+    // ----------------------------------------------------------- Shopee ----
+    // O coletor roda no console da Shopee, varre todas as páginas da lista de
+    // produtos e copia o resultado. É o mesmo caminho que o Seller Centre usa
+    // para desenhar a própria tela — só leitura, nada é alterado lá.
+    var COLETOR = [
+      "(async () => {",
+      "  const cds = document.cookie.split('; ').find(c => c.startsWith('SPC_CDS=')).split('=')[1];",
+      "  const out = [];",
+      "  for (let pg = 1; pg <= 40; pg++) {",
+      "    const u = `/api/v3/opt/mpsku/list/v2/get_product_list?SPC_CDS=${cds}&SPC_CDS_VER=2&page_number=${pg}&page_size=48&need_search_condition=true`;",
+      "    const r = await fetch(u, { headers: { accept: 'application/json', 'x-requested-with': 'XMLHttpRequest' }, credentials: 'include' });",
+      "    const j = await r.json();",
+      "    const ps = (j.data && j.data.products) || [];",
+      "    if (!ps.length) break;",
+      "    for (const p of ps) {",
+      "      const pd = p.price_detail || {}, sd = p.stock_detail || {}, tg = p.tag || {};",
+      "      out.push({ id: p.id, sku: String(p.parent_sku || '').trim(), name: p.name || '',",
+      "        price: Number(pd.price_min || pd.selling_price_min || 0),",
+      "        estoque: sd.total_available_stock == null ? null : sd.total_available_stock,",
+      "        vendidos: (p.statistics || {}).sold_count == null ? null : p.statistics.sold_count,",
+      "        status: (p.status === 1 && !tg.unlist) ? 'active' : 'unlisted' });",
+      "    }",
+      "    await new Promise(f => setTimeout(f, 300));",
+      "  }",
+      "  await navigator.clipboard.writeText(JSON.stringify(out));",
+      "  alert(out.length + ' anuncio(s) coletados e copiados. Volte ao portal e cole.');",
+      "})();",
+    ].join("\n");
+
+    function msgShopee(html) {
+      var el = document.getElementById("msgShopee");
+      if (el) el.innerHTML = html;
+    }
+    function abrirShopee() { document.getElementById("modalShopee").classList.add("open"); }
+    function fecharShopee() { document.getElementById("modalShopee").classList.remove("open"); }
+
+    var btnAbrir = document.getElementById("btnShopee");
+    if (btnAbrir) btnAbrir.addEventListener("click", abrirShopee);
+    ["fecharShopee", "cancelarShopee"].forEach(function (id) {
+      var b = document.getElementById(id);
+      if (b) b.addEventListener("click", fecharShopee);
+    });
+
+    var btnCopiar = document.getElementById("btnCopiarColetor");
+    if (btnCopiar) btnCopiar.addEventListener("click", function () {
+      navigator.clipboard.writeText(COLETOR).then(
+        function () { btnCopiar.textContent = "Copiado ✓"; setTimeout(function () { btnCopiar.textContent = "Copiar o coletor"; }, 2500); },
+        function () { msgShopee('<div class="alert alert-error">Não consegui copiar. Selecione o código à mão.</div>'); }
+      );
+    });
+
+    var btnEnviar = document.getElementById("enviarShopee");
+    if (btnEnviar) btnEnviar.addEventListener("click", async function () {
+      var caixa = document.getElementById("caixaShopee");
+      var texto = (caixa && caixa.value ? caixa.value : "").trim();
+      if (!texto) { msgShopee('<div class="alert alert-error">Cole o resultado do coletor primeiro.</div>'); return; }
+      var lista;
+      try { lista = JSON.parse(texto); } catch (e) {
+        msgShopee('<div class="alert alert-error">O texto colado não é a lista completa. Copie tudo, do [ até o ].</div>');
+        return;
+      }
+      btnEnviar.disabled = true; btnEnviar.textContent = "Enviando…";
+      try {
+        var res = await fetch("/api/admin/vendas/inventario-shopee", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ anuncios: lista }),
+        });
+        var d = await res.json().catch(function () { return {}; });
+        if (res.ok) {
+          msgShopee('<div class="alert alert-success">' + (d.mensagem || "Pronto.") + " Recarregando…</div>");
+          setTimeout(function () { location.reload(); }, 1200);
+        } else {
+          msgShopee('<div class="alert alert-error">' + (d.error || "Erro ao gravar.") + "</div>");
+        }
+      } catch (e) {
+        msgShopee('<div class="alert alert-error">Falha de rede.</div>');
+      }
+      btnEnviar.disabled = false; btnEnviar.textContent = "Enviar para o portal";
+    });
+  })();
+</script>
