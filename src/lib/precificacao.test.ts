@@ -6,7 +6,7 @@
 import {
   CONFIG_PADRAO, normalizarConfig, resultadoML, resultadoShopee,
   precoParaMargemML, precoParaMargemShopee, zonaMortaML, avaliar, faixaShopee,
-  precoRecomendado, fugirDaZonaMortaML,
+  precoRecomendado, fugirDaZonaMortaML, freteML, comissaoMLPct,
 } from './precificacao.ts';
 
 let falhas = 0;
@@ -212,6 +212,74 @@ t('fugirDaZonaMorta empurra para BAIXO, nunca para cima', () => {
   ok(fugirDaZonaMortaML(dentro, cfg) < zm.de, 'deveria sair por baixo');
   eq(fugirDaZonaMortaML(50, cfg), 50, 'fora da zona nao mexe');
   eq(fugirDaZonaMortaML(150, cfg), 150, 'acima da zona nao mexe');
+});
+
+// ---------------------------------------------------------------------------
+// Frete por peso e tipo de anuncio (01/08/2026)
+// ---------------------------------------------------------------------------
+
+const cfgPeso = normalizarConfig({
+  ml_frete_faixas: [
+    { ate_kg: 0.3, custo: 19.9 }, { ate_kg: 1, custo: 25.9 },
+    { ate_kg: 3, custo: 34.9 }, { ate_kg: null, custo: 49.9 },
+  ],
+});
+
+t('Frete sai da faixa de peso quando o peso e conhecido', () => {
+  eq(freteML(cfgPeso, { pesoKg: 0.2 }).valor, 19.9, 'faixa 0-0,3kg');
+  eq(freteML(cfgPeso, { pesoKg: 1.6 }).valor, 34.9, 'faixa 1-3kg');
+  eq(freteML(cfgPeso, { pesoKg: 12 }).valor, 49.9, 'ultima faixa');
+  ok(freteML(cfgPeso, { pesoKg: 1.6 }).fonte === 'faixa', 'fonte deveria ser faixa');
+});
+
+t('Sem peso, cai na estimativa e AVISA que e estimativa', () => {
+  const f = freteML(cfgPeso, { pesoKg: null });
+  eq(f.valor, cfgPeso.ml_frete_estimado, 'estimativa');
+  ok(f.fonte === 'estimativa', 'fonte deveria ser estimativa');
+});
+
+t('Valor real da API do ML ganha da faixa e da estimativa', () => {
+  const f = freteML(cfgPeso, { pesoKg: 1.6, freteReal: 41.37 });
+  eq(f.valor, 41.37, 'frete real');
+  ok(f.fonte === 'api', 'fonte deveria ser api');
+});
+
+t('Premium cobra mais que Classico e a diferenca aparece no lucro', () => {
+  const classico = resultadoML(129.2, 251.94, cfg, { tipoAnuncio: 'classico' });
+  const premium = resultadoML(129.2, 251.94, cfg, { tipoAnuncio: 'premium' });
+  ok(premium.lucro < classico.lucro, 'premium deveria lucrar menos');
+  eq(classico.lucro - premium.lucro, 251.94 * (cfg.ml_comissao_premium_pct - cfg.ml_comissao_classico_pct) / 100,
+     'diferenca entre as modalidades');
+});
+
+t('avaliar() mostra a outra modalidade lado a lado', () => {
+  const a = avaliar(129.2, 251.94, cfg, { tipoAnuncio: 'classico' });
+  ok(a.tipoAnuncioML === 'classico', 'tipo aplicado');
+  ok(a.mlOutroTipo.lucro < a.ml.lucro, 'a comparacao com premium deveria render menos');
+  ok(a.freteML.fonte === 'estimativa', 'sem peso, fonte e estimativa');
+});
+
+t('Peso pesado empurra o preco minimo para cima', () => {
+  const leve = precoParaMargemML(52.34, 30, cfgPeso, { pesoKg: 0.2 });
+  const pesado = precoParaMargemML(52.34, 30, cfgPeso, { pesoKg: 12 });
+  ok(pesado > leve, `produto pesado deveria exigir preco maior: leve ${leve}, pesado ${pesado}`);
+});
+
+t('Zona morta acompanha o frete real do produto', () => {
+  const leve = zonaMortaML(cfgPeso, { pesoKg: 0.2 });
+  const pesado = zonaMortaML(cfgPeso, { pesoKg: 12 });
+  ok(pesado.ate > leve.ate, 'produto pesado tem zona morta mais larga');
+});
+
+t('Comissao antiga (ml_comissao_pct) continua valendo se nao houver a nova', () => {
+  const antigo = normalizarConfig({ ml_comissao_pct: 14 });
+  eq(comissaoMLPct(antigo), 14, 'deveria respeitar a taxa que a Adriana ajustou');
+});
+
+t('Politica de margem tambem respeita peso e modalidade', () => {
+  const r = precoRecomendado('ml', 52.34, cfgPeso, null, { pesoKg: 12, tipoAnuncio: 'premium' });
+  const res = resultadoML(52.34, r.preco, cfgPeso, { pesoKg: 12, tipoAnuncio: 'premium' });
+  eq(res.margemPct, cfgPeso.margem_alvo_pct, 'margem alvo com peso e premium');
 });
 
 console.log('\n' + (falhas ? `${falhas} FALHA(S)` : 'TODOS OS TESTES PASSARAM'));

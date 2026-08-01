@@ -26,7 +26,20 @@ export type FaixaShopee = {
   fixo: number;
 };
 
+/** Faixa de peso do frete do Mercado Livre. `ate_kg: null` = última faixa. */
+export type FaixaFreteML = {
+  ate_kg: number | null;
+  /** quanto o VENDEDOR paga nessa faixa, em reais */
+  custo: number;
+};
+
+export type TipoAnuncioML = "classico" | "premium";
+
 export type ConfigPrecificacao = {
+  /**
+   * Comissão única — mantida por compatibilidade. Quando `ml_tipo_anuncio`
+   * está definido, quem manda é a comissão do tipo escolhido.
+   */
   ml_comissao_pct: number;
   /** taxa fixa por item cobrada pelo ML abaixo do limite de frete grátis */
   ml_custo_fixo: number;
@@ -34,6 +47,26 @@ export type ConfigPrecificacao = {
   ml_frete_estimado: number;
   /** a partir deste preço o frete grátis vira obrigatório no ML */
   ml_limite_frete_gratis: number;
+  /**
+   * Tipo de anúncio praticado. Clássico e Premium têm comissões bem
+   * diferentes (o Premium paga o parcelamento sem juros do comprador) e a
+   * diferença come margem: num produto de R$ 102 são 3 pontos percentuais,
+   * que viram um quinto do lucro.
+   */
+  ml_tipo_anuncio: TipoAnuncioML;
+  ml_comissao_classico_pct: number;
+  ml_comissao_premium_pct: number;
+  /**
+   * Frete por faixa de peso. Usado quando o produto tem peso conhecido —
+   * o que agora acontece, porque a planilha traz peso e dimensões.
+   * Vazio = cai no `ml_frete_estimado` (o chute único de antes).
+   *
+   * ATENÇÃO: estes valores são ESTIMATIVA. O número real depende de peso,
+   * dimensão, destino e reputação do vendedor, e só a API do Mercado Livre
+   * sabe. O enriquecedor consulta a API por produto e grava o valor real;
+   * quando ele existe, é ele que vale. Ver `resultadoML(..., freteReal)`.
+   */
+  ml_frete_faixas: FaixaFreteML[];
   shopee_faixas: FaixaShopee[];
   /** adicional de comissão da Shopee durante campanhas */
   shopee_campanha_pct: number;
@@ -67,6 +100,10 @@ export const CONFIG_PADRAO: ConfigPrecificacao = {
   shopee_campanha_pct: 0,
   margem_alvo_pct: 30,
   margem_minima_pct: 15,
+  ml_tipo_anuncio: "classico",
+  ml_comissao_classico_pct: 13,
+  ml_comissao_premium_pct: 17,
+  ml_frete_faixas: [],
 };
 
 export type ItemTaxa = { rotulo: string; valor: number };
@@ -93,21 +130,92 @@ export function normalizarConfig(bruto: Partial<ConfigPrecificacao> | null | und
     : CONFIG_PADRAO.shopee_faixas;
   // ordena por teto; faixa sem teto (null) sempre por último
   faixas.sort((a, b) => (a.ate == null ? Infinity : a.ate) - (b.ate == null ? Infinity : b.ate));
-  return { ...c, shopee_faixas: faixas };
+
+  // Compatibilidade: até 01/08/2026 existia uma comissão única (`ml_comissao_pct`).
+  // Se o banco traz esse valor e NÃO traz a comissão do clássico, o valor antigo
+  // continua valendo — senão uma taxa que a Adriana ajustou à mão seria
+  // silenciosamente trocada pelo padrão do código.
+  const b = bruto || {};
+  const classico = b.ml_comissao_classico_pct ?? b.ml_comissao_pct ?? CONFIG_PADRAO.ml_comissao_classico_pct;
+
+  return {
+    ...c,
+    shopee_faixas: faixas,
+    ml_comissao_classico_pct: classico,
+    ml_frete_faixas: Array.isArray(c.ml_frete_faixas) ? c.ml_frete_faixas : [],
+    ml_tipo_anuncio: c.ml_tipo_anuncio === "premium" ? "premium" : "classico",
+  };
 }
 
-export function taxasML(preco: number, cfg: ConfigPrecificacao): ItemTaxa[] {
-  const comissao = preco * (cfg.ml_comissao_pct / 100);
-  if (preco < cfg.ml_limite_frete_gratis) {
-    return [
-      { rotulo: `Comissão ${cfg.ml_comissao_pct}%`, valor: r2(comissao) },
-      { rotulo: "Custo fixo (abaixo do limite)", valor: r2(cfg.ml_custo_fixo) },
-    ];
+
+/**
+ * Contexto do produto que muda a conta do Mercado Livre.
+ *
+ * Sem isso o motor usava um frete único de R$ 22 para tudo — o que trata uma
+ * luminária de 1,6 kg igual a um quadro de 0,4 kg. Com peso, o frete sai da
+ * faixa certa; com `freteReal` (consultado na API do ML pelo enriquecedor),
+ * sai o número exato daquele anúncio.
+ */
+export type ContextoML = {
+  pesoKg?: number | null;
+  /** custo de frete devolvido pela API do Mercado Livre para ESTE produto */
+  freteReal?: number | null;
+  /** sobrepõe o tipo configurado, para comparar clássico x premium na tela */
+  tipoAnuncio?: TipoAnuncioML;
+};
+
+/** Comissão vigente conforme o tipo de anúncio escolhido. */
+export function comissaoMLPct(cfg: ConfigPrecificacao, tipo?: TipoAnuncioML): number {
+  const escolhido = tipo || cfg.ml_tipo_anuncio || "classico";
+  const pct = escolhido === "premium" ? cfg.ml_comissao_premium_pct : cfg.ml_comissao_classico_pct;
+  return typeof pct === "number" ? pct : cfg.ml_comissao_pct;
+}
+
+export type FreteML = { valor: number; fonte: "api" | "faixa" | "estimativa" };
+
+/**
+ * Quanto o vendedor banca de frete acima do limite de frete grátis.
+ *
+ * Ordem de confiança: valor real da API do ML > faixa de peso configurada >
+ * estimativa única. A `fonte` sobe junto para a tela poder dizer à Adriana se
+ * aquele lucro está apoiado em número real ou em chute — a diferença entre os
+ * dois já custou dinheiro antes.
+ */
+export function freteML(cfg: ConfigPrecificacao, ctx?: ContextoML): FreteML {
+  const real = ctx?.freteReal;
+  if (typeof real === "number" && real >= 0) return { valor: r2(real), fonte: "api" };
+
+  const peso = ctx?.pesoKg;
+  const faixas = Array.isArray(cfg.ml_frete_faixas) ? cfg.ml_frete_faixas : [];
+  if (typeof peso === "number" && peso > 0 && faixas.length) {
+    const ordenadas = [...faixas].sort(
+      (a, b) => (a.ate_kg == null ? Infinity : a.ate_kg) - (b.ate_kg == null ? Infinity : b.ate_kg),
+    );
+    for (const f of ordenadas) {
+      if (f.ate_kg == null || peso <= f.ate_kg) return { valor: r2(f.custo), fonte: "faixa" };
+    }
+    return { valor: r2(ordenadas[ordenadas.length - 1].custo), fonte: "faixa" };
   }
-  return [
-    { rotulo: `Comissão ${cfg.ml_comissao_pct}%`, valor: r2(comissao) },
-    { rotulo: "Frete grátis (estimado)", valor: r2(cfg.ml_frete_estimado) },
-  ];
+
+  return { valor: r2(cfg.ml_frete_estimado), fonte: "estimativa" };
+}
+
+const ROTULO_FONTE: Record<FreteML["fonte"], string> = {
+  api: "Frete grátis (real, Mercado Livre)",
+  faixa: "Frete grátis (faixa de peso)",
+  estimativa: "Frete grátis (estimado — sem peso)",
+};
+
+export function taxasML(preco: number, cfg: ConfigPrecificacao, ctx?: ContextoML): ItemTaxa[] {
+  const pct = comissaoMLPct(cfg, ctx?.tipoAnuncio);
+  const tipo = (ctx?.tipoAnuncio || cfg.ml_tipo_anuncio) === "premium" ? "Premium" : "Clássico";
+  const comissao = { rotulo: `Comissão ${tipo} ${pct}%`, valor: r2(preco * (pct / 100)) };
+
+  if (preco < cfg.ml_limite_frete_gratis) {
+    return [comissao, { rotulo: "Custo fixo (abaixo do limite)", valor: r2(cfg.ml_custo_fixo) }];
+  }
+  const frete = freteML(cfg, ctx);
+  return [comissao, { rotulo: ROTULO_FONTE[frete.fonte], valor: frete.valor }];
 }
 
 export function faixaShopee(preco: number, cfg: ConfigPrecificacao): FaixaShopee {
@@ -141,8 +249,10 @@ function montar(canal: "ml" | "shopee", custo: number, preco: number, detalhe: I
   };
 }
 
-export function resultadoML(custo: number, preco: number, cfg: ConfigPrecificacao): Resultado {
-  return montar("ml", custo, preco, taxasML(preco, cfg));
+export function resultadoML(
+  custo: number, preco: number, cfg: ConfigPrecificacao, ctx?: ContextoML,
+): Resultado {
+  return montar("ml", custo, preco, taxasML(preco, cfg, ctx));
 }
 
 export function resultadoShopee(custo: number, preco: number, cfg: ConfigPrecificacao): Resultado {
@@ -153,8 +263,10 @@ export function resultadoShopee(custo: number, preco: number, cfg: ConfigPrecifi
  * Menor preço no ML que atinge a margem alvo.
  * Considera que abaixo do limite paga taxa fixa e acima paga frete.
  */
-export function precoParaMargemML(custo: number, margemAlvoPct: number, cfg: ConfigPrecificacao): number | null {
-  const c = cfg.ml_comissao_pct / 100;
+export function precoParaMargemML(
+  custo: number, margemAlvoPct: number, cfg: ConfigPrecificacao, ctx?: ContextoML,
+): number | null {
+  const c = comissaoMLPct(cfg, ctx?.tipoAnuncio) / 100;
   const m = margemAlvoPct / 100;
   const denom = 1 - c - m;
   if (denom <= 0) return null; // margem impossível: comissão + margem >= 100%
@@ -162,7 +274,7 @@ export function precoParaMargemML(custo: number, margemAlvoPct: number, cfg: Con
   const pBaixo = (custo + cfg.ml_custo_fixo) / denom;
   if (pBaixo < cfg.ml_limite_frete_gratis) return r2(pBaixo);
 
-  const pAlto = (custo + cfg.ml_frete_estimado) / denom;
+  const pAlto = (custo + freteML(cfg, ctx).valor) / denom;
   if (pAlto >= cfg.ml_limite_frete_gratis) return r2(pAlto);
 
   // vender exatamente no limite já supera a margem alvo
@@ -190,11 +302,11 @@ export function precoParaMargemShopee(custo: number, margemAlvoPct: number, cfg:
  * MENOS, porque ao cruzar o limite o frete grátis passa a ser obrigatório.
  * Nunca precificar dentro dela. Independe do custo.
  */
-export function zonaMortaML(cfg: ConfigPrecificacao): { de: number; ate: number } | null {
-  const c = cfg.ml_comissao_pct / 100;
+export function zonaMortaML(cfg: ConfigPrecificacao, ctx?: ContextoML): { de: number; ate: number } | null {
+  const c = comissaoMLPct(cfg, ctx?.tipoAnuncio) / 100;
   const limite = cfg.ml_limite_frete_gratis;
   const abaixo = limite - 0.01;
-  const salto = cfg.ml_frete_estimado - cfg.ml_custo_fixo;
+  const salto = freteML(cfg, ctx).valor - cfg.ml_custo_fixo;
   if (salto <= 0) return null; // frete não é mais caro que a taxa fixa: sem zona morta
   const saida = abaixo + salto / (1 - c);
   return { de: r2(limite), ate: r2(saida) };
@@ -207,8 +319,8 @@ export function zonaMortaML(cfg: ConfigPrecificacao): { de: number; ate: number 
  * então a saída é sempre para baixo, nunca para cima. Não é escolha de
  * estratégia, é aritmética: a R$ 78,99 sobra mais do que a R$ 90,00.
  */
-export function fugirDaZonaMortaML(preco: number, cfg: ConfigPrecificacao): number {
-  const zm = zonaMortaML(cfg);
+export function fugirDaZonaMortaML(preco: number, cfg: ConfigPrecificacao, ctx?: ContextoML): number {
+  const zm = zonaMortaML(cfg, ctx);
   if (!zm || preco < zm.de || preco > zm.ate) return r2(preco);
   return r2(zm.de - 0.01);
 }
@@ -245,12 +357,13 @@ export function precoRecomendado(
   custo: number,
   cfg: ConfigPrecificacao,
   referenciaMercado?: number | null,
+  ctx?: ContextoML,
 ): PrecoRecomendado {
   const paraMargem = (m: number) =>
-    canal === "ml" ? precoParaMargemML(custo, m, cfg) : precoParaMargemShopee(custo, m, cfg);
+    canal === "ml" ? precoParaMargemML(custo, m, cfg, ctx) : precoParaMargemShopee(custo, m, cfg);
   const avaliarPreco = (p: number) =>
-    canal === "ml" ? resultadoML(custo, p, cfg) : resultadoShopee(custo, p, cfg);
-  const ajustar = (p: number) => (canal === "ml" ? fugirDaZonaMortaML(p, cfg) : r2(p));
+    canal === "ml" ? resultadoML(custo, p, cfg, ctx) : resultadoShopee(custo, p, cfg);
+  const ajustar = (p: number) => (canal === "ml" ? fugirDaZonaMortaML(p, cfg, ctx) : r2(p));
 
   const precoAlvo = paraMargem(cfg.margem_alvo_pct);
   const precoPiso = paraMargem(cfg.margem_minima_pct);
@@ -293,25 +406,40 @@ export type Avaliacao = {
   /** preço que ainda entrega a margem mínima — o chão da negociação */
   precoPisoML: number | null;
   precoPisoShopee: number | null;
+  /** de onde veio o frete usado na conta do ML: api, faixa de peso ou chute */
+  freteML: FreteML;
+  /** comissão aplicada e o tipo de anúncio que a gerou */
+  comissaoMLPct: number;
+  tipoAnuncioML: TipoAnuncioML;
+  /** o mesmo produto na outra modalidade, para comparar lado a lado */
+  mlOutroTipo: Resultado;
   /** true se o preço praticado já está abaixo do piso de margem mínima */
   abaixoDoPiso: boolean;
 };
 
 /** Avaliação completa de um produto a um dado preço de venda. */
-export function avaliar(custo: number, preco: number, cfg: ConfigPrecificacao): Avaliacao {
-  const ml = resultadoML(custo, preco, cfg);
+export function avaliar(
+  custo: number, preco: number, cfg: ConfigPrecificacao, ctx?: ContextoML,
+): Avaliacao {
+  const ml = resultadoML(custo, preco, cfg, ctx);
   const shopee = resultadoShopee(custo, preco, cfg);
-  const zm = zonaMortaML(cfg);
+  const zm = zonaMortaML(cfg, ctx);
+  const tipo: TipoAnuncioML = ctx?.tipoAnuncio || cfg.ml_tipo_anuncio || "classico";
+  const outro: TipoAnuncioML = tipo === "premium" ? "classico" : "premium";
   return {
     ml, shopee,
+    freteML: freteML(cfg, ctx),
+    comissaoMLPct: comissaoMLPct(cfg, tipo),
+    tipoAnuncioML: tipo,
+    mlOutroTipo: resultadoML(custo, preco, cfg, { ...(ctx || {}), tipoAnuncio: outro }),
     melhorCanal: ml.lucro >= shopee.lucro ? "ml" : "shopee",
     temPrejuizo: ml.lucro < 0 || shopee.lucro < 0,
     abaixoDoAlvo: ml.margemPct < cfg.margem_alvo_pct && shopee.margemPct < cfg.margem_alvo_pct,
     abaixoDoPiso: ml.margemPct < cfg.margem_minima_pct && shopee.margemPct < cfg.margem_minima_pct,
     naZonaMortaML: !!zm && preco >= zm.de && preco <= zm.ate,
-    precoMinimoML: precoParaMargemML(custo, cfg.margem_alvo_pct, cfg),
+    precoMinimoML: precoParaMargemML(custo, cfg.margem_alvo_pct, cfg, ctx),
     precoMinimoShopee: precoParaMargemShopee(custo, cfg.margem_alvo_pct, cfg),
-    precoPisoML: precoParaMargemML(custo, cfg.margem_minima_pct, cfg),
+    precoPisoML: precoParaMargemML(custo, cfg.margem_minima_pct, cfg, ctx),
     precoPisoShopee: precoParaMargemShopee(custo, cfg.margem_minima_pct, cfg),
   };
 }
