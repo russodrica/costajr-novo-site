@@ -3,7 +3,7 @@ import Admin from "../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { temPerfilFresco } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
-import { normalizarConfig, avaliar, zonaMortaML } from "../../lib/precificacao";
+import { normalizarConfig, avaliar, zonaMortaML, precoParaMargemML } from "../../lib/precificacao";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -68,6 +68,38 @@ const ROTULO_FRETE: Record<string, string> = {
 };
 
 const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? "#D97706" : "#059669");
+
+// ---------------------------------------------------------------------------
+// Meta de lucro — o botão que a Adriana pediu para ir afrouxando a margem
+// até a loja engrenar. Cada opção mostra o que ela CUSTA e o que ela COMPRA:
+// o preço mínimo médio cai, e mais produtos passam a caber abaixo do preço
+// que a concorrência pratica hoje (a referência veio da planilha dela).
+// O piso acompanha o alvo quando o alvo desce abaixo dele — senão o portal
+// travaria num piso mais alto que a própria meta.
+// ---------------------------------------------------------------------------
+const METAS = [30, 25, 20, 15, 10];
+
+const simulacao = METAS.map((meta) => {
+  const cfgMeta = { ...cfg, margem_alvo_pct: meta, margem_minima_pct: Math.min(cfg.margem_minima_pct, meta) };
+  let n = 0, soma = 0, somaHoje = 0, competitivos = 0, comReferencia = 0;
+  for (const { p, custo } of linhas) {
+    if (custo == null) continue;
+    const minimo = precoParaMargemML(custo, meta, cfgMeta, contexto(p));
+    if (minimo == null) continue;
+    n++; soma += minimo;
+    const hoje = precoParaMargemML(custo, cfg.margem_alvo_pct, cfg, contexto(p));
+    if (hoje != null) somaHoje += hoje;
+    const ref = p.ml_ref_preco_min == null ? null : Number(p.ml_ref_preco_min);
+    if (ref != null && ref > 0) { comReferencia++; if (minimo <= ref) competitivos++; }
+  }
+  return {
+    meta, n,
+    precoMedio: n ? soma / n : null,
+    variacaoPct: somaHoje > 0 ? ((soma - somaHoje) / somaHoje) * 100 : 0,
+    competitivos, comReferencia,
+  };
+});
+const metaAtual = Number(cfg.margem_alvo_pct);
 ---
 <Admin title="Vendas — TrazPraCa / ML / Shopee" current="vendas">
   <div class="toolbar">
@@ -75,6 +107,50 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
     <span style="flex:1"></span>
     <button class="btn btn-outline" onclick="abrirConfig()">⚙️ Taxas e margem</button>
     <button class="btn btn-primary" onclick="abrirNovoProduto()">+ Adicionar produto</button>
+  </div>
+
+  <div class="card" style="padding:14px 16px;margin-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <span style="font-weight:800">🎯 Meta de lucro</span>
+      <span style="font-size:12.5px;color:#6B7280">
+        É a margem líquida que o portal persegue ao calcular o preço. Baixe a meta para ficar mais barata que a concorrência
+        e voltar a vender; suba de novo quando o volume engrenar. O piso acompanha a meta quando ela desce.
+      </span>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+      {simulacao.map((s) => (
+        <button
+          class="meta-btn"
+          data-meta={s.meta}
+          onclick={`definirMeta(${s.meta}, this)`}
+          style={`flex:1;min-width:150px;text-align:left;padding:10px 14px;border-radius:10px;cursor:pointer;
+                  border:2px solid ${s.meta === metaAtual ? "#0891B2" : "#E5E7EB"};
+                  background:${s.meta === metaAtual ? "#ECFEFF" : "#fff"}`}
+        >
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style={`font-size:1.35rem;font-weight:800;color:${s.meta === metaAtual ? "#0E7490" : "#111827"}`}>{s.meta}%</span>
+            {s.meta === metaAtual && <span style="font-size:11px;font-weight:700;color:#0E7490">EM USO</span>}
+          </div>
+          <div style="font-size:11.5px;color:#6B7280;margin-top:2px">
+            preço mínimo médio {fmt$(s.precoMedio)}
+            {s.meta !== metaAtual && s.variacaoPct !== 0 && (
+              <span style={`color:${s.variacaoPct < 0 ? "#059669" : "#B45309"};font-weight:700`}>
+                {" "}({s.variacaoPct > 0 ? "+" : ""}{s.variacaoPct.toFixed(1).replace(".", ",")}%)
+              </span>
+            )}
+          </div>
+          {s.comReferencia > 0 && (
+            <div style="font-size:11.5px;color:#6B7280">
+              <strong>{s.competitivos}</strong> de {s.comReferencia} abaixo do preço da concorrência
+            </div>
+          )}
+        </button>
+      ))}
+    </div>
+    <div style="font-size:11.5px;color:#9CA3AF;margin-top:8px">
+      Piso de segurança hoje: <strong>{pct(cfg.margem_minima_pct)}</strong> — o portal nunca precifica abaixo disso, mesmo perseguindo concorrente.
+      Mudar a meta recalcula a tela na hora; <strong>não altera sozinho o preço dos anúncios já no ar</strong>.
+    </div>
   </div>
 
   <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
@@ -372,6 +448,25 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
       location.reload();
     }
 
-    Object.assign(window, { abrirNovoProduto, fecharProduto, abrirConfig, fecharConfig, mudarStatus, excluirProduto, resolverAlerta });
+    // Meta de lucro: um clique muda a margem alvo. Se a meta escolhida for
+    // menor que o piso atual, o piso desce junto — senão a API recusa (piso
+    // maior que alvo não faz sentido) e a Adriana levaria um erro sem entender.
+    async function definirMeta(pct: number, btn: HTMLButtonElement) {
+      const antes = btn.style.opacity;
+      btn.style.opacity = "0.5";
+      try {
+        const res = await fetch("/api/admin/vendas/config", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ margem_alvo_pct: pct, margem_minima_pct: Math.min(pct, 15) }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { location.reload(); return; }
+        avisoErro(d.error || "Não consegui mudar a meta.");
+      } catch { avisoErro("Falha de rede."); }
+      btn.style.opacity = antes;
+    }
+
+    Object.assign(window, { abrirNovoProduto, fecharProduto, abrirConfig, fecharConfig, mudarStatus, excluirProduto, resolverAlerta, definirMeta });
   </script>
 </Admin>
