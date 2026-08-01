@@ -195,6 +195,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   ] },
   { id: "vendas", label: "Vendas TrazPraCa", itens: [
     { key: "vendas", label: "Catálogo & Preços", icon: "🛒", href: "/admin/vendas" },
+    { key: "vendas-canais", label: "Onde está publicado", icon: "📍", href: "/admin/vendas/canais" },
   ] },
   { id: "juridico", label: "Jurídico & Documentos", itens: [
     { key: "doc-empresa", label: "Documentos da Empresa", icon: "📑", href: "/admin/doc-empresa" },
