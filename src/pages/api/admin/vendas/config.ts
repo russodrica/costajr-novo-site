@@ -18,6 +18,8 @@ const CAMPOS_NUM = [
   "margem_alvo_pct",
   "margem_minima_pct",
   "reajuste_max_pct",
+  "ml_comissao_classico_pct",
+  "ml_comissao_premium_pct",
 ] as const;
 
 // Limites de sanidade — evita salvar valor que quebraria o cálculo
@@ -31,6 +33,8 @@ const LIMITES: Record<string, { min: number; max: number; rotulo: string }> = {
   margem_alvo_pct: { min: 0, max: 90, rotulo: "Margem alvo" },
   margem_minima_pct: { min: 1, max: 90, rotulo: "Margem mínima" },
   reajuste_max_pct: { min: 0, max: 100, rotulo: "Teto de reajuste automático" },
+  ml_comissao_classico_pct: { min: 0, max: 60, rotulo: "Comissão ML Clássico" },
+  ml_comissao_premium_pct: { min: 0, max: 60, rotulo: "Comissão ML Premium" },
 };
 
 // GET → configuração atual de taxas/margem
@@ -68,8 +72,15 @@ export const PATCH: APIRoute = async ({ request }) => {
       patch[campo] = n;
     }
 
-    // marca_padrao é texto — não passa pelo laço numérico acima.
+    // Campos de texto — não passam pelo laço numérico acima.
     const patchTexto: Record<string, string> = {};
+    if (typeof b.ml_tipo_anuncio === "string") {
+      const tipo = b.ml_tipo_anuncio.trim().toLowerCase();
+      if (tipo !== "classico" && tipo !== "premium") {
+        return jsonErr(400, "Tipo de anúncio do Mercado Livre deve ser 'classico' ou 'premium'.");
+      }
+      patchTexto.ml_tipo_anuncio = tipo;
+    }
     if (typeof b.marca_padrao === "string") {
       const m = b.marca_padrao.trim();
       if (!m) return jsonErr(400, "A marca padrão não pode ficar vazia — o Mercado Livre exige o campo Marca.");
