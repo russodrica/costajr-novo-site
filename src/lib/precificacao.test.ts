@@ -6,6 +6,7 @@
 import {
   CONFIG_PADRAO, normalizarConfig, resultadoML, resultadoShopee,
   precoParaMargemML, precoParaMargemShopee, zonaMortaML, avaliar, faixaShopee,
+  precoRecomendado, fugirDaZonaMortaML,
 } from './precificacao.ts';
 
 let falhas = 0;
@@ -142,6 +143,75 @@ t('Campanha da Shopee entra na conta', () => {
   const semCampanha = resultadoShopee(50, 150, cfg).taxas;
   const comCampanha = resultadoShopee(50, 150, c).taxas;
   eq(comCampanha - semCampanha, 3.75, 'campanha 2,5% sobre 150');
+});
+
+
+// ---------------------------------------------------------------------------
+// Politica de preco competitivo (regra da Adriana, 31/07/2026):
+// mira 30%; acompanha o concorrente ate 15%; nunca abaixo disso.
+// ---------------------------------------------------------------------------
+
+t('Sem referencia de mercado, recomenda o preco da margem alvo', () => {
+  const r = precoRecomendado('ml', 35.31, cfg, null);
+  ok(r.motivo === 'alvo', 'motivo deveria ser alvo, veio ' + r.motivo);
+  eq(r.margemPct, cfg.margem_alvo_pct, 'margem no alvo');
+});
+
+t('Concorrente acima do alvo: mantem o alvo, nao sobe junto', () => {
+  const alvo = precoParaMargemML(35.31, cfg.margem_alvo_pct, cfg);
+  const r = precoRecomendado('ml', 35.31, cfg, alvo + 40);
+  ok(r.motivo === 'alvo', 'nao deveria acompanhar concorrente mais caro');
+  eq(r.preco, alvo, 'preco alvo');
+});
+
+t('Concorrente entre o piso e o alvo: acompanha o concorrente', () => {
+  const r = precoRecomendado('ml', 35.31, cfg, 62.0);
+  ok(r.motivo === 'mercado', 'deveria acompanhar o mercado, veio ' + r.motivo);
+  eq(r.preco, 62.0, 'preco de mercado');
+  ok(r.margemPct >= cfg.margem_minima_pct - 0.02, 'margem furou o piso: ' + r.margemPct);
+  ok(!r.foraDeCompeticao, 'ainda esta competindo');
+});
+
+t('Concorrente abaixo do piso: para no piso e sinaliza fora de competicao', () => {
+  const r = precoRecomendado('ml', 35.31, cfg, 40.0);
+  ok(r.motivo === 'piso', 'deveria parar no piso, veio ' + r.motivo);
+  ok(r.foraDeCompeticao, 'deveria sinalizar que nao da para competir');
+  eq(r.margemPct, cfg.margem_minima_pct, 'margem no piso');
+});
+
+t('NUNCA recomenda preco com margem zero ou negativa', () => {
+  for (let custo = 5; custo <= 300; custo += 3.5) {
+    for (const mercado of [1, 5, 10, custo, custo * 1.1]) {
+      const r = precoRecomendado('ml', custo, cfg, mercado);
+      ok(r.margemPct > 0, `custo ${custo} / mercado ${mercado} deu margem ${r.margemPct}%`);
+      ok(r.preco > custo, `preco ${r.preco} nao cobre o custo ${custo}`);
+    }
+  }
+});
+
+t('Recomendacao nunca cai dentro da zona morta do ML', () => {
+  const zm = zonaMortaML(cfg);
+  for (let custo = 5; custo <= 200; custo += 2.5) {
+    for (const mercado of [null, 60, 80, 85, 90, 95, 120]) {
+      const r = precoRecomendado('ml', custo, cfg, mercado);
+      ok(r.preco < zm.de || r.preco > zm.ate,
+         `custo ${custo} / mercado ${mercado} caiu na zona morta: ${r.preco}`);
+    }
+  }
+});
+
+t('Shopee tambem respeita o piso de margem minima', () => {
+  const r = precoRecomendado('shopee', 35.31, cfg, 30.0);
+  ok(r.motivo === 'piso', 'deveria parar no piso da Shopee, veio ' + r.motivo);
+  ok(r.margemPct >= cfg.margem_minima_pct - 0.5, 'piso da Shopee furado: ' + r.margemPct);
+});
+
+t('fugirDaZonaMorta empurra para BAIXO, nunca para cima', () => {
+  const zm = zonaMortaML(cfg);
+  const dentro = (zm.de + zm.ate) / 2;
+  ok(fugirDaZonaMortaML(dentro, cfg) < zm.de, 'deveria sair por baixo');
+  eq(fugirDaZonaMortaML(50, cfg), 50, 'fora da zona nao mexe');
+  eq(fugirDaZonaMortaML(150, cfg), 150, 'acima da zona nao mexe');
 });
 
 console.log('\n' + (falhas ? `${falhas} FALHA(S)` : 'TODOS OS TESTES PASSARAM'));

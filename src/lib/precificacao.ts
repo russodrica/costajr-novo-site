@@ -39,6 +39,17 @@ export type ConfigPrecificacao = {
   shopee_campanha_pct: number;
   /** margem líquida que a Adriana quer atingir, em % */
   margem_alvo_pct: number;
+  /**
+   * Piso de margem quando o mercado não deixa chegar no alvo.
+   *
+   * Regra da Adriana (31/07/2026): "vamos manter 15% de margem para os
+   * produtos que não estou competitiva, mas nunca zero". Ou seja, para
+   * acompanhar concorrente o preço pode cair — até este piso e não abaixo
+   * dele. Se nem no piso o produto fica competitivo, o portal NÃO persegue o
+   * concorrente: mantém o preço do piso e sinaliza. Vender sem margem só
+   * queima capital de giro e ainda gasta o limite da carteira da TrazPraCa.
+   */
+  margem_minima_pct: number;
 };
 
 export const CONFIG_PADRAO: ConfigPrecificacao = {
@@ -55,6 +66,7 @@ export const CONFIG_PADRAO: ConfigPrecificacao = {
   ],
   shopee_campanha_pct: 0,
   margem_alvo_pct: 30,
+  margem_minima_pct: 15,
 };
 
 export type ItemTaxa = { rotulo: string; valor: number };
@@ -188,6 +200,84 @@ export function zonaMortaML(cfg: ConfigPrecificacao): { de: number; ate: number 
   return { de: r2(limite), ate: r2(saida) };
 }
 
+/**
+ * Empurra um preço para fora da zona morta do ML.
+ *
+ * Dentro da zona, qualquer preço rende MENOS do que um centavo abaixo dela —
+ * então a saída é sempre para baixo, nunca para cima. Não é escolha de
+ * estratégia, é aritmética: a R$ 78,99 sobra mais do que a R$ 90,00.
+ */
+export function fugirDaZonaMortaML(preco: number, cfg: ConfigPrecificacao): number {
+  const zm = zonaMortaML(cfg);
+  if (!zm || preco < zm.de || preco > zm.ate) return r2(preco);
+  return r2(zm.de - 0.01);
+}
+
+export type MotivoPreco = "alvo" | "mercado" | "piso";
+
+export type PrecoRecomendado = {
+  preco: number;
+  motivo: MotivoPreco;
+  margemPct: number;
+  /** preço que atingiria a margem alvo */
+  precoAlvo: number | null;
+  /** preço que atinge a margem mínima — o portal nunca desce disso */
+  precoPiso: number | null;
+  /** true quando o mercado está abaixo do piso: aqui não dá para competir */
+  foraDeCompeticao: boolean;
+};
+
+/**
+ * Decide o preço de venda de um produto num canal.
+ *
+ * A regra, na ordem:
+ *   1. mira a margem alvo (30%);
+ *   2. se o concorrente está mais barato que isso, ACOMPANHA o concorrente —
+ *      mas só até a margem mínima (15%);
+ *   3. se nem a margem mínima cabe no preço do concorrente, PARA no piso e
+ *      marca `foraDeCompeticao`. Não persegue o concorrente até o prejuízo.
+ *
+ * `referenciaMercado` é o preço praticado por anúncio semelhante (vem da
+ * planilha). Sem referência, o preço é sempre o alvo.
+ */
+export function precoRecomendado(
+  canal: "ml" | "shopee",
+  custo: number,
+  cfg: ConfigPrecificacao,
+  referenciaMercado?: number | null,
+): PrecoRecomendado {
+  const paraMargem = (m: number) =>
+    canal === "ml" ? precoParaMargemML(custo, m, cfg) : precoParaMargemShopee(custo, m, cfg);
+  const avaliarPreco = (p: number) =>
+    canal === "ml" ? resultadoML(custo, p, cfg) : resultadoShopee(custo, p, cfg);
+  const ajustar = (p: number) => (canal === "ml" ? fugirDaZonaMortaML(p, cfg) : r2(p));
+
+  const precoAlvo = paraMargem(cfg.margem_alvo_pct);
+  const precoPiso = paraMargem(cfg.margem_minima_pct);
+
+  const decidir = (preco: number, motivo: MotivoPreco, foraDeCompeticao = false): PrecoRecomendado => {
+    const ajustado = ajustar(preco);
+    return {
+      preco: ajustado,
+      motivo,
+      margemPct: avaliarPreco(ajustado).margemPct,
+      precoAlvo,
+      precoPiso,
+      foraDeCompeticao,
+    };
+  };
+
+  // Sem alvo calculável (comissão + margem >= 100%) não há o que recomendar.
+  if (precoAlvo == null) {
+    return { preco: 0, motivo: "alvo", margemPct: 0, precoAlvo: null, precoPiso, foraDeCompeticao: true };
+  }
+
+  const ref = typeof referenciaMercado === "number" && referenciaMercado > 0 ? referenciaMercado : null;
+  if (ref == null || ref >= precoAlvo) return decidir(precoAlvo, "alvo");
+  if (precoPiso != null && ref >= precoPiso) return decidir(ref, "mercado");
+  return decidir(precoPiso ?? precoAlvo, "piso", true);
+}
+
 export type Avaliacao = {
   ml: Resultado;
   shopee: Resultado;
@@ -200,6 +290,11 @@ export type Avaliacao = {
   naZonaMortaML: boolean;
   precoMinimoML: number | null;
   precoMinimoShopee: number | null;
+  /** preço que ainda entrega a margem mínima — o chão da negociação */
+  precoPisoML: number | null;
+  precoPisoShopee: number | null;
+  /** true se o preço praticado já está abaixo do piso de margem mínima */
+  abaixoDoPiso: boolean;
 };
 
 /** Avaliação completa de um produto a um dado preço de venda. */
@@ -212,8 +307,11 @@ export function avaliar(custo: number, preco: number, cfg: ConfigPrecificacao): 
     melhorCanal: ml.lucro >= shopee.lucro ? "ml" : "shopee",
     temPrejuizo: ml.lucro < 0 || shopee.lucro < 0,
     abaixoDoAlvo: ml.margemPct < cfg.margem_alvo_pct && shopee.margemPct < cfg.margem_alvo_pct,
+    abaixoDoPiso: ml.margemPct < cfg.margem_minima_pct && shopee.margemPct < cfg.margem_minima_pct,
     naZonaMortaML: !!zm && preco >= zm.de && preco <= zm.ate,
     precoMinimoML: precoParaMargemML(custo, cfg.margem_alvo_pct, cfg),
     precoMinimoShopee: precoParaMargemShopee(custo, cfg.margem_alvo_pct, cfg),
+    precoPisoML: precoParaMargemML(custo, cfg.margem_minima_pct, cfg),
+    precoPisoShopee: precoParaMargemShopee(custo, cfg.margem_minima_pct, cfg),
   };
 }
