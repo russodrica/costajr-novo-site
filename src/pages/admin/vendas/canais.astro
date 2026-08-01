@@ -115,16 +115,21 @@ const linhas = listaProdutos.map((p) => {
   // publicação que falhou ou do anúncio que o ML derrubou sozinho.
   const tropecou = (todosML.length > 0 && !noArML) || (todosSH.length > 0 && !noArSH);
   const saude = p.ml_saude == null ? null : Number(p.ml_saude);
-  const qualidadeBaixa = noArML && saude != null && saude < QUALIDADE_BAIXA;
-  return { p, ml, sh, noArML, noArSH, cobertura, tropecou, saude, qualidadeBaixa,
-           acoes: (p.ml_acoes_qualidade || []) as string[],
+  const acoes = (p.ml_acoes_qualidade || []) as string[];
+  // "Campo em branco" é o que o portal consegue PROVAR: ou o próprio ML
+  // apontou uma pendência, ou a conferência achou atributo vazio que dá para
+  // preencher. Nota de qualidade só entra quando o ML devolve uma — nesta
+  // conta ele não devolve.
+  const qualidadeBaixa = noArML && (acoes.length > 0 || (saude != null && saude < QUALIDADE_BAIXA));
+  return { p, ml, sh, noArML, noArSH, cobertura, tropecou, saude, qualidadeBaixa, acoes,
            extrasML: todosML.length - 1, extrasSH: todosSH.length - 1 };
 });
 
 const conta = (c: Cobertura) => linhas.filter((l) => l.cobertura === c).length;
 const tropecos = linhas.filter((l) => l.tropecou).length;
 const qualidadeBaixa = linhas.filter((l) => l.qualidadeBaixa).length;
-const semMedida = linhas.filter((l) => l.noArML && l.saude == null).length;
+const semMedida = linhas.filter((l) => l.noArML && !l.p.ml_visibilidade_em).length;
+const semFichaNoAr = linhas.filter((l) => l.noArML && !l.p.enriquecido_em).length;
 const comNota = linhas.filter((l) => l.saude != null);
 const notaMedia = comNota.length ? comNota.reduce((s, l) => s + (l.saude || 0), 0) / comNota.length : null;
 const anunciosML = listaAnuncios.filter((a) => a.canal === "ml").length;
@@ -182,10 +187,12 @@ const vistoShopee = listaAnuncios.find((a) => a.canal === "shopee")?.visto_em ||
     <div style="font-size:13px;color:#78350F">
       Campo em branco custa alcance: a nota de qualidade do Mercado Livre mede completude, e anúncio incompleto
       aparece menos na busca e some dos filtros.
-      {notaMedia != null
-        ? <span> Qualidade média dos seus anúncios hoje: <strong>{Math.round(notaMedia * 100)}%</strong>.</span>
-        : <span> A qualidade ainda não foi medida.</span>}
-      {semMedida > 0 && <span> {semMedida} anúncio(s) ainda sem medição.</span>}
+      {qualidadeBaixa > 0
+        ? <span> Hoje <strong>{qualidadeBaixa}</strong> anúncio(s) seus têm campo em branco que dá para preencher.</span>
+        : <span> Nenhum campo em branco pendente nos anúncios já conferidos.</span>}
+      {notaMedia != null && <span> Qualidade média informada pelo ML: <strong>{Math.round(notaMedia * 100)}%</strong>.</span>}
+      {semMedida > 0 && <span> {semMedida} anúncio(s) ainda não foram conferidos.</span>}
+      {semFichaNoAr > 0 && <span> <strong>{semFichaNoAr} sem ficha no portal</strong> — nesses não há o que preencher até o enriquecedor rodar.</span>}
       <div style="margin-top:6px">
         Para preencher: GitHub → Actions → <strong>Vendas - Visibilidade no Mercado Livre</strong>.
         Rode primeiro com <strong>Ensaio marcado</strong> — ele mede e mostra o que falta sem escrever nada.
