@@ -21,7 +21,7 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
 const db = supabaseAdmin();
 const [prod, anun, exec] = await Promise.all([
   db.from("vendas_produtos")
-    .select("id,nome,sku_trazpraca,sku_proprio,status,custo,preco_recomendado,pronto_para_publicar,inventariado_em")
+    .select("id,nome,sku_trazpraca,sku_proprio,status,custo,preco_recomendado,pronto_para_publicar,inventariado_em,enriquecido_em,ml_saude,ml_acoes_qualidade,ml_visibilidade_em,ml_campos_preenchidos")
     .order("nome", { ascending: true }).limit(2000),
   db.from("vendas_anuncios_canal").select("*").order("visto_em", { ascending: false }).limit(5000),
   db.from("vendas_sync_log").select("*").eq("tipo", "inventario").order("executado_em", { ascending: false }).limit(1),
@@ -67,6 +67,30 @@ const melhor = (lista: any[] | undefined) => {
   })[0];
 };
 
+// O que o Mercado Livre responde em /health, traduzido. A lista dele muda com
+// o tempo; o que não estiver aqui aparece cru mesmo — melhor mostrar o código
+// do ML do que inventar um rótulo bonito e errado.
+const ACAO_LABEL: Record<string, string> = {
+  complete_technical_specifications: "faltam especificações técnicas",
+  add_technical_specifications: "faltam especificações técnicas",
+  complete_required_technical_specifications: "faltam especificações obrigatórias",
+  add_pictures: "faltam fotos",
+  improve_pictures: "fotos de baixa qualidade",
+  add_description: "sem descrição",
+  complete_description: "descrição incompleta",
+  improve_title: "título pode melhorar",
+  add_size_chart: "falta tabela de medidas",
+  add_variations: "faltam variações (cor/tamanho)",
+  free_shipping: "sem frete grátis",
+  add_gtin: "falta código de barras",
+  complete_catalog: "não está no catálogo do ML",
+};
+const traduzirAcao = (a: string) => ACAO_LABEL[a] || a.replace(/_/g, " ");
+
+// Abaixo disso o anúncio já está perdendo posição na busca. A régua é do
+// próprio ML: ele mostra a nota como percentual de completude.
+const QUALIDADE_BAIXA = 0.8;
+
 type Cobertura = "ambos" | "so_ml" | "so_shopee" | "nenhum";
 const COBERTURA_LABEL: Record<Cobertura, string> = {
   ambos: "Nos dois canais",
@@ -90,11 +114,19 @@ const linhas = listaProdutos.map((p) => {
   // "Tropeço" = existe anúncio, mas nenhum no ar. É o retrato exato da
   // publicação que falhou ou do anúncio que o ML derrubou sozinho.
   const tropecou = (todosML.length > 0 && !noArML) || (todosSH.length > 0 && !noArSH);
-  return { p, ml, sh, noArML, noArSH, cobertura, tropecou, extrasML: todosML.length - 1, extrasSH: todosSH.length - 1 };
+  const saude = p.ml_saude == null ? null : Number(p.ml_saude);
+  const qualidadeBaixa = noArML && saude != null && saude < QUALIDADE_BAIXA;
+  return { p, ml, sh, noArML, noArSH, cobertura, tropecou, saude, qualidadeBaixa,
+           acoes: (p.ml_acoes_qualidade || []) as string[],
+           extrasML: todosML.length - 1, extrasSH: todosSH.length - 1 };
 });
 
 const conta = (c: Cobertura) => linhas.filter((l) => l.cobertura === c).length;
 const tropecos = linhas.filter((l) => l.tropecou).length;
+const qualidadeBaixa = linhas.filter((l) => l.qualidadeBaixa).length;
+const semMedida = linhas.filter((l) => l.noArML && l.saude == null).length;
+const comNota = linhas.filter((l) => l.saude != null);
+const notaMedia = comNota.length ? comNota.reduce((s, l) => s + (l.saude || 0), 0) / comNota.length : null;
 const anunciosML = listaAnuncios.filter((a) => a.canal === "ml").length;
 const anunciosSH = listaAnuncios.filter((a) => a.canal === "shopee").length;
 const shopeeEhSnapshot = listaAnuncios.some((a) => a.canal === "shopee" && a.fonte === "snapshot");
@@ -139,6 +171,27 @@ const vistoShopee = listaAnuncios.find((a) => a.canal === "shopee")?.visto_em ||
       <div style="font-size:1.6rem;font-weight:800;color:{tropecos ? '#DC2626' : undefined}">{tropecos}</div>
       <div style="font-size:12px;color:#6B7280">publicação que tropeçou</div>
     </div>
+    <div class="card kpi" data-filtro="qualidade" style="flex:1;min-width:140px;padding:12px 16px;text-align:center;cursor:pointer;border:1px solid #FDE68A">
+      <div style={`font-size:1.6rem;font-weight:800;color:${qualidadeBaixa ? "#B45309" : "inherit"}`}>{qualidadeBaixa}</div>
+      <div style="font-size:12px;color:#6B7280">anúncio com campo em branco</div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:12px 16px;margin-bottom:14px;background:#FFFBEB;border:1px solid #FDE68A">
+    <div style="font-weight:800;color:#92400E;margin-bottom:4px">👀 Visibilidade no Mercado Livre</div>
+    <div style="font-size:13px;color:#78350F">
+      Campo em branco custa alcance: a nota de qualidade do Mercado Livre mede completude, e anúncio incompleto
+      aparece menos na busca e some dos filtros.
+      {notaMedia != null
+        ? <span> Qualidade média dos seus anúncios hoje: <strong>{Math.round(notaMedia * 100)}%</strong>.</span>
+        : <span> A qualidade ainda não foi medida.</span>}
+      {semMedida > 0 && <span> {semMedida} anúncio(s) ainda sem medição.</span>}
+      <div style="margin-top:6px">
+        Para preencher: GitHub → Actions → <strong>Vendas - Visibilidade no Mercado Livre</strong>.
+        Rode primeiro com <strong>Ensaio marcado</strong> — ele mede e mostra o que falta sem escrever nada.
+        Depois desmarque para preencher de verdade. Ele <strong>não mexe no seu título</strong> nem sobrescreve descrição que já existe.
+      </div>
+    </div>
   </div>
 
   <div class="card" style="padding:12px 16px;margin-bottom:14px;font-size:12.5px;color:#4B5563">
@@ -161,6 +214,7 @@ const vistoShopee = listaAnuncios.find((a) => a.canal === "shopee")?.visto_em ||
       <button class="btn btn-outline btn-sm filtro" data-filtro="so_shopee">Só Shopee</button>
       <button class="btn btn-outline btn-sm filtro" data-filtro="nenhum">Em nenhum</button>
       <button class="btn btn-outline btn-sm filtro" data-filtro="tropecou">Tropeçou</button>
+      <button class="btn btn-outline btn-sm filtro" data-filtro="qualidade">Campo em branco</button>
       <span id="contador" style="font-size:12px;color:#6B7280"></span>
     </div>
     <div class="table-wrap">
@@ -177,10 +231,11 @@ const vistoShopee = listaAnuncios.find((a) => a.canal === "shopee")?.visto_em ||
           {linhas.length === 0 && (
             <tr><td colspan="4" style="text-align:center;color:#9CA3AF;padding:28px">Nenhum produto no catálogo ainda.</td></tr>
           )}
-          {linhas.map(({ p, ml, sh, cobertura, tropecou, extrasML, extrasSH }) => (
+          {linhas.map(({ p, ml, sh, cobertura, tropecou, qualidadeBaixa, saude, acoes, extrasML, extrasSH }) => (
             <tr
               data-cobertura={cobertura}
               data-tropecou={tropecou ? "1" : "0"}
+              data-qualidade={qualidadeBaixa ? "1" : "0"}
               data-busca={`${p.nome || ""} ${p.sku_trazpraca || ""} ${p.sku_proprio || ""}`.toLowerCase()}
               style={tropecou ? "background:#FEF2F2" : undefined}
             >
@@ -202,8 +257,18 @@ const vistoShopee = listaAnuncios.find((a) => a.canal === "shopee")?.visto_em ||
                     <div style="color:#6B7280">
                       {fmt$(ml.preco)}
                       {ml.estoque != null ? ` · ${ml.estoque} un.` : ""}
-                      {ml.saude != null ? ` · qualidade ${Math.round(Number(ml.saude) * 100)}%` : ""}
                     </div>
+                    {saude != null && (
+                      <div style={`font-size:11px;font-weight:700;color:${saude < QUALIDADE_BAIXA ? "#B45309" : "#059669"}`}>
+                        qualidade {Math.round(saude * 100)}%
+                        {!p.enriquecido_em && <span style="font-weight:400;color:#9CA3AF"> · sem ficha no portal</span>}
+                      </div>
+                    )}
+                    {acoes.length > 0 && (
+                      <div style="font-size:10.5px;color:#B45309;max-width:320px;white-space:normal">
+                        falta: {acoes.slice(0, 3).map(traduzirAcao).join(" · ")}
+                      </div>
+                    )}
                     <div style="font-size:10.5px;color:#9CA3AF">
                       {ml.permalink ? <a href={ml.permalink} target="_blank" rel="noopener">{ml.item_id}</a> : ml.item_id}
                       {ml.casado_por && ml.casado_por !== "ml_item_id" ? ` · casado por ${ml.casado_por}` : ""}
@@ -339,7 +404,9 @@ const vistoShopee = listaAnuncios.find((a) => a.canal === "shopee")?.visto_em ||
       linhas.forEach(function (tr) {
         var okFiltro =
           filtroAtual === "todos" ||
-          (filtroAtual === "tropecou" ? tr.dataset.tropecou === "1" : tr.dataset.cobertura === filtroAtual);
+          (filtroAtual === "tropecou" ? tr.dataset.tropecou === "1"
+            : filtroAtual === "qualidade" ? tr.dataset.qualidade === "1"
+            : tr.dataset.cobertura === filtroAtual);
         var okBusca = !termo || (tr.dataset.busca || "").indexOf(termo) !== -1;
         var mostrar = okFiltro && okBusca;
         tr.style.display = mostrar ? "" : "none";
