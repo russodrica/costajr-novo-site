@@ -21,6 +21,10 @@ const CAMPOS_EDITAVEIS = [
   // ML — é por aqui que se responde "Cor", "Material", "Tipo de alimentação"
   // quando o nome do produto não diz e a foto sim.
   "caracteristicas",
+  // Categoria do ML: editável porque o classificador erra de vez em quando —
+  // o petisco de pato caiu em "Bicos de Pato" (artigo de caça) e só uma
+  // correção manual tira ele de lá.
+  "ml_categoria_id", "ml_categoria_nome",
 ] as const;
 
 // PATCH → edita campos do produto (preço, status, flags de publicação, etc.)
