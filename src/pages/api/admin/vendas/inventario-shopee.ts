@@ -84,6 +84,37 @@ function normalizarEntrada(bruto: any): Entrada | null {
   };
 }
 
+// O anúncio da Shopee que veio com este SKU é MESMO deste produto?
+//
+// Existe porque alguns anúncios dela na Shopee foram criados com o SKU de
+// outro item — "Giz Líquido Neon" com o SKU do peitoral para cães, "Garrafa
+// Térmica" com o SKU da guia pet. Casar por SKU sem olhar o nome faz a ficha
+// (foto, descrição, peso) do giz virar a ficha do peitoral. É exatamente o
+// erro que tirou onze anúncios do ar em 02/08 — de outra porta de entrada.
+//
+// A régua é a mesma do enriquecedor: um terço das palavras do nome que já
+// conhecemos precisa aparecer no título do anúncio. Compara nos dois sentidos
+// porque o portal costuma ter o nome mais comprido que o marketplace.
+function palavras(texto: any): string[] {
+  return String(texto || "")
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .split(/[^0-9a-z]+/)
+    .filter((w) => w.length > 3);
+}
+
+function mesmoProduto(tituloAnuncio: any, nomeProduto: any): boolean {
+  const a = palavras(tituloAnuncio);
+  const b = palavras(nomeProduto);
+  if (!a.length || !b.length) return true; // sem material para julgar: não acusa
+  const setA = new Set(a);
+  const setB = new Set(b);
+  const paraCa = b.filter((w) => setA.has(w)).length / b.length;
+  const paraLa = a.filter((w) => setB.has(w)).length / a.length;
+  return Math.max(paraCa, paraLa) >= 0.34;
+}
+
 // Medida só entra se for plausível. Os mesmos limites do enriquecedor: a ficha
 // é digitada à mão e erra unidade, e medida errada vira frete errado.
 function medidaOk(v: number | null, min: number, max: number): number | null {
@@ -133,6 +164,7 @@ export const POST: APIRoute = async ({ request }) => {
     const agora = new Date().toISOString();
     const linhas: any[] = [];
     const doProduto = new Map<string, Entrada[]>();
+    const descasados: Array<{ sku: string | null; anuncio: string | null; produto: string }> = [];
     let orfaos = 0;
 
     for (const a of anuncios) {
@@ -153,6 +185,15 @@ export const POST: APIRoute = async ({ request }) => {
           if (produto) comoCasou = "titulo";
         }
       }
+      // Casou por SKU mas o título fala de outra coisa: o anúncio fica órfão.
+      // Melhor um anúncio sem dono na tela — que ela vê e resolve — do que a
+      // ficha errada colada num produto certo.
+      if (produto && comoCasou !== "shopee_item_id" && !mesmoProduto(a.titulo, produto.nome)) {
+        descasados.push({ sku: a.sku, anuncio: a.titulo, produto: produto.nome });
+        produto = null;
+        comoCasou = null;
+      }
+
       if (produto) {
         const lista = doProduto.get(produto.id) || [];
         lista.push(a);
@@ -264,7 +305,8 @@ export const POST: APIRoute = async ({ request }) => {
     const mensagem =
       `Shopee: ${anuncios.length} anúncio(s) recebidos, ${noArTotal} no ar, ` +
       `${comAnuncio} casado(s) com produto do catálogo, ${orfaos} sem produto correspondente. ` +
-      `${atualizados} produto(s) atualizados, ${enriquecidos} ganharam foto da Shopee.`;
+      `${atualizados} produto(s) atualizados, ${enriquecidos} ganharam foto da Shopee.` +
+      (descasados.length ? ` ATENÇÃO: ${descasados.length} anúncio(s) vieram com o SKU de outro produto e não foram casados.` : "");
 
     await db.from("vendas_sync_log").insert({
       tipo: "inventario",
@@ -272,7 +314,7 @@ export const POST: APIRoute = async ({ request }) => {
       itens_encontrados: anuncios.length,
       itens_alterados: comAnuncio,
       mensagem,
-      detalhes: { canal: "shopee", no_ar: noArTotal, orfaos, por: admin.email },
+      detalhes: { canal: "shopee", no_ar: noArTotal, orfaos, descasados: descasados.slice(0, 50), por: admin.email },
     });
 
     await registrarAcao(db, { req: request, admin }, {
@@ -282,7 +324,7 @@ export const POST: APIRoute = async ({ request }) => {
       descricao: `Atualizou o inventário da Shopee (${anuncios.length} anúncios)`,
     }).catch(() => {});
 
-    return jsonOk({ ok: true, recebidos: anuncios.length, gravados, no_ar: noArTotal, casados: comAnuncio, orfaos, atualizados, com_foto: enriquecidos, mensagem });
+    return jsonOk({ ok: true, recebidos: anuncios.length, gravados, no_ar: noArTotal, casados: comAnuncio, orfaos, atualizados, com_foto: enriquecidos, descasados, mensagem });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
