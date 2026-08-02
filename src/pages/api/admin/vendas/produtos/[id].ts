@@ -10,6 +10,13 @@ const CAMPOS_EDITAVEIS = [
   "nome", "categoria", "custo", "preco_sugerido", "preco_ml", "preco_shopee",
   "em_estoque_trazpraca", "adicionado_trazpraca", "publicado_ml", "publicado_shopee",
   "ml_item_id", "shopee_item_id", "url_trazpraca", "imagem_url", "status", "observacoes",
+  // Campos da ficha. Entraram na lista porque a ficha pode ser CONTAMINADA por
+  // uma fonte errada (SKU repetido em anúncio da Shopee, página trocada na
+  // vitrine) e aí é preciso poder limpar o estrago sem migration e com rastro
+  // na auditoria. Quem edita aqui é sempre admin, e toda edição fica logada.
+  "fotos", "descricao", "marca", "titulo_anuncio",
+  "peso_kg", "altura_cm", "largura_cm", "profundidade_cm",
+  "shopee_situacao", "pronto_para_publicar",
 ] as const;
 
 // PATCH → edita campos do produto (preço, status, flags de publicação, etc.)
