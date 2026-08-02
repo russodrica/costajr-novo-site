@@ -31,6 +31,16 @@ type Entrada = {
   estoque: number | null;
   vendidos: number | null;
   situacao: "active" | "unlisted";
+  // Ficha vinda do próprio anúncio da Shopee. Os produtos dela na Shopee SÃO
+  // produtos da TrazPraCa, então esta é a ficha original — e para as centenas
+  // de produtos que a vitrine não reconhece pelo SKU, é a ÚNICA fonte de foto.
+  fotos: string[];
+  descricao: string | null;
+  peso: number | null;
+  altura: number | null;
+  largura: number | null;
+  profundidade: number | null;
+  marca: string | null;
 };
 
 function normalizar(texto: any): string {
@@ -62,7 +72,22 @@ function normalizarEntrada(bruto: any): Entrada | null {
     estoque: numero(bruto?.estoque ?? bruto?.stock),
     vendidos: numero(bruto?.vendidos ?? bruto?.sold),
     situacao: unlist || situacaoBruta !== "active" ? "unlisted" : "active",
+    fotos: Array.isArray(bruto?.fotos)
+      ? bruto.fotos.filter((f: any) => typeof f === "string" && /^https:\/\//.test(f)).slice(0, 10)
+      : [],
+    descricao: String(bruto?.descricao ?? "").trim().slice(0, 4000) || null,
+    peso: numero(bruto?.peso),
+    altura: numero(bruto?.alt ?? bruto?.altura),
+    largura: numero(bruto?.larg ?? bruto?.largura),
+    profundidade: numero(bruto?.prof ?? bruto?.profundidade),
+    marca: String(bruto?.marca ?? "").trim().slice(0, 60) || null,
   };
+}
+
+// Medida só entra se for plausível. Os mesmos limites do enriquecedor: a ficha
+// é digitada à mão e erra unidade, e medida errada vira frete errado.
+function medidaOk(v: number | null, min: number, max: number): number | null {
+  return v != null && v >= min && v <= max ? v : null;
 }
 
 export const POST: APIRoute = async ({ request }) => {
@@ -86,7 +111,7 @@ export const POST: APIRoute = async ({ request }) => {
     const db = supabaseAdmin();
     const { data: produtos, error: erroProdutos } = await db
       .from("vendas_produtos")
-      .select("id,sku_trazpraca,sku_proprio,nome,titulo_anuncio,shopee_item_id")
+      .select("id,sku_trazpraca,sku_proprio,nome,titulo_anuncio,shopee_item_id,fotos,descricao,peso_kg,altura_cm,largura_cm,profundidade_cm,marca")
       .limit(5000);
     if (erroProdutos) return jsonErr(400, erroProdutos.message);
 
@@ -169,6 +194,7 @@ export const POST: APIRoute = async ({ request }) => {
     // Reflete no produto. Quem não apareceu na coleta volta para "não está na
     // Shopee" — é assim que a publicação que falhou fica visível.
     let comAnuncio = 0;
+    let enriquecidos = 0;
     for (const p of produtos || []) {
       const lista = doProduto.get(p.id) || [];
       const noAr = lista.filter((a) => a.situacao === "active");
@@ -180,6 +206,34 @@ export const POST: APIRoute = async ({ request }) => {
         inventariado_em: agora,
       };
       if (escolhido?.preco != null) patch.preco_shopee = escolhido.preco;
+
+      // Ficha: só PREENCHE BURACO. Nunca sobrescreve o que a vitrine da
+      // TrazPraCa já entregou — aquela fonte foi conferida contra o nome do
+      // produto; esta não tem como ser conferida foto a foto.
+      if (escolhido) {
+        if (!(p.fotos || []).length && escolhido.fotos.length) {
+          patch.fotos = escolhido.fotos;
+          enriquecidos++;
+        }
+        if (!p.descricao && escolhido.descricao) patch.descricao = escolhido.descricao;
+        if (p.peso_kg == null) {
+          const kg = medidaOk(escolhido.peso, 0.005, 60);
+          if (kg != null) patch.peso_kg = kg;
+        }
+        if (p.altura_cm == null) {
+          const a = medidaOk(escolhido.altura, 0.5, 300);
+          if (a != null) patch.altura_cm = a;
+        }
+        if (p.largura_cm == null) {
+          const l = medidaOk(escolhido.largura, 0.5, 300);
+          if (l != null) patch.largura_cm = l;
+        }
+        if (p.profundidade_cm == null) {
+          const f = medidaOk(escolhido.profundidade, 0.5, 300);
+          if (f != null) patch.profundidade_cm = f;
+        }
+        if (!p.marca && escolhido.marca) patch.marca = escolhido.marca;
+      }
       if (lista.length > 0) comAnuncio++;
       await db.from("vendas_produtos").update(patch).eq("id", p.id);
     }
@@ -187,7 +241,8 @@ export const POST: APIRoute = async ({ request }) => {
     const noArTotal = anuncios.filter((a) => a.situacao === "active").length;
     const mensagem =
       `Shopee: ${anuncios.length} anúncio(s) recebidos, ${noArTotal} no ar, ` +
-      `${comAnuncio} casado(s) com produto do catálogo, ${orfaos} sem produto correspondente.`;
+      `${comAnuncio} casado(s) com produto do catálogo, ${orfaos} sem produto correspondente. ` +
+      `${enriquecidos} produto(s) ganharam foto da Shopee.`;
 
     await db.from("vendas_sync_log").insert({
       tipo: "inventario",
@@ -199,13 +254,13 @@ export const POST: APIRoute = async ({ request }) => {
     });
 
     await registrarAcao(db, { req: request, admin }, {
-      acao: "editar",
+      acao: "atualizar",
       entidade: "vendas_anuncios_canal",
       registro_id: null,
       descricao: `Atualizou o inventário da Shopee (${anuncios.length} anúncios)`,
     }).catch(() => {});
 
-    return jsonOk({ ok: true, recebidos: anuncios.length, gravados, no_ar: noArTotal, casados: comAnuncio, orfaos, mensagem });
+    return jsonOk({ ok: true, recebidos: anuncios.length, gravados, no_ar: noArTotal, casados: comAnuncio, orfaos, com_foto: enriquecidos, mensagem });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
