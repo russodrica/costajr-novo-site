@@ -111,7 +111,7 @@ export const POST: APIRoute = async ({ request }) => {
     const db = supabaseAdmin();
     const { data: produtos, error: erroProdutos } = await db
       .from("vendas_produtos")
-      .select("id,sku_trazpraca,sku_proprio,nome,titulo_anuncio,shopee_item_id,fotos,descricao,peso_kg,altura_cm,largura_cm,profundidade_cm,marca")
+      .select("id,sku_trazpraca,sku_proprio,nome,titulo_anuncio,shopee_item_id,publicado_shopee,shopee_situacao,preco_shopee,fotos,descricao,peso_kg,altura_cm,largura_cm,profundidade_cm,marca")
       .limit(5000);
     if (erroProdutos) return jsonErr(400, erroProdutos.message);
 
@@ -193,19 +193,33 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Reflete no produto. Quem não apareceu na coleta volta para "não está na
     // Shopee" — é assim que a publicação que falhou fica visível.
+    //
+    // Duas travas de tempo, aprendidas na marra (a primeira versão levava um
+    // 504 da Vercel): só escreve QUEM MUDOU, e escreve em paralelo. Escrever
+    // 400 produtos um a um, todo dia, para reafirmar o que já estava lá, é
+    // trabalho que ninguém pediu.
     let comAnuncio = 0;
     let enriquecidos = 0;
+    const tarefas: Array<() => Promise<any>> = [];
+
     for (const p of produtos || []) {
       const lista = doProduto.get(p.id) || [];
       const noAr = lista.filter((a) => a.situacao === "active");
       const escolhido = noAr[0] || lista[0] || null;
-      const patch: any = {
-        publicado_shopee: noAr.length > 0,
-        shopee_situacao: escolhido ? escolhido.situacao : null,
-        shopee_item_id: escolhido ? escolhido.id : null,
-        inventariado_em: agora,
-      };
-      if (escolhido?.preco != null) patch.preco_shopee = escolhido.preco;
+      if (lista.length > 0) comAnuncio++;
+
+      // Produto que nunca esteve na Shopee e continua fora dela não precisa de
+      // escrita nenhuma.
+      if (!escolhido && p.publicado_shopee !== true && p.shopee_item_id == null) continue;
+
+      const patch: any = {};
+      const publicado = noAr.length > 0;
+      const situacao = escolhido ? escolhido.situacao : null;
+      const itemId = escolhido ? escolhido.id : null;
+      if (p.publicado_shopee !== publicado) patch.publicado_shopee = publicado;
+      if ((p.shopee_situacao ?? null) !== situacao) patch.shopee_situacao = situacao;
+      if ((p.shopee_item_id != null ? String(p.shopee_item_id) : null) !== itemId) patch.shopee_item_id = itemId;
+      if (escolhido?.preco != null && Number(p.preco_shopee) !== escolhido.preco) patch.preco_shopee = escolhido.preco;
 
       // Ficha: só PREENCHE BURACO. Nunca sobrescreve o que a vitrine da
       // TrazPraCa já entregou — aquela fonte foi conferida contra o nome do
@@ -234,15 +248,23 @@ export const POST: APIRoute = async ({ request }) => {
         }
         if (!p.marca && escolhido.marca) patch.marca = escolhido.marca;
       }
-      if (lista.length > 0) comAnuncio++;
-      await db.from("vendas_produtos").update(patch).eq("id", p.id);
+
+      if (Object.keys(patch).length === 0) continue;
+      patch.inventariado_em = agora;
+      tarefas.push(async () => { await db.from("vendas_produtos").update(patch).eq("id", p.id); });
+    }
+
+    let atualizados = 0;
+    for (let i = 0; i < tarefas.length; i += 25) {
+      await Promise.all(tarefas.slice(i, i + 25).map((t) => t()));
+      atualizados += Math.min(25, tarefas.length - i);
     }
 
     const noArTotal = anuncios.filter((a) => a.situacao === "active").length;
     const mensagem =
       `Shopee: ${anuncios.length} anúncio(s) recebidos, ${noArTotal} no ar, ` +
       `${comAnuncio} casado(s) com produto do catálogo, ${orfaos} sem produto correspondente. ` +
-      `${enriquecidos} produto(s) ganharam foto da Shopee.`;
+      `${atualizados} produto(s) atualizados, ${enriquecidos} ganharam foto da Shopee.`;
 
     await db.from("vendas_sync_log").insert({
       tipo: "inventario",
@@ -254,13 +276,13 @@ export const POST: APIRoute = async ({ request }) => {
     });
 
     await registrarAcao(db, { req: request, admin }, {
-      acao: "atualizar",
+      acao: "editar",
       entidade: "vendas_anuncios_canal",
       registro_id: null,
       descricao: `Atualizou o inventário da Shopee (${anuncios.length} anúncios)`,
     }).catch(() => {});
 
-    return jsonOk({ ok: true, recebidos: anuncios.length, gravados, no_ar: noArTotal, casados: comAnuncio, orfaos, com_foto: enriquecidos, mensagem });
+    return jsonOk({ ok: true, recebidos: anuncios.length, gravados, no_ar: noArTotal, casados: comAnuncio, orfaos, atualizados, com_foto: enriquecidos, mensagem });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
