@@ -16,7 +16,7 @@ const CAMPOS_EDITAVEIS = [
   // na auditoria. Quem edita aqui é sempre admin, e toda edição fica logada.
   "fotos", "descricao", "marca", "titulo_anuncio",
   "peso_kg", "altura_cm", "largura_cm", "profundidade_cm",
-  "shopee_situacao", "pronto_para_publicar",
+  "shopee_situacao", "pronto_para_publicar", "pendencias",
 ] as const;
 
 // PATCH → edita campos do produto (preço, status, flags de publicação, etc.)
