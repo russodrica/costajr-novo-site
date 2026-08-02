@@ -17,6 +17,10 @@ const CAMPOS_EDITAVEIS = [
   "fotos", "descricao", "marca", "titulo_anuncio",
   "peso_kg", "altura_cm", "largura_cm", "profundidade_cm",
   "shopee_situacao", "pronto_para_publicar", "pendencias",
+  // A ficha de características (pares nome→valor) alimenta os atributos do
+  // ML — é por aqui que se responde "Cor", "Material", "Tipo de alimentação"
+  // quando o nome do produto não diz e a foto sim.
+  "caracteristicas",
 ] as const;
 
 // PATCH → edita campos do produto (preço, status, flags de publicação, etc.)
