@@ -60,6 +60,31 @@ export async function ehComercial(db: any, colaboradorId: string): Promise<boole
 
 const idBaseDe = (d: any) => ({ colaborador_id: d.colaborador_id, colaborador_nome: d.colaborador_nome, colaborador_email: d.colaborador_email });
 
+// Comando do Telegram — em GRUPO ele chega com o nome do bot colado
+// ("/proposta@cjrcomercial_bot"), então não dá pra comparar direto.
+function cmd(texto: string, ...nomes: string[]): boolean {
+  const t = String(texto || "").trim().toLowerCase();
+  return nomes.some((n) => t === `/${n}` || t.startsWith(`/${n} `) || t.startsWith(`/${n}@`));
+}
+
+// ── Anti-repetição no grupo ─────────────────────────────────────────────
+// No grupo o bot responde a QUALQUER mensagem (decisão da Adriana), então sem
+// isso ele repetiria o menu a cada linha de uma conversa. Guarda o horário do
+// último menu por grupo em telegram_sessoes (chave própria, não colide com
+// sessão de pessoa). Comandos (/proposta, /menu) NUNCA passam por aqui — são
+// a válvula de escape durante a pausa.
+const PAUSA_MENU_GRUPO_MS = 3 * 60 * 1000;
+async function podeFalarNoGrupo(db: any, B: Bot, chatId: number): Promise<boolean> {
+  const chave = `${B.pre}grupo:${chatId}`;
+  try {
+    const { data } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", chave).maybeSingle();
+    const ultimo = Number(data?.dados?.ultimo_menu || 0);
+    if (Date.now() - ultimo < PAUSA_MENU_GRUPO_MS) return false;
+  } catch { /* se a leitura falhar, prefere responder a ficar mudo */ }
+  await salvarSessao(db, { telegram_user_id: chave, chat_id: String(chatId), estado: "grupo", dados: { ultimo_menu: Date.now() } });
+  return true;
+}
+
 // ── Menu de áreas (chamado por identificar() no modo "processos") ──────
 export async function mostrarMenuAreas(db: any, B: Bot, chatId: number, sessKey: string, dados: any) {
   const nome = dados?.colaborador_nome || "colega";
@@ -77,7 +102,9 @@ export async function mostrarMenuAreas(db: any, B: Bot, chatId: number, sessKey:
 }
 
 export async function mostrarMenuComercial(db: any, B: Bot, sessao: Sessao, chatId: number) {
-  await salvarSessao(db, { ...sessao, estado: "proc_menu", dados: idBaseDe(sessao.dados || {}) });
+  // chat_id marca ONDE a pessoa está operando (privado x grupo) — o roteiro
+  // depois só aceita respostas vindas desse mesmo chat.
+  await salvarSessao(db, { ...sessao, chat_id: String(chatId), estado: "proc_menu", dados: idBaseDe(sessao.dados || {}) });
   await enviar(B, chatId, "💼 <b>Comercial</b> — o que você quer fazer?", inline([
     [{ text: "📋 Nova proposta comercial", callback_data: "com:nova" }],
   ]));
@@ -90,7 +117,7 @@ function pergunta(texto: string, pularCb?: string) {
 // Inicia o roteiro (chamado pelo botão "Nova proposta comercial" e pelo
 // comando /comercial — tanto no bot de Processos quanto de dentro da JunIA).
 export async function iniciarNovaProposta(db: any, B: Bot, sessao: Sessao, chatId: number) {
-  await salvarSessao(db, { ...sessao, estado: "com_cliente", dados: idBaseDe(sessao.dados) });
+  await salvarSessao(db, { ...sessao, chat_id: String(chatId), estado: "com_cliente", dados: idBaseDe(sessao.dados) });
   await enviar(B, chatId, "📋 <b>Nova proposta comercial</b>\n\nQual o <b>nome do cliente</b>?", inline([btnCancelar]));
 }
 
@@ -177,36 +204,73 @@ async function onTextoComercial(db: any, B: Bot, sessao: Sessao, chatId: number,
 // as regras de negócio deste bot (mobilização mínima, remuneração em 3
 // percentuais, valor de ganho na Vobi) são diferentes das do JunIA/Processos
 // (decisão da Adriana, 2026-08-04 — "estará fora da JunIA").
+//
+// ATENDE TAMBÉM EM GRUPO (decisão da Adriana, 2026-08-04): qualquer mensagem
+// no grupo abre o menu, e o roteiro inteiro roda ali mesmo (o PowerPoint e os
+// valores ficam à vista do grupo — foi a escolha dela, é o grupo do time
+// Comercial). Requer a Privacidade do bot DESLIGADA no BotFather, senão o
+// Telegram nem entrega as mensagens comuns do grupo pro bot.
 export async function onMessageComercial(db: any, B: Bot, msg: any) {
   const chat = msg.chat;
-  if (!chat || chat.type !== "private") return;
+  if (!chat) return;
+  const ehGrupo = chat.type !== "private";
   const userId = String(msg.from?.id || "");
   const chatId = chat.id;
   if (!userId) return;
 
+  // Identificação por telefone só existe no privado (ninguém compartilha
+  // contato em grupo) — no grupo a pessoa é reconhecida pela sessão que ela
+  // já criou uma vez no privado deste bot.
   if (msg.contact) {
+    if (ehGrupo) return;
     if (String(msg.contact.user_id || "") !== userId) { await enviar(B, chatId, "Compartilhe o <b>seu próprio</b> contato, por favor."); return; }
     return await identificar(db, B, userId, chatId, msg.contact.phone_number);
   }
 
   const sessao = await getSessao(db, B, userId);
+  const texto = String(msg.text || "").trim();
+
+  // Em grupo chegam eventos sem conteúdo (alguém entrou/saiu, fixaram uma
+  // mensagem…). Isso não é conversa — o bot fica quieto.
+  if (ehGrupo && !texto && !msg.photo && !msg.document) return;
+
   if (!sessao?.dados?.colaborador_id) {
+    if (ehGrupo) {
+      if (!(await podeFalarNoGrupo(db, B, chatId))) return;
+      const primeiro = String(msg.from?.first_name || "").trim();
+      await enviar(B, chatId,
+        `${primeiro ? `<b>${escTg(primeiro)}</b>, p` : "P"}ra liberar as propostas pra você eu preciso te identificar pelo telefone cadastrado — e isso só dá pra fazer no privado.\n\nAbra o <b>@cjrcomercial_bot</b>, mande <b>/start</b> uma vez, e depois é só voltar aqui no grupo. 🙂`);
+      return;
+    }
     await enviar(B, chatId, "👋 <b>Bot Comercial — Costa Júnior</b>\n\nPreciso te identificar pelo seu telefone cadastrado primeiro. Toque em /start.");
     return;
   }
-  const texto = String(msg.text || "").trim();
-  if (/^\/cancelar/i.test(texto)) return await mostrarMenuComercial(db, B, sessao, chatId);
-  if (/^\/(start|menu)/i.test(texto)) return await mostrarMenuComercial(db, B, sessao, chatId);
-  if (/^\/etapa/i.test(texto) || /mudar\s+de\s+etapa/i.test(texto)) return await perguntarEtapa(db, B, sessao, chatId);
 
   const estado = sessao.estado || "pronto";
+  // Uma proposta em andamento fica PRESA ao chat onde começou: assim o roteiro
+  // do grupo não é respondido por engano no privado (e vice-versa).
+  const chatDaProposta = String(sessao.chat_id || "");
+  const mesmoChat = !chatDaProposta || chatDaProposta === String(chatId);
+  const noMeioDaProposta = estado.startsWith("com_") && mesmoChat;
+
+  // Em grupo os comandos chegam como "/proposta@cjrcomercial_bot".
+  if (cmd(texto, "cancelar")) return await mostrarMenuComercial(db, B, sessao, chatId);
+  if (cmd(texto, "start", "menu", "proposta")) return await mostrarMenuComercial(db, B, sessao, chatId);
+  // "pode mudar de etapa" em texto livre só no privado: no grupo alguém
+  // comentando isso numa conversa não deve disparar o comando.
+  if (cmd(texto, "etapa") || (!ehGrupo && /mudar\s+de\s+etapa/i.test(texto))) return await perguntarEtapa(db, B, sessao, chatId);
+
   if (msg.photo || msg.document) {
-    if (estado === "com_projeto" || estado === "com_planilha") return await onArquivoRoteiro(db, B, sessao, chatId, msg, estado);
+    if (noMeioDaProposta && (estado === "com_projeto" || estado === "com_planilha")) return await onArquivoRoteiro(db, B, sessao, chatId, msg, estado);
+    if (ehGrupo) return; // arquivo solto no grupo não é comigo
     await enviar(B, chatId, "Não esperava um arquivo agora — se quiser recomeçar, mande /cancelar.");
     return;
   }
   if (!texto) return;
-  if (estado.startsWith("com_")) return await onTextoComercial(db, B, sessao, chatId, estado, texto);
+  if (noMeioDaProposta) return await onTextoComercial(db, B, sessao, chatId, estado, texto);
+  // Mensagem solta: abre o menu. No grupo, com uma pausa entre um menu e outro
+  // pra não repetir o menu a cada linha de uma conversa.
+  if (ehGrupo && !(await podeFalarNoGrupo(db, B, chatId))) return;
   return await mostrarMenuComercial(db, B, sessao, chatId);
 }
 
@@ -342,8 +406,28 @@ async function onArquivoRoteiro(db: any, B: Bot, sessao: Sessao, chatId: number,
 }
 
 // ── Callbacks (botões) ──────────────────────────────────────────────────
+// Passo em que cada botão do roteiro faz sentido (ver a trava logo abaixo).
+const ESTADO_DO_BOTAO: Record<string, string> = {
+  "com:pular_projeto": "com_projeto",
+  "com:pular_planilha": "com_planilha",
+  "com:pular_escopo": "com_escopo_detalhado",
+  "com:pular_prazo_obra": "com_prazo_obra",
+  "com:pular_prazo_mob": "com_prazo_mob",
+  "com:pular_valor": "com_valor",
+  "com:confirmar": "com_confirma",
+};
+
 export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null, chatId: number, userId: string, data: string) {
   if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start."); return; }
+  // Cada botão só vale no passo em que foi criado. Em GRUPO todo mundo enxerga
+  // (e consegue tocar) os botões da proposta alheia — sem esta trava, tocar no
+  // "Pular"/"Confirmar" de outra pessoa embaralharia o próprio roteiro de quem
+  // clicou. Vale também no privado, contra botão de mensagem antiga.
+  const passoDoBotao = ESTADO_DO_BOTAO[data];
+  if (passoDoBotao && (sessao.estado || "") !== passoDoBotao) {
+    await enviar(B, chatId, "Esse botão é de <b>outra proposta</b> (ou de um passo que já passou). Mande <b>/proposta</b> pra começar a sua.");
+    return;
+  }
   if (data === "cancel") return await mostrarMenuComercial(db, B, sessao, chatId);
   if (data === "area:embreve") { await enviar(B, chatId, "🚧 Ainda não disponível — só o Comercial por enquanto."); return; }
   if (data === "area:comercial" || data === "com:nova") {

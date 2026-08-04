@@ -226,6 +226,9 @@ async function onMessage(db: any, B: Bot, msg: any) {
   if (chat.type !== "private") {
     // grupos: bot de RH (documentos+base) e bot da JunIA (base) atendem grupos registrados
     if (B.modo === "adm" || B.modo === "junia") return await onGrupoMensagem(db, B, msg);
+    // bot Comercial atende o grupo do time (decisão da Adriana, 2026-08-04):
+    // o roteiro de proposta roda no próprio grupo. Ver onMessageComercial.
+    if (B.modo === "comercial") return await onMessageComercial(db, B, msg);
     return;
   }
   if (B.modo === "junia") return await onMessageJunia(db, B, msg);
