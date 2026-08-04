@@ -29,6 +29,7 @@ import {
 import { gerarPropostaPptx, COMERCIAL_BUCKET, type DadosProposta } from "./propostaPptx";
 import { vobiEscritaConfigurada, vobiCriarOportunidade, vobiMudarEtapa } from "./vobiEscrita";
 import { supabaseAdmin } from "./supabase";
+import { gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 
 // Converte texto livre em reais ("R$ 594.696,95", "594696,95", "594696.95")
 // pra número. Retorna null se não conseguir interpretar.
@@ -88,6 +89,10 @@ function arqDaMsg(msg: any): ArqGuardado | null {
 }
 
 const ehPlanilha = (nome: string) => /\.(xlsx|xlsm|xls|csv|ods)$/i.test(nome);
+
+// "ainda não tenho preço" — vira "conforme negociação" em vez de travar.
+const SEM_VALOR = /^\s*(n[ãa]o\s*(tenho|tem|sei|h[áa])|sem\s*valor|a\s*(definir|combinar)|ainda\s*n[ãa]o|conforme\s*negocia|pular|-)\s*$/i;
+const PERGUNTA_VALOR = "💰 Qual o <b>valor</b> da proposta? (ex.: \"R$ 38.500,00\")\n\nSe ainda não tiver, toque em <b>Pular</b> — fica \"conforme negociação\".";
 
 // Comando do Telegram — em GRUPO ele chega com o nome do bot colado
 // ("/proposta@cjrcomercial_bot"), então não dá pra comparar direto.
@@ -176,11 +181,56 @@ function pergunta(texto: string, pularCb?: string, extras: { text: string; callb
   return { texto, botoes: inline(linhas) };
 }
 
+// Qual campo da leitura dos arquivos responde cada pergunta do roteiro.
+const CAMPO_SUG: Record<string, string> = {
+  com_cliente: "cliente",
+  com_endereco: "endereco",
+  com_escopo_curto: "escopoCurto",
+  com_escopo_detalhado: "escopoDetalhado",
+  com_valor: "valor",
+};
+
+// Botão "✅ Usar: <o que a IA achou>" na pergunta correspondente.
+function botaoSugestao(dados: any, estado: string): { text: string; callback_data: string }[][] {
+  const campo = CAMPO_SUG[estado];
+  const v = campo ? dados?.sug?.[campo] : null;
+  if (!v) return [];
+  const s = String(v).replace(/\s+/g, " ").trim();
+  return [[{ text: `✅ Usar: ${s.length > 40 ? s.slice(0, 37) + "…" : s}`, callback_data: "com:sugestao" }]];
+}
+
+// O botão só repete a sugestão como se a pessoa tivesse digitado — assim a
+// validação de cada passo (valor, percentuais…) continua valendo igual.
+async function aceitarSugestao(db: any, B: Bot, sessao: Sessao, chatId: number) {
+  const estado = sessao.estado || "";
+  const campo = CAMPO_SUG[estado];
+  const v = campo ? sessao.dados?.sug?.[campo] : null;
+  if (!v) { await enviar(B, chatId, "Essa sugestão não vale mais aqui — pode digitar a resposta."); return; }
+  await enviar(B, chatId, `✅ ${escTg(String(v))}`);
+  return await onTextoComercial(db, B, sessao, chatId, estado, String(v));
+}
+
 // Inicia o roteiro (chamado pelo botão "Nova proposta comercial" e pelo
 // comando /comercial — tanto no bot de Processos quanto de dentro da JunIA).
 export async function iniciarNovaProposta(db: any, B: Bot, sessao: Sessao, chatId: number) {
-  await salvarSessao(db, { ...sessao, chat_id: String(chatId), estado: "com_cliente", dados: idBaseDe(sessao.dados) });
-  await enviar(B, chatId, "📋 <b>Nova proposta comercial</b>\n\nQual o <b>nome do cliente</b>?", inline([btnCancelar]));
+  let dados: any = idBaseDe(sessao.dados);
+  // Se a pessoa já jogou os arquivos, LÊ eles ANTES de começar a perguntar
+  // (pedido da Adriana: "primeiro analisar os arquivos e depois fazer
+  // pergunta"). Assim as respostas já vêm sugeridas.
+  const guardados = arquivosGuardados(sessao.dados);
+  if (guardados.length) {
+    await enviar(B, chatId, "📋 <b>Nova proposta comercial</b>\n\n🔎 Lendo os arquivos que você mandou… (uns segundos)");
+    try {
+      dados = { ...dados, ...(await anexarEAnalisar(db, B, chatId, guardados)) };
+    } catch {
+      await enviar(B, chatId, "⚠️ Não consegui processar os arquivos agora — seguimos no modo pergunta/resposta.");
+    }
+  } else {
+    await enviar(B, chatId, "📋 <b>Nova proposta comercial</b>");
+  }
+  await salvarSessao(db, { ...sessao, chat_id: String(chatId), estado: "com_cliente", dados });
+  const { texto, botoes } = pergunta("Qual o <b>nome do cliente</b>?", undefined, botaoSugestao(dados, "com_cliente"));
+  await enviar(B, chatId, texto, botoes);
 }
 
 // ── Passos de texto do roteiro (estado com_*) — compartilhado entre o bot
@@ -191,8 +241,12 @@ async function onTextoComercial(db: any, B: Bot, sessao: Sessao, chatId: number,
       return await avancar(db, B, sessao, chatId, { cliente: texto }, "com_endereco",
         "📍 Qual o <b>endereço</b> da obra/projeto?");
     case "com_endereco": {
-      // Se a pessoa já tinha jogado os arquivos no chat antes de começar,
-      // oferece usá-los aqui em vez de pedir de novo.
+      // Arquivos já anexados no início? Então pula os 2 passos de anexo.
+      if (sessao.dados?.arquivosAnexados?.length) {
+        return await avancar(db, B, sessao, chatId, { endereco: texto }, "com_escopo_curto",
+          "✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
+      }
+      // Guardou arquivos mas ainda não anexou (ex.: mandou no meio) — oferece.
       const guardados = arquivosGuardados(sessao.dados);
       const extras = guardados.length
         ? [[{ text: `📎 Usar o(s) ${guardados.length} arquivo(s) que mandei`, callback_data: "com:usar_arquivos" }]]
@@ -221,16 +275,20 @@ async function onTextoComercial(db: any, B: Bot, sessao: Sessao, chatId: number,
         await enviar(B, chatId, "⚠️ A mobilização mínima é de <b>10 dias úteis</b>. Manda um número igual ou maior, ou toque em pular (fico com 10).");
         return;
       }
-      const perguntaValor = B.modo === "comercial"
-        ? "💰 Qual o <b>valor</b> da proposta? (ex.: \"R$ 38.500,00\")"
-        : "💰 Já tem um <b>valor</b> pra propor? Pode mandar (ex.: \"R$ 38.500,00\"), ou pular (fica \"conforme negociação\").";
       return await avancar(db, B, sessao, chatId, { prazoMobilizacaoDias: n }, "com_valor",
-        perguntaValor, B.modo === "comercial" ? undefined : "com:pular_valor");
+        PERGUNTA_VALOR, "com:pular_valor");
     }
     case "com_valor": {
       if (B.modo === "comercial") {
+        // Saída pra quem ainda não tem preço fechado — sem isso a pessoa ficava
+        // presa repetindo a mesma cobrança (a Adriana caiu nisso em 04/08/2026).
+        if (SEM_VALOR.test(texto)) {
+          const semValor = { ...sessao.dados, valor: "Conforme negociação" };
+          await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: semValor });
+          return await mostrarConfirmacao(db, B, chatId, semValor);
+        }
         const valorNumerico = parseValorReais(texto);
-        if (!valorNumerico) { await enviar(B, chatId, "Não consegui entender esse valor. Manda algo como \"R$ 594.696,95\"."); return; }
+        if (!valorNumerico) { await enviar(B, chatId, "Não consegui entender esse valor. Manda algo como \"R$ 594.696,95\" — ou escreva <b>não tenho</b> pra deixar como \"conforme negociação\"."); return; }
         return await avancar(db, B, sessao, chatId, { valorTotalTexto: texto, valorNumerico }, "com_pct_sinal",
           "💰 Perfeito. Agora o <b>% de sinal</b> (na assinatura)? Manda só o número (ex.: 30).");
       }
@@ -482,7 +540,8 @@ export async function onMessageComercialRoteiro(db: any, B: Bot, sessao: Sessao,
 async function avancar(db: any, B: Bot, sessao: Sessao, chatId: number, patch: any, proximoEstado: string, textoPergunta: string, pularCb?: string, extras?: { text: string; callback_data: string }[][]) {
   const dados = { ...sessao.dados, ...patch };
   await salvarSessao(db, { ...sessao, estado: proximoEstado, dados });
-  const { texto, botoes } = pergunta(textoPergunta, pularCb, extras);
+  // se a leitura dos arquivos já respondeu essa pergunta, oferece em 1 toque
+  const { texto, botoes } = pergunta(textoPergunta, pularCb, [...botaoSugestao(dados, proximoEstado), ...(extras || [])]);
   await enviar(B, chatId, texto, botoes);
 }
 
@@ -507,19 +566,98 @@ async function guardarArquivoSolto(db: any, B: Bot, sessao: Sessao, chatId: numb
     inline([[{ text: "📋 Começar proposta", callback_data: "com:nova" }], btnCancelar]));
 }
 
+// ── LER os arquivos antes de perguntar (pedido da Adriana, 2026-08-04) ──
+// Ela mandou o projeto + a planilha e respondeu "pegar nos arquivos" nas
+// perguntas — o certo é o bot ler primeiro e só perguntar o que faltar.
+// PDF: camada de texto via unpdf (planta de CAD quase sempre tem o carimbo
+// em texto). XLSX: é um ZIP — dá pra ler as células com o jszip que já existe
+// no projeto, sem dependência nova.
+function decodeXml(s: string): string {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&amp;/g, "&");
+}
+
+async function textoDeXlsx(buf: Buffer): Promise<string> {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buf);
+  // sharedStrings.xml guarda os textos; as células referenciam por índice.
+  const shared: string[] = [];
+  const ss = zip.file("xl/sharedStrings.xml");
+  if (ss) {
+    const xml = await ss.async("string");
+    for (const si of xml.matchAll(/<si>([\s\S]*?)<\/si>/g)) {
+      shared.push(decodeXml(Array.from(si[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)).map((t) => t[1]).join("")));
+    }
+  }
+  const linhas: string[] = [];
+  const sheets = zip.file(/xl\/worksheets\/sheet\d+\.xml/) || [];
+  for (const sheet of sheets.slice(0, 8)) {
+    const xml = await sheet.async("string");
+    for (const row of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+      const celulas: string[] = [];
+      for (const c of row[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
+        const tipo = (c[1].match(/\st="([^"]+)"/) || [])[1];
+        let val = "";
+        if (tipo === "inlineStr") val = decodeXml(Array.from(c[2].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)).map((t) => t[1]).join(""));
+        else {
+          const v = (c[2].match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+          if (v != null) val = tipo === "s" ? (shared[Number(v)] ?? "") : decodeXml(v);
+        }
+        if (val) celulas.push(val);
+      }
+      if (celulas.length) linhas.push(celulas.join(" | "));
+      if (linhas.length > 400) break;
+    }
+    if (linhas.length > 400) break;
+  }
+  return linhas.join("\n").slice(0, 9000);
+}
+
+async function textoDoArquivo(buf: Buffer, nome: string, ct: string): Promise<string> {
+  const n = String(nome || "").toLowerCase();
+  try {
+    if (n.endsWith(".pdf") || String(ct).includes("pdf")) {
+      const { extractText, getDocumentProxy } = await import("unpdf");
+      const pdf = await getDocumentProxy(new Uint8Array(buf));
+      const { text } = await extractText(pdf, { mergePages: true });
+      return String(text || "").replace(/\s+/g, " ").trim().slice(0, 7000);
+    }
+    if (/\.(xlsx|xlsm)$/.test(n)) return await textoDeXlsx(buf);
+  } catch { /* arquivo sem camada de texto (escaneado/imagem) → segue sem */ }
+  return "";
+}
+
+// Manda o conteúdo lido pra IA e devolve o que ela conseguiu identificar.
+async function extrairDadosDaProposta(trechos: { nome: string; texto: string }[]): Promise<any | null> {
+  if (!llmConfigurado() || !trechos.length) return null;
+  const system = `Você lê documentos de um serviço de engenharia/reforma (plantas em PDF e planilha de orçamento) e extrai dados para uma proposta comercial da construtora Costa Júnior.
+Responda APENAS JSON, sem comentários:
+{"cliente":"","endereco":"","escopo_curto":"","escopo_detalhado":"","valor":""}
+REGRAS:
+- Só preencha o que estiver EXPLÍCITO nos documentos. O que não achar, deixe "".
+- NUNCA invente endereço, valor ou nome de cliente.
+- "valor" = valor TOTAL do orçamento (o total geral, não itens soltos), formato "R$ 0.000,00".
+- "escopo_curto" = UMA frase objetiva do serviço.
+- "escopo_detalhado" = lista curta do que inclui (uma linha por item), se der pra saber.`;
+  const corpo = trechos.map((t) => `### Arquivo: ${t.nome}\n${t.texto}`).join("\n\n").slice(0, 20000);
+  try {
+    const raw = await gerarTextoLLM(system, [{ role: "user", content: corpo }]);
+    return raw ? extrairJson(raw) : null;
+  } catch { return null; }
+}
+
 // Sobe pro storage os arquivos que já estavam guardados e pula os 2 passos de
 // anexo. Planilha vs projeto é decidido pela extensão do arquivo.
-async function usarArquivosGuardados(db: any, B: Bot, sessao: Sessao, chatId: number) {
-  const arquivos = arquivosGuardados(sessao.dados);
-  if (!arquivos.length) {
-    await enviar(B, chatId, "Não tenho arquivo guardado por aqui. Pode me enviar agora, ou tocar em pular.");
-    return;
-  }
-  await enviar(B, chatId, "📎 Guardando os arquivos…");
+// Baixa, guarda no storage E LÊ os arquivos. Devolve o patch pra sessão
+// (caminhos + o que a IA identificou) — usado tanto por quem joga os arquivos
+// antes de começar quanto por quem anexa no meio do roteiro.
+async function anexarEAnalisar(db: any, B: Bot, chatId: number, arquivos: ArqGuardado[]): Promise<any> {
   const db2 = supabaseAdmin();
-  const patch: any = { arquivos: [] };
+  const patch: any = { arquivos: [], analisado: true };
   const anexados: { nome: string; path: string; campo: string }[] = [];
   const falhou: string[] = [];
+  const trechos: { nome: string; texto: string }[] = [];
   for (const a of arquivos) {
     const buf = await baixarArquivoTg(B, a.file_id);
     if (!buf) { falhou.push(a.nome); continue; }
@@ -532,11 +670,48 @@ async function usarArquivosGuardados(db: any, B: Bot, sessao: Sessao, chatId: nu
     // projetoPath/planilhaPath guardam UM de cada (é o que o resumo usa); a
     // lista completa fica em arquivosAnexados p/ o engenheiro achar depois.
     if (!patch[`${campo}Path`]) patch[`${campo}Path`] = storagePath;
+    const texto = await textoDoArquivo(buf, a.nome, a.ct);
+    if (texto) trechos.push({ nome: a.nome, texto });
   }
   patch.arquivosAnexados = anexados;
+
   const linhas = anexados.map((a) => `• ${escTg(a.nome)} → ${a.campo === "planilha" ? "planilha" : "projeto"}`).join("\n");
   const aviso = falhou.length ? `\n⚠️ Não consegui guardar: ${falhou.map(escTg).join(", ")}` : "";
-  await enviar(B, chatId, anexados.length ? `✅ Anexei:\n${linhas}${aviso}` : `⚠️ Não consegui guardar os arquivos.${aviso}`);
+  await enviar(B, chatId, anexados.length ? `📎 Anexei:\n${linhas}${aviso}` : `⚠️ Não consegui guardar os arquivos.${aviso}`);
+
+  if (!trechos.length) {
+    if (anexados.length) await enviar(B, chatId, "🔎 Não consegui ler o conteúdo (os arquivos parecem ser só imagem/escaneados) — vou te perguntar item por item.");
+    return patch;
+  }
+  const achado = await extrairDadosDaProposta(trechos);
+  if (!achado) {
+    await enviar(B, chatId, "🔎 Li os arquivos mas não consegui extrair os dados automaticamente — vou te perguntar item por item.");
+    return patch;
+  }
+  const sug: any = {};
+  if (achado.cliente) sug.cliente = String(achado.cliente).trim();
+  if (achado.endereco) sug.endereco = String(achado.endereco).trim();
+  if (achado.escopo_curto) sug.escopoCurto = String(achado.escopo_curto).trim();
+  if (achado.escopo_detalhado) sug.escopoDetalhado = String(achado.escopo_detalhado).trim();
+  if (achado.valor) sug.valor = String(achado.valor).trim();
+  patch.sug = sug;
+
+  const rot: Record<string, string> = { cliente: "Cliente", endereco: "Endereço", escopoCurto: "Escopo", escopoDetalhado: "Detalhamento", valor: "Valor" };
+  const achados = Object.keys(sug).map((k) => `• <b>${rot[k]}:</b> ${escTg(sug[k].length > 160 ? sug[k].slice(0, 157) + "…" : sug[k])}`).join("\n");
+  await enviar(B, chatId, achados
+    ? `🔎 <b>Li os arquivos.</b> Achei isto:\n${achados}\n\nVou te perguntar mesmo assim — onde eu já tiver a resposta, é só tocar no botão <b>✅ Usar</b>. Confira, porque saiu dos documentos.`
+    : "🔎 Li os arquivos, mas não achei cliente/endereço/escopo/valor explícitos — vou te perguntar item por item.");
+  return patch;
+}
+
+async function usarArquivosGuardados(db: any, B: Bot, sessao: Sessao, chatId: number) {
+  const arquivos = arquivosGuardados(sessao.dados);
+  if (!arquivos.length) {
+    await enviar(B, chatId, "Não tenho arquivo guardado por aqui. Pode me enviar agora, ou tocar em pular.");
+    return;
+  }
+  await enviar(B, chatId, "📎 Guardando e lendo os arquivos… (uns segundos)");
+  const patch = await anexarEAnalisar(db, B, chatId, arquivos);
   return await avancar(db, B, sessao, chatId, patch, "com_escopo_curto",
     "✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
 }
@@ -601,6 +776,7 @@ export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null
   if (data === "area:comercial") return await mostrarMenuComercial(db, B, sessao, chatId);
   if (data === "com:nova") return await iniciarNovaProposta(db, B, sessao, chatId);
   if (data === "com:usar_arquivos") return await usarArquivosGuardados(db, B, sessao, chatId);
+  if (data === "com:sugestao") return await aceitarSugestao(db, B, sessao, chatId);
   if (data === "com:pular_projeto") return await avancar(db, B, sessao, chatId, {}, "com_planilha",
     "📊 Tem uma <b>planilha de orçamento padrão</b> pra esse tipo de serviço? Envie ou pule.", "com:pular_planilha");
   if (data === "com:pular_planilha") return await avancar(db, B, sessao, chatId, {}, "com_escopo_curto",
@@ -615,8 +791,7 @@ export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null
   }
   if (data === "com:pular_prazo_mob") {
     const patch = B.modo === "comercial" ? { prazoMobilizacaoDias: "10" } : {};
-    const perguntaValor = B.modo === "comercial" ? "💰 Qual o <b>valor</b> da proposta? (ex.: \"R$ 38.500,00\")" : "💰 Já tem um <b>valor</b> pra propor? Pode mandar, ou pular.";
-    return await avancar(db, B, sessao, chatId, patch, "com_valor", perguntaValor, B.modo === "comercial" ? undefined : "com:pular_valor");
+    return await avancar(db, B, sessao, chatId, patch, "com_valor", PERGUNTA_VALOR, "com:pular_valor");
   }
   if (data === "com:pular_valor") {
     await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: sessao.dados });
