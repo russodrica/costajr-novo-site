@@ -23,7 +23,7 @@
 import { escTg } from "./telegram";
 import {
   type Bot, type Sessao,
-  enviar, inline, btnCancelar, botaoTelefone,
+  enviar, inline, btnCancelar, botaoTelefone, tg,
   getSessao, salvarSessao, identificar, baixarArquivoTg,
 } from "./telegramBot";
 import { gerarPropostaPptx, COMERCIAL_BUCKET, type DadosProposta } from "./propostaPptx";
@@ -58,13 +58,53 @@ export async function ehComercial(db: any, colaboradorId: string): Promise<boole
   } catch { return false; }
 }
 
-const idBaseDe = (d: any) => ({ colaborador_id: d.colaborador_id, colaborador_nome: d.colaborador_nome, colaborador_email: d.colaborador_email });
+// `grupo_autorizado` viaja junto: no grupo liberado a pessoa NÃO tem
+// colaborador_id (não se identificou por telefone), então é essa marca que
+// mantém ela reconhecida entre uma mensagem e outra — inclusive nos botões.
+const idBaseDe = (d: any) => ({
+  colaborador_id: d.colaborador_id, colaborador_nome: d.colaborador_nome, colaborador_email: d.colaborador_email,
+  ...(d.grupo_autorizado ? { grupo_autorizado: true } : {}),
+});
+
+// Quem já pode usar o roteiro: identificado por telefone OU dentro do grupo
+// liberado (nesse caso a autorização é estar no grupo).
+const jaLiberado = (d: any) => !!(d?.colaborador_id || d?.grupo_autorizado);
 
 // Comando do Telegram — em GRUPO ele chega com o nome do bot colado
 // ("/proposta@cjrcomercial_bot"), então não dá pra comparar direto.
 function cmd(texto: string, ...nomes: string[]): boolean {
   const t = String(texto || "").trim().toLowerCase();
   return nomes.some((n) => t === `/${n}` || t.startsWith(`/${n} `) || t.startsWith(`/${n}@`));
+}
+
+// ── Grupo liberado = autorização ────────────────────────────────────────
+// Decisão da Adriana (2026-08-04): "pode aceitar quem está no grupo pois eu
+// só vou inserir quem tem autorização". Então dentro do grupo ninguém precisa
+// se identificar pelo telefone — a porta é o próprio grupo (mesmo padrão já
+// usado no grupo de documentos do RH).
+// A TRAVA: só vale no grupo que um ADMIN liberou com /ativar_comercial. Sem
+// isso, qualquer pessoa poderia adicionar o bot a outro grupo (inclusive um
+// com cliente dentro) e sair gerando proposta.
+function chaveGrupoComercial(B: Bot) { return `${B.pre}grupo_comercial`; }
+
+async function grupoComercialAtivo(db: any, B: Bot, chatId: number): Promise<boolean> {
+  try {
+    const { data } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", chaveGrupoComercial(B)).maybeSingle();
+    return data?.dados?.chat_id != null && String(data.dados.chat_id) === String(chatId);
+  } catch { return false; }
+}
+
+async function ehAdminDoGrupo(B: Bot, chatId: number, userId?: number): Promise<boolean> {
+  if (!userId) return false;
+  const r = await tg(B, "getChatMember", { chat_id: chatId, user_id: userId });
+  const st = r?.result?.status;
+  return st === "creator" || st === "administrator";
+}
+
+// Nome de quem falou, pro grupo (não há ficha do RH por trás).
+function nomeNoGrupo(from: any): string {
+  const n = [from?.first_name, from?.last_name].filter(Boolean).join(" ").trim();
+  return n || (from?.username ? "@" + from.username : "colega");
 }
 
 // ── Anti-repetição no grupo ─────────────────────────────────────────────
@@ -234,49 +274,80 @@ export async function onMessageComercial(db: any, B: Bot, msg: any) {
   // mensagem…). Isso não é conversa — o bot fica quieto.
   if (ehGrupo && !texto && !msg.photo && !msg.document) return;
 
-  if (!sessao?.dados?.colaborador_id) {
-    if (ehGrupo) {
-      if (!(await podeFalarNoGrupo(db, B, chatId))) return;
-      const primeiro = String(msg.from?.first_name || "").trim();
-      await enviar(B, chatId,
-        `${primeiro ? `<b>${escTg(primeiro)}</b>, p` : "P"}ra liberar as propostas pra você eu preciso te identificar pelo telefone cadastrado — e isso só dá pra fazer no privado.\n\nAbra o <b>@cjrcomercial_bot</b>, mande <b>/start</b> uma vez, e depois é só voltar aqui no grupo. 🙂`);
+  // ── Liberar ESTE grupo (uma vez, por um administrador do grupo) ────────
+  if (ehGrupo && cmd(texto, "ativar_comercial")) {
+    if (!(await ehAdminDoGrupo(B, chatId, msg.from?.id))) {
+      await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode liberar as propostas aqui.");
       return;
     }
-    // O BOTÃO é obrigatório: é ele que pede o contato ao Telegram. Sem ele a
-    // pessoa fica presa num loop ("toque em /start" → mesma mensagem de novo),
-    // porque /start também cai aqui enquanto não há colaborador_id.
+    await salvarSessao(db, {
+      telegram_user_id: chaveGrupoComercial(B), chat_id: String(chatId),
+      estado: "ativo", dados: { chat_id: chatId, titulo: chat.title || "" },
+    });
+    await enviar(B, chatId,
+      "✅ <b>Grupo liberado para propostas comerciais!</b>\n\nQuem está aqui já pode usar — <b>a porta é o próprio grupo</b>, ninguém precisa se identificar pelo telefone.\n\n⚠️ Por isso, cuide de quem entra: qualquer pessoa do grupo consegue gerar proposta e gravar oportunidade na Vobi.\n\nÉ só mandar uma mensagem (ou <b>/proposta</b>) que eu abro o menu. 🙂");
+    return;
+  }
+
+  const grupoLiberado = ehGrupo ? await grupoComercialAtivo(db, B, chatId) : false;
+
+  // Grupo NÃO liberado: o bot fica quieto de propósito.
+  if (ehGrupo && !grupoLiberado) {
+    if (cmd(texto, "start", "menu", "proposta")) {
+      await enviar(B, chatId, "Este grupo ainda não está liberado para propostas. Um <b>administrador do grupo</b> precisa mandar <code>/ativar_comercial</code> uma vez.");
+    }
+    return;
+  }
+
+  // No grupo liberado a pessoa entra pelo nome do Telegram, sem telefone.
+  // Se ela JÁ se identificou alguma vez no privado, a identidade real vence.
+  let s: Sessao | null = sessao;
+  if (grupoLiberado && !sessao?.dados?.colaborador_id) {
+    const nomeTg = nomeNoGrupo(msg.from);
+    s = {
+      ...(sessao || { telegram_user_id: B.pre + userId }),
+      nome: nomeTg, chat_id: String(chatId),
+      dados: { ...(sessao?.dados || {}), grupo_autorizado: true, colaborador_nome: nomeTg },
+    };
+  }
+
+  if (!jaLiberado(s?.dados)) {
+    // Só chega aqui no PRIVADO. O BOTÃO é obrigatório: é ele que pede o
+    // contato ao Telegram. Sem ele a pessoa fica presa num loop ("toque em
+    // /start" → mesma mensagem), porque /start também cai aqui.
     await enviar(B, chatId,
       "👋 <b>Bot Comercial — Costa Júnior</b>\n\nPra liberar as propostas eu preciso te identificar pelo <b>telefone cadastrado na sua ficha do RH</b>.\n\nToque no botão abaixo 👇",
       botaoTelefone);
     return;
   }
+  const ss = s as Sessao;
 
-  const estado = sessao.estado || "pronto";
+  const estado = ss.estado || "pronto";
   // Uma proposta em andamento fica PRESA ao chat onde começou: assim o roteiro
   // do grupo não é respondido por engano no privado (e vice-versa).
-  const chatDaProposta = String(sessao.chat_id || "");
+  const chatDaProposta = String(ss.chat_id || "");
   const mesmoChat = !chatDaProposta || chatDaProposta === String(chatId);
   const noMeioDaProposta = estado.startsWith("com_") && mesmoChat;
 
   // Em grupo os comandos chegam como "/proposta@cjrcomercial_bot".
-  if (cmd(texto, "cancelar")) return await mostrarMenuComercial(db, B, sessao, chatId);
-  if (cmd(texto, "start", "menu", "proposta")) return await mostrarMenuComercial(db, B, sessao, chatId);
+  if (cmd(texto, "cancelar")) return await mostrarMenuComercial(db, B, ss, chatId);
+  if (cmd(texto, "start", "menu", "proposta")) return await mostrarMenuComercial(db, B, ss, chatId);
   // "pode mudar de etapa" em texto livre só no privado: no grupo alguém
   // comentando isso numa conversa não deve disparar o comando.
-  if (cmd(texto, "etapa") || (!ehGrupo && /mudar\s+de\s+etapa/i.test(texto))) return await perguntarEtapa(db, B, sessao, chatId);
+  if (cmd(texto, "etapa") || (!ehGrupo && /mudar\s+de\s+etapa/i.test(texto))) return await perguntarEtapa(db, B, ss, chatId);
 
   if (msg.photo || msg.document) {
-    if (noMeioDaProposta && (estado === "com_projeto" || estado === "com_planilha")) return await onArquivoRoteiro(db, B, sessao, chatId, msg, estado);
+    if (noMeioDaProposta && (estado === "com_projeto" || estado === "com_planilha")) return await onArquivoRoteiro(db, B, ss, chatId, msg, estado);
     if (ehGrupo) return; // arquivo solto no grupo não é comigo
     await enviar(B, chatId, "Não esperava um arquivo agora — se quiser recomeçar, mande /cancelar.");
     return;
   }
   if (!texto) return;
-  if (noMeioDaProposta) return await onTextoComercial(db, B, sessao, chatId, estado, texto);
+  if (noMeioDaProposta) return await onTextoComercial(db, B, ss, chatId, estado, texto);
   // Mensagem solta: abre o menu. No grupo, com uma pausa entre um menu e outro
   // pra não repetir o menu a cada linha de uma conversa.
   if (ehGrupo && !(await podeFalarNoGrupo(db, B, chatId))) return;
-  return await mostrarMenuComercial(db, B, sessao, chatId);
+  return await mostrarMenuComercial(db, B, ss, chatId);
 }
 
 // ── Comando "pode mudar de etapa" (Adriana, 2026-08-04) — só no bot
@@ -298,7 +369,7 @@ async function perguntarEtapa(db: any, B: Bot, sessao: Sessao, chatId: number) {
 // Callback do comando de etapa — chamado direto pelo onCallback do
 // telegramBot.ts quando B.modo === "comercial" e data começa com "etapa:".
 export async function onCallbackEtapa(db: any, B: Bot, sessao: Sessao | null, chatId: number, data: string) {
-  if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start."); return; }
+  if (!sessao || !jaLiberado(sessao.dados)) { await enviar(B, chatId, "Sessão expirada. Toque em /start."); return; }
   if (data === "cancel") { await enviar(B, chatId, "Ok, sem mudança de etapa."); return; }
   const partes = data.split(":"); // etapa:visita:123  |  etapa:orcamento:123
   const acao = partes[1];
@@ -426,7 +497,7 @@ const ESTADO_DO_BOTAO: Record<string, string> = {
 };
 
 export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null, chatId: number, userId: string, data: string) {
-  if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start."); return; }
+  if (!sessao || !jaLiberado(sessao.dados)) { await enviar(B, chatId, "Sessão expirada. Toque em /start."); return; }
   // Cada botão só vale no passo em que foi criado. Em GRUPO todo mundo enxerga
   // (e consegue tocar) os botões da proposta alheia — sem esta trava, tocar no
   // "Pular"/"Confirmar" de outra pessoa embaralharia o próprio roteiro de quem
@@ -438,7 +509,9 @@ export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null
   }
   if (data === "cancel") return await mostrarMenuComercial(db, B, sessao, chatId);
   if (data === "area:embreve") { await enviar(B, chatId, "🚧 Ainda não disponível — só o Comercial por enquanto."); return; }
-  if (data === "area:comercial" || data === "com:nova") {
+  // No grupo liberado a autorização é estar no grupo — não há ficha do RH
+  // pra checar perfil. No privado, segue valendo o perfil Comercial/admin.
+  if ((data === "area:comercial" || data === "com:nova") && !sessao.dados.grupo_autorizado) {
     if (!(await ehComercial(db, sessao.dados.colaborador_id))) { await enviar(B, chatId, "Recurso restrito ao time Comercial."); return; }
   }
   if (data === "area:comercial") return await mostrarMenuComercial(db, B, sessao, chatId);
