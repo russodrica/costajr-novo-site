@@ -7,7 +7,7 @@
 //        enviar documento (anexa na ficha) + alimentar a base (JunIA).
 // Sessões separadas por bot via prefixo na chave (não colidem).
 // ════════════════════════════════════════════════════════════════════════
-import { supabaseAdmin } from "./supabase";
+import { supabaseAdmin, supabaseAdmin2 } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
 import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
@@ -16,7 +16,7 @@ import { registrarAcao } from "./auditoria";
 import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
 import { assinarTreinoToken } from "./treinoStorage";
-import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial } from "./comercialFlow";
+import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial, onMessageComercial, mostrarMenuComercial, onCallbackEtapa } from "./comercialFlow";
 
 const SITE_TREINO = "https://www.costajr.com.br";
 
@@ -50,7 +50,12 @@ function envVar(name: string): string {
 }
 
 // ── Identidade de cada bot ───────────────────────────────────────────────
-export type Modo = "ativo" | "adm" | "junia" | "processos";
+// "comercial" = @cjrcomercial_bot (TELEGRAM_BOT_TOKEN_COMERCIAL) — bot
+// dedicado ao time Comercial, separado do JunIA/Processos de propósito
+// (decisão da Adriana, 2026-08-04): regras de negócio próprias (mobilização
+// mínima 10 dias, remuneração em 3 percentuais, valor de ganho na Vobi,
+// comando "pode mudar de etapa") que NÃO valem para o JunIA/Processos.
+export type Modo = "ativo" | "adm" | "junia" | "processos" | "comercial";
 export type Bot = { token: string; modo: Modo; pre: string; nome: string };
 function botPorModo(modo: Modo): Bot {
   if (modo === "adm") {
@@ -61,6 +66,9 @@ function botPorModo(modo: Modo): Bot {
   }
   if (modo === "processos") {
     return { token: envVar("TELEGRAM_BOT_TOKEN_PROCESSOS"), modo, pre: "proc:", nome: "@cjr_processos_bot" };
+  }
+  if (modo === "comercial") {
+    return { token: envVar("TELEGRAM_BOT_TOKEN_COMERCIAL"), modo, pre: "comb:", nome: "@cjrcomercial_bot" };
   }
   return { token: envVar("TELEGRAM_BOT_TOKEN"), modo: "ativo", pre: "", nome: "@cjr_ativo_bot" };
 }
@@ -222,6 +230,7 @@ async function onMessage(db: any, B: Bot, msg: any) {
   }
   if (B.modo === "junia") return await onMessageJunia(db, B, msg);
   if (B.modo === "processos") return await onMessageProcessos(db, B, msg);
+  if (B.modo === "comercial") return await onMessageComercial(db, B, msg);
   const userId = String(msg.from?.id || "");
   const chatId = chat.id;
   if (!userId) return;
@@ -294,6 +303,15 @@ export async function identificar(db: any, B: Bot, userId: string, chatId: numbe
     await mostrarMenuAreas(db, B, chatId, B.pre + userId, { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null });
     return;
   }
+  if (B.modo === "comercial") {
+    if (!(await ehComercial(db, achado.id))) {
+      await enviar(B, chatId, `Oi, <b>${escTg(achado.nome)}</b>! Esse bot é exclusivo do time <b>Comercial</b>. Se precisar de acesso, fale com a Adriana.`);
+      return;
+    }
+    const sessaoAtual = await getSessao(db, B, userId);
+    if (sessaoAtual) await mostrarMenuComercial(db, B, sessaoAtual, chatId);
+    return;
+  }
   await mostrarMenu(db, B, chatId, { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null });
 }
 
@@ -347,8 +365,9 @@ async function onCallback(db: any, B: Bot, cq: any) {
   if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gbanc|gbancok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
+  if (B.modo === "comercial" && data.startsWith("etapa:")) return await onCallbackEtapa(db, B, sessao, chatId, data);
   const ehCallbackComercial = data === "cancel" || data.startsWith("area:") || data.startsWith("com:");
-  if (B.modo === "processos" || (B.modo === "junia" && ehCallbackComercial)) return await onCallbackProcessos(db, B, sessao, chatId, userId, data);
+  if (B.modo === "processos" || B.modo === "comercial" || (B.modo === "junia" && ehCallbackComercial)) return await onCallbackProcessos(db, B, sessao, chatId, userId, data);
   if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start para recomeçar.", botaoTelefone); return; }
   const dados = sessao.dados || {};
   const idBase = idBaseDe(dados);
@@ -971,7 +990,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const ehFatura = d.tipo === "fatura";
     const pastaPrefixo = ehFatura ? "faturas" : "extratos";
     const newPath = `${pastaPrefixo}/${d.ano}/${String(d.mes).padStart(2, "0")}/${bancoSlug}/${Date.now()}.${ext}`;
-    const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
+    const { error: eUp } = await supabaseAdmin2().storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
     if (eUp) { await enviar(B, chatId, "❌ Falha ao arquivar: " + escTg(eUp.message)); return; }
     const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
     let row: any = null, dbErr: any = null;
@@ -984,7 +1003,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
         ano: d.ano, mes: d.mes, banco: d.banco, storage_path: newPath, nome_arquivo: d.doc_nome, criado_por: d.autor,
       }).select().single());
     }
-    if (dbErr) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não registrou: " + escTg(dbErr.message)); return; }
+    if (dbErr) { await supabaseAdmin2().storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não registrou: " + escTg(dbErr.message)); return; }
     await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
     const entidade = ehFatura ? "doc_cartao_faturas" : "doc_extratos_bancarios";
     const tipoDesc = ehFatura ? "fatura" : "extrato";
@@ -1093,7 +1112,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const buf = Buffer.from(await blob.arrayBuffer());
     const ext = d.doc_path.split(".").pop() || "pdf";
     const newPath = `${d.emp_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
+    const { error: eUp } = await supabaseAdmin2().storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
     if (eUp) { await enviar(B, chatId, "❌ Falha ao mover o arquivo: " + escTg(eUp.message)); return; }
     let competenciaEmp = extrairCompetenciaDoc(d.doc_nome, d.ia_nome);
     // doc MENSAL (ex.: "ÚLTIMOS 12 MESES"): se veio só o ANO (ou nada), usa o mês atual como
@@ -1102,7 +1121,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
       competenciaEmp = new Date().toISOString().slice(0, 7);
     }
     const { data: row, error } = await db.from("doc_empresa_arquivos").insert({ doc_id: d.emp_id, nome: d.doc_nome, storage_path: newPath, criado_por: d.autor, ...(competenciaEmp ? { competencia: competenciaEmp } : {}) }).select().single();
-    if (error) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
+    if (error) { await supabaseAdmin2().storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
     await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
     await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
       acao: "criar", entidade: "doc_empresa_arquivos", registro_id: row?.id ?? null,

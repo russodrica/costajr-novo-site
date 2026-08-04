@@ -27,8 +27,24 @@ import {
   getSessao, salvarSessao, identificar, baixarArquivoTg,
 } from "./telegramBot";
 import { gerarPropostaPptx, COMERCIAL_BUCKET, type DadosProposta } from "./propostaPptx";
-import { vobiEscritaConfigurada, vobiCriarOportunidade } from "./vobiEscrita";
+import { vobiEscritaConfigurada, vobiCriarOportunidade, vobiMudarEtapa } from "./vobiEscrita";
 import { supabaseAdmin } from "./supabase";
+
+// Converte texto livre em reais ("R$ 594.696,95", "594696,95", "594696.95")
+// pra número. Retorna null se não conseguir interpretar.
+function parseValorReais(texto: string): number | null {
+  const limpo = String(texto || "").replace(/[^\d.,]/g, "");
+  if (!limpo) return null;
+  // formato BR "594.696,95" (ponto=milhar, vírgula=decimal)
+  let normalizado = limpo;
+  if (limpo.includes(",")) normalizado = limpo.replace(/\./g, "").replace(",", ".");
+  const n = Number(normalizado);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function formatarValorRemuneracao(valorTotalTexto: string, pctSinal: number, pctMedicao: number, pctEntrega: number): string {
+  return `VALOR ESTIMADO: ${valorTotalTexto}\nSINAL: ${pctSinal}% na assinatura\nMEDIÇÃO: ${pctMedicao}% ao longo da execução\nENTREGA: ${pctEntrega}% na conclusão`;
+}
 
 // ── Permissão: só perfil "comercial" (ou "admin") ───────────────────────
 export async function ehComercial(db: any, colaboradorId: string): Promise<boolean> {
@@ -60,7 +76,7 @@ export async function mostrarMenuAreas(db: any, B: Bot, chatId: number, sessKey:
   ]));
 }
 
-async function mostrarMenuComercial(db: any, B: Bot, sessao: Sessao, chatId: number) {
+export async function mostrarMenuComercial(db: any, B: Bot, sessao: Sessao, chatId: number) {
   await salvarSessao(db, { ...sessao, estado: "proc_menu", dados: idBaseDe(sessao.dados || {}) });
   await enviar(B, chatId, "💼 <b>Comercial</b> — o que você quer fazer?", inline([
     [{ text: "📋 Nova proposta comercial", callback_data: "com:nova" }],
@@ -97,20 +113,141 @@ async function onTextoComercial(db: any, B: Bot, sessao: Sessao, chatId: number,
     case "com_prazo_obra": {
       const n = texto.replace(/\D/g, "");
       if (!n) { await enviar(B, chatId, "Manda só o número de dias (ex.: 15), ou toque em pular."); return; }
-      return await avancar(db, B, sessao, chatId, { prazoObraDias: n }, "com_prazo_mob",
-        "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Pode pular (padrão de 5 dias).", "com:pular_prazo_mob");
+      const perguntaMob = B.modo === "comercial"
+        ? "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Mínimo de <b>10 dias úteis</b> — pode pular (fico com 10)."
+        : "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Pode pular (padrão de 5 dias).";
+      return await avancar(db, B, sessao, chatId, { prazoObraDias: n }, "com_prazo_mob", perguntaMob, "com:pular_prazo_mob");
     }
     case "com_prazo_mob": {
       const n = texto.replace(/\D/g, "");
-      if (!n) { await enviar(B, chatId, "Manda só o número de dias (ex.: 5), ou toque em pular."); return; }
+      if (!n) { await enviar(B, chatId, "Manda só o número de dias (ex.: 10), ou toque em pular."); return; }
+      if (B.modo === "comercial" && Number(n) < 10) {
+        await enviar(B, chatId, "⚠️ A mobilização mínima é de <b>10 dias úteis</b>. Manda um número igual ou maior, ou toque em pular (fico com 10).");
+        return;
+      }
+      const perguntaValor = B.modo === "comercial"
+        ? "💰 Qual o <b>valor</b> da proposta? (ex.: \"R$ 38.500,00\")"
+        : "💰 Já tem um <b>valor</b> pra propor? Pode mandar (ex.: \"R$ 38.500,00\"), ou pular (fica \"conforme negociação\").";
       return await avancar(db, B, sessao, chatId, { prazoMobilizacaoDias: n }, "com_valor",
-        "💰 Já tem um <b>valor</b> pra propor? Pode mandar (ex.: \"R$ 38.500,00\"), ou pular (fica \"conforme negociação\").", "com:pular_valor");
+        perguntaValor, B.modo === "comercial" ? undefined : "com:pular_valor");
     }
-    case "com_valor":
+    case "com_valor": {
+      if (B.modo === "comercial") {
+        const valorNumerico = parseValorReais(texto);
+        if (!valorNumerico) { await enviar(B, chatId, "Não consegui entender esse valor. Manda algo como \"R$ 594.696,95\"."); return; }
+        return await avancar(db, B, sessao, chatId, { valorTotalTexto: texto, valorNumerico }, "com_pct_sinal",
+          "💰 Perfeito. Agora o <b>% de sinal</b> (na assinatura)? Manda só o número (ex.: 30).");
+      }
       await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: { ...sessao.dados, valor: texto } });
       return await mostrarConfirmacao(db, B, chatId, { ...sessao.dados, valor: texto });
+    }
+    case "com_pct_sinal": {
+      const n = Number(texto.replace(",", ".").replace(/[^\d.]/g, ""));
+      if (!n || n <= 0 || n >= 100) { await enviar(B, chatId, "Manda só o número do percentual de sinal (ex.: 30)."); return; }
+      return await avancar(db, B, sessao, chatId, { pctSinal: n }, "com_pct_medicao",
+        "📐 E o <b>% de medição</b> (ao longo da execução)?");
+    }
+    case "com_pct_medicao": {
+      const n = Number(texto.replace(",", ".").replace(/[^\d.]/g, ""));
+      if (!n || n <= 0 || n >= 100) { await enviar(B, chatId, "Manda só o número do percentual de medição (ex.: 40)."); return; }
+      return await avancar(db, B, sessao, chatId, { pctMedicao: n }, "com_pct_entrega",
+        "🏁 E o <b>% de entrega</b> (na conclusão)?");
+    }
+    case "com_pct_entrega": {
+      const n = Number(texto.replace(",", ".").replace(/[^\d.]/g, ""));
+      if (!n || n <= 0 || n >= 100) { await enviar(B, chatId, "Manda só o número do percentual de entrega (ex.: 30)."); return; }
+      const soma = (Number(sessao.dados?.pctSinal) || 0) + (Number(sessao.dados?.pctMedicao) || 0) + n;
+      if (Math.abs(soma - 100) > 0.01) {
+        await enviar(B, chatId, `⚠️ Sinal + Medição + Entrega precisa somar <b>100%</b> (deu ${soma}%). Manda o % de entrega certo.`);
+        return;
+      }
+      const valorFormatado = formatarValorRemuneracao(sessao.dados.valorTotalTexto, sessao.dados.pctSinal, sessao.dados.pctMedicao, n);
+      const novosDados = { ...sessao.dados, pctEntrega: n, valor: valorFormatado };
+      await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: novosDados });
+      return await mostrarConfirmacao(db, B, chatId, novosDados);
+    }
     default:
       return; // com_confirma etc — só reage a botão, texto solto é ignorado
+  }
+}
+
+// Roteiro exclusivo do bot Comercial dedicado (@cjrcomercial_bot, modo
+// "comercial") — sem menu de áreas (esse bot só atende Comercial) e sem
+// atalho pra dentro da JunIA. Separado de onMessageProcessos de propósito:
+// as regras de negócio deste bot (mobilização mínima, remuneração em 3
+// percentuais, valor de ganho na Vobi) são diferentes das do JunIA/Processos
+// (decisão da Adriana, 2026-08-04 — "estará fora da JunIA").
+export async function onMessageComercial(db: any, B: Bot, msg: any) {
+  const chat = msg.chat;
+  if (!chat || chat.type !== "private") return;
+  const userId = String(msg.from?.id || "");
+  const chatId = chat.id;
+  if (!userId) return;
+
+  if (msg.contact) {
+    if (String(msg.contact.user_id || "") !== userId) { await enviar(B, chatId, "Compartilhe o <b>seu próprio</b> contato, por favor."); return; }
+    return await identificar(db, B, userId, chatId, msg.contact.phone_number);
+  }
+
+  const sessao = await getSessao(db, B, userId);
+  if (!sessao?.dados?.colaborador_id) {
+    await enviar(B, chatId, "👋 <b>Bot Comercial — Costa Júnior</b>\n\nPreciso te identificar pelo seu telefone cadastrado primeiro. Toque em /start.");
+    return;
+  }
+  const texto = String(msg.text || "").trim();
+  if (/^\/cancelar/i.test(texto)) return await mostrarMenuComercial(db, B, sessao, chatId);
+  if (/^\/(start|menu)/i.test(texto)) return await mostrarMenuComercial(db, B, sessao, chatId);
+  if (/^\/etapa/i.test(texto) || /mudar\s+de\s+etapa/i.test(texto)) return await perguntarEtapa(db, B, sessao, chatId);
+
+  const estado = sessao.estado || "pronto";
+  if (msg.photo || msg.document) {
+    if (estado === "com_projeto" || estado === "com_planilha") return await onArquivoRoteiro(db, B, sessao, chatId, msg, estado);
+    await enviar(B, chatId, "Não esperava um arquivo agora — se quiser recomeçar, mande /cancelar.");
+    return;
+  }
+  if (!texto) return;
+  if (estado.startsWith("com_")) return await onTextoComercial(db, B, sessao, chatId, estado, texto);
+  return await mostrarMenuComercial(db, B, sessao, chatId);
+}
+
+// ── Comando "pode mudar de etapa" (Adriana, 2026-08-04) — só no bot
+// Comercial dedicado. Age sobre a ÚLTIMA oportunidade criada nesta conversa
+// (guardada em dados.ultimoIdRefurbish pelo executarProposta). ──
+async function perguntarEtapa(db: any, B: Bot, sessao: Sessao, chatId: number) {
+  const idRefurbish = sessao.dados?.ultimoIdRefurbish;
+  if (!idRefurbish) {
+    await enviar(B, chatId, "Não achei nenhuma oportunidade criada por aqui ainda nesta conversa. Gere uma proposta primeiro (/menu).");
+    return;
+  }
+  await enviar(B, chatId, `🔀 Mudar a etapa de <b>${escTg(sessao.dados?.ultimoNomeOportunidade || `oportunidade ${idRefurbish}`)}</b> — para <b>Visita</b> ou para <b>Em Orçamento</b>?`, inline([
+    [{ text: "🚶 Visita", callback_data: `etapa:visita:${idRefurbish}` }],
+    [{ text: "💰 Em Orçamento", callback_data: `etapa:orcamento:${idRefurbish}` }],
+    btnCancelar,
+  ]));
+}
+
+// Callback do comando de etapa — chamado direto pelo onCallback do
+// telegramBot.ts quando B.modo === "comercial" e data começa com "etapa:".
+export async function onCallbackEtapa(db: any, B: Bot, sessao: Sessao | null, chatId: number, data: string) {
+  if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start."); return; }
+  if (data === "cancel") { await enviar(B, chatId, "Ok, sem mudança de etapa."); return; }
+  const partes = data.split(":"); // etapa:visita:123  |  etapa:orcamento:123
+  const acao = partes[1];
+  const idRefurbish = Number(partes[2]);
+  if (!idRefurbish) { await enviar(B, chatId, "Não identifiquei qual oportunidade — recomeça com /etapa."); return; }
+  try {
+    if (acao === "visita") {
+      await vobiMudarEtapa(idRefurbish, "VISITA");
+      await enviar(B, chatId, "🚶 Etapa alterada para <b>Visita</b>. O orçamento continua como estava — nada foi enviado ao cliente.");
+      return;
+    }
+    if (acao === "orcamento") {
+      await vobiMudarEtapa(idRefurbish, "EM ORÇAMENTO");
+      await enviar(B, chatId, "💰 Etapa alterada para <b>Em Orçamento</b>. O valor de ganho já está gravado na Oportunidade.");
+      return;
+    }
+  } catch (e: any) {
+    await enviar(B, chatId, `⚠️ Não consegui confirmar a mudança de etapa na Vobi: ${escTg(e?.message || e)}. Confira manualmente por lá.`);
   }
 }
 
@@ -220,10 +357,17 @@ export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null
     "✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
   if (data === "com:pular_escopo") return await avancar(db, B, sessao, chatId, {}, "com_prazo_obra",
     "🗓️ Qual o <b>prazo de obra</b> estimado (em dias úteis)? Pode pular (padrão de 10 dias).", "com:pular_prazo_obra");
-  if (data === "com:pular_prazo_obra") return await avancar(db, B, sessao, chatId, {}, "com_prazo_mob",
-    "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Pode pular (padrão de 5 dias).", "com:pular_prazo_mob");
-  if (data === "com:pular_prazo_mob") return await avancar(db, B, sessao, chatId, {}, "com_valor",
-    "💰 Já tem um <b>valor</b> pra propor? Pode mandar, ou pular.", "com:pular_valor");
+  if (data === "com:pular_prazo_obra") {
+    const perguntaMob = B.modo === "comercial"
+      ? "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Mínimo de <b>10 dias úteis</b> — pode pular (fico com 10)."
+      : "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Pode pular (padrão de 5 dias).";
+    return await avancar(db, B, sessao, chatId, {}, "com_prazo_mob", perguntaMob, "com:pular_prazo_mob");
+  }
+  if (data === "com:pular_prazo_mob") {
+    const patch = B.modo === "comercial" ? { prazoMobilizacaoDias: "10" } : {};
+    const perguntaValor = B.modo === "comercial" ? "💰 Qual o <b>valor</b> da proposta? (ex.: \"R$ 38.500,00\")" : "💰 Já tem um <b>valor</b> pra propor? Pode mandar, ou pular.";
+    return await avancar(db, B, sessao, chatId, patch, "com_valor", perguntaValor, B.modo === "comercial" ? undefined : "com:pular_valor");
+  }
   if (data === "com:pular_valor") {
     await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: sessao.dados });
     return await mostrarConfirmacao(db, B, chatId, sessao.dados);
@@ -245,7 +389,7 @@ async function mostrarConfirmacao(db: any, B: Bot, chatId: number, dados: any) {
     resumoLinha("Escopo", dados.escopoCurto),
     resumoLinha("Detalhamento", dados.escopoDetalhado, "fica marcado p/ ajustar depois"),
     resumoLinha("Prazo de obra", dados.prazoObraDias ? `${dados.prazoObraDias} dias úteis` : undefined, "10 dias úteis"),
-    resumoLinha("Mobilização", dados.prazoMobilizacaoDias ? `${dados.prazoMobilizacaoDias} dias úteis` : undefined, "5 dias úteis"),
+    resumoLinha("Mobilização", dados.prazoMobilizacaoDias ? `${dados.prazoMobilizacaoDias} dias úteis` : undefined, B.modo === "comercial" ? "10 dias úteis" : "5 dias úteis"),
     resumoLinha("Valor", dados.valor, "conforme negociação"),
   ].join("\n");
   await enviar(B, chatId,
@@ -283,14 +427,23 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
   }
 
   let vobiMsg = "";
+  let dadosFinais = idBaseDe(d);
   if (vobiEscritaConfigurada()) {
     try {
       const r = await vobiCriarOportunidade({
         nomeCliente: d.cliente,
         escopoResumo: d.escopoCurto,
         enderecoTexto: d.endereco,
+        ...(B.modo === "comercial" && d.valorNumerico ? { valorGanho: d.valorNumerico } : {}),
       });
-      vobiMsg = `\n\n🏗️ Oportunidade criada na Vobi (id ${r.idRefurbish})${r.stepEncontrada ? "" : " — não achei a etapa \"NOVA\", conferir a etapa lá dentro"}.`;
+      const valorMsg = B.modo === "comercial"
+        ? (d.valorNumerico ? (r.valorGravado ? " Valor de ganho gravado." : " ⚠️ não consegui confirmar o valor de ganho, confira lá dentro.") : "")
+        : "";
+      vobiMsg = `\n\n🏗️ Oportunidade criada na Vobi (id ${r.idRefurbish})${r.stepEncontrada ? "" : " — não achei a etapa \"NOVA\", conferir a etapa lá dentro"}.${valorMsg}`;
+      if (B.modo === "comercial") {
+        dadosFinais = { ...dadosFinais, ultimoIdRefurbish: r.idRefurbish, ultimoNomeOportunidade: `${d.cliente} - ${d.escopoCurto}` };
+        vobiMsg += `\n\nQuando quiser mudar a etapa (Visita ou Em Orçamento), é só mandar <b>/etapa</b>.`;
+      }
     } catch (e: any) {
       vobiMsg = `\n\n⚠️ Não consegui criar a oportunidade na Vobi: ${escTg(e?.message || e)}. Crie manualmente por lá.`;
     }
@@ -306,5 +459,5 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
     await enviar(B, chatId, vobiMsg.trim());
   }
 
-  await salvarSessao(db, { ...sessao, estado: "pronto", dados: idBaseDe(d) });
+  await salvarSessao(db, { ...sessao, estado: "pronto", dados: dadosFinais });
 }
