@@ -64,11 +64,30 @@ export async function ehComercial(db: any, colaboradorId: string): Promise<boole
 const idBaseDe = (d: any) => ({
   colaborador_id: d.colaborador_id, colaborador_nome: d.colaborador_nome, colaborador_email: d.colaborador_email,
   ...(d.grupo_autorizado ? { grupo_autorizado: true } : {}),
+  // arquivos guardados sobrevivem ao "recomeçar" — foi assim que a pessoa
+  // começou a conversa (jogou os arquivos antes de abrir o menu).
+  ...(Array.isArray(d.arquivos) && d.arquivos.length ? { arquivos: d.arquivos } : {}),
 });
 
 // Quem já pode usar o roteiro: identificado por telefone OU dentro do grupo
 // liberado (nesse caso a autorização é estar no grupo).
 const jaLiberado = (d: any) => !!(d?.colaborador_id || d?.grupo_autorizado);
+
+// ── Arquivos jogados no chat ANTES de começar a proposta ────────────────
+// É o jeito natural de usar (a pessoa encaminha o projeto + a planilha e
+// espera que o bot siga dali). Antes isso era ignorado em silêncio e parecia
+// que o bot tinha morrido. Agora ficam guardados na sessão e viram um botão
+// no passo do anexo.
+type ArqGuardado = { file_id: string; nome: string; ct: string };
+const arquivosGuardados = (d: any): ArqGuardado[] => (Array.isArray(d?.arquivos) ? d.arquivos : []);
+
+function arqDaMsg(msg: any): ArqGuardado | null {
+  if (msg.document) return { file_id: msg.document.file_id, nome: msg.document.file_name || "arquivo", ct: msg.document.mime_type || "application/octet-stream" };
+  if (msg.photo?.length) return { file_id: msg.photo[msg.photo.length - 1].file_id, nome: "foto-telegram.jpg", ct: "image/jpeg" };
+  return null;
+}
+
+const ehPlanilha = (nome: string) => /\.(xlsx|xlsm|xls|csv|ods)$/i.test(nome);
 
 // Comando do Telegram — em GRUPO ele chega com o nome do bot colado
 // ("/proposta@cjrcomercial_bot"), então não dá pra comparar direto.
@@ -150,8 +169,11 @@ export async function mostrarMenuComercial(db: any, B: Bot, sessao: Sessao, chat
   ]));
 }
 
-function pergunta(texto: string, pularCb?: string) {
-  return { texto, botoes: pularCb ? inline([[{ text: "⏭️ Pular", callback_data: pularCb }], btnCancelar]) : inline([btnCancelar]) };
+function pergunta(texto: string, pularCb?: string, extras: { text: string; callback_data: string }[][] = []) {
+  const linhas = [...extras];
+  if (pularCb) linhas.push([{ text: "⏭️ Pular", callback_data: pularCb }]);
+  linhas.push(btnCancelar);
+  return { texto, botoes: inline(linhas) };
 }
 
 // Inicia o roteiro (chamado pelo botão "Nova proposta comercial" e pelo
@@ -168,9 +190,16 @@ async function onTextoComercial(db: any, B: Bot, sessao: Sessao, chatId: number,
     case "com_cliente":
       return await avancar(db, B, sessao, chatId, { cliente: texto }, "com_endereco",
         "📍 Qual o <b>endereço</b> da obra/projeto?");
-    case "com_endereco":
+    case "com_endereco": {
+      // Se a pessoa já tinha jogado os arquivos no chat antes de começar,
+      // oferece usá-los aqui em vez de pedir de novo.
+      const guardados = arquivosGuardados(sessao.dados);
+      const extras = guardados.length
+        ? [[{ text: `📎 Usar o(s) ${guardados.length} arquivo(s) que mandei`, callback_data: "com:usar_arquivos" }]]
+        : [];
       return await avancar(db, B, sessao, chatId, { endereco: texto }, "com_projeto",
-        "📎 Você já tem o <b>projeto</b> (planta/arquivo) desse serviço? Se sim, me envie o arquivo. Se não tiver, toque em pular.", "com:pular_projeto");
+        "📎 Você já tem o <b>projeto</b> (planta/arquivo) desse serviço? Se sim, me envie o arquivo. Se não tiver, toque em pular.", "com:pular_projeto", extras);
+    }
     case "com_escopo_curto":
       return await avancar(db, B, sessao, chatId, { escopoCurto: texto }, "com_escopo_detalhado",
         "📝 Quer <b>detalhar o escopo</b> (linha por linha, o que inclui)? Pode mandar o texto, ou pular.", "com:pular_escopo");
@@ -338,9 +367,8 @@ export async function onMessageComercial(db: any, B: Bot, msg: any) {
 
   if (msg.photo || msg.document) {
     if (noMeioDaProposta && (estado === "com_projeto" || estado === "com_planilha")) return await onArquivoRoteiro(db, B, ss, chatId, msg, estado);
-    if (ehGrupo) return; // arquivo solto no grupo não é comigo
-    await enviar(B, chatId, "Não esperava um arquivo agora — se quiser recomeçar, mande /cancelar.");
-    return;
+    // Fora do passo de anexo: guarda e oferece começar a proposta com eles.
+    return await guardarArquivoSolto(db, B, ss, chatId, msg);
   }
   if (!texto) return;
   if (noMeioDaProposta) return await onTextoComercial(db, B, ss, chatId, estado, texto);
@@ -451,11 +479,66 @@ export async function onMessageComercialRoteiro(db: any, B: Bot, sessao: Sessao,
   return true;
 }
 
-async function avancar(db: any, B: Bot, sessao: Sessao, chatId: number, patch: any, proximoEstado: string, textoPergunta: string, pularCb?: string) {
+async function avancar(db: any, B: Bot, sessao: Sessao, chatId: number, patch: any, proximoEstado: string, textoPergunta: string, pularCb?: string, extras?: { text: string; callback_data: string }[][]) {
   const dados = { ...sessao.dados, ...patch };
   await salvarSessao(db, { ...sessao, estado: proximoEstado, dados });
-  const { texto, botoes } = pergunta(textoPergunta, pularCb);
+  const { texto, botoes } = pergunta(textoPergunta, pularCb, extras);
   await enviar(B, chatId, texto, botoes);
+}
+
+// Arquivo mandado FORA do passo de anexo (ex.: a pessoa encaminha o projeto e
+// a planilha assim que abre o chat). Guarda na sessão e oferece começar.
+async function guardarArquivoSolto(db: any, B: Bot, sessao: Sessao, chatId: number, msg: any) {
+  const arq = arqDaMsg(msg);
+  if (!arq) return;
+  const atuais = arquivosGuardados(sessao.dados);
+  const lista = atuais.some((a) => a.file_id === arq.file_id) ? atuais : [...atuais, arq];
+  // Um álbum (vários arquivos de uma vez) chega como VÁRIAS mensagens com o
+  // mesmo media_group_id — guarda todas, mas responde só na primeira.
+  const album = String(msg.media_group_id || "");
+  const jaRespondi = !!album && album === String(sessao.dados?.ultimoAlbum || "");
+  await salvarSessao(db, {
+    ...sessao, chat_id: String(chatId),
+    dados: { ...(sessao.dados || {}), arquivos: lista.slice(-8), ultimoAlbum: album || null },
+  });
+  if (jaRespondi) return;
+  await enviar(B, chatId,
+    "📎 Recebi seus arquivos e guardei aqui.\n\nQuer que eu monte uma <b>proposta comercial</b> com eles? Eu pergunto o cliente, o endereço e o escopo — e no passo do anexo já uso esses arquivos.",
+    inline([[{ text: "📋 Começar proposta", callback_data: "com:nova" }], btnCancelar]));
+}
+
+// Sobe pro storage os arquivos que já estavam guardados e pula os 2 passos de
+// anexo. Planilha vs projeto é decidido pela extensão do arquivo.
+async function usarArquivosGuardados(db: any, B: Bot, sessao: Sessao, chatId: number) {
+  const arquivos = arquivosGuardados(sessao.dados);
+  if (!arquivos.length) {
+    await enviar(B, chatId, "Não tenho arquivo guardado por aqui. Pode me enviar agora, ou tocar em pular.");
+    return;
+  }
+  await enviar(B, chatId, "📎 Guardando os arquivos…");
+  const db2 = supabaseAdmin();
+  const patch: any = { arquivos: [] };
+  const anexados: { nome: string; path: string; campo: string }[] = [];
+  const falhou: string[] = [];
+  for (const a of arquivos) {
+    const buf = await baixarArquivoTg(B, a.file_id);
+    if (!buf) { falhou.push(a.nome); continue; }
+    const campo = ehPlanilha(a.nome) ? "planilha" : "projeto";
+    const ext = (a.nome.includes(".") ? a.nome.split(".").pop() : "")?.toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
+    const storagePath = `propostas/tmp-${Date.now()}-${campo}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+    const { error } = await db2.storage.from(COMERCIAL_BUCKET).upload(storagePath, buf, { contentType: a.ct || "application/octet-stream", upsert: false });
+    if (error) { falhou.push(a.nome); continue; }
+    anexados.push({ nome: a.nome, path: storagePath, campo });
+    // projetoPath/planilhaPath guardam UM de cada (é o que o resumo usa); a
+    // lista completa fica em arquivosAnexados p/ o engenheiro achar depois.
+    if (!patch[`${campo}Path`]) patch[`${campo}Path`] = storagePath;
+  }
+  patch.arquivosAnexados = anexados;
+  const linhas = anexados.map((a) => `• ${escTg(a.nome)} → ${a.campo === "planilha" ? "planilha" : "projeto"}`).join("\n");
+  const aviso = falhou.length ? `\n⚠️ Não consegui guardar: ${falhou.map(escTg).join(", ")}` : "";
+  await enviar(B, chatId, anexados.length ? `✅ Anexei:\n${linhas}${aviso}` : `⚠️ Não consegui guardar os arquivos.${aviso}`);
+  return await avancar(db, B, sessao, chatId, patch, "com_escopo_curto",
+    "✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
 }
 
 async function onArquivoRoteiro(db: any, B: Bot, sessao: Sessao, chatId: number, msg: any, estado: "com_projeto" | "com_planilha") {
@@ -494,6 +577,7 @@ const ESTADO_DO_BOTAO: Record<string, string> = {
   "com:pular_prazo_mob": "com_prazo_mob",
   "com:pular_valor": "com_valor",
   "com:confirmar": "com_confirma",
+  "com:usar_arquivos": "com_projeto",
 };
 
 export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null, chatId: number, userId: string, data: string) {
@@ -516,6 +600,7 @@ export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null
   }
   if (data === "area:comercial") return await mostrarMenuComercial(db, B, sessao, chatId);
   if (data === "com:nova") return await iniciarNovaProposta(db, B, sessao, chatId);
+  if (data === "com:usar_arquivos") return await usarArquivosGuardados(db, B, sessao, chatId);
   if (data === "com:pular_projeto") return await avancar(db, B, sessao, chatId, {}, "com_planilha",
     "📊 Tem uma <b>planilha de orçamento padrão</b> pra esse tipo de serviço? Envie ou pule.", "com:pular_planilha");
   if (data === "com:pular_planilha") return await avancar(db, B, sessao, chatId, {}, "com_escopo_curto",
