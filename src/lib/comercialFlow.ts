@@ -23,7 +23,7 @@
 import { escTg } from "./telegram";
 import {
   type Bot, type Sessao,
-  enviar, inline, btnCancelar,
+  enviar, inline, btnCancelar, botaoTelefone,
   getSessao, salvarSessao, identificar, baixarArquivoTg,
 } from "./telegramBot";
 import { gerarPropostaPptx, COMERCIAL_BUCKET, type DadosProposta } from "./propostaPptx";
@@ -242,7 +242,12 @@ export async function onMessageComercial(db: any, B: Bot, msg: any) {
         `${primeiro ? `<b>${escTg(primeiro)}</b>, p` : "P"}ra liberar as propostas pra você eu preciso te identificar pelo telefone cadastrado — e isso só dá pra fazer no privado.\n\nAbra o <b>@cjrcomercial_bot</b>, mande <b>/start</b> uma vez, e depois é só voltar aqui no grupo. 🙂`);
       return;
     }
-    await enviar(B, chatId, "👋 <b>Bot Comercial — Costa Júnior</b>\n\nPreciso te identificar pelo seu telefone cadastrado primeiro. Toque em /start.");
+    // O BOTÃO é obrigatório: é ele que pede o contato ao Telegram. Sem ele a
+    // pessoa fica presa num loop ("toque em /start" → mesma mensagem de novo),
+    // porque /start também cai aqui enquanto não há colaborador_id.
+    await enviar(B, chatId,
+      "👋 <b>Bot Comercial — Costa Júnior</b>\n\nPra liberar as propostas eu preciso te identificar pelo <b>telefone cadastrado na sua ficha do RH</b>.\n\nToque no botão abaixo 👇",
+      botaoTelefone);
     return;
   }
 
@@ -330,7 +335,10 @@ export async function onMessageProcessos(db: any, B: Bot, msg: any) {
 
   const sessao = await getSessao(db, B, userId);
   if (!sessao?.dados?.colaborador_id) {
-    await enviar(B, chatId, "👋 <b>Bot de Processos — Costa Júnior</b>\n\nPreciso te identificar pelo seu telefone cadastrado primeiro. Toque em /start.");
+    // Mesmo motivo do bot Comercial: sem o botão não existe como se identificar.
+    await enviar(B, chatId,
+      "👋 <b>Bot de Processos — Costa Júnior</b>\n\nPreciso te identificar pelo <b>telefone cadastrado na sua ficha do RH</b>.\n\nToque no botão abaixo 👇",
+      botaoTelefone);
     return;
   }
   const texto = String(msg.text || "").trim();
