@@ -16,7 +16,7 @@ import { registrarAcao } from "./auditoria";
 import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
 import { assinarTreinoToken } from "./treinoStorage";
-import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial } from "./comercialFlow";
+import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial, onMessageComercial, mostrarMenuComercial, onCallbackEtapa } from "./comercialFlow";
 
 const SITE_TREINO = "https://www.costajr.com.br";
 
@@ -50,7 +50,12 @@ function envVar(name: string): string {
 }
 
 // ── Identidade de cada bot ───────────────────────────────────────────────
-export type Modo = "ativo" | "adm" | "junia" | "processos";
+// "comercial" = @cjrcomercial_bot (TELEGRAM_BOT_TOKEN_COMERCIAL) — bot
+// dedicado ao time Comercial, separado do JunIA/Processos de propósito
+// (decisão da Adriana, 2026-08-04): regras de negócio próprias (mobilização
+// mínima 10 dias, remuneração em 3 percentuais, valor de ganho na Vobi,
+// comando "pode mudar de etapa") que NÃO valem para o JunIA/Processos.
+export type Modo = "ativo" | "adm" | "junia" | "processos" | "comercial";
 export type Bot = { token: string; modo: Modo; pre: string; nome: string };
 function botPorModo(modo: Modo): Bot {
   if (modo === "adm") {
@@ -61,6 +66,9 @@ function botPorModo(modo: Modo): Bot {
   }
   if (modo === "processos") {
     return { token: envVar("TELEGRAM_BOT_TOKEN_PROCESSOS"), modo, pre: "proc:", nome: "@cjr_processos_bot" };
+  }
+  if (modo === "comercial") {
+    return { token: envVar("TELEGRAM_BOT_TOKEN_COMERCIAL"), modo, pre: "comb:", nome: "@cjrcomercial_bot" };
   }
   return { token: envVar("TELEGRAM_BOT_TOKEN"), modo: "ativo", pre: "", nome: "@cjr_ativo_bot" };
 }
@@ -222,6 +230,7 @@ async function onMessage(db: any, B: Bot, msg: any) {
   }
   if (B.modo === "junia") return await onMessageJunia(db, B, msg);
   if (B.modo === "processos") return await onMessageProcessos(db, B, msg);
+  if (B.modo === "comercial") return await onMessageComercial(db, B, msg);
   const userId = String(msg.from?.id || "");
   const chatId = chat.id;
   if (!userId) return;
@@ -294,6 +303,15 @@ export async function identificar(db: any, B: Bot, userId: string, chatId: numbe
     await mostrarMenuAreas(db, B, chatId, B.pre + userId, { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null });
     return;
   }
+  if (B.modo === "comercial") {
+    if (!(await ehComercial(db, achado.id))) {
+      await enviar(B, chatId, `Oi, <b>${escTg(achado.nome)}</b>! Esse bot é exclusivo do time <b>Comercial</b>. Se precisar de acesso, fale com a Adriana.`);
+      return;
+    }
+    const sessaoAtual = await getSessao(db, B, userId);
+    if (sessaoAtual) await mostrarMenuComercial(db, B, sessaoAtual, chatId);
+    return;
+  }
   await mostrarMenu(db, B, chatId, { colaborador_id: achado.id, colaborador_nome: achado.nome, colaborador_email: achado.email || null });
 }
 
@@ -347,8 +365,9 @@ async function onCallback(db: any, B: Bot, cq: any) {
   if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gbanc|gbancok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
+  if (B.modo === "comercial" && data.startsWith("etapa:")) return await onCallbackEtapa(db, B, sessao, chatId, data);
   const ehCallbackComercial = data === "cancel" || data.startsWith("area:") || data.startsWith("com:");
-  if (B.modo === "processos" || (B.modo === "junia" && ehCallbackComercial)) return await onCallbackProcessos(db, B, sessao, chatId, userId, data);
+  if (B.modo === "processos" || B.modo === "comercial" || (B.modo === "junia" && ehCallbackComercial)) return await onCallbackProcessos(db, B, sessao, chatId, userId, data);
   if (!sessao?.dados?.colaborador_id) { await enviar(B, chatId, "Sessão expirada. Toque em /start para recomeçar.", botaoTelefone); return; }
   const dados = sessao.dados || {};
   const idBase = idBaseDe(dados);

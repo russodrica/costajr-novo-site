@@ -117,17 +117,29 @@ export type NovaOportunidade = {
   enderecoTexto?: string;
   escopoResumo: string;
   m2?: number;
+  // Nome final da Oportunidade — se informado, sobrescreve o padrão
+  // "Cliente - Escopo". Usado pelo bot Comercial dedicado para gravar no
+  // padrão CLIENTE_PROJETO (maiúsculo, igual ao nome da pasta), exigido pela
+  // skill proposta-tecnica-comercial. Sem isso, mantém o padrão do JunIA.
+  nomeOportunidade?: string;
+  // Valor de ganho (estimativa) já formatado pelo roteiro do bot Comercial —
+  // se informado, grava no campo `profits` logo após criar (ver
+  // vobiAtualizarValorGanho, mesmo campo confirmado manualmente em 2026-08-04
+  // no projeto 864/GOL — NÃO é `budget`, que é "Pretensão de investimento do
+  // cliente", um campo diferente).
+  valorGanho?: number;
 };
 
-export async function vobiCriarOportunidade(dados: NovaOportunidade): Promise<{ idRefurbish: number; idCompanyCustomer: number; stepEncontrada: boolean }> {
+export async function vobiCriarOportunidade(dados: NovaOportunidade): Promise<{ idRefurbish: number; idCompanyCustomer: number; stepEncontrada: boolean; valorGravado?: boolean }> {
   const [idEnt, idCliente, idStepNova] = await Promise.all([
     idEntidadePadrao(),
     vobiBuscarOuCriarCliente(dados.nomeCliente),
     idStepPorNome("NOVA"),
   ]);
   const descricao = dados.enderecoTexto ? `${dados.escopoResumo}\nEndereço: ${dados.enderecoTexto}` : dados.escopoResumo;
+  const nomeFinal = dados.nomeOportunidade || `${dados.nomeCliente} - ${dados.escopoResumo}`;
   const body: any = {
-    name: `${dados.nomeCliente} - ${dados.escopoResumo}`.slice(0, 190),
+    name: nomeFinal.slice(0, 190),
     idCompanyEntity: idEnt,
     idCompanyCustomer: idCliente,
     necessityDescription: descricao,
@@ -136,7 +148,70 @@ export async function vobiCriarOportunidade(dados: NovaOportunidade): Promise<{ 
   if (idStepNova != null) body.idStep = idStepNova;
   if (dados.m2) body.m2 = dados.m2;
   const criado = await vPost("/refurbish", body);
-  return { idRefurbish: criado.id, idCompanyCustomer: idCliente, stepEncontrada: idStepNova != null };
+  const resultado: { idRefurbish: number; idCompanyCustomer: number; stepEncontrada: boolean; valorGravado?: boolean } = {
+    idRefurbish: criado.id, idCompanyCustomer: idCliente, stepEncontrada: idStepNova != null,
+  };
+  if (dados.valorGanho) {
+    try {
+      await vobiAtualizarValorGanho(criado.id, dados.valorGanho);
+      resultado.valorGravado = true;
+    } catch {
+      resultado.valorGravado = false; // não derruba a criação da oportunidade por causa disso
+    }
+  }
+  return resultado;
+}
+
+// ── Valor de ganho (estimativa) — campo `profits`, CONFIRMADO em 2026-08-04.
+// ATENÇÃO: a Vobi tem outro campo parecido, `budget`, que é a tela
+// "Pretensão de investimento do cliente" — NÃO é o valor da proposta. Sempre
+// confere com GET depois de gravar (a Vobi já demonstrou PUT que responde
+// sucesso sem persistir o campo enviado). ──
+export async function vobiAtualizarValorGanho(idRefurbish: number, novoValor: number): Promise<{ confirmado: boolean; valorAntes: any; valorDepois: any }> {
+  const antes = await vGet(`/refurbish/${idRefurbish}`);
+  await vPut(`/refurbish/${idRefurbish}`, { profits: novoValor });
+  const depois = await vGet(`/refurbish/${idRefurbish}`);
+  const bateu = Math.abs(Number(depois.profits) - novoValor) < 0.01;
+  if (!bateu) {
+    throw new Error(
+      `PUT retornou sucesso mas o valor de ganho NÃO persistiu (bug conhecido da Vobi). ` +
+      `Antes=${antes.profits} Solicitado=${novoValor} Depois=${depois.profits}. Avise a Adriana, não considere concluído.`
+    );
+  }
+  return { confirmado: true, valorAntes: antes.profits, valorDepois: depois.profits };
+}
+
+// ── Mudar etapa do funil pelo NOME (ex.: "VISITA", "EM ORÇAMENTO") —
+// comando "pode mudar de etapa" do bot Comercial dedicado. ──
+export async function vobiMudarEtapa(idRefurbish: number, nomeEtapa: string): Promise<{ confirmado: boolean; idStepAntes: any; idStepDepois: any }> {
+  const idStep = await idStepPorNome(nomeEtapa);
+  if (idStep == null) throw new Error(`Etapa "${nomeEtapa}" não encontrada no funil da Vobi.`);
+  const antes = await vGet(`/refurbish/${idRefurbish}`);
+  await vPut(`/refurbish/${idRefurbish}`, { idStep });
+  const depois = await vGet(`/refurbish/${idRefurbish}`);
+  const confirmado = depois.idStep === idStep;
+  if (!confirmado) {
+    throw new Error(`PUT retornou sucesso mas a etapa NÃO persistiu (bug conhecido da Vobi). Antes=${antes.idStep} Solicitado=${idStep} Depois=${depois.idStep}. Avise a Adriana.`);
+  }
+  return { confirmado: true, idStepAntes: antes.idStep, idStepDepois: depois.idStep };
+}
+
+// ── Oficializar o nível de orçamento rascunho (tira a marca "🚧 RASCUNHO
+// (IA)"). Só chamar depois que o usuário confirmar a etapa "EM ORÇAMENTO"
+// pelo comando "pode mudar de etapa". ──
+export async function vobiOficializarOrcamento(idNivel: number, nomeFinal: string, corFinal = "#16A34A"): Promise<any> {
+  return await vPut(`/refurbish-items/${idNivel}`, { name: nomeFinal, color: corFinal });
+}
+
+async function vPut(path: string, body: any): Promise<any> {
+  const t = await token();
+  const r = await fetch(`${VOBI}${path}`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${t}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`Vobi PUT ${path}: HTTP ${r.status} ${(await r.text()).slice(0, 300)}`);
+  return r.json();
 }
 
 export type ItemOrcamentoRascunho = {
