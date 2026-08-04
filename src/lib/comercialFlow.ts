@@ -427,7 +427,7 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
   }
 
   let vobiMsg = "";
-  let dadosFinais = idBaseDe(d);
+  let dadosFinais: any = idBaseDe(d);
   if (vobiEscritaConfigurada()) {
     try {
       const r = await vobiCriarOportunidade({
