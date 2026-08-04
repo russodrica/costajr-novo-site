@@ -11,6 +11,8 @@ function env(n: string) { return (import.meta.env as any)[n] || (process.env as 
 const TOKEN_ATIVO = env("TELEGRAM_BOT_TOKEN");
 const TOKEN_ADM = env("TELEGRAM_BOT_TOKEN_ADM");
 const TOKEN_JUNIA = env("TELEGRAM_BOT_TOKEN_JUNIA");
+const TOKEN_PROCESSOS = env("TELEGRAM_BOT_TOKEN_PROCESSOS");
+const TOKEN_COMERCIAL = env("TELEGRAM_BOT_TOKEN_COMERCIAL");
 const SECRET = env("INTEGRA_TELEGRAM_SECRET");
 // Telegram NÃO segue redirecionamento: o apex (costajr.com.br) faz 307 -> www, o que
 // quebra a entrega dos updates. Forçamos o host www (que responde direto, sem redirect).
@@ -21,6 +23,8 @@ const BOTS = [
   { nome: "Ativos (@cjr_ativo_bot)", token: TOKEN_ATIVO, path: "/api/telegram/webhook" },
   { nome: "RH (@cjr_adm_bot)", token: TOKEN_ADM, path: "/api/telegram/webhook-adm" },
   { nome: "JunIA (@CjrJunIA_bot)", token: TOKEN_JUNIA, path: "/api/telegram/webhook-junia" },
+  { nome: "Processos (@cjr_processos_bot)", token: TOKEN_PROCESSOS, path: "/api/telegram/webhook-processos" },
+  { nome: "Comercial (@cjrcomercial_bot)", token: TOKEN_COMERCIAL, path: "/api/telegram/webhook-comercial" },
 ];
 
 // POST → setWebhook nos dois bots configurados

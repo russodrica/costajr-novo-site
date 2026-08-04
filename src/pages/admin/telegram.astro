@@ -30,6 +30,11 @@ if (claims.role !== "admin") return Astro.redirect("/admin");
       <p style="margin:6px 0 0;font-size:.9rem;line-height:1.6;color:var(--ink-mid)">Qualquer colaborador pergunta no privado e a <strong>JunIA responde na hora</strong> (pela base). Se ela não souber, a pergunta cai no <strong>grupo da Base</strong>; vocês respondem a mensagem por lá, o bot <strong>devolve a resposta pra quem perguntou</strong> e propõe adicionar à base. Requer a var <code>TELEGRAM_BOT_TOKEN_JUNIA</code> na Vercel.</p>
     </div>
 
+    <div style="background:#EFFDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <strong style="font-size:.95rem">💼 Bot Comercial — <code>@cjrcomercial_bot</code> (só time Comercial)</strong>
+      <p style="margin:6px 0 0;font-size:.9rem;line-height:1.6;color:var(--ink-mid)">Bot dedicado do Comercial: <strong>Nova proposta comercial</strong> com regras próprias (mobilização mínima de 10 dias úteis, remuneração em 3 percentuais que somam 100%, valor de ganho gravado na Vobi) e comando <strong>/etapa</strong> (muda a oportunidade para Visita ou Em Orçamento). Requer a var <code>TELEGRAM_BOT_TOKEN_COMERCIAL</code> na Vercel.</p>
+    </div>
+
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-primary" id="btnAtivar" onclick="ativar()">⚡ Ativar / Reativar os bots</button>
       <button class="btn btn-secondary" id="btnStatus" onclick="verStatus()">🔍 Ver status</button>
