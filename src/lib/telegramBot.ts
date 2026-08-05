@@ -7,7 +7,7 @@
 //        enviar documento (anexa na ficha) + alimentar a base (JunIA).
 // Sessões separadas por bot via prefixo na chave (não colidem).
 // ════════════════════════════════════════════════════════════════════════
-import { supabaseAdmin } from "./supabase";
+import { supabaseAdmin, supabaseAdmin2 } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
 import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
@@ -993,7 +993,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const ehFatura = d.tipo === "fatura";
     const pastaPrefixo = ehFatura ? "faturas" : "extratos";
     const newPath = `${pastaPrefixo}/${d.ano}/${String(d.mes).padStart(2, "0")}/${bancoSlug}/${Date.now()}.${ext}`;
-    const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
+    const { error: eUp } = await supabaseAdmin2().storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
     if (eUp) { await enviar(B, chatId, "❌ Falha ao arquivar: " + escTg(eUp.message)); return; }
     const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
     let row: any = null, dbErr: any = null;
@@ -1006,7 +1006,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
         ano: d.ano, mes: d.mes, banco: d.banco, storage_path: newPath, nome_arquivo: d.doc_nome, criado_por: d.autor,
       }).select().single());
     }
-    if (dbErr) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não registrou: " + escTg(dbErr.message)); return; }
+    if (dbErr) { await supabaseAdmin2().storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não registrou: " + escTg(dbErr.message)); return; }
     await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
     const entidade = ehFatura ? "doc_cartao_faturas" : "doc_extratos_bancarios";
     const tipoDesc = ehFatura ? "fatura" : "extrato";
@@ -1115,7 +1115,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const buf = Buffer.from(await blob.arrayBuffer());
     const ext = d.doc_path.split(".").pop() || "pdf";
     const newPath = `${d.emp_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error: eUp } = await db.storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
+    const { error: eUp } = await supabaseAdmin2().storage.from("doc-empresa").upload(newPath, buf, { contentType: d.ct || "application/octet-stream", upsert: false });
     if (eUp) { await enviar(B, chatId, "❌ Falha ao mover o arquivo: " + escTg(eUp.message)); return; }
     let competenciaEmp = extrairCompetenciaDoc(d.doc_nome, d.ia_nome);
     // doc MENSAL (ex.: "ÚLTIMOS 12 MESES"): se veio só o ANO (ou nada), usa o mês atual como
@@ -1124,7 +1124,7 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
       competenciaEmp = new Date().toISOString().slice(0, 7);
     }
     const { data: row, error } = await db.from("doc_empresa_arquivos").insert({ doc_id: d.emp_id, nome: d.doc_nome, storage_path: newPath, criado_por: d.autor, ...(competenciaEmp ? { competencia: competenciaEmp } : {}) }).select().single();
-    if (error) { await db.storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
+    if (error) { await supabaseAdmin2().storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
     await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
     await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
       acao: "criar", entidade: "doc_empresa_arquivos", registro_id: row?.id ?? null,

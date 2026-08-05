@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../lib/auth";
-import { supabaseAdmin } from "../../../../../lib/supabase";
+import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
 import { registrarAcao, excluirComLixeira } from "../../../../../lib/auditoria";
 import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 
@@ -19,7 +19,7 @@ export const GET: APIRoute = async ({ request, params }) => {
     const db = supabaseAdmin();
     const { data: row } = await db.from("doc_emprestimos").select("storage_path").eq("id", params.id!).maybeSingle();
     if (!row?.storage_path) return jsonErr(404, "Sem contrato anexado.");
-    const { data, error } = await db.storage.from("doc-empresa").createSignedUrl(row.storage_path, 600);
+    const { data, error } = await supabaseAdmin2().storage.from("doc-empresa").createSignedUrl(row.storage_path, 600);
     if (error || !data?.signedUrl) return jsonErr(500, error?.message || "Falha ao gerar link.");
     return new Response(null, { status: 302, headers: { Location: data.signedUrl } });
   } catch (e: any) {
@@ -63,7 +63,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     const db = supabaseAdmin();
     const { data: row } = await db.from("doc_emprestimos").select("*").eq("id", params.id!).maybeSingle();
     if (!row) return jsonErr(404, "Não encontrado.");
-    if (row.storage_path) await db.storage.from("doc-empresa").remove([row.storage_path]).catch(() => {});
+    if (row.storage_path) await supabaseAdmin2().storage.from("doc-empresa").remove([row.storage_path]).catch(() => {});
     await excluirComLixeira(db, { req: request, admin }, {
       tabela: "doc_emprestimos", idCol: "id", id: params.id!,
       descricao: `Excluiu ${row.tipo}: ${row.descricao}`,

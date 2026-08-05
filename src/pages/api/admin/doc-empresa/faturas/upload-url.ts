@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../lib/auth";
-import { supabaseAdmin } from "../../../../../lib/supabase";
+import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
 
 export const prerender = false;
 const PERFIS = ["admin", "financeiro", "juridico"];
@@ -25,7 +25,7 @@ export const POST: APIRoute = async ({ request }) => {
     const db = supabaseAdmin();
     const sl = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const path = `faturas/${ano}/${String(mes).padStart(2, "0")}/${slug(cartao)}/${sl}.${ext}`;
-    const { data, error } = await db.storage.from("doc-empresa").createSignedUploadUrl(path);
+    const { data, error } = await supabaseAdmin2().storage.from("doc-empresa").createSignedUploadUrl(path);
     if (error) return jsonErr(500, error.message);
     return jsonOk({ signed_url: data.signedUrl, path, nome_original: nomeOriginal });
   } catch (e: any) {

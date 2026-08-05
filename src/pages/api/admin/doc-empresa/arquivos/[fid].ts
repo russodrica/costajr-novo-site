@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../lib/auth";
-import { supabaseAdmin } from "../../../../../lib/supabase";
+import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
@@ -31,7 +31,7 @@ export const GET: APIRoute = async ({ request, params }) => {
         descricao: `Fornecedor ${admin.email} baixou "${(arq as any).nome}"`,
       }).catch(() => {});
     }
-    const { data: assinada, error } = await db.storage.from("doc-empresa").createSignedUrl(arq.storage_path, 600);
+    const { data: assinada, error } = await supabaseAdmin2().storage.from("doc-empresa").createSignedUrl(arq.storage_path, 600);
     if (error || !assinada?.signedUrl) return jsonErr(500, error?.message || "Falha ao assinar URL");
     return new Response(null, { status: 302, headers: { location: assinada.signedUrl, "cache-control": "no-store" } });
   } catch (e: any) {
@@ -75,7 +75,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       if (destinoPeriodico && semCompetencia) { update.arquivado = true; update.arquivado_em = new Date().toISOString(); }
       let storageMovido = false;
       if (oldPath && base && newPath !== oldPath) {
-        const { error: mvErr } = await db.storage.from("doc-empresa").move(oldPath, newPath);
+        const { error: mvErr } = await supabaseAdmin2().storage.from("doc-empresa").move(oldPath, newPath);
         if (!mvErr) { update.storage_path = newPath; storageMovido = true; }
       }
       const { error } = await db.from("doc_empresa_arquivos").update(update).eq("id", params.fid!);
@@ -115,7 +115,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     if (!arq) return jsonErr(404, "Arquivo não encontrado");
     const { error } = await db.from("doc_empresa_arquivos").delete().eq("id", params.fid!);
     if (error) return jsonErr(400, error.message);
-    await db.storage.from("doc-empresa").remove([arq.storage_path]).catch(() => {});
+    await supabaseAdmin2().storage.from("doc-empresa").remove([arq.storage_path]).catch(() => {});
     await registrarAcao(db, { req: request, admin }, {
       acao: "excluir", entidade: "doc_empresa_arquivos", registro_id: params.fid!,
       descricao: `Removeu o anexo "${arq.nome}"`, dados: arq,

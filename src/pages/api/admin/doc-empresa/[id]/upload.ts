@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../lib/auth";
-import { supabaseAdmin } from "../../../../../lib/supabase";
+import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
@@ -73,7 +73,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 
     const storagePath = `${docId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const bytes = await arquivo.arrayBuffer();
-    const { error: errUp } = await db.storage.from("doc-empresa").upload(storagePath, bytes, { contentType: fileCt, upsert: false });
+    const { error: errUp } = await supabaseAdmin2().storage.from("doc-empresa").upload(storagePath, bytes, { contentType: fileCt, upsert: false });
     if (errUp) return jsonErr(500, `Falha no envio do arquivo: ${errUp.message}`);
 
     const { data, error } = await db
@@ -82,7 +82,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       .select()
       .single();
     if (error) {
-      await db.storage.from("doc-empresa").remove([storagePath]).catch(() => {});
+      await supabaseAdmin2().storage.from("doc-empresa").remove([storagePath]).catch(() => {});
       return jsonErr(400, error.message);
     }
     await registrarAcao(db, { req: request, admin }, {
