@@ -897,7 +897,7 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
   // nome do arquivo (ex.: legenda "junho/2026" corrige um arquivo com outro mês no nome).
   const legendaMsg = (msg.caption || "").trim();
   const textoDetect = `${legendaMsg} ${nome} ${textoConteudo || ""}`.trim();
-  const extrato = detectarExtratoBancario(textoDetect, legendaMsg);
+  const extrato = detectarExtratoBancario(textoDetect, legendaMsg, nome);
   if (extrato) {
     const token = Date.now().toString(36);
     const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];

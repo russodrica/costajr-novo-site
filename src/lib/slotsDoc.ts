@@ -126,7 +126,7 @@ const BANCOS_MAP: [RegExp, string][] = [
 export function extrairMesAno(texto: string): { mes: number; ano: number } | null {
   const raw = String(texto || "");
   const t = norm(raw);
-  let m = raw.match(/\b(20\d{2})[_\-](0?[1-9]|1[0-2])(?:[_\-]\d{1,2})?\b/);
+  let m = raw.match(/(?<![0-9])(20\d{2})[_\-](0?[1-9]|1[0-2])(?:[_\-]\d{1,2})?(?![0-9])/);
   if (m) return { ano: Number(m[1]), mes: Number(m[2]) };
   for (const [nomeMes, num] of Object.entries(MESES_PT)) {
     const re = new RegExp(`\\b${nomeMes}\\b[\\s/\\-]*(20\\d{2}|[23]\\d)\\b`, "i");
@@ -143,18 +143,38 @@ export function extrairMesAno(texto: string): { mes: number; ano: number } | nul
   return null;
 }
 
-export function detectarExtratoBancario(texto: string, legenda = ""): { banco: string; mes: number; ano: number; tipo: "extrato" | "fatura" } | null {
+/** Acha o banco/cartão canônico num texto (ou null). Ordem da lista = ordem de teste. */
+function bancoNoTexto(texto: string): string | null {
   const t = norm(texto);
-  const ehFatura = /fatura|\bcartao\b|\bfat\b/.test(t);
-  let banco: string | null = null;
-  for (const [re, nome] of BANCOS_MAP) { if (re.test(t)) { banco = nome; break; } }
-  if (!banco) return null;
-  // mês/ano: a LEGENDA digitada tem prioridade sobre o nome do arquivo/conteúdo
-  const ma = (legenda ? extrairMesAno(legenda) : null) || extrairMesAno(texto);
-  if (!ma) return null;
-  // Banco + data suficientes — o card de confirmação deixa o usuário corrigir/descartar
-  return { banco, mes: ma.mes, ano: ma.ano, tipo: ehFatura ? "fatura" : "extrato" };
+  if (!t.trim()) return null;
+  for (const [re, nome] of BANCOS_MAP) if (re.test(t)) return nome;
+  return null;
 }
+
+/**
+ * Detecta extrato/fatura. A LEGENDA que a pessoa digitou manda em tudo:
+ * banco, período e tipo. Só quando ela não diz é que se olha o nome do arquivo e,
+ * por último, o conteúdo do PDF. (Antes o banco saía pela ordem da lista interna:
+ * um PDF do Nubank que citasse "Caixa Econômica" no corpo virava Caixa.)
+ */
+export function detectarExtratoBancario(texto: string, legenda = "", nomeArquivo = ""): { banco: string; mes: number; ano: number; tipo: "extrato" | "fatura" } | null {
+  const banco = bancoNoTexto(legenda) || bancoNoTexto(nomeArquivo) || bancoNoTexto(texto);
+  if (!banco) return null;
+
+  // período: legenda > nome do arquivo > conteúdo
+  const ma = (legenda ? extrairMesAno(legenda) : null) || (nomeArquivo ? extrairMesAno(nomeArquivo) : null) || extrairMesAno(texto);
+  if (!ma) return null;
+
+  // tipo: se a legenda disser, vale; senão olha o resto do texto
+  const lg = norm(legenda);
+  let tipo: "extrato" | "fatura";
+  if (/\bextrato\b/.test(lg)) tipo = "extrato";
+  else if (/fatura|\bcartao\b|\bfat\b/.test(lg)) tipo = "fatura";
+  else tipo = /fatura|\bcartao\b|\bfat\b/.test(norm(texto)) ? "fatura" : "extrato";
+
+  return { banco, mes: ma.mes, ano: ma.ano, tipo };
+}
+
 
 
 // Casa um texto (nome do arquivo / conteúdo) com a lista de colaboradores (ou empresas)
