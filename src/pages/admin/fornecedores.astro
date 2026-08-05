@@ -52,6 +52,7 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
                   ? <button class="btn btn-outline btn-sm" onclick={`acaoForn('${f.id}','bloquear', this)`}>Bloquear</button>
                   : <button class="btn btn-success btn-sm" onclick={`acaoForn('${f.id}','aprovar', this)`}>Aprovar</button>}
                 <button class="btn btn-outline btn-sm" onclick={`verAtividade('${f.id}', ${JSON.stringify(f.display_name || "")})`}>📋 Atividade</button>
+                <button class="btn btn-outline btn-sm" onclick={`verBloqueados('${f.id}', ${JSON.stringify(f.display_name || "")})`} title="Conferir o que esta pessoa NÃO enxerga">🔒 O que está bloqueado</button>
                 <button class="btn btn-secondary btn-sm" onclick={`acaoForn('${f.id}','reset_senha', this)`}>Nova senha</button>
                 <button class="btn btn-danger btn-sm" onclick={`excluirForn('${f.id}', ${JSON.stringify(f.display_name || "")}, this)`}>Excluir</button>
               </td>
@@ -82,6 +83,15 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
   </div>
 
   <!-- Modal: atividade (acessos + downloads) -->
+  <div class="modal-overlay" id="modalBloq">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header"><h2 id="bloqTitulo">🔒 O que está bloqueado</h2><button class="modal-close" onclick="fecharBloq()">✕</button></div>
+      <div style="padding:16px 24px;max-height:78vh;overflow:auto" id="bloqBody">
+        <p style="color:#9CA3AF">Carregando…</p>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalAtiv">
     <div class="modal-box" style="max-width:640px">
       <div class="modal-header"><h2 id="ativTitulo">📋 Atividade</h2><button class="modal-close" onclick="fecharAtiv()">✕</button></div>
@@ -182,6 +192,50 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
           <div style="font-weight:700;margin:14px 0 6px">⬇️ Documentos baixados</div>${downloadsHtml}`;
       } catch { body.innerHTML = `<div class="alert alert-error">Falha de rede.</div>`; }
     }
-    Object.assign(window, { abrirNovoForn, fecharForn, acaoForn, excluirForn, verAtividade, fecharAtiv });
+    // 🔒 Conferência: o que ESTA pessoa de fora não enxerga (e o que ainda vê).
+    // Usa a mesma regra da tela e do download (src/lib/sigilo.ts) — se aparece aqui
+    // como bloqueado, está bloqueado de verdade, inclusive por link direto.
+    function fecharBloq() { overlayF("modalBloq").classList.remove("open"); }
+    async function verBloqueados(id: string, nome: string) {
+      (document.getElementById("bloqTitulo") as HTMLElement).textContent = `🔒 O que está bloqueado — ${nome}`;
+      (document.getElementById("bloqBody") as HTMLElement).innerHTML = `<p style="color:#9CA3AF">Carregando…</p>`;
+      overlayF("modalBloq").classList.add("open");
+      try {
+        const r = await fetch(`/api/admin/fornecedores/${id}/bloqueados`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Não deu para carregar");
+        const esc = (t: any) => String(t == null ? "" : t).replace(/</g, "&lt;");
+        const bEx = d.bloqueados?.extratos || [];
+        const bArq = d.bloqueados?.arquivos || [];
+        const lEx = d.liberadosNaMao?.extratos || [];
+        const lArq = d.liberadosNaMao?.arquivos || [];
+        const rs = d.resumo || {};
+        const lista = (arr: any[], vazio: string) => arr.length
+          ? `<ul style="margin:6px 0 0;padding-left:20px;font-size:13px;color:#374151">${arr.map((x: any) => `<li style="margin:2px 0">${esc(x.label)}${x.motivo === "banco" ? ` <span style="color:#9CA3AF;font-size:11.5px">(pelo banco)</span>` : ""}</li>`).join("")}</ul>`
+          : `<p style="margin:6px 0 0;color:#9CA3AF;font-size:13px">${vazio}</p>`;
+        let html = `<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px;color:#075985">
+            Esta pessoa enxerga <b>${rs.extratosVisiveis ?? 0}</b> de <b>${rs.extratosTotal ?? 0}</b> extratos e
+            <b>${rs.arquivosVisiveis ?? 0}</b> de <b>${rs.arquivosTotal ?? 0}</b> arquivos da empresa.
+          </div>`;
+        if ((d.bancosEscondidos || []).length) {
+          html += `<div style="margin-bottom:14px"><b style="font-size:13.5px">🏦 Bancos escondidos por regra geral</b>
+            <p style="margin:4px 0 0;font-size:13px;color:#374151">${(d.bancosEscondidos || []).map(esc).join(", ")}</p>
+            <p style="margin:2px 0 0;font-size:12px;color:#9CA3AF">Vale para tudo desses bancos, inclusive o que for anexado depois.</p></div>`;
+        }
+        html += `<div style="margin-bottom:14px"><b style="font-size:13.5px">🙈 Extratos que ela NÃO vê (${bEx.length})</b>${lista(bEx, "Nenhum — ela vê todos os extratos.")}</div>`;
+        html += `<div style="margin-bottom:14px"><b style="font-size:13.5px">🙈 Arquivos da empresa que ela NÃO vê (${bArq.length})</b>${lista(bArq, "Nenhum — ela vê todos os arquivos.")}</div>`;
+        if (lEx.length || lArq.length) {
+          html += `<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;padding:10px 12px">
+            <b style="font-size:13.5px;color:#065F46">✅ Liberado só para ela (exceções)</b>
+            ${lista([...lEx, ...lArq], "")}
+            <p style="margin:6px 0 0;font-size:12px;color:#047857">São documentos restritos que você abriu especificamente para esta pessoa.</p></div>`;
+        }
+        html += `<p style="margin:14px 0 0;font-size:12px;color:#9CA3AF">Para mudar, use o botão de acesso externo ao lado de cada documento em Documentos Bancários / Documentos da Empresa.</p>`;
+        (document.getElementById("bloqBody") as HTMLElement).innerHTML = html;
+      } catch (e: any) {
+        (document.getElementById("bloqBody") as HTMLElement).innerHTML = `<div class="alert alert-error">${String(e?.message || "Erro").replace(/</g, "&lt;")}</div>`;
+      }
+    }
+    Object.assign(window, { abrirNovoForn, fecharForn, acaoForn, excluirForn, verAtividade, fecharAtiv, verBloqueados, fecharBloq });
   </script>
 </Admin>
