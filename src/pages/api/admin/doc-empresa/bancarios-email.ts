@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../lib/auth";
-import { supabaseAdmin } from "../../../../lib/supabase";
+import { supabaseAdmin, supabaseAdmin2 } from "../../../../lib/supabase";
 import { enviarEmailComAnexo } from "../../../../lib/mailer";
 import { registrarAcao } from "../../../../lib/auditoria";
 import { bloqueioSeSemLeitura } from "../../../../lib/permissoes";
@@ -62,7 +62,7 @@ export const POST: APIRoute = async ({ request }) => {
     const anexos: Array<{ filename: string; content: Buffer }> = [];
     let total = 0;
     for (const r of rows) {
-      const { data: blob, error } = await db.storage.from(BUCKET).download(r.storage_path);
+      const { data: blob, error } = await supabaseAdmin2().storage.from(BUCKET).download(r.storage_path);
       if (error || !blob) continue;
       const buf = Buffer.from(await blob.arrayBuffer());
       total += buf.length;

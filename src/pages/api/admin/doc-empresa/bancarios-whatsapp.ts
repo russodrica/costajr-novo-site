@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../lib/auth";
-import { supabaseAdmin } from "../../../../lib/supabase";
+import { supabaseAdmin, supabaseAdmin2 } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
 import { bloqueioSeSemLeitura } from "../../../../lib/permissoes";
 
@@ -45,7 +45,7 @@ export const POST: APIRoute = async ({ request }) => {
     const linhas: string[] = [];
     const labels: string[] = [];
     for (const r of rows) {
-      const { data: signed } = await db.storage.from(BUCKET).createSignedUrl(r.storage_path, EXPIRA);
+      const { data: signed } = await supabaseAdmin2().storage.from(BUCKET).createSignedUrl(r.storage_path, EXPIRA);
       if (!signed?.signedUrl) continue;
       labels.push(r.label);
       linhas.push(`📄 ${seguro(r.label)}\n${signed.signedUrl}`);
