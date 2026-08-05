@@ -26,9 +26,8 @@ import {
   enviar, inline, btnCancelar, botaoTelefone, tg,
   getSessao, salvarSessao, identificar, baixarArquivoTg,
 } from "./telegramBot";
-import { gerarPropostaPptx, COMERCIAL_BUCKET, type DadosProposta } from "./propostaPptx";
+import { gerarPropostaPptx, type DadosProposta } from "./propostaPptx";
 import { vobiEscritaConfigurada, vobiCriarOportunidade, vobiMudarEtapa } from "./vobiEscrita";
-import { supabaseAdmin } from "./supabase";
 import { gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 
 // Converte texto livre em reais ("R$ 594.696,95", "594696,95", "594696.95")
@@ -89,6 +88,12 @@ function arqDaMsg(msg: any): ArqGuardado | null {
 }
 
 const ehPlanilha = (nome: string) => /\.(xlsx|xlsm|xls|csv|ods)$/i.test(nome);
+
+// Arquivos que vão no serviço do orçamento (só a referência do Telegram).
+const dadosFinais_arquivos = (d: any) =>
+  (Array.isArray(d?.arquivosAnexados) ? d.arquivosAnexados : [])
+    .filter((a: any) => a?.file_id)
+    .map((a: any) => ({ file_id: a.file_id, nome: a.nome, ct: a.ct, campo: a.campo }));
 
 // "ainda não tenho preço" — vira "conforme negociação" em vez de travar.
 const SEM_VALOR = /^\s*(n[ãa]o\s*(tenho|tem|sei|h[áa])|sem\s*valor|a\s*(definir|combinar)|ainda\s*n[ãa]o|conforme\s*negocia|pular|-)\s*$/i;
@@ -647,37 +652,29 @@ REGRAS:
   } catch { return null; }
 }
 
-// Sobe pro storage os arquivos que já estavam guardados e pula os 2 passos de
-// anexo. Planilha vs projeto é decidido pela extensão do arquivo.
-// Baixa, guarda no storage E LÊ os arquivos. Devolve o patch pra sessão
-// (caminhos + o que a IA identificou) — usado tanto por quem joga os arquivos
-// antes de começar quanto por quem anexa no meio do roteiro.
+// LÊ os arquivos (sem guardar em nuvem nenhuma) e devolve o patch pra sessão.
+// REGRA DA ADRIANA (05/08/2026): "não é pra subir isso pra nenhuma nuvem" — o
+// arquivo fica no Telegram e vai direto pra pasta dela (`_CLAUDE COMERCIAL`)
+// quando o Claude vier buscar pelo /api/integra/comercial-jobs. Aqui os bytes
+// só passam pela memória pra extrair o texto; nada é persistido.
 async function anexarEAnalisar(db: any, B: Bot, chatId: number, arquivos: ArqGuardado[]): Promise<any> {
-  const db2 = supabaseAdmin();
   const patch: any = { arquivos: [], analisado: true };
-  const anexados: { nome: string; path: string; campo: string }[] = [];
+  const anexados: { file_id: string; nome: string; ct: string; campo: string }[] = [];
   const falhou: string[] = [];
   const trechos: { nome: string; texto: string }[] = [];
   for (const a of arquivos) {
     const buf = await baixarArquivoTg(B, a.file_id);
     if (!buf) { falhou.push(a.nome); continue; }
     const campo = ehPlanilha(a.nome) ? "planilha" : "projeto";
-    const ext = (a.nome.includes(".") ? a.nome.split(".").pop() : "")?.toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
-    const storagePath = `propostas/tmp-${Date.now()}-${campo}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
-    const { error } = await db2.storage.from(COMERCIAL_BUCKET).upload(storagePath, buf, { contentType: a.ct || "application/octet-stream", upsert: false });
-    if (error) { falhou.push(a.nome); continue; }
-    anexados.push({ nome: a.nome, path: storagePath, campo });
-    // projetoPath/planilhaPath guardam UM de cada (é o que o resumo usa); a
-    // lista completa fica em arquivosAnexados p/ o engenheiro achar depois.
-    if (!patch[`${campo}Path`]) patch[`${campo}Path`] = storagePath;
+    anexados.push({ file_id: a.file_id, nome: a.nome, ct: a.ct, campo });
     const texto = await textoDoArquivo(buf, a.nome, a.ct);
     if (texto) trechos.push({ nome: a.nome, texto });
   }
   patch.arquivosAnexados = anexados;
 
   const linhas = anexados.map((a) => `• ${escTg(a.nome)} → ${a.campo === "planilha" ? "planilha" : "projeto"}`).join("\n");
-  const aviso = falhou.length ? `\n⚠️ Não consegui guardar: ${falhou.map(escTg).join(", ")}` : "";
-  await enviar(B, chatId, anexados.length ? `📎 Anexei:\n${linhas}${aviso}` : `⚠️ Não consegui guardar os arquivos.${aviso}`);
+  const aviso = falhou.length ? `\n⚠️ Não consegui baixar: ${falhou.map(escTg).join(", ")}` : "";
+  await enviar(B, chatId, anexados.length ? `📎 Arquivos recebidos:\n${linhas}${aviso}` : `⚠️ Não consegui receber os arquivos.${aviso}`);
 
   if (!trechos.length) {
     if (anexados.length) await enviar(B, chatId, "🔎 Não consegui ler o conteúdo (os arquivos parecem ser só imagem/escaneados) — vou te perguntar item por item.");
@@ -724,22 +721,30 @@ async function onArquivoRoteiro(db: any, B: Bot, sessao: Sessao, chatId: number,
   await enviar(B, chatId, "📎 Recebendo…");
   const buf = await baixarArquivoTg(B, fileId);
   if (!buf) { await enviar(B, chatId, "❌ Não consegui baixar o arquivo. Tente de novo, ou pule."); return; }
-  const db2 = supabaseAdmin();
-  const ext = (nome.includes(".") ? nome.split(".").pop() : "")?.toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
+  // Nada vai pra nuvem: guarda só a referência do Telegram + lê o texto.
   const campo = estado === "com_projeto" ? "projeto" : "planilha";
-  const storagePath = `propostas/tmp-${Date.now()}-${campo}.${ext}`;
-  const { error } = await db2.storage.from(COMERCIAL_BUCKET).upload(storagePath, buf, { contentType: ct, upsert: false });
-  const patch: any = {};
-  if (!error) patch[`${campo}Path`] = storagePath;
+  const anexados = [...(sessao.dados?.arquivosAnexados || []), { file_id: fileId, nome, ct, campo }];
+  const patch: any = { arquivosAnexados: anexados };
+  const texto = await textoDoArquivo(buf, nome, ct);
+  if (texto) {
+    const achado = await extrairDadosDaProposta([{ nome, texto }]);
+    if (achado) {
+      const sug: any = { ...(sessao.dados?.sug || {}) };
+      if (achado.cliente && !sug.cliente) sug.cliente = String(achado.cliente).trim();
+      if (achado.endereco && !sug.endereco) sug.endereco = String(achado.endereco).trim();
+      if (achado.escopo_curto && !sug.escopoCurto) sug.escopoCurto = String(achado.escopo_curto).trim();
+      if (achado.escopo_detalhado && !sug.escopoDetalhado) sug.escopoDetalhado = String(achado.escopo_detalhado).trim();
+      if (achado.valor && !sug.valor) sug.valor = String(achado.valor).trim();
+      patch.sug = sug;
+    }
+  }
   if (estado === "com_projeto") {
     return await avancar(db, B, sessao, chatId, patch, "com_planilha",
-      error ? "⚠️ Não consegui guardar o projeto, mas seguimos — você anexa depois direto na Vobi.\n\n📊 Tem uma <b>planilha de orçamento padrão</b> pra esse tipo de serviço? Envie ou pule."
-            : "✅ Projeto guardado — o engenheiro revisa depois.\n\n📊 Tem uma <b>planilha de orçamento padrão</b> pra esse tipo de serviço? Envie ou pule.",
+      "✅ Projeto recebido.\n\n📊 Tem uma <b>planilha de orçamento padrão</b> pra esse tipo de serviço? Envie ou pule.",
       "com:pular_planilha");
   }
   return await avancar(db, B, sessao, chatId, patch, "com_escopo_curto",
-    error ? "⚠️ Não consegui guardar a planilha, mas seguimos.\n\n✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):"
-          : "✅ Planilha guardada.\n\n✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
+    "✅ Planilha recebida.\n\n✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
 }
 
 // ── Callbacks (botões) ──────────────────────────────────────────────────
@@ -809,8 +814,8 @@ async function mostrarConfirmacao(db: any, B: Bot, chatId: number, dados: any) {
   const linhas = [
     resumoLinha("Cliente", dados.cliente),
     resumoLinha("Endereço", dados.endereco),
-    resumoLinha("Projeto anexado", dados.projetoPath ? "sim" : undefined, "sem projeto anexado"),
-    resumoLinha("Planilha padrão", dados.planilhaPath ? "sim" : undefined, "sem planilha"),
+    resumoLinha("Projeto anexado", (dados.arquivosAnexados || []).some((a: any) => a.campo === "projeto") ? "sim" : undefined, "sem projeto anexado"),
+    resumoLinha("Planilha padrão", (dados.arquivosAnexados || []).some((a: any) => a.campo === "planilha") ? "sim" : undefined, "sem planilha"),
     resumoLinha("Escopo", dados.escopoCurto),
     resumoLinha("Detalhamento", dados.escopoDetalhado, "fica marcado p/ ajustar depois"),
     resumoLinha("Prazo de obra", dados.prazoObraDias ? `${dados.prazoObraDias} dias úteis` : undefined, "10 dias úteis"),
@@ -882,6 +887,36 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
     await enviar(B, chatId, `✅ Pronto! Baixe o PDF a partir do PowerPoint e envie ao cliente.${pend}${vobiMsg}`);
   } else if (vobiMsg) {
     await enviar(B, chatId, vobiMsg.trim());
+  }
+
+  // ── Registra o SERVIÇO pro Claude montar o orçamento ────────────────────
+  // A Vercel não alcança a pasta da Adriana (`_CLAUDE COMERCIAL`), então aqui
+  // só fica o registro (texto + file_id); o Claude vem buscar pelo endpoint
+  // /api/integra/comercial-jobs, baixa os arquivos e salva direto na pasta.
+  const arquivosJob = dadosFinais_arquivos(d);
+  if (arquivosJob.length) {
+    try {
+      const jobId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      await salvarSessao(db, {
+        telegram_user_id: "jobcom:" + jobId,
+        chat_id: String(chatId),
+        estado: "pendente",
+        dados: {
+          chat_id: chatId,
+          solicitante: d.colaborador_nome || null,
+          proposta: {
+            cliente: d.cliente, endereco: d.endereco,
+            escopoCurto: d.escopoCurto, escopoDetalhado: d.escopoDetalhado,
+            prazoObraDias: d.prazoObraDias, prazoMobilizacaoDias: d.prazoMobilizacaoDias,
+            valor: d.valor, valorNumerico: d.valorNumerico ?? null,
+            pctSinal: d.pctSinal ?? null, pctMedicao: d.pctMedicao ?? null, pctEntrega: d.pctEntrega ?? null,
+            idRefurbish: dadosFinais.ultimoIdRefurbish ?? null,
+          },
+          arquivos: arquivosJob,
+        },
+      });
+      await enviar(B, chatId, "🧮 Mandei os arquivos e os dados pro <b>Claude montar o orçamento</b> na pasta do Comercial. Assim que ficar pronto, ele avisa aqui.");
+    } catch { /* nunca derruba o fluxo da proposta por causa disso */ }
   }
 
   await salvarSessao(db, { ...sessao, estado: "pronto", dados: dadosFinais });
