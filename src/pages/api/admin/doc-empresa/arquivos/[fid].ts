@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
+import { bancosRestritosExterno, externosPermitidos, podeVerComoExterno } from "../../../../../lib/sigilo";
 import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
@@ -19,12 +20,19 @@ export const GET: APIRoute = async ({ request, params }) => {
     const ehForn = temPerfil(admin, ["fornecedor"]);
     if (!ehForn && !temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
     const db = supabaseAdmin();
-    const { data: arq } = await db.from("doc_empresa_arquivos").select("nome, storage_path, doc_id").eq("id", params.fid!).maybeSingle();
+    const { data: arq } = await db.from("doc_empresa_arquivos").select("*").eq("id", params.fid!).maybeSingle();
     if (!arq?.storage_path) return jsonErr(404, "Arquivo não encontrado");
     if (ehForn) {
       const { data: doc } = await db.from("doc_empresa").select("categoria, arquivado").eq("id", (arq as any).doc_id).maybeSingle();
       if (!doc || (doc as any).arquivado || CATS_VEDADAS_FORNECEDOR.has((doc as any).categoria || "")) {
         return jsonErr(403, "Acesso de fornecedor: este documento não está disponível.");
+      }
+      // 👤 Arquivo restrito a externos: nem com o link direto. 404 de propósito —
+      // não confirma para quem está de fora que o documento existe.
+      const restritos = await bancosRestritosExterno(db);
+      const perm = await externosPermitidos(db, "doc_empresa_arquivos", [params.fid!]);
+      if (!podeVerComoExterno(arq, { ehExterno: true, profileId: admin.sub, restritos, permitidos: perm[params.fid!] || [] })) {
+        return jsonErr(404, "Arquivo não encontrado");
       }
       await registrarAcao(db, { req: request, admin }, {
         acao: "criar", entidade: "fornecedor_download", registro_id: params.fid!,

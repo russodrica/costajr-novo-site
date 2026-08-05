@@ -3,6 +3,7 @@ import { requireAdminCookie, temPerfil, jsonErr } from "../../../../../lib/auth"
 import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
 import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
+import { bancosRestritosExterno, externosPermitidos, podeVerComoExterno } from "../../../../../lib/sigilo";
 
 export const prerender = false;
 const PERFIS = ["admin", "financeiro", "juridico"];
@@ -17,8 +18,17 @@ export const GET: APIRoute = async ({ request, params }) => {
     if (!ehForn && !temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
     const ro = await bloqueioSeSemLeitura(admin, "doc-bancarios"); if (ro) return ro;
     const db = supabaseAdmin();
-    const { data: row } = await db.from("doc_extratos_bancarios").select("banco, mes, ano, storage_path").eq("id", params.id!).maybeSingle();
+    const { data: row } = await db.from("doc_extratos_bancarios").select("*").eq("id", params.id!).maybeSingle();
     if (!row?.storage_path) return jsonErr(404, "Extrato não encontrado.");
+    // 👤 Documento restrito a externos: o contador não baixa nem com o link na mão.
+    // Responde 404 (e não 403) de propósito — não confirma que o documento existe.
+    if (ehForn) {
+      const restritos = await bancosRestritosExterno(db);
+      const perm = await externosPermitidos(db, "doc_extratos_bancarios", [params.id!]);
+      if (!podeVerComoExterno(row, { ehExterno: true, profileId: admin.sub, restritos, permitidos: perm[params.id!] || [] })) {
+        return jsonErr(404, "Extrato não encontrado.");
+      }
+    }
     if (ehForn) {
       await registrarAcao(db, { req: request, admin }, {
         acao: "criar", entidade: "fornecedor_download", registro_id: params.id!,

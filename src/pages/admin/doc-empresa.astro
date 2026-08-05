@@ -2,6 +2,7 @@
 import Admin from "../../layouts/Admin.astro";
 import { verifyToken, assertSessaoValida, type AdminClaims } from "../../lib/auth";
 import { temPerfilFresco, perfisFrescos, ehFornecedorPerfis } from "../../lib/permissoes";
+import { bancosRestritosExterno, externosPermitidos, podeVerComoExterno } from "../../lib/sigilo";
 import { supabaseAdmin } from "../../lib/supabase";
 
 const token = Astro.cookies.get("admin_token")?.value;
@@ -58,6 +59,19 @@ const vmeta = VIEW_META[VIEW] || VIEW_META.empresa;
 // FORNECEDOR: só docs ATIVOS da view "empresa" chegam ao HTML/JSON — metadados de
 // contratos/clientes/consórcios/seguros e de arquivados NÃO são embutidos (LGPD).
 if (ehForn) docs = docs.filter((d: any) => !d.arquivado && naView(d.categoria || ""));
+// 👤 RESTRIÇÃO A EXTERNOS: arquivo marcado como restrito nem chega ao HTML do
+// contador. Documento que fica sem nenhum arquivo visível some da lista dele.
+// A rota de download faz a mesma checagem — o link direto também não funciona.
+if (ehForn) {
+  const restritos = await bancosRestritosExterno(db);
+  const idsRestritos = docs.flatMap((d: any) => (d.doc_empresa_arquivos || [])).filter((a: any) => a?.restrito_externo).map((a: any) => String(a.id));
+  const perm = await externosPermitidos(db, "doc_empresa_arquivos", idsRestritos);
+  docs = docs.map((d: any) => ({
+    ...d,
+    doc_empresa_arquivos: (d.doc_empresa_arquivos || []).filter((a: any) =>
+      podeVerComoExterno(a, { ehExterno: true, profileId: claims.sub, restritos, permitidos: perm[String(a.id)] || [] })),
+  })).filter((d: any) => (d.doc_empresa_arquivos || []).length > 0);
+}
 const viewDefaultCat = VIEW === "contratos" ? "Contratos" : VIEW === "seguros" ? "Seguros" : "Documentos da Empresa";
 const ABAS = ABAS_ALL.filter((a) => naView(a.nome));
 
@@ -154,7 +168,7 @@ const docsJs = docs.map((d: any) => ({
   id: d.id, categoria: d.categoria, grupo: d.grupo || null, nome: d.nome, periodicidade: d.periodicidade,
   validade: d.validade, validade_na: d.validade_na, data_emissao: d.data_emissao, site: d.site, observacoes: d.observacoes,
   arquivado: d.arquivado, valor_mensal: d.valor_mensal ?? null,
-  arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome, competencia: a.competencia || null, created_at: a.created_at || null, arquivado: !!a.arquivado, nao_compartilhar: !!a.nao_compartilhar })),
+  arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome, competencia: a.competencia || null, created_at: a.created_at || null, arquivado: !!a.arquivado, nao_compartilhar: !!a.nao_compartilhar, restrito_externo: !!a.restrito_externo })),
 }));
 const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 ---
@@ -492,6 +506,39 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
   <input type="file" id="fileSlot" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,application/pdf" style="display:none" />
 
   <!-- Modal: enviar documentos por e-mail -->
+  <div class="modal-overlay" id="modalAcessoExtArq">
+    <div class="modal-box" style="max-width:520px">
+      <div class="modal-header"><h2>👤 Quem de fora pode ver este arquivo?</h2><button class="modal-close" onclick="fecharAcessoExtArq()">✕</button></div>
+      <div style="padding:16px 24px;max-height:82vh;overflow:auto">
+        <p id="aeArqDoc" style="margin:0 0 4px;font-weight:700;font-size:14px"></p>
+        <p style="margin:0 0 14px;color:var(--muted);font-size:13px">
+          Vale só para <b>usuários externos</b> (o contador). Quem é de dentro continua vendo
+          normalmente. O arquivo escondido <b>não aparece na tela dele e o link direto não funciona</b>.
+        </p>
+        <div style="display:grid;gap:8px">
+          <label style="display:flex;gap:9px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer">
+            <input type="radio" name="aeArqModo" value="todos" style="width:auto;margin-top:2px" onchange="aeArqModoMudou()" />
+            <span><b>👤 Todos podem ver</b><br/><span style="font-size:12.5px;color:var(--muted)">Como é hoje — o contador enxerga este arquivo.</span></span>
+          </label>
+          <label style="display:flex;gap:9px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer">
+            <input type="radio" name="aeArqModo" value="ninguem" style="width:auto;margin-top:2px" onchange="aeArqModoMudou()" />
+            <span><b>🙈 Ninguém de fora vê</b><br/><span style="font-size:12.5px;color:var(--muted)">Some para todos os externos, inclusive quem entrar depois.</span></span>
+          </label>
+          <label style="display:flex;gap:9px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer">
+            <input type="radio" name="aeArqModo" value="alguns" style="width:auto;margin-top:2px" onchange="aeArqModoMudou()" />
+            <span><b>✅ Só estas pessoas</b><br/><span style="font-size:12.5px;color:var(--muted)">Escolha quem, de fora, continua enxergando.</span></span>
+          </label>
+        </div>
+        <div id="aeArqLista" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden"></div>
+        <div id="aeArqMsg" style="margin-top:10px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+          <button type="button" class="btn btn-secondary" onclick="fecharAcessoExtArq()">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btnAeArqSalvar" onclick="salvarAcessoExtArq()">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalEnviar">
     <div class="modal-box" style="max-width:680px">
       <div class="modal-header"><h2>📨 Enviar documentos (e-mail ou WhatsApp)</h2><button class="modal-close" onclick="fecharEnviar()">✕</button></div>
@@ -997,8 +1044,69 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
         <span style="flex:1;font-size:13px;color:#374151">${sig ? "🔒" : "📄"} ${String(a.nome || "arquivo").replace(/</g, "&lt;")}</span>
         <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
         <button class="btn btn-outline btn-sm" data-requer-edicao title="${sig ? "Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar." : "Marcar como sigiloso (não compartilhar)"}" onclick="toggleSigiloArq('${a.id}',${sig},this)">${sig ? "🔒" : "🔓"}</button>
+        <button class="btn btn-outline btn-sm" data-requer-edicao title="Escolher quem de fora (contador) pode ver" onclick="abrirAcessoExtArq('${a.id}',${JSON.stringify(String(a.nome || "arquivo"))})">${a.restrito_externo ? "🙈" : "👤"}</button>
         <button class="btn btn-danger btn-sm" data-requer-edicao onclick="excluirArq('${a.id}', this)">Excluir</button></div>`;
     }
+    // 👤 Quem de fora (contador) pode ver este arquivo. Interno vê sempre.
+    let aeArq: string | null = null;
+    let aeExternosArq: any[] = [];
+    async function abrirAcessoExtArq(fid: string, nome: string) {
+      aeArq = fid;
+      (document.getElementById("aeArqDoc") as HTMLElement).textContent = `📄 ${nome}`;
+      (document.getElementById("aeArqMsg") as HTMLElement).innerHTML = "";
+      (document.getElementById("aeArqLista") as HTMLElement).innerHTML = `<p style="padding:10px;color:#9CA3AF;font-size:13px">Carregando…</p>`;
+      overlay("modalAcessoExtArq").classList.add("open");
+      try {
+        const r = await fetch(`/api/admin/doc-empresa/acesso-externo?tipo=arquivo&id=${encodeURIComponent(fid)}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Não deu para carregar");
+        aeExternosArq = d.externos || [];
+        const modo = !d.restrito ? "todos" : (d.permitidos || []).length ? "alguns" : "ninguem";
+        document.querySelectorAll<HTMLInputElement>('input[name="aeArqModo"]').forEach((el) => { el.checked = el.value === modo; });
+        renderAeArqLista(d.permitidos || []);
+        aeArqModoMudou();
+      } catch (e: any) {
+        (document.getElementById("aeArqMsg") as HTMLElement).innerHTML = `<div class="alert alert-error">${String(e?.message || "Erro").replace(/</g, "&lt;")}</div>`;
+      }
+    }
+    function renderAeArqLista(marcados: string[]) {
+      const box = document.getElementById("aeArqLista") as HTMLElement;
+      if (!aeExternosArq.length) { box.innerHTML = `<p style="padding:10px;color:#9CA3AF;font-size:13px">Nenhum usuário externo cadastrado no Portal.</p>`; return; }
+      box.innerHTML = aeExternosArq.map((p: any) => `
+        <label style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--border-light);cursor:pointer;font-size:13.5px">
+          <input type="checkbox" class="ae-arq-chk" value="${p.id}" ${marcados.includes(p.id) ? "checked" : ""} style="width:auto" />
+          <span style="flex:1">👤 <b>${String(p.nome).replace(/</g, "&lt;")}</b>${p.email ? ` <span style="color:#9CA3AF;font-size:12px">${String(p.email).replace(/</g, "&lt;")}</span>` : ""}</span>
+        </label>`).join("");
+    }
+    function aeArqModoMudou() {
+      const modo = (document.querySelector('input[name="aeArqModo"]:checked') as HTMLInputElement)?.value || "todos";
+      (document.getElementById("aeArqLista") as HTMLElement).style.display = modo === "alguns" ? "" : "none";
+    }
+    function fecharAcessoExtArq() { overlay("modalAcessoExtArq").classList.remove("open"); }
+    async function salvarAcessoExtArq() {
+      if (!aeArq) return;
+      const modo = (document.querySelector('input[name="aeArqModo"]:checked') as HTMLInputElement)?.value || "todos";
+      const permitidos = modo === "alguns" ? Array.from(document.querySelectorAll<HTMLInputElement>("#aeArqLista .ae-arq-chk:checked")).map((c) => c.value) : [];
+      if (modo === "alguns" && !permitidos.length) {
+        (document.getElementById("aeArqMsg") as HTMLElement).innerHTML = `<div class="alert alert-error">Marque ao menos uma pessoa, ou escolha "Ninguém de fora vê".</div>`;
+        return;
+      }
+      const btn = document.getElementById("btnAeArqSalvar") as HTMLButtonElement;
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = "Salvando…";
+      try {
+        const r = await fetch("/api/admin/doc-empresa/acesso-externo", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tipo: "arquivo", id: aeArq, restrito: modo !== "todos", permitidos }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Não deu para salvar");
+        location.reload();
+      } catch (e: any) {
+        (document.getElementById("aeArqMsg") as HTMLElement).innerHTML = `<div class="alert alert-error">${String(e?.message || "Erro").replace(/</g, "&lt;")}</div>`;
+        btn.disabled = false; btn.textContent = orig;
+      }
+    }
+
     // 🔒 Marca/desmarca UM arquivo como sigiloso: ele some da lista de "Enviar documentos"
     // e a API de envio o recusa. Continua visível e baixável aqui para quem tem acesso.
     async function toggleSigiloArq(fid: string, atual: boolean, btn: HTMLButtonElement) {
@@ -1244,7 +1352,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       </div>`;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, moverArq, fecharMover, filtrarMover, confirmarMover, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, enviarWhats, envCountUpd, filtrarEnvio, toggleSigiloArq });
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, moverArq, fecharMover, filtrarMover, confirmarMover, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, enviarWhats, envCountUpd, filtrarEnvio, toggleSigiloArq, abrirAcessoExtArq, aeArqModoMudou, fecharAcessoExtArq, salvarAcessoExtArq });
   </script>
 
   <style>
