@@ -96,7 +96,9 @@ async function puxar() {
   const criadas = [];
   for (const job of jobs) {
     const p = job.proposta || {};
-    const nome = pastaSegura(`${p.cliente || "CLIENTE"}_${p.escopoCurto || "ESCOPO"}`);
+    // clienteCurto = sigla do cliente recorrente (CRF, STD, CHB, SFT), que o
+    // site já resolveu. Cliente sem sigla vem com o nome completo.
+    const nome = pastaSegura(`${p.clienteCurto || p.cliente || "CLIENTE"}_${p.escopoCurto || "ESCOPO"}`);
     const pasta = join(PASTA_COMERCIAL, nome);
     const marcador = join(pasta, "_JOB.json");
 

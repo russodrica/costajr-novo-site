@@ -12,6 +12,7 @@
 // entrar em produção (ver sessão de 30/07/2026).
 import JSZip from "jszip";
 import { supabaseAdmin } from "./supabase";
+import { nomeCurtoCliente } from "./siglasClientes";
 
 export const COMERCIAL_BUCKET = "comercial";
 const TEMPLATE_PATH = "templates/proposta-comercial-base.pptx";
@@ -117,7 +118,9 @@ export async function gerarPropostaPptx(dados: DadosProposta): Promise<{ buffer:
 
   const buffer = await zip.generateAsync({ type: "nodebuffer" });
   const cod = (dados.codigo || "S_COD").replace(/[^\w-]+/g, "_");
-  const clienteArq = dados.cliente.replace(/[^\w\sÀ-ÿ-]+/g, "").trim().replace(/\s+/g, "_");
+  // Sigla do cliente recorrente (CRF, STD, CHB, SFT) só no NOME do arquivo —
+  // dentro dos slides o cliente continua por extenso, que é o que ele lê.
+  const clienteArq = nomeCurtoCliente(dados.cliente).replace(/[^\w\sÀ-ÿ-]+/g, "").trim().replace(/\s+/g, "_");
   const escopoArq = dados.escopoCurto.replace(/[^\w\sÀ-ÿ-]+/g, "").trim().replace(/\s+/g, "_").slice(0, 40);
   const nomeArquivo = `ORCAMENTO_${cod}_${clienteArq}_${escopoArq}_R00.pptx`;
   return { buffer, nomeArquivo, pendencias };

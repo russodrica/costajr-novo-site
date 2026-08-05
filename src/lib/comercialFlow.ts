@@ -36,6 +36,7 @@ import {
   getSessao, salvarSessao, identificar, baixarArquivoTg,
 } from "./telegramBot";
 import { gerarPropostaPptx, type DadosProposta } from "./propostaPptx";
+import { nomeCurtoCliente } from "./siglasClientes";
 import { vobiEscritaConfigurada, vobiCriarOportunidade, vobiMudarEtapa } from "./vobiEscrita";
 import { gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 
@@ -946,7 +947,7 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
   if (vobiEscritaConfigurada()) {
     try {
       const r = await vobiCriarOportunidade({
-        nomeCliente: d.cliente,
+        nomeCliente: nomeCurtoCliente(d.cliente),
         escopoResumo: d.escopoCurto,
         enderecoTexto: d.endereco,
         ...(B.modo === "comercial" && d.valorNumerico ? { valorGanho: d.valorNumerico } : {}),
@@ -956,7 +957,7 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
         : "";
       vobiMsg = `\n\n🏗️ Oportunidade criada na Vobi (id ${r.idRefurbish})${r.stepEncontrada ? "" : " — não achei a etapa \"NOVA\", conferir a etapa lá dentro"}.${valorMsg}`;
       if (B.modo === "comercial") {
-        dadosFinais = { ...dadosFinais, ultimoIdRefurbish: r.idRefurbish, ultimoNomeOportunidade: `${d.cliente} - ${d.escopoCurto}` };
+        dadosFinais = { ...dadosFinais, ultimoIdRefurbish: r.idRefurbish, ultimoNomeOportunidade: `${nomeCurtoCliente(d.cliente)} - ${d.escopoCurto}` };
         vobiMsg += `\n\nQuando quiser mudar a etapa (Visita ou Em Orçamento), é só mandar <b>/etapa</b>.`;
       }
     } catch (e: any) {
@@ -966,8 +967,20 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
     vobiMsg = "\n\n⚠️ Integração com a Vobi não está configurada — crie a oportunidade manualmente por lá.";
   }
 
+  // A proposta gerada também entra no serviço do orçamento, pra cair na pasta
+  // do Comercial junto com o projeto e a planilha. Pedido da Adriana
+  // (05/08/2026): "salvou o que tinha enviado no Telegram, mas continua sem a
+  // proposta". Só a referência do Telegram viaja — nada vai pra nuvem nossa.
+  let propostaArq: { file_id: string; nome: string; ct: string; campo: string } | null = null;
   if (pptx) {
-    await enviarDocumentoTg(B, chatId, pptx.buffer, pptx.nomeArquivo, "📄 Proposta gerada — confira antes de exportar o PDF e enviar ao cliente.");
+    const envio = await enviarDocumentoTg(B, chatId, pptx.buffer, pptx.nomeArquivo, "📄 Proposta gerada — confira antes de exportar o PDF e enviar ao cliente.");
+    const fileIdProposta = envio?.result?.document?.file_id;
+    if (fileIdProposta) {
+      propostaArq = {
+        file_id: fileIdProposta, nome: pptx.nomeArquivo, campo: "proposta",
+        ct: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      };
+    }
     const pend = pptx.pendencias.length ? `\n\n📌 <b>Ainda precisa ajustar:</b>\n• ${pptx.pendencias.map(escTg).join("\n• ")}` : "";
     await enviar(B, chatId, `✅ Pronto! Baixe o PDF a partir do PowerPoint e envie ao cliente.${pend}${vobiMsg}`);
   } else if (vobiMsg) {
@@ -978,7 +991,7 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
   // A Vercel não alcança a pasta da Adriana (`_CLAUDE COMERCIAL`), então aqui
   // só fica o registro (texto + file_id); o Claude vem buscar pelo endpoint
   // /api/integra/comercial-jobs, baixa os arquivos e salva direto na pasta.
-  const arquivosJob = dadosFinais_arquivos(d);
+  const arquivosJob = [...dadosFinais_arquivos(d), ...(propostaArq ? [propostaArq] : [])];
   if (arquivosJob.length) {
     try {
       const jobId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -990,7 +1003,7 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
           chat_id: chatId,
           solicitante: d.colaborador_nome || null,
           proposta: {
-            cliente: d.cliente, endereco: d.endereco,
+            cliente: d.cliente, clienteCurto: nomeCurtoCliente(d.cliente), endereco: d.endereco,
             escopoCurto: d.escopoCurto, escopoDetalhado: d.escopoDetalhado,
             prazoObraDias: d.prazoObraDias, prazoMobilizacaoDias: d.prazoMobilizacaoDias,
             valor: d.valor, valorNumerico: d.valorNumerico ?? null,
@@ -1000,7 +1013,7 @@ async function executarProposta(db: any, B: Bot, sessao: Sessao, chatId: number)
           arquivos: arquivosJob,
         },
       });
-      await enviar(B, chatId, "🧮 Mandei os arquivos e os dados pro <b>Claude montar o orçamento</b> na pasta do Comercial. Assim que ficar pronto, ele avisa aqui.");
+      await enviar(B, chatId, `🧮 Mandei ${propostaArq ? "os arquivos, a proposta gerada" : "os arquivos"} e os dados pro <b>Claude montar o orçamento</b> na pasta do Comercial. Assim que ficar pronto, ele avisa aqui.`);
     } catch { /* nunca derruba o fluxo da proposta por causa disso */ }
   }
 
