@@ -185,11 +185,20 @@ export function casarColaborador(
 const CONJ_DOC = new Set(["de", "da", "do", "das", "dos", "e", "a", "o", "as", "os", "em", "para", "por", "com"]);
 // descarta conectivos E tokens PURAMENTE NUMÉRICOS (anos/meses do nome do arquivo não devem
 // casar: ex. "faturamento 12/2024" não pode grudar em "...ÚLTIMOS 12 MESES" pelo número "12").
-const toksDoc = (s: string) => norm(s).split(" ").filter((w) => w.length >= 2 && !CONJ_DOC.has(w) && !/^\d+$/.test(w));
+// Tokens presentes em praticamente TODO documento da empresa (o nome da própria
+// empresa, extensões e marcadores de assinatura) — não distinguem UM cadastro do outro.
+// Sem esse filtro, "BALANCETE_05_2026_COSTA_JUNIOR_..." casava com "RELATÓRIO DE
+// SITUAÇÃO FISCAL - COSTA JUNIOR" só pelos tokens "costa"+"junior".
+const STOP_EMPRESA_DOC = new Set([
+  "costa", "junior", "cjr", "engenharia", "construcoes", "construcao", "ltda", "eireli", "epp",
+  "pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png", "webp",
+  "d4sign", "clicksign", "docusign", "zapsign", "digiforte", "assinado", "assinada", "signed",
+]);
+const toksDoc = (s: string) => norm(s).split(" ").filter((w) => w.length >= 2 && !CONJ_DOC.has(w) && !STOP_EMPRESA_DOC.has(w) && !/^\d+$/.test(w));
 export function casarDocEmpresa(
   texto: string,
   docs: { id: string; nome: string }[],
-): { id: string; nome: string; score: number; casados: number } | null {
+): { id: string; nome: string; score: number; casados: number; cob: number } | null {
   const alvo = new Set(toksDoc(texto));
   if (!alvo.size) return null;
   let melhor: { id: string; nome: string; score: number; casados: number; cob: number } | null = null;
@@ -205,6 +214,29 @@ export function casarDocEmpresa(
       melhor = { id: d.id, nome: d.nome, score, casados, cob };
     }
   }
-  if (melhor && (melhor.casados >= 2 || melhor.cob >= 0.5)) return { id: melhor.id, nome: melhor.nome, score: melhor.score, casados: melhor.casados };
+  if (melhor && (melhor.casados >= 2 || melhor.cob >= 0.5)) return { id: melhor.id, nome: melhor.nome, score: melhor.score, casados: melhor.casados, cob: melhor.cob };
   return null;
+}
+
+
+// Lista os cadastros da empresa MAIS PARECIDOS com o texto — usado pelo botão
+// "Escolher outro local" no Telegram, quando a sugestão automática erra o destino.
+// Mais tolerante que casarDocEmpresa (aceita 1 token casado); ordena por score.
+export function rankearDocsEmpresa(
+  texto: string,
+  docs: { id: string; nome: string }[],
+  max = 8,
+): { id: string; nome: string; score: number }[] {
+  const alvo = new Set(toksDoc(texto));
+  const out: { id: string; nome: string; score: number }[] = [];
+  for (const d of docs) {
+    const tn = toksDoc(d.nome);
+    if (!tn.length) continue;
+    const casados = tn.filter((t) => alvo.has(t)).length;
+    if (!casados) continue;
+    const cob = casados / tn.length;
+    out.push({ id: d.id, nome: d.nome, score: casados * 100 + Math.round(cob * 50) });
+  }
+  out.sort((a, b) => b.score - a.score || String(a.nome).localeCompare(String(b.nome)));
+  return out.slice(0, max);
 }

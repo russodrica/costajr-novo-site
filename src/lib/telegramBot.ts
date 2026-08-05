@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { supabaseAdmin, supabaseAdmin2 } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
-import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario } from "./slotsDoc";
+import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, rankearDocsEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
 import { aplicarEntregaEpiDaFicha, type EpiAplicado } from "./epiLeitura";
 import { registrarAcao } from "./auditoria";
@@ -365,7 +365,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
   if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, cq, chatId, data);
-  if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gbanc|gbancok):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
+  if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gempl|gemppk|gbanc|gbancok|gbancm|gbancms):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
   if (B.modo === "comercial" && data.startsWith("etapa:")) return await onCallbackEtapa(db, B, sessao, chatId, data);
@@ -893,7 +893,10 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
     } catch { /* segue pela heurística do nome */ }
   }
   // ── EXTRATO BANCÁRIO: detectar antes de pessoa/empresa ──
-  const textoDetect = `${nome} ${textoExtra}`.trim();
+  // Legenda digitada PRIMEIRO: o que a pessoa escreveu na mensagem vale mais que o
+  // nome do arquivo (ex.: legenda "junho/2026" corrige um arquivo com outro mês no nome).
+  const legendaMsg = (msg.caption || "").trim();
+  const textoDetect = `${legendaMsg} ${nome} ${textoConteudo || ""}`.trim();
   const extrato = detectarExtratoBancario(textoDetect);
   if (extrato) {
     const token = Date.now().toString(36);
@@ -904,7 +907,7 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
     const bancoLabel = extrato.tipo === "fatura" ? "Cartão" : "Banco";
     await enviar(B, chatId,
       `${tipoLabel}\n${bancoLabel}: <b>${escTg(extrato.banco)}</b>\nPeríodo: <b>${mesNome}/${extrato.ano}</b>\n\nÉ isso? Confirma para arquivar em <b>Documentos Bancários</b>.`,
-      inline([[{ text: `✅ Confirmar — ${extrato.banco} ${mesNome}/${extrato.ano}`, callback_data: "gbancok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+      inline([[{ text: `✅ Confirmar — ${extrato.banco} ${mesNome}/${extrato.ano}`, callback_data: "gbancok:" + token }], [{ text: "🗓️ Corrigir mês/ano", callback_data: "gbancm:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
     return;
   }
 
@@ -967,11 +970,13 @@ async function proporEmpresaMatch(db: any, B: Bot, chatId: number, token: string
   if (!m) return false;
   // proativo (sem a pessoa ter tocado em "É da empresa") só auto-propõe se o casamento for FORTE
   // (>=2 tokens) — evita um doc de PESSOA grudar num cadastro genérico de nome curto.
-  if (exigirForte && (m.casados || 0) < 2) return false;
+  // forte = >=2 tokens casados OU o nome do cadastro 100% contido no arquivo (ex.: card
+  // "Balancete" + arquivo "BALANCETE_05_2026_...") — 1 token generico de card longo continua barrado.
+  if (exigirForte && (m.casados || 0) < 2 && (m.cob || 0) < 1) return false;
   const full = (emps || []).find((e: any) => e.id === m.id) || {};
   await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: m.id, emp_nome: m.nome, emp_cat: full.categoria || null, emp_periodicidade: full.periodicidade || null } }).eq("telegram_user_id", "gdoc:" + token);
   await enviar(B, chatId, `🏢 Anexar este documento em <b>${escTg(m.nome)}</b>${full.categoria ? ` (${escTg(full.categoria)})` : ""}?`,
-    inline([[{ text: "✅ Sim, anexar", callback_data: "gempok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+    inline([[{ text: "✅ Sim, anexar", callback_data: "gempok:" + token }], [{ text: "🔁 Escolher outro local", callback_data: "gempl:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
   return true;
 }
 
@@ -1030,6 +1035,40 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
       await enviar(B, chatId, "🗑️ Documento descartado.");
       return;
     }
+  }
+
+  // ── corrigir MÊS/ANO do extrato/fatura detectado ──
+  if (acao === "gbancm" || acao === "gbancms") {
+    const { data: pb } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gbanc:" + token).maybeSingle();
+    const dB = pb?.dados;
+    if (!dB) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
+    const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    if (acao === "gbancm") {
+      // últimos 12 meses, do mais recente pro mais antigo, 2 por linha
+      const base = new Date();
+      const linhas: any[] = [];
+      let linha: any[] = [];
+      for (let i = 0; i < 12; i++) {
+        const dt = new Date(base.getFullYear(), base.getMonth() - i, 1);
+        const a = dt.getFullYear(), m = dt.getMonth() + 1;
+        linha.push({ text: `${mesesNomes[m - 1]}/${a}`, callback_data: `gbancms:${token}:${a}-${m}` });
+        if (linha.length === 2) { linhas.push(linha); linha = []; }
+      }
+      if (linha.length) linhas.push(linha);
+      linhas.push([{ text: "❌ Cancelar", callback_data: "gcancel:" + token }]);
+      await enviar(B, chatId, `🗓️ Qual o <b>período correto</b> de <b>${escTg(dB.banco)}</b>?`, inline(linhas));
+      return;
+    }
+    // gbancms — aplica o período escolhido e reconfirma
+    const alvo = resto.split(":")[1] || "";
+    const [aS, mS] = alvo.split("-");
+    const ano = Number(aS), mes = Number(mS);
+    if (!ano || !mes || mes < 1 || mes > 12) { await enviar(B, chatId, "Não entendi o período. Toque em 🗓️ e tente de novo."); return; }
+    await db.from("telegram_sessoes").update({ dados: { ...dB, mes, ano } }).eq("telegram_user_id", "gbanc:" + token);
+    const tipoLabel = dB.tipo === "fatura" ? "💳 Fatura" : "🏦 Extrato";
+    await enviar(B, chatId, `${tipoLabel} de <b>${escTg(dB.banco)}</b> — período corrigido para <b>${mesesNomes[mes - 1]}/${ano}</b>. Confirma?`,
+      inline([[{ text: `✅ Confirmar — ${dB.banco} ${mesesNomes[mes - 1]}/${ano}`, callback_data: "gbancok:" + token }], [{ text: "🗓️ Corrigir mês/ano", callback_data: "gbancm:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+    return;
   }
 
   const { data: pend } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gdoc:" + token).maybeSingle();
@@ -1101,11 +1140,31 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
       if (empId) {
         await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: empId, emp_nome: empNome, emp_cat: cat.categoria, emp_periodicidade: empPer } }).eq("telegram_user_id", "gdoc:" + token);
         await enviar(B, chatId, `📊 Parece <b>${escTg(cat.rotulo)}</b>. Arquivar em <b>${escTg(cat.categoria)}</b> (como "${escTg(empNome)}")?`,
-          inline([[{ text: "✅ Sim, arquivar", callback_data: "gempok:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+          inline([[{ text: "✅ Sim, arquivar", callback_data: "gempok:" + token }], [{ text: "🔁 Escolher outro local", callback_data: "gempl:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
         return;
       }
     }
-    await enviar(B, chatId, "🏢 Não consegui identificar a empresa/contrato pelo nome do arquivo. Anexe pelo painel <b>Documentos da Empresa</b> (Jurídico), ou renomeie o arquivo com o nome da empresa e reenvie.");
+    await enviar(B, chatId, "🏢 Não consegui identificar sozinho o local. Toque abaixo para <b>escolher onde anexar</b>, ou anexe pelo painel <b>Documentos da Empresa</b> (Jurídico).",
+      inline([[{ text: "🔁 Escolher o local", callback_data: "gempl:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+    return;
+  }
+  // ── ESCOLHER manualmente o local (cadastro de doc_empresa) — corrige sugestão errada ──
+  if (acao === "gempl") {
+    const { data: emps } = await db.from("doc_empresa").select("id, nome, categoria").eq("arquivado", false).order("nome").limit(3000);
+    const cand = rankearDocsEmpresa(`${d.doc_nome} ${d.ia_nome || ""}`, ((emps || []) as any[]).map((e: any) => ({ id: e.id, nome: e.nome })), 8);
+    if (!cand.length) { await enviar(B, chatId, "🏢 Não achei cadastros parecidos com esse documento. Anexe pelo painel <b>Documentos da Empresa</b> (Jurídico)."); return; }
+    const linhas = cand.map((e) => [{ text: `📁 ${e.nome}`.slice(0, 60), callback_data: `gemppk:${token}:${e.id}` }]);
+    linhas.push([{ text: "❌ Cancelar", callback_data: "gcancel:" + token }]);
+    await enviar(B, chatId, `Escolha o <b>local certo</b> para "<b>${escTg(d.doc_nome)}</b>":`, inline(linhas));
+    return;
+  }
+  if (acao === "gemppk") {
+    const empId = resto.split(":")[1];
+    const { data: emp } = await db.from("doc_empresa").select("id, nome, categoria, periodicidade").eq("id", empId).maybeSingle();
+    if (!emp) { await enviar(B, chatId, "Não achei esse cadastro. Toque em 🔁 e tente de novo."); return; }
+    await db.from("telegram_sessoes").update({ dados: { ...d, emp_id: emp.id, emp_nome: emp.nome, emp_cat: emp.categoria || null, emp_periodicidade: emp.periodicidade || null } }).eq("telegram_user_id", "gdoc:" + token);
+    await enviar(B, chatId, `🏢 Anexar em <b>${escTg(emp.nome)}</b>${emp.categoria ? ` (${escTg(emp.categoria)})` : ""}?`,
+      inline([[{ text: "✅ Sim, anexar", callback_data: "gempok:" + token }], [{ text: "🔁 Escolher outro local", callback_data: "gempl:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
     return;
   }
   if (acao === "gempok") {
