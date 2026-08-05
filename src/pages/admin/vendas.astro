@@ -105,6 +105,7 @@ const metaAtual = Number(cfg.margem_alvo_pct);
   <div class="toolbar">
     <span class="toolbar-title">🛒 Vendas — Catálogo & Precificação</span>
     <span style="flex:1"></span>
+    <button class="btn btn-outline" onclick="aprovarProntos()">✅ Aprovar todos os prontos</button>
     <button class="btn btn-outline" onclick="abrirConfig()">⚙️ Taxas e margem</button>
     <button class="btn btn-primary" onclick="abrirNovoProduto()">+ Adicionar produto</button>
   </div>
@@ -389,6 +390,28 @@ const metaAtual = Number(cfg.margem_alvo_pct);
     function abrirNovoProduto() { (document.getElementById("formProduto") as HTMLFormElement).reset(); overlayV("modalProduto").classList.add("open"); }
     function fecharProduto() { overlayV("modalProduto").classList.remove("open"); }
     function abrirConfig() { overlayV("modalConfig").classList.add("open"); }
+
+    // Aprova de uma vez todos os candidatos que já passaram na conferência.
+    // Existe porque a varredura do catálogo completo da TrazPraCa traz dezenas
+    // de produtos de uma vez, e mudar o status de um em um não é trabalho de
+    // gente. Quem autoriza continua sendo ela: o clique é dela, e produto com
+    // pendência não entra no lote.
+    async function aprovarProntos() {
+      if (!confirm("Aprovar TODOS os candidatos que já estão prontos? Eles vão ao ar na próxima rodada de publicação.")) return;
+      const botao = document.activeElement as HTMLButtonElement | null;
+      if (botao) botao.disabled = true;
+      try {
+        const r = await fetch("/api/admin/vendas/aprovar-prontos", { method: "POST" });
+        const j = await r.json();
+        if (!r.ok) { avisoErro(j.error || "Não consegui aprovar."); return; }
+        alert(`${j.aprovados} produto(s) aprovados.`);
+        location.reload();
+      } catch (e: any) {
+        avisoErro(e.message || "Falha de rede ao aprovar.");
+      } finally {
+        if (botao) botao.disabled = false;
+      }
+    }
     function fecharConfig() { overlayV("modalConfig").classList.remove("open"); }
     function msgBoxV() { return document.getElementById("vendasMsg") as HTMLElement; }
     function avisoErro(texto: string) {
