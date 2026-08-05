@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { supabaseAdmin, supabaseAdmin2 } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
-import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, rankearDocsEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario } from "./slotsDoc";
+import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, rankearDocsEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario, extrairMesAno } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
 import { aplicarEntregaEpiDaFicha, type EpiAplicado } from "./epiLeitura";
 import { registrarAcao } from "./auditoria";
@@ -365,7 +365,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
   if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, cq, chatId, data);
-  if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gempl|gemppk|gbanc|gbancok|gbancm|gbancms):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
+  if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gempl|gemppk|gbanc\w*):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
   const sessao = await getSessao(db, B, userId);
   if (B.modo === "comercial" && data.startsWith("etapa:")) return await onCallbackEtapa(db, B, sessao, chatId, data);
@@ -897,7 +897,7 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
   // nome do arquivo (ex.: legenda "junho/2026" corrige um arquivo com outro mês no nome).
   const legendaMsg = (msg.caption || "").trim();
   const textoDetect = `${legendaMsg} ${nome} ${textoConteudo || ""}`.trim();
-  const extrato = detectarExtratoBancario(textoDetect);
+  const extrato = detectarExtratoBancario(textoDetect, legendaMsg);
   if (extrato) {
     const token = Date.now().toString(36);
     const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -928,6 +928,8 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
   await cardDocGrupo(B, chatId, token, dados);
 }
 
+const BANCOS_TG = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank", "VillelaPay", "Banco Inter"];
+
 async function cardDocGrupo(B: Bot, chatId: number, token: string, d: any) {
   const venc = d.sug_tem_validade ? `\nValidade: ${d.sug_validade ? escTg(d.sug_validade) : "<i>não detectei</i>"}` : "";
   const origem = d.ia ? "🔮 li o documento" : "📄 sugestão automática";
@@ -938,6 +940,7 @@ async function cardDocGrupo(B: Bot, chatId: number, token: string, d: any) {
       inline([
         [{ text: `✅ Anexar na ficha de ${primeiro}`.slice(0, 60), callback_data: "ganex:" + token }],
         [{ text: "🏢 É da empresa (Jurídico)", callback_data: "gemp:" + token }, { text: "🏷️ Outro tipo", callback_data: "gtipo:" + token }],
+        [{ text: "🏦 É extrato/fatura de banco", callback_data: "gbancb:" + token }],
         [{ text: "❌ Descartar", callback_data: "gcancel:" + token }],
       ]));
   } else {
@@ -945,6 +948,7 @@ async function cardDocGrupo(B: Bot, chatId: number, token: string, d: any) {
       `📎 <b>${escTg(d.doc_nome)}</b> (${origem})\n❓ Não identifiquei a pessoa (RH). Se for documento da <b>empresa</b> (contrato/fornecedor — Jurídico), toque abaixo. Senão, renomeie com o nome da pessoa e reenvie.`,
       inline([
         [{ text: "🏢 É documento da empresa (Jurídico)", callback_data: "gemp:" + token }],
+        [{ text: "🏦 É extrato/fatura de banco", callback_data: "gbancb:" + token }],
         [{ text: "❌ Descartar", callback_data: "gcancel:" + token }],
       ]));
   }
@@ -1146,6 +1150,35 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     }
     await enviar(B, chatId, "🏢 Não consegui identificar sozinho o local. Toque abaixo para <b>escolher onde anexar</b>, ou anexe pelo painel <b>Documentos da Empresa</b> (Jurídico).",
       inline([[{ text: "🔁 Escolher o local", callback_data: "gempl:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
+    return;
+  }
+  // ── converter em EXTRATO/FATURA bancária (quando a detecção automática não pegou) ──
+  if (acao === "gbancb") {
+    const linhas = BANCOS_TG.map((b, i) => [{ text: `🏦 ${b}`, callback_data: `gbancbk:${token}:${i}` }]);
+    linhas.push([{ text: "❌ Cancelar", callback_data: "gcancel:" + token }]);
+    await enviar(B, chatId, "De qual <b>banco/cartão</b> é este documento?", inline(linhas));
+    return;
+  }
+  if (acao === "gbancbk") {
+    const banco = BANCOS_TG[Number(resto.split(":")[1])];
+    if (!banco) { await enviar(B, chatId, "Não entendi o banco. Toque em 🏦 e tente de novo."); return; }
+    await db.from("telegram_sessoes").update({ dados: { ...d, tmp_banco: banco } }).eq("telegram_user_id", "gdoc:" + token);
+    await enviar(B, chatId, `<b>${escTg(banco)}</b> — é <b>extrato</b> ou <b>fatura de cartão</b>?`,
+      inline([[{ text: "🏦 Extrato", callback_data: `gbancbt:${token}:e` }, { text: "💳 Fatura de cartão", callback_data: `gbancbt:${token}:f` }], [{ text: "❌ Cancelar", callback_data: "gcancel:" + token }]]));
+    return;
+  }
+  if (acao === "gbancbt") {
+    const banco = d.tmp_banco;
+    if (!banco) { await enviar(B, chatId, "Faltou o banco — toque em 🏦 de novo."); return; }
+    const tipo = resto.split(":")[1] === "f" ? "fatura" : "extrato";
+    // mês/ano: legenda/nome do arquivo; sem pista, usa o mês atual (dá pra corrigir no botão)
+    const ma = extrairMesAno(`${d.ia_nome || ""} ${d.doc_nome}`) || { mes: new Date().getMonth() + 1, ano: new Date().getFullYear() };
+    await salvarSessao(db, { telegram_user_id: "gbanc:" + token, chat_id: String(chatId), estado: "pendente", dados: { doc_path: d.doc_path, doc_nome: d.doc_nome, ct: d.ct, banco, mes: ma.mes, ano: ma.ano, tipo, autor: d.autor } });
+    await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gdoc:" + token);
+    const mesesNomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    const tipoLabel = tipo === "fatura" ? "💳 Fatura" : "🏦 Extrato";
+    await enviar(B, chatId, `${tipoLabel} de <b>${escTg(banco)}</b> — período <b>${mesesNomes[ma.mes - 1]}/${ma.ano}</b>. Confirma para arquivar em <b>Documentos Bancários</b>?`,
+      inline([[{ text: `✅ Confirmar — ${banco} ${mesesNomes[ma.mes - 1]}/${ma.ano}`, callback_data: "gbancok:" + token }], [{ text: "🗓️ Corrigir mês/ano", callback_data: "gbancm:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
     return;
   }
   // ── ESCOLHER manualmente o local (cadastro de doc_empresa) — corrige sugestão errada ──
