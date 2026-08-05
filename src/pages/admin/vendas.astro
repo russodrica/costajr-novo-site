@@ -396,21 +396,46 @@ const metaAtual = Number(cfg.margem_alvo_pct);
     // de produtos de uma vez, e mudar o status de um em um não é trabalho de
     // gente. Quem autoriza continua sendo ela: o clique é dela, e produto com
     // pendência não entra no lote.
+    //
+    // Sem confirm() nem alert(): na primeira versão a Adriana clicou e não
+    // soube se algo aconteceu. Janela do navegador some, é engolida por
+    // bloqueador e não deixa rastro. Agora TODA resposta — inclusive erro de
+    // servidor e resposta que não é JSON — aparece escrita na própria tela.
     async function aprovarProntos() {
-      if (!confirm("Aprovar TODOS os candidatos que já estão prontos? Eles vão ao ar na próxima rodada de publicação.")) return;
       const botao = document.activeElement as HTMLButtonElement | null;
-      if (botao) botao.disabled = true;
+      const rotulo = botao ? botao.textContent : "";
+      if (botao) { botao.disabled = true; botao.textContent = "Aprovando..."; }
+      aviso("Aprovando os candidatos prontos...", "info");
       try {
-        const r = await fetch("/api/admin/vendas/aprovar-prontos", { method: "POST" });
-        const j = await r.json();
-        if (!r.ok) { avisoErro(j.error || "Não consegui aprovar."); return; }
-        alert(`${j.aprovados} produto(s) aprovados.`);
-        location.reload();
+        const r = await fetch("/api/admin/vendas/aprovar-prontos", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+        });
+        const bruto = await r.text();
+        let j: any = null;
+        try { j = JSON.parse(bruto); } catch { /* resposta não-JSON: mostra crua */ }
+        if (!r.ok || !j) {
+          aviso(`Não deu. O servidor respondeu ${r.status}: ${(j && j.error) || bruto.slice(0, 200)}`, "erro");
+          return;
+        }
+        aviso(`${j.aprovados} produto(s) aprovados. Vão ao ar na próxima rodada de publicação.`, "ok");
+        setTimeout(() => location.reload(), 2500);
       } catch (e: any) {
-        avisoErro(e.message || "Falha de rede ao aprovar.");
+        aviso(`Falha de rede ao aprovar: ${e.message || e}`, "erro");
       } finally {
-        if (botao) botao.disabled = false;
+        if (botao) { botao.disabled = false; if (rotulo) botao.textContent = rotulo; }
       }
+    }
+
+    // Uma caixa de recado só, para não depender de janela do navegador.
+    function aviso(texto: string, tipo: "ok" | "erro" | "info") {
+      const cor = tipo === "ok" ? "#0f7b3d" : tipo === "erro" ? "#b42318" : "#475467";
+      const fundo = tipo === "ok" ? "#e7f6ec" : tipo === "erro" ? "#fdeceb" : "#f2f4f7";
+      msgBoxV().innerHTML =
+        `<div style="padding:10px 12px;border-radius:8px;margin:8px 0;` +
+        `background:${fundo};color:${cor};border:1px solid ${cor}33">` +
+        `${texto.replace(/</g, "&lt;")}</div>`;
+      msgBoxV().scrollIntoView({ behavior: "smooth", block: "center" });
     }
     function fecharConfig() { overlayV("modalConfig").classList.remove("open"); }
     function msgBoxV() { return document.getElementById("vendasMsg") as HTMLElement; }
