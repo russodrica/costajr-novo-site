@@ -319,6 +319,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
   <section class="tab-section" id="aba-documentos" style="display:none">
     <div class="toolbar">
       <span class="toolbar-title">Documentos</span>
+      <span style="flex:1"></span>
+      <button class="btn btn-secondary" onclick="abrirEnviarRh()" title="Selecione documentos e envie todos num e-mail só">📨 Enviar documentos</button>
       <button class="btn btn-primary" onclick="abrirModalDoc()">+ Novo documento</button>
     </div>
     <div class="card">
@@ -833,6 +835,32 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
   </div>
 
   <!-- ════════ MODAL DOCUMENTO (novo/editar) ════════ -->
+  <div class="modal-overlay" id="modalEnviarRh">
+    <div class="modal-box" style="max-width:660px">
+      <div class="modal-header"><h2>📨 Enviar documentos por e-mail</h2><button class="modal-close" onclick="fecharEnviarRh()">✕</button></div>
+      <div style="padding:16px 24px;max-height:82vh;overflow:auto">
+        <div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12.5px;color:#92400E">
+          🔒 Documentos de colaborador são <b>dados pessoais</b>. Os arquivos vão anexados no próprio
+          e-mail (sem link circulando) e o envio fica registrado na auditoria.
+        </div>
+        <div class="form-group"><label>Para (um ou mais e-mails, separados por vírgula) *</label><input id="rhEnvTo" class="input" placeholder="contador@email.com, advogado@email.com" /></div>
+        <div class="form-group"><label>Assunto</label><input id="rhEnvSubject" class="input" placeholder="Documentos — Costa Júnior Engenharia" /></div>
+        <div class="form-group"><label>Mensagem (opcional)</label><textarea id="rhEnvMsg" class="input" rows="2" placeholder="Olá, seguem em anexo os documentos solicitados."></textarea></div>
+        <div style="display:flex;align-items:center;gap:8px;margin:8px 0 6px">
+          <input class="input" id="rhEnvBusca" placeholder="Buscar por pessoa, título ou tipo…" oninput="rhEnvFiltrar()" style="flex:1" />
+          <span id="rhEnvCount" style="font-size:12.5px;color:#6B7280;white-space:nowrap">0 selecionado(s)</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap" id="rhEnvPessoas"></div>
+        <div id="rhEnvLista" style="border:1px solid var(--border);border-radius:8px;max-height:34vh;overflow:auto;padding:6px 12px"></div>
+        <div id="rhEnvMsgBox" style="margin-top:10px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+          <button type="button" class="btn btn-secondary" onclick="fecharEnviarRh()">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btnEnviarRh" onclick="enviarDocsRh()">📨 Enviar e-mail</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalDoc">
     <div class="modal">
       <div class="modal-title" id="tituloModalDoc">Novo documento</div>
@@ -2414,6 +2442,93 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).verDocsAdmissao = verDocsAdmissao;
     (window as any).concluirAdmissao = concluirAdmissao;
     (window as any).cancelarAdmissao = cancelarAdmissao;
+    // ── 📨 Enviar documentos de RH por e-mail ────────────────────────────────
+    // Só e-mail (anexo), sem WhatsApp: link temporário de documento de funcionário
+    // pode ser repassado. Documento que é só link externo não entra na lista.
+    // reaproveita o bloco #dadosRH que a página já embute; documento que é só link
+    // externo fica de fora (não há arquivo para anexar num e-mail)
+    const RH_ENV: any[] = (DADOS.documentos || [])
+      .filter((d: any) => d.storage_path)
+      .map((d: any) => ({ id: d.id, pessoa: d.rh_colaboradores?.nome || "(sem colaborador)", titulo: d.titulo || "documento", tipo: d.tipo || "outro" }));
+    let rhEnvPessoa = "";
+    function abrirEnviarRh() {
+      rhEnvPessoa = "";
+      (document.getElementById("rhEnvBusca") as HTMLInputElement).value = "";
+      (document.getElementById("rhEnvMsgBox") as HTMLElement).innerHTML = "";
+      rhEnvRenderPessoas();
+      rhEnvRender();
+      document.getElementById("modalEnviarRh")?.classList.add("open");
+    }
+    function fecharEnviarRh() { document.getElementById("modalEnviarRh")?.classList.remove("open"); }
+    function rhEnvRenderPessoas() {
+      const pessoas = [...new Set(RH_ENV.map((d: any) => d.pessoa))].sort();
+      const box = document.getElementById("rhEnvPessoas") as HTMLElement;
+      box.innerHTML = `<button type="button" class="pill${rhEnvPessoa === "" ? " active" : ""}" onclick="rhEnvSetPessoa('')">Todos</button>`
+        + pessoas.map((p) => `<button type="button" class="pill${rhEnvPessoa === p ? " active" : ""}" onclick="rhEnvSetPessoa(${JSON.stringify(p)})">${String(p).replace(/</g, "&lt;")}</button>`).join("");
+    }
+    function rhEnvSetPessoa(p: string) { rhEnvPessoa = p; rhEnvRenderPessoas(); rhEnvRender(); }
+    function rhEnvRender() {
+      const busca = ((document.getElementById("rhEnvBusca") as HTMLInputElement)?.value || "").toLowerCase().trim();
+      const marcados = new Set(Array.from(document.querySelectorAll<HTMLInputElement>("#rhEnvLista .rh-env-chk:checked")).map((c) => c.value));
+      const TIPOS: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha de EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Documento" };
+      const visiveis = RH_ENV.filter((d: any) => {
+        if (rhEnvPessoa && d.pessoa !== rhEnvPessoa) return false;
+        if (!busca) return true;
+        return `${d.pessoa} ${d.titulo} ${TIPOS[d.tipo] || d.tipo}`.toLowerCase().includes(busca);
+      });
+      // agrupa por pessoa para não misturar documento de gente diferente sem perceber
+      const porPessoa: Record<string, any[]> = {};
+      for (const d of visiveis) (porPessoa[d.pessoa] ||= []).push(d);
+      let html = "";
+      for (const pessoa of Object.keys(porPessoa).sort()) {
+        html += `<div style="margin:8px 0 2px;font-weight:700;color:var(--brand);font-size:12px;text-transform:uppercase">${String(pessoa).replace(/</g, "&lt;")}</div>`;
+        for (const d of porPessoa[pessoa]) {
+          html += `<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">
+            <input type="checkbox" class="rh-env-chk" value="${d.id}" ${marcados.has(d.id) ? "checked" : ""} onchange="rhEnvCount()" style="width:auto" />
+            <span>📄 ${String(d.titulo).replace(/</g, "&lt;")} <span style="color:#9CA3AF;font-size:12px">· ${TIPOS[d.tipo] || d.tipo}</span></span></label>`;
+        }
+      }
+      (document.getElementById("rhEnvLista") as HTMLElement).innerHTML = html || `<p style="color:#9CA3AF;padding:10px">Nenhum documento encontrado.</p>`;
+      rhEnvCount();
+    }
+    function rhEnvFiltrar() { rhEnvRender(); }
+    function rhEnvCount() {
+      const n = document.querySelectorAll("#rhEnvLista .rh-env-chk:checked").length;
+      (document.getElementById("rhEnvCount") as HTMLElement).textContent = `${n} selecionado(s)`;
+    }
+    async function enviarDocsRh() {
+      const to = (document.getElementById("rhEnvTo") as HTMLInputElement).value.trim();
+      const ids = Array.from(document.querySelectorAll<HTMLInputElement>("#rhEnvLista .rh-env-chk:checked")).map((c) => c.value);
+      const box = document.getElementById("rhEnvMsgBox") as HTMLElement;
+      if (!to) { box.innerHTML = `<div class="alert alert-error">Informe ao menos um e-mail.</div>`; return; }
+      if (!ids.length) { box.innerHTML = `<div class="alert alert-error">Selecione ao menos um documento.</div>`; return; }
+      const btn = document.getElementById("btnEnviarRh") as HTMLButtonElement;
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = "Enviando…";
+      try {
+        const r = await fetch("/api/admin/rh/documentos/enviar-email", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            to,
+            subject: (document.getElementById("rhEnvSubject") as HTMLInputElement).value,
+            message: (document.getElementById("rhEnvMsg") as HTMLTextAreaElement).value,
+            documento_ids: ids,
+          }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Erro ao enviar");
+        box.innerHTML = `<div class="alert alert-success">✓ Enviado: ${d.enviados} documento(s) para ${String((d.to || []).join(", ")).replace(/</g, "&lt;")}.</div>`;
+        document.querySelectorAll<HTMLInputElement>("#rhEnvLista .rh-env-chk:checked").forEach((c) => (c.checked = false));
+        rhEnvCount();
+      } catch (e: any) {
+        box.innerHTML = `<div class="alert alert-error">${String(e?.message || "Falha ao enviar").replace(/</g, "&lt;")}</div>`;
+      } finally { btn.disabled = false; btn.textContent = orig; }
+    }
+    (window as any).abrirEnviarRh = abrirEnviarRh;
+    (window as any).fecharEnviarRh = fecharEnviarRh;
+    (window as any).rhEnvFiltrar = rhEnvFiltrar;
+    (window as any).rhEnvCount = rhEnvCount;
+    (window as any).rhEnvSetPessoa = rhEnvSetPessoa;
+    (window as any).enviarDocsRh = enviarDocsRh;
     (window as any).reloadComAba = reloadComAba;
 
     // ── Ponto / Faltas (ControlID / RHiD) ──
