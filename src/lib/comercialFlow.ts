@@ -9,12 +9,21 @@
 //
 // Acesso restrito: só quem tem perfil "comercial" (ou "admin") no Portal.
 //
-// Roteiro (decidido com a Adriana em 30/07/2026):
-//   cliente → endereço → tem projeto? (anexa ou não) → tem planilha padrão?
-//   (anexa ou não) → escopo curto → escopo detalhado (opcional) → prazo obra
-//   (opcional) → prazo mobilização (opcional) → valor (opcional) → CONFIRMA
-//   → gera a Proposta em PowerPoint (modelo real da empresa) + cria a
-//   oportunidade na Vobi (aba Oportunidades) + manda o arquivo aqui no chat.
+// Roteiro ATUAL (reescrito em 05/08/2026 — "está fazendo muitas perguntas"):
+//   manda os arquivos → o bot LÊ → pergunta SÓ o nome do cliente → CARD de
+//   confirmação já preenchido (o que saiu dos arquivos + os padrões da casa)
+//   → toca no campo que quiser ajustar → CONFIRMA → gera a Proposta em
+//   PowerPoint (modelo real da empresa) + cria a oportunidade na Vobi (aba
+//   Oportunidades) + manda o arquivo aqui no chat.
+//
+// Padrões que entram sozinhos (e só mudam se a pessoa tocar no campo):
+//   prazo de obra 10 dias úteis · mobilização 10 (Comercial) / 5 (JunIA) ·
+//   pagamento 50% sinal + 50% entrega · valor "conforme negociação" — o número
+//   real vem do orçamento, não do Telegram.
+//
+// Roteiro anterior (30/07/2026), aposentado por ser longo demais: cliente →
+// endereço → projeto? → planilha? → escopo curto → escopo detalhado → prazo
+// obra → prazo mobilização → valor → % sinal → % medição → % entrega.
 //
 // A quantificação automática do projeto (2ª etapa, ainda não implementada)
 // SEMPRE vai gerar um RASCUNHO dentro da Vobi pra um engenheiro revisar antes
@@ -42,8 +51,54 @@ function parseValorReais(texto: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+// ── Padrões da proposta (decisão da Adriana, 05/08/2026) ───────────────────
+// "está fazendo muitas perguntas": o bot NÃO pergunta mais prazo, valor nem
+// percentuais. Entra com estes padrões e a pessoa ajusta o que quiser tocando
+// no campo dentro do card de confirmação.
+const PADRAO_PRAZO_OBRA = "10";
+const PADRAO_MOB_COMERCIAL = "10";   // mobilização mínima do bot Comercial
+const PADRAO_MOB_JUNIA = "5";
+const PADRAO_PCT_SINAL = 50;         // 50/50 — sinal na assinatura + entrega
+const PADRAO_PCT_ENTREGA = 50;
+const VALOR_A_DEFINIR = "Conforme negociação";
+const padraoMob = (B: Bot) => (B.modo === "comercial" ? PADRAO_MOB_COMERCIAL : PADRAO_MOB_JUNIA);
+
+// Medição é opcional: no padrão 50/50 essa linha nem aparece na proposta.
 function formatarValorRemuneracao(valorTotalTexto: string, pctSinal: number, pctMedicao: number, pctEntrega: number): string {
-  return `VALOR ESTIMADO: ${valorTotalTexto}\nSINAL: ${pctSinal}% na assinatura\nMEDIÇÃO: ${pctMedicao}% ao longo da execução\nENTREGA: ${pctEntrega}% na conclusão`;
+  const linhas = [`VALOR ESTIMADO: ${valorTotalTexto}`, `SINAL: ${pctSinal}% na assinatura`];
+  if (pctMedicao > 0) linhas.push(`MEDIÇÃO: ${pctMedicao}% ao longo da execução`);
+  linhas.push(`ENTREGA: ${pctEntrega}% na conclusão`);
+  return linhas.join("\n");
+}
+
+// Texto de remuneração a partir do que estiver na sessão (já com padrões).
+function montarValorFinal(d: any): string {
+  return formatarValorRemuneracao(
+    d.valorTotalTexto || VALOR_A_DEFINIR,
+    Number(d.pctSinal ?? PADRAO_PCT_SINAL),
+    Number(d.pctMedicao ?? 0),
+    Number(d.pctEntrega ?? PADRAO_PCT_ENTREGA),
+  );
+}
+
+// Completa a sessão com o que a leitura dos arquivos achou (`sug`) e com os
+// padrões acima — é o que permite ir DIRETO ao card, sem perguntar item a item.
+function completarComPadroes(B: Bot, d: any): any {
+  const s = d?.sug || {};
+  const out: any = { ...d };
+  if (!out.endereco && s.endereco) out.endereco = s.endereco;
+  if (!out.escopoCurto && s.escopoCurto) out.escopoCurto = s.escopoCurto;
+  if (!out.escopoDetalhado && s.escopoDetalhado) out.escopoDetalhado = s.escopoDetalhado;
+  if (!out.prazoObraDias) out.prazoObraDias = PADRAO_PRAZO_OBRA;
+  if (!out.prazoMobilizacaoDias) out.prazoMobilizacaoDias = padraoMob(B);
+  if (out.pctSinal == null) out.pctSinal = PADRAO_PCT_SINAL;
+  if (out.pctEntrega == null) out.pctEntrega = PADRAO_PCT_ENTREGA;
+  if (out.pctMedicao == null) out.pctMedicao = 0;
+  // O valor NÃO é adivinhado a partir dos arquivos: fica "conforme negociação"
+  // até sair do orçamento. Se a leitura achou um total, ele vira só uma dica
+  // com botão no card (com:usar_valor_lido).
+  out.valor = montarValorFinal(out);
+  return out;
 }
 
 // ── Permissão: só perfil "comercial" (ou "admin") ───────────────────────
@@ -96,8 +151,10 @@ const dadosFinais_arquivos = (d: any) =>
     .map((a: any) => ({ file_id: a.file_id, nome: a.nome, ct: a.ct, campo: a.campo }));
 
 // "ainda não tenho preço" — vira "conforme negociação" em vez de travar.
-const SEM_VALOR = /^\s*(n[ãa]o\s*(tenho|tem|sei|h[áa])|sem\s*valor|a\s*(definir|combinar)|ainda\s*n[ãa]o|conforme\s*negocia|pular|-)\s*$/i;
-const PERGUNTA_VALOR = "💰 Qual o <b>valor</b> da proposta? (ex.: \"R$ 38.500,00\")\n\nSe ainda não tiver, toque em <b>Pular</b> — fica \"conforme negociação\".";
+// Antes exigia terminar em "negocia" — quem escrevia "conforme negociação"
+// (o texto que o próprio bot usa) não era reconhecido e ficava preso.
+const SEM_VALOR = /^\s*(n[ãa]o\s*(tenho|tem|sei|h[áa]|fechei|fechou|definimos)|sem\s*(valor|pre[çc]o)|a\s*(definir|combinar)|ainda\s*n[ãa]o.*|conforme\s*negocia\S*|pular|-)\s*$/i;
+const PERGUNTA_VALOR = "💰 Qual o <b>valor</b> da proposta? (ex.: \"R$ 38.500,00\")\n\nSe ainda não fechou preço, escreva <b>não tenho</b> — fica \"conforme negociação\" e o número entra quando o orçamento ficar pronto.";
 
 // Comando do Telegram — em GRUPO ele chega com o nome do bot colado
 // ("/proposta@cjrcomercial_bot"), então não dá pra comparar direto.
@@ -240,94 +297,90 @@ export async function iniciarNovaProposta(db: any, B: Bot, sessao: Sessao, chatI
 
 // ── Passos de texto do roteiro (estado com_*) — compartilhado entre o bot
 // de Processos e o atalho "/comercial" dentro da JunIA. ──
-async function onTextoComercial(db: any, B: Bot, sessao: Sessao, chatId: number, estado: string, texto: string) {
-  switch (estado) {
-    case "com_cliente":
-      return await avancar(db, B, sessao, chatId, { cliente: texto }, "com_endereco",
-        "📍 Qual o <b>endereço</b> da obra/projeto?");
-    case "com_endereco": {
-      // Arquivos já anexados no início? Então pula os 2 passos de anexo.
-      if (sessao.dados?.arquivosAnexados?.length) {
-        return await avancar(db, B, sessao, chatId, { endereco: texto }, "com_escopo_curto",
-          "✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
-      }
-      // Guardou arquivos mas ainda não anexou (ex.: mandou no meio) — oferece.
-      const guardados = arquivosGuardados(sessao.dados);
-      const extras = guardados.length
-        ? [[{ text: `📎 Usar o(s) ${guardados.length} arquivo(s) que mandei`, callback_data: "com:usar_arquivos" }]]
-        : [];
-      return await avancar(db, B, sessao, chatId, { endereco: texto }, "com_projeto",
-        "📎 Você já tem o <b>projeto</b> (planta/arquivo) desse serviço? Se sim, me envie o arquivo. Se não tiver, toque em pular.", "com:pular_projeto", extras);
-    }
-    case "com_escopo_curto":
-      return await avancar(db, B, sessao, chatId, { escopoCurto: texto }, "com_escopo_detalhado",
-        "📝 Quer <b>detalhar o escopo</b> (linha por linha, o que inclui)? Pode mandar o texto, ou pular.", "com:pular_escopo");
-    case "com_escopo_detalhado":
-      return await avancar(db, B, sessao, chatId, { escopoDetalhado: texto }, "com_prazo_obra",
-        "🗓️ Qual o <b>prazo de obra</b> estimado (em dias úteis)? Se não souber ainda, pode pular (mantenho o padrão de 10 dias).", "com:pular_prazo_obra");
-    case "com_prazo_obra": {
+// ── Campos que dá pra ajustar tocando no card de confirmação ───────────────
+const CAMPOS_EDITAVEIS: Record<string, { label: string; pergunta: string }> = {
+  cliente:    { label: "Cliente",       pergunta: "🏢 Qual o <b>nome do cliente</b>?" },
+  endereco:   { label: "Endereço",      pergunta: "📍 Qual o <b>endereço</b> da obra?" },
+  escopo:     { label: "Escopo",        pergunta: "✏️ Resuma o <b>escopo</b> em uma frase (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):" },
+  detalhe:    { label: "Detalhamento",  pergunta: "📝 Manda o <b>detalhamento do escopo</b> — uma linha por item:" },
+  prazo_obra: { label: "Prazo de obra", pergunta: "🗓️ <b>Prazo de obra</b> em dias úteis. Manda só o número (ex.: 15):" },
+  prazo_mob:  { label: "Mobilização",   pergunta: "🚚 <b>Prazo de mobilização</b> em dias úteis. Manda só o número (ex.: 10):" },
+  valor:      { label: "Valor",         pergunta: PERGUNTA_VALOR },
+  pagto:      { label: "Pagamento",     pergunta: "📐 <b>Percentuais de pagamento.</b>\n\nDois números = sinal e entrega (ex.: <b>50 50</b>).\nTrês números = sinal, medição e entrega (ex.: <b>30 40 30</b>)." },
+};
+
+// Aplica o patch, completa com sug+padrões e mostra o card. É pra onde todo
+// caminho do roteiro desemboca — não existe mais fila de perguntas.
+async function irParaCard(db: any, B: Bot, sessao: Sessao, chatId: number, patch: any = {}) {
+  const dados = completarComPadroes(B, { ...(sessao.dados || {}), ...patch });
+  await salvarSessao(db, { ...sessao, chat_id: String(chatId), estado: "com_confirma", dados });
+  return await mostrarConfirmacao(db, B, chatId, dados);
+}
+
+// Resposta a um campo aberto pelo card (estado com_ed_<campo>). Valida e volta
+// pro card — nunca encadeia numa próxima pergunta.
+async function onEdicaoCampo(db: any, B: Bot, sessao: Sessao, chatId: number, estado: string, texto: string) {
+  const campo = estado.slice("com_ed_".length);
+  switch (campo) {
+    case "cliente":  return await irParaCard(db, B, sessao, chatId, { cliente: texto });
+    case "endereco": return await irParaCard(db, B, sessao, chatId, { endereco: texto });
+    case "escopo":   return await irParaCard(db, B, sessao, chatId, { escopoCurto: texto });
+    case "detalhe":  return await irParaCard(db, B, sessao, chatId, { escopoDetalhado: texto });
+    case "prazo_obra": {
       const n = texto.replace(/\D/g, "");
-      if (!n) { await enviar(B, chatId, "Manda só o número de dias (ex.: 15), ou toque em pular."); return; }
-      const perguntaMob = B.modo === "comercial"
-        ? "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Mínimo de <b>10 dias úteis</b> — pode pular (fico com 10)."
-        : "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Pode pular (padrão de 5 dias).";
-      return await avancar(db, B, sessao, chatId, { prazoObraDias: n }, "com_prazo_mob", perguntaMob, "com:pular_prazo_mob");
+      if (!n) { await enviar(B, chatId, "Manda só o número de dias úteis (ex.: 15)."); return; }
+      return await irParaCard(db, B, sessao, chatId, { prazoObraDias: n });
     }
-    case "com_prazo_mob": {
+    case "prazo_mob": {
       const n = texto.replace(/\D/g, "");
-      if (!n) { await enviar(B, chatId, "Manda só o número de dias (ex.: 10), ou toque em pular."); return; }
+      if (!n) { await enviar(B, chatId, "Manda só o número de dias úteis (ex.: 10)."); return; }
       if (B.modo === "comercial" && Number(n) < 10) {
-        await enviar(B, chatId, "⚠️ A mobilização mínima é de <b>10 dias úteis</b>. Manda um número igual ou maior, ou toque em pular (fico com 10).");
+        await enviar(B, chatId, "⚠️ A mobilização mínima é de <b>10 dias úteis</b>. Manda um número igual ou maior.");
         return;
       }
-      return await avancar(db, B, sessao, chatId, { prazoMobilizacaoDias: n }, "com_valor",
-        PERGUNTA_VALOR, "com:pular_valor");
+      return await irParaCard(db, B, sessao, chatId, { prazoMobilizacaoDias: n });
     }
-    case "com_valor": {
-      if (B.modo === "comercial") {
-        // Saída pra quem ainda não tem preço fechado — sem isso a pessoa ficava
-        // presa repetindo a mesma cobrança (a Adriana caiu nisso em 04/08/2026).
-        if (SEM_VALOR.test(texto)) {
-          const semValor = { ...sessao.dados, valor: "Conforme negociação" };
-          await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: semValor });
-          return await mostrarConfirmacao(db, B, chatId, semValor);
-        }
-        const valorNumerico = parseValorReais(texto);
-        if (!valorNumerico) { await enviar(B, chatId, "Não consegui entender esse valor. Manda algo como \"R$ 594.696,95\" — ou escreva <b>não tenho</b> pra deixar como \"conforme negociação\"."); return; }
-        return await avancar(db, B, sessao, chatId, { valorTotalTexto: texto, valorNumerico }, "com_pct_sinal",
-          "💰 Perfeito. Agora o <b>% de sinal</b> (na assinatura)? Manda só o número (ex.: 30).");
-      }
-      await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: { ...sessao.dados, valor: texto } });
-      return await mostrarConfirmacao(db, B, chatId, { ...sessao.dados, valor: texto });
+    case "valor": {
+      // "não tenho" / "a definir" volta pro padrão em vez de travar cobrando.
+      if (SEM_VALOR.test(texto)) return await irParaCard(db, B, sessao, chatId, { valorTotalTexto: null, valorNumerico: null });
+      const valorNumerico = parseValorReais(texto);
+      if (!valorNumerico) { await enviar(B, chatId, "Não entendi esse valor. Manda algo como <b>R$ 594.696,95</b>, ou escreva <b>não tenho</b>."); return; }
+      return await irParaCard(db, B, sessao, chatId, { valorTotalTexto: texto.trim(), valorNumerico });
     }
-    case "com_pct_sinal": {
-      const n = Number(texto.replace(",", ".").replace(/[^\d.]/g, ""));
-      if (!n || n <= 0 || n >= 100) { await enviar(B, chatId, "Manda só o número do percentual de sinal (ex.: 30)."); return; }
-      return await avancar(db, B, sessao, chatId, { pctSinal: n }, "com_pct_medicao",
-        "📐 E o <b>% de medição</b> (ao longo da execução)?");
-    }
-    case "com_pct_medicao": {
-      const n = Number(texto.replace(",", ".").replace(/[^\d.]/g, ""));
-      if (!n || n <= 0 || n >= 100) { await enviar(B, chatId, "Manda só o número do percentual de medição (ex.: 40)."); return; }
-      return await avancar(db, B, sessao, chatId, { pctMedicao: n }, "com_pct_entrega",
-        "🏁 E o <b>% de entrega</b> (na conclusão)?");
-    }
-    case "com_pct_entrega": {
-      const n = Number(texto.replace(",", ".").replace(/[^\d.]/g, ""));
-      if (!n || n <= 0 || n >= 100) { await enviar(B, chatId, "Manda só o número do percentual de entrega (ex.: 30)."); return; }
-      const soma = (Number(sessao.dados?.pctSinal) || 0) + (Number(sessao.dados?.pctMedicao) || 0) + n;
-      if (Math.abs(soma - 100) > 0.01) {
-        await enviar(B, chatId, `⚠️ Sinal + Medição + Entrega precisa somar <b>100%</b> (deu ${soma}%). Manda o % de entrega certo.`);
+    case "pagto": {
+      const ns = (texto.match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(",", ".")));
+      if (ns.length !== 2 && ns.length !== 3) {
+        await enviar(B, chatId, "Manda <b>2 números</b> (sinal e entrega) ou <b>3</b> (sinal, medição e entrega). Ex.: <b>50 50</b>.");
         return;
       }
-      const valorFormatado = formatarValorRemuneracao(sessao.dados.valorTotalTexto, sessao.dados.pctSinal, sessao.dados.pctMedicao, n);
-      const novosDados = { ...sessao.dados, pctEntrega: n, valor: valorFormatado };
-      await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: novosDados });
-      return await mostrarConfirmacao(db, B, chatId, novosDados);
+      const pctSinal = ns[0];
+      const pctMedicao = ns.length === 3 ? ns[1] : 0;
+      const pctEntrega = ns.length === 3 ? ns[2] : ns[1];
+      const soma = pctSinal + pctMedicao + pctEntrega;
+      if (Math.abs(soma - 100) > 0.01) { await enviar(B, chatId, `⚠️ Os percentuais precisam somar <b>100%</b> (deu ${soma}%).`); return; }
+      return await irParaCard(db, B, sessao, chatId, { pctSinal, pctMedicao, pctEntrega });
     }
     default:
-      return; // com_confirma etc — só reage a botão, texto solto é ignorado
+      return await irParaCard(db, B, sessao, chatId, {});
   }
+}
+
+// ── Roteiro curto (05/08/2026) ─────────────────────────────────────────────
+// Antes eram 11 perguntas em fila — a Adriana: "está fazendo muitas
+// perguntas". Agora o bot pergunta UMA (o nome do cliente, que é o campo em
+// que a leitura automática mais erra) e vai direto pro card já preenchido.
+// Tudo o mais se ajusta tocando no campo. Compartilhado entre o bot Comercial
+// e o atalho /comercial de dentro da JunIA.
+async function onTextoComercial(db: any, B: Bot, sessao: Sessao, chatId: number, estado: string, texto: string) {
+  if (estado === "com_cliente") return await irParaCard(db, B, sessao, chatId, { cliente: texto });
+  if (estado.startsWith("com_ed_")) return await onEdicaoCampo(db, B, sessao, chatId, estado, texto);
+  // Texto solto no passo de anexo = "não tenho arquivo": segue pro card.
+  if (estado === "com_projeto" || estado === "com_planilha") return await irParaCard(db, B, sessao, chatId, {});
+  // No card, texto solto não faz nada (a pessoa deve tocar num campo). E
+  // qualquer estado com_* antigo (sessão que ficou aberta antes desta versão)
+  // cai no card em vez de morrer num passo que não existe mais.
+  if (estado === "com_confirma") return;
+  if (estado.startsWith("com_")) return await irParaCard(db, B, sessao, chatId, {});
 }
 
 // Roteiro exclusivo do bot Comercial dedicado (@cjrcomercial_bot, modo
@@ -677,12 +730,12 @@ async function anexarEAnalisar(db: any, B: Bot, chatId: number, arquivos: ArqGua
   await enviar(B, chatId, anexados.length ? `📎 Arquivos recebidos:\n${linhas}${aviso}` : `⚠️ Não consegui receber os arquivos.${aviso}`);
 
   if (!trechos.length) {
-    if (anexados.length) await enviar(B, chatId, "🔎 Não consegui ler o conteúdo (os arquivos parecem ser só imagem/escaneados) — vou te perguntar item por item.");
+    if (anexados.length) await enviar(B, chatId, "🔎 Não consegui ler o conteúdo (os arquivos parecem ser só imagem/escaneados) — o card vem em branco, é só tocar em cada campo pra preencher.");
     return patch;
   }
   const achado = await extrairDadosDaProposta(trechos);
   if (!achado) {
-    await enviar(B, chatId, "🔎 Li os arquivos mas não consegui extrair os dados automaticamente — vou te perguntar item por item.");
+    await enviar(B, chatId, "🔎 Li os arquivos mas não consegui extrair os dados automaticamente — o card vem em branco, é só tocar em cada campo pra preencher.");
     return patch;
   }
   const sug: any = {};
@@ -696,8 +749,8 @@ async function anexarEAnalisar(db: any, B: Bot, chatId: number, arquivos: ArqGua
   const rot: Record<string, string> = { cliente: "Cliente", endereco: "Endereço", escopoCurto: "Escopo", escopoDetalhado: "Detalhamento", valor: "Valor" };
   const achados = Object.keys(sug).map((k) => `• <b>${rot[k]}:</b> ${escTg(sug[k].length > 160 ? sug[k].slice(0, 157) + "…" : sug[k])}`).join("\n");
   await enviar(B, chatId, achados
-    ? `🔎 <b>Li os arquivos.</b> Achei isto:\n${achados}\n\nVou te perguntar mesmo assim — onde eu já tiver a resposta, é só tocar no botão <b>✅ Usar</b>. Confira, porque saiu dos documentos.`
-    : "🔎 Li os arquivos, mas não achei cliente/endereço/escopo/valor explícitos — vou te perguntar item por item.");
+    ? `🔎 <b>Li os arquivos.</b> Achei isto:\n${achados}\n\nVou montar o card com esses dados — confira antes de confirmar, porque saiu dos documentos.`
+    : "🔎 Li os arquivos, mas não achei cliente/endereço/escopo explícitos — é só tocar em cada campo do card pra preencher.");
   return patch;
 }
 
@@ -709,8 +762,7 @@ async function usarArquivosGuardados(db: any, B: Bot, sessao: Sessao, chatId: nu
   }
   await enviar(B, chatId, "📎 Guardando e lendo os arquivos… (uns segundos)");
   const patch = await anexarEAnalisar(db, B, chatId, arquivos);
-  return await avancar(db, B, sessao, chatId, patch, "com_escopo_curto",
-    "✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
+  return await irParaCard(db, B, sessao, chatId, patch);
 }
 
 async function onArquivoRoteiro(db: any, B: Bot, sessao: Sessao, chatId: number, msg: any, estado: "com_projeto" | "com_planilha") {
@@ -743,8 +795,8 @@ async function onArquivoRoteiro(db: any, B: Bot, sessao: Sessao, chatId: number,
       "✅ Projeto recebido.\n\n📊 Tem uma <b>planilha de orçamento padrão</b> pra esse tipo de serviço? Envie ou pule.",
       "com:pular_planilha");
   }
-  return await avancar(db, B, sessao, chatId, patch, "com_escopo_curto",
-    "✅ Planilha recebida.\n\n✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
+  await enviar(B, chatId, "✅ Planilha recebida.");
+  return await irParaCard(db, B, sessao, chatId, patch);
 }
 
 // ── Callbacks (botões) ──────────────────────────────────────────────────
@@ -752,12 +804,17 @@ async function onArquivoRoteiro(db: any, B: Bot, sessao: Sessao, chatId: number,
 const ESTADO_DO_BOTAO: Record<string, string> = {
   "com:pular_projeto": "com_projeto",
   "com:pular_planilha": "com_planilha",
-  "com:pular_escopo": "com_escopo_detalhado",
-  "com:pular_prazo_obra": "com_prazo_obra",
-  "com:pular_prazo_mob": "com_prazo_mob",
-  "com:pular_valor": "com_valor",
   "com:confirmar": "com_confirma",
-  "com:usar_arquivos": "com_projeto",
+  "com:anexar": "com_confirma",
+  "com:usar_valor_lido": "com_confirma",
+  "com:ed:cliente": "com_confirma",
+  "com:ed:endereco": "com_confirma",
+  "com:ed:escopo": "com_confirma",
+  "com:ed:detalhe": "com_confirma",
+  "com:ed:prazo_obra": "com_confirma",
+  "com:ed:prazo_mob": "com_confirma",
+  "com:ed:valor": "com_confirma",
+  "com:ed:pagto": "com_confirma",
 };
 
 export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null, chatId: number, userId: string, data: string) {
@@ -784,23 +841,25 @@ export async function onCallbackProcessos(db: any, B: Bot, sessao: Sessao | null
   if (data === "com:sugestao") return await aceitarSugestao(db, B, sessao, chatId);
   if (data === "com:pular_projeto") return await avancar(db, B, sessao, chatId, {}, "com_planilha",
     "📊 Tem uma <b>planilha de orçamento padrão</b> pra esse tipo de serviço? Envie ou pule.", "com:pular_planilha");
-  if (data === "com:pular_planilha") return await avancar(db, B, sessao, chatId, {}, "com_escopo_curto",
-    "✏️ Resuma em <b>uma frase</b> o escopo do serviço (ex.: \"Impermeabilização da laje de cobertura do bloco B\"):");
-  if (data === "com:pular_escopo") return await avancar(db, B, sessao, chatId, {}, "com_prazo_obra",
-    "🗓️ Qual o <b>prazo de obra</b> estimado (em dias úteis)? Pode pular (padrão de 10 dias).", "com:pular_prazo_obra");
-  if (data === "com:pular_prazo_obra") {
-    const perguntaMob = B.modo === "comercial"
-      ? "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Mínimo de <b>10 dias úteis</b> — pode pular (fico com 10)."
-      : "🚚 E o <b>prazo de mobilização</b> (dias úteis)? Pode pular (padrão de 5 dias).";
-    return await avancar(db, B, sessao, chatId, {}, "com_prazo_mob", perguntaMob, "com:pular_prazo_mob");
+  if (data === "com:pular_planilha") return await irParaCard(db, B, sessao, chatId, {});
+  if (data === "com:anexar") return await avancar(db, B, sessao, chatId, {}, "com_projeto",
+    "📎 Manda o <b>projeto</b> (planta/PDF). A planilha, se tiver, eu peço logo depois.", "com:pular_projeto");
+  // Tocar num campo do card abre a pergunta SÓ daquele campo — e volta pro card.
+  if (data.startsWith("com:ed:")) {
+    const campo = data.slice("com:ed:".length);
+    const def = CAMPOS_EDITAVEIS[campo];
+    if (!def) return;
+    await salvarSessao(db, { ...sessao, chat_id: String(chatId), estado: `com_ed_${campo}`, dados: sessao.dados });
+    await enviar(B, chatId, def.pergunta, inline([[{ text: "↩️ Voltar sem mudar", callback_data: "com:voltar_card" }], btnCancelar]));
+    return;
   }
-  if (data === "com:pular_prazo_mob") {
-    const patch = B.modo === "comercial" ? { prazoMobilizacaoDias: "10" } : {};
-    return await avancar(db, B, sessao, chatId, patch, "com_valor", PERGUNTA_VALOR, "com:pular_valor");
-  }
-  if (data === "com:pular_valor") {
-    await salvarSessao(db, { ...sessao, estado: "com_confirma", dados: sessao.dados });
-    return await mostrarConfirmacao(db, B, chatId, sessao.dados);
+  if (data === "com:voltar_card") return await irParaCard(db, B, sessao, chatId, {});
+  // O total que a leitura achou nos arquivos só entra se a pessoa mandar.
+  if (data === "com:usar_valor_lido") {
+    const v = sessao.dados?.sug?.valor;
+    const n = v ? parseValorReais(String(v)) : null;
+    if (!n) { await enviar(B, chatId, "Não consegui aproveitar esse valor — toque em <b>Valor</b> pra digitar."); return; }
+    return await irParaCard(db, B, sessao, chatId, { valorTotalTexto: String(v).trim(), valorNumerico: n });
   }
   if (data === "com:confirmar") return await executarProposta(db, B, sessao, chatId);
 }
@@ -811,20 +870,46 @@ function resumoLinha(label: string, valor?: string, padrao?: string): string {
 }
 
 async function mostrarConfirmacao(db: any, B: Bot, chatId: number, dados: any) {
+  const d = dados || {};
+  const arqs = Array.isArray(d.arquivosAnexados) ? d.arquivosAnexados : [];
+  const temProjeto = arqs.some((a: any) => a.campo === "projeto");
+  const temPlanilha = arqs.some((a: any) => a.campo === "planilha");
+  const nItens = String(d.escopoDetalhado || "").split(/\r?\n/).filter((l: string) => l.trim()).length;
+  const pagamento = Number(d.pctMedicao) > 0
+    ? `${d.pctSinal}% sinal / ${d.pctMedicao}% medição / ${d.pctEntrega}% entrega`
+    : `${d.pctSinal}% sinal / ${d.pctEntrega}% entrega`;
+
   const linhas = [
-    resumoLinha("Cliente", dados.cliente),
-    resumoLinha("Endereço", dados.endereco),
-    resumoLinha("Projeto anexado", (dados.arquivosAnexados || []).some((a: any) => a.campo === "projeto") ? "sim" : undefined, "sem projeto anexado"),
-    resumoLinha("Planilha padrão", (dados.arquivosAnexados || []).some((a: any) => a.campo === "planilha") ? "sim" : undefined, "sem planilha"),
-    resumoLinha("Escopo", dados.escopoCurto),
-    resumoLinha("Detalhamento", dados.escopoDetalhado, "fica marcado p/ ajustar depois"),
-    resumoLinha("Prazo de obra", dados.prazoObraDias ? `${dados.prazoObraDias} dias úteis` : undefined, "10 dias úteis"),
-    resumoLinha("Mobilização", dados.prazoMobilizacaoDias ? `${dados.prazoMobilizacaoDias} dias úteis` : undefined, B.modo === "comercial" ? "10 dias úteis" : "5 dias úteis"),
-    resumoLinha("Valor", dados.valor, "conforme negociação"),
+    resumoLinha("🏢 Cliente", d.cliente),
+    resumoLinha("📍 Endereço", d.endereco),
+    resumoLinha("✏️ Escopo", d.escopoCurto),
+    resumoLinha("📝 Detalhamento", nItens ? `${nItens} item(ns)` : undefined, "fica marcado p/ ajustar depois"),
+    resumoLinha("🗓️ Prazo de obra", `${d.prazoObraDias} dias úteis`),
+    resumoLinha("🚚 Mobilização", `${d.prazoMobilizacaoDias} dias úteis`),
+    resumoLinha("💰 Valor", d.valorTotalTexto || VALOR_A_DEFINIR),
+    resumoLinha("📐 Pagamento", pagamento),
+    resumoLinha("📎 Arquivos", arqs.length ? `${arqs.length} (${temProjeto ? "projeto" : "sem projeto"}${temPlanilha ? " + planilha" : ""})` : undefined, "nenhum anexado"),
   ].join("\n");
+
+  const temValorLido = !d.valorTotalTexto && !!d.sug?.valor;
+  const dica = temValorLido
+    ? `\n\n💡 Achei <b>${escTg(String(d.sug.valor))}</b> nos arquivos. Só entra na proposta se você mandar.`
+    : "";
+
+  const botoes: { text: string; callback_data: string }[][] = [
+    [{ text: "✅ Confirmar e gerar", callback_data: "com:confirmar" }],
+    [{ text: "🏢 Cliente", callback_data: "com:ed:cliente" }, { text: "📍 Endereço", callback_data: "com:ed:endereco" }],
+    [{ text: "✏️ Escopo", callback_data: "com:ed:escopo" }, { text: "📝 Detalhamento", callback_data: "com:ed:detalhe" }],
+    [{ text: "🗓️ Prazo obra", callback_data: "com:ed:prazo_obra" }, { text: "🚚 Mobilização", callback_data: "com:ed:prazo_mob" }],
+    [{ text: "💰 Valor", callback_data: "com:ed:valor" }, { text: "📐 Pagamento", callback_data: "com:ed:pagto" }],
+  ];
+  if (temValorLido) botoes.push([{ text: "💡 Usar o valor que li", callback_data: "com:usar_valor_lido" }]);
+  if (!arqs.length) botoes.push([{ text: "📎 Anexar arquivos", callback_data: "com:anexar" }]);
+  botoes.push(btnCancelar);
+
   await enviar(B, chatId,
-    `📋 <b>Confirma os dados da proposta?</b>\n\n${linhas}\n\nAo confirmar, eu gero o PowerPoint da proposta e já crio a oportunidade na Vobi.`,
-    inline([[{ text: "✅ Confirmar e gerar", callback_data: "com:confirmar" }], btnCancelar]));
+    `📋 <b>Confirma os dados da proposta?</b>\n\n${linhas}${dica}\n\nToque num campo pra ajustar — ou confirme, que eu gero o PowerPoint e crio a oportunidade na Vobi.`,
+    inline(botoes));
 }
 
 async function enviarDocumentoTg(B: Bot, chatId: number, buffer: Buffer, filename: string, caption?: string): Promise<any> {
