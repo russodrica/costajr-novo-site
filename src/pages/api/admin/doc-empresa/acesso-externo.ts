@@ -24,13 +24,18 @@ export const GET: APIRoute = async ({ request, url }) => {
     if (!temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
     const db = supabaseAdmin();
 
-    const { data: profs } = await db.from("portal_profiles").select("id, nome, email, role, roles");
+    const { data: profs } = await db.from("portal_profiles").select("id, display_name, empresa, email, role, roles");
     const externos = ((profs || []) as any[])
       .filter((p) => {
         const rs = (p.roles && p.roles.length ? p.roles : [p.role]).filter(Boolean);
         return rs.includes("fornecedor");
       })
-      .map((p) => ({ id: String(p.id), nome: p.nome || p.email || "(sem nome)", email: p.email || "" }))
+      .map((p) => ({
+        id: String(p.id),
+        nome: p.display_name || p.email || "(sem nome)",
+        empresa: p.empresa || "",
+        email: p.email || "",
+      }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
 
     const tipo = String(url.searchParams.get("tipo") || "");

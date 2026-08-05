@@ -516,7 +516,7 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
     box.innerHTML = aeExternos.map((p: any) => `
       <label style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--border-light);cursor:pointer;font-size:13.5px">
         <input type="checkbox" class="ae-chk" value="${p.id}" ${marcados.includes(p.id) ? "checked" : ""} style="width:auto" />
-        <span style="flex:1">👤 <b>${String(p.nome).replace(/</g, "&lt;")}</b>${p.email ? ` <span style="color:#9CA3AF;font-size:12px">${String(p.email).replace(/</g, "&lt;")}</span>` : ""}</span>
+        <span style="flex:1">👤 <b>${String(p.nome).replace(/</g, "&lt;")}</b>${p.empresa ? ` <span style="color:#6B7280;font-size:12px">· ${String(p.empresa).replace(/</g, "&lt;")}</span>` : ""}${p.email ? `<br/><span style="color:#9CA3AF;font-size:11.5px">${String(p.email).replace(/</g, "&lt;")}</span>` : ""}</span>
       </label>`).join("");
   }
   function aeModoMudou() {
