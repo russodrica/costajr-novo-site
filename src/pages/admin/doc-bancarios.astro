@@ -3,6 +3,7 @@ import Admin from "../../layouts/Admin.astro";
 import { verifyToken, assertSessaoValida, type AdminClaims } from "../../lib/auth";
 import { temPerfilFresco, perfisFrescos, ehFornecedorPerfis } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
+import { bancosSigilosos, bancoEhSigiloso, linhaEhSigilosa } from "../../lib/sigilo";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -26,11 +27,15 @@ const CARTOES = ["Nubank", "Itaú"];
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const db = supabaseAdmin();
-const [{ data: exRows }, { data: ftRows }, { data: empRows }] = await Promise.all([
+const [{ data: exRows }, { data: ftRows }, { data: empRows }, sigBancos] = await Promise.all([
   db.from("doc_extratos_bancarios").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
   ehForn ? Promise.resolve({ data: [] as any[] }) : db.from("doc_cartao_faturas").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
   ehForn ? Promise.resolve({ data: [] as any[] }) : db.from("doc_emprestimos").select("*").order("status").order("data_contratacao", { ascending: false }),
+  bancosSigilosos(db),
 ]);
+// 🔒 SIGILO: item marcado OU banco/cartão inteiro na lista → fica FORA do "Enviar documentos".
+// Continua visível e baixável aqui na tela (quem tem acesso a esta página já tem acesso ao dado).
+const sigEx = (r: any) => linhaEhSigilosa(r, sigBancos);
 const extratos: any[] = exRows || [];
 const faturas: any[] = ftRows || [];
 const emprestimos: any[] = empRows || [];
@@ -71,13 +76,19 @@ const STATUS_LABEL: Record<string, string> = { ativo: "Ativo", quitado: "Quitado
 const empAtivos = emprestimos.filter((e) => e.status === "ativo");
 const totalDevendo = empAtivos.reduce((s, e) => s + (Number(e.valor_total) || 0), 0);
 
-// Itens disponíveis para envio por e-mail (apenas os que têm arquivo)
+// Itens disponíveis para envio por e-mail (apenas os que têm arquivo).
+// 🔒 Os SIGILOSOS nem entram nesta lista — não dá para selecionar o que não pode sair.
+// (E se alguém forçar o pedido, a API recusa: ver src/lib/sigilo.ts.)
 const bancItems = [
-  ...extratos.map((e: any) => ({ tipo: "extrato", id: e.id, label: `${e.banco} — ${MESES[e.mes - 1]}/${e.ano}`, aba: "extratos", mes: e.mes, ano: e.ano })),
-  ...faturas.map((f: any) => ({ tipo: "fatura", id: f.id, label: `${f.cartao} — ${MESES[f.mes - 1]}/${f.ano}`, aba: "faturas" })),
-  ...emprestimos.filter((e: any) => e.storage_path).map((e: any) => ({ tipo: "emprestimo", id: e.id, label: [e.banco, e.descricao].filter(Boolean).join(" — ") || "Contrato", aba: "emprestimos" })),
+  ...extratos.filter((e: any) => !sigEx(e)).map((e: any) => ({ tipo: "extrato", id: e.id, label: `${e.banco} — ${MESES[e.mes - 1]}/${e.ano}`, aba: "extratos", mes: e.mes, ano: e.ano })),
+  ...faturas.filter((f: any) => !sigEx(f)).map((f: any) => ({ tipo: "fatura", id: f.id, label: `${f.cartao} — ${MESES[f.mes - 1]}/${f.ano}`, aba: "faturas" })),
+  ...emprestimos.filter((e: any) => e.storage_path && !sigEx(e)).map((e: any) => ({ tipo: "emprestimo", id: e.id, label: [e.banco, e.descricao].filter(Boolean).join(" — ") || "Contrato", aba: "emprestimos" })),
 ];
 const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
+const qtdSigilosos = extratos.filter(sigEx).length + faturas.filter(sigEx).length + emprestimos.filter((e: any) => e.storage_path && sigEx(e)).length;
+// Bancos + cartões que podem ser marcados como sigilosos (união das duas listas)
+const BANCOS_SIGILO = [...new Set([...BANCOS, ...CARTOES])];
+const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, sigiloso: bancoEhSigiloso(b, sigBancos) }))).replace(/</g, "\\u003c");
 ---
 
 <Admin title="Documentos Bancários" current="doc-bancarios">
@@ -85,6 +96,7 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
     <span style="font-size:1.3rem;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.02em">🏦 Documentos Bancários</span>
     <span style="flex:1"></span>
     {!ehForn && <button class="btn btn-secondary" onclick="abrirEnviarDocs()" title="Selecione documentos e envie num e-mail só">📨 Enviar documentos</button>}
+    {!ehForn && <button class="btn btn-outline" onclick="abrirSigilo()" title="Escolher bancos/cartões que nunca podem ser compartilhados">🔒 Sigilo{qtdSigilosos > 0 ? ` (${qtdSigilosos})` : ''}</button>}
     {!ehForn && <a class="btn btn-outline btn-sm" href="/admin/doc-empresa">← Documentos da Empresa</a>}
   </div>
   <p style="margin:0 0 12px;color:var(--muted);font-size:13px">{ehForn ? "Extratos bancários — acesso de fornecedor (somente visualização e download)." : "Área sensível: extratos, faturas de cartão e empréstimos/financiamentos. Arquivos no cofre privado da empresa (link temporário). Acesso: admin, financeiro e jurídico."}</p>
@@ -121,7 +133,7 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
                       <div class="cell" data-drop-ano={String(a)} data-drop-mes={String(m)} data-drop-banco={banco}>
                         <div class="cell-head"><b style="flex:1;font-size:13.5px">{banco}</b>{arqs.length > 0 ? <span class="badge badge-green" style="font-size:10.5px">✓ {arqs.length}</span> : <span class="badge badge-gray" style="font-size:10.5px">falta</span>}</div>
                         {arqs.map((x) => (
-                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={x.nome_arquivo || ''}>📄 {x.nome_arquivo || 'arquivo'}</span><a href={`/api/admin/doc-empresa/extratos/${x.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`excluirItem('extratos','${x.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
+                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={x.nome_arquivo || ''}>{sigEx(x) ? '🔒' : '📄'} {x.nome_arquivo || 'arquivo'}</span><a href={`/api/admin/doc-empresa/extratos/${x.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`toggleSigilo('extrato','${x.id}',${x.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(banco)},this)`} title={sigEx(x) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(x) ? '🔒' : '🔓'}</button><button onclick={`excluirItem('extratos','${x.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
                         ))}
                         <button class="btn btn-outline btn-sm" style="width:100%;margin-top:7px" data-requer-edicao onclick={`anexarCelula(${a},${m},${JSON.stringify(banco)})`}>📎 Anexar</button>
                       </div>
@@ -159,7 +171,7 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
                       <div class="cell">
                         <div class="cell-head"><b style="flex:1;font-size:13.5px">💳 {cartao}</b>{cfts.length > 0 ? <span class="badge badge-green" style="font-size:10.5px">✓ {cfts.length}</span> : <span class="badge badge-gray" style="font-size:10.5px">falta</span>}</div>
                         {cfts.map((f) => (
-                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={f.nome_arquivo || ''}>📄 {f.valor != null ? brl(f.valor) : (f.nome_arquivo || 'fatura')}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''}</span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
+                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={f.nome_arquivo || ''}>{sigEx(f) ? '🔒' : '📄'} {f.valor != null ? brl(f.valor) : (f.nome_arquivo || 'fatura')}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''}</span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`toggleSigilo('fatura','${f.id}',${f.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(f.cartao || cartao)},this)`} title={sigEx(f) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(f) ? '🔒' : '🔓'}</button><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
                         ))}
                         <button class="btn btn-outline btn-sm" style="width:100%;margin-top:7px" data-requer-edicao onclick={`anexarFaturaCartao(${a},${m},${JSON.stringify(cartao)})`}>📎 Anexar</button>
                       </div>
@@ -170,7 +182,7 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
                   <div style="padding:6px 14px 0">
                     <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">Outros cartões</div>
                     {(mapaFtOutros[a][m]).map((f) => (
-                      <div class="cell-file" style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px"><span style="flex:1"><b>{f.cartao}</b>{f.valor != null ? ` · ${brl(f.valor)}` : ''}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''} <span style="color:#9CA3AF;font-size:12px">{f.nome_arquivo || ''}</span></span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
+                      <div class="cell-file" style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px"><span style="flex:1">{sigEx(f) ? '🔒 ' : ''}<b>{f.cartao}</b>{f.valor != null ? ` · ${brl(f.valor)}` : ''}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''} <span style="color:#9CA3AF;font-size:12px">{f.nome_arquivo || ''}</span></span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`toggleSigilo('fatura','${f.id}',${f.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(f.cartao || '')},this)`} title={sigEx(f) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(f) ? '🔒' : '🔓'}</button><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
                     ))}
                   </div>
                 )}
@@ -218,6 +230,7 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
             ? <a class="btn btn-outline btn-sm" href={`/api/admin/doc-empresa/emprestimos/${e.id}`} target="_blank" rel="noopener">📄 Ver contrato</a>
             : <button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1.5px solid #FCD34D;border-radius:6px" data-requer-edicao onclick={`anexarContrato('${e.id}')`}>📎 Anexar contrato</button>}
           {e.storage_path && <button class="btn btn-outline btn-sm" data-requer-edicao onclick={`anexarContrato('${e.id}')`}>Trocar contrato</button>}
+          {e.storage_path && <button class="btn btn-outline btn-sm" data-requer-edicao title={sigEx(e) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} onclick={`toggleSigilo('emprestimo','${e.id}',${e.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(e.banco || '')},this)`}>{sigEx(e) ? '🔒 Sigiloso' : '🔓 Compartilhável'}</button>}
           <button class="btn btn-secondary btn-sm" data-requer-edicao onclick={`editarEmp(${JSON.stringify(e)})`}>Editar</button>
           <button class="btn btn-danger btn-sm" data-requer-edicao onclick={`excluirItem('emprestimos','${e.id}', this)`}>Excluir</button>
         </div>
@@ -251,6 +264,11 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
           <button type="button" class="pill" data-benv-aba="emprestimos" onclick="setBenvAba(this)">🏛️ Contratos</button>
         </div>
         <div id="benvLista" style="border:1px solid var(--border);border-radius:8px;max-height:35vh;overflow:auto;padding:6px 12px"></div>
+        {qtdSigilosos > 0 && (
+          <div style="margin-top:8px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:8px 11px;font-size:12.5px;color:#92400E">
+            🔒 {qtdSigilosos} documento{qtdSigilosos === 1 ? '' : 's'} marcado{qtdSigilosos === 1 ? '' : 's'} como <b>sigiloso</b> {qtdSigilosos === 1 ? 'não aparece' : 'não aparecem'} nesta lista. Para mudar, use o botão <b>🔒 Sigilo</b> na barra do topo.
+          </div>
+        )}
         <div id="benvMsgBox" style="margin-top:10px"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:6px">
@@ -265,6 +283,26 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
       </div>
     </div>
   </div>
+
+  <!-- Modal: sigilo por banco/cartão -->
+  <div id="modalSigilo" class="modal-overlay" style="display:none"><div class="modal" style="max-width:520px">
+    <div class="modal-head"><h3 style="margin:0">🔒 Sigilo — o que nunca pode ser compartilhado</h3><button class="modal-x" onclick="fecharM('modalSigilo')">×</button></div>
+    <div class="modal-body">
+      <p style="margin:0 0 12px;color:var(--muted);font-size:13px">
+        Marque os bancos/cartões cujos documentos <b>não podem sair da empresa</b> por e-mail ou WhatsApp.
+        Vale para o que já está aqui e para o que for anexado depois. Os documentos continuam <b>visíveis e
+        baixáveis nesta tela</b> — só não entram na lista de envio.
+      </p>
+      <div id="sigLista" style="border:1px solid var(--border);border-radius:8px;overflow:hidden"></div>
+      <p style="margin:12px 0 0;color:var(--muted);font-size:12.5px">
+        💡 Para bloquear <b>um documento específico</b> (e não o banco inteiro), use o cadeado 🔓/🔒 ao lado dele na tela.
+      </p>
+      <div id="sigMsg" style="margin-top:10px"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px">
+        <button type="button" class="btn btn-primary" onclick="fecharSigilo()">Concluído</button>
+      </div>
+    </div>
+  </div></div>
 
   <!-- Modal: anexar extrato -->
   <div id="modalExt" class="modal-overlay" style="display:none"><div class="modal" style="max-width:440px">
@@ -346,10 +384,74 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
 </style>
 
 <script type="application/json" id="bancItemsData" set:html={bancItemsJson} />
+<script type="application/json" id="sigiloData" set:html={sigiloEstadoJson} />
 
 <script>
   const BANC_ITEMS: any[] = JSON.parse((document.getElementById("bancItemsData") as HTMLElement)?.textContent || "[]");
+  const SIGILO_BANCOS: any[] = JSON.parse((document.getElementById("sigiloData") as HTMLElement)?.textContent || "[]");
   let benvAbaAtiva = "";
+  let sigiloMudou = false;
+
+  // ── 🔒 SIGILO ────────────────────────────────────────────────────────────────
+  // Marca documentos que NÃO podem ser enviados por e-mail/WhatsApp. Eles continuam
+  // visíveis e baixáveis nesta tela — só saem da lista de "Enviar documentos".
+  // O bloqueio de verdade é no servidor (src/lib/sigilo.ts): mesmo forjando o pedido, não vai.
+  function abrirSigilo() { sigiloMudou = false; renderSigLista(); (document.getElementById("sigMsg") as HTMLElement).innerHTML = ""; abrirM("modalSigilo"); }
+  function fecharSigilo() { fecharM("modalSigilo"); if (sigiloMudou) location.reload(); }
+  function renderSigLista() {
+    const html = SIGILO_BANCOS.map((b: any, i: number) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border-light);cursor:pointer;font-size:13.5px">
+        <input type="checkbox" data-sig-i="${i}" ${b.sigiloso ? "checked" : ""} onchange="salvarSigiloBanco(this)" style="width:auto" />
+        <span style="flex:1">${b.sigiloso ? "🔒" : "🔓"} <b>${String(b.banco).replace(/</g, "&lt;")}</b></span>
+        <span style="font-size:12px;color:${b.sigiloso ? "#B45309" : "#9CA3AF"}">${b.sigiloso ? "não compartilha" : "pode compartilhar"}</span>
+      </label>`).join("");
+    (document.getElementById("sigLista") as HTMLElement).innerHTML = html;
+  }
+  async function salvarSigiloBanco(el: HTMLInputElement) {
+    const i = Number(el.dataset.sigI);
+    const item = SIGILO_BANCOS[i];
+    if (!item) return;
+    const novo = el.checked;
+    el.disabled = true;
+    const box = document.getElementById("sigMsg") as HTMLElement;
+    try {
+      const r = await fetch("/api/admin/doc-empresa/sigilo", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ banco: item.banco, sigiloso: novo }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Não deu para salvar");
+      item.sigiloso = novo;
+      sigiloMudou = true;
+      box.innerHTML = `<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;padding:8px 11px;color:#065F46;font-size:12.5px">✓ ${String(item.banco).replace(/</g, "&lt;")} ${novo ? "não será mais compartilhado" : "voltou a poder ser compartilhado"}.</div>`;
+      renderSigLista();
+    } catch (e: any) {
+      el.checked = !novo;
+      box.innerHTML = `<div class="alert alert-error">${String(e?.message || "Erro").replace(/</g, "&lt;")}</div>`;
+    } finally { el.disabled = false; }
+  }
+  // Cadeado de UM documento (extrato/fatura/contrato)
+  async function toggleSigilo(tipo: string, id: string, atual: boolean, banco: string, btn: HTMLButtonElement) {
+    const bancoBloqueado = SIGILO_BANCOS.some((b: any) => b.sigiloso && String(b.banco).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim() === String(banco || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim());
+    if (bancoBloqueado && atual === false) {
+      alert(`Todos os documentos de "${banco}" já estão marcados como sigilosos.\n\nPara liberar, use o botão 🔒 Sigilo na barra do topo e desmarque o banco.`);
+      return;
+    }
+    const novo = !atual;
+    btn.disabled = true;
+    try {
+      const r = await fetch("/api/admin/doc-empresa/sigilo", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tipo, id, nao_compartilhar: novo }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "Não deu para salvar");
+      location.reload();
+    } catch (e: any) {
+      alert("Erro: " + (e?.message || "tente de novo"));
+      btn.disabled = false;
+    }
+  }
 
   function abrirEnviarDocs() {
     benvAbaAtiva = "";
@@ -682,5 +784,5 @@ const bancItemsJson = JSON.stringify(bancItems).replace(/</g, "\\u003c");
     if (res.ok) location.reload(); else { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; }
   }
 
-  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, anexarFaturaCartao, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, enviarWhatsBanc, selecionarMesCompleto });
+  Object.assign(window, { setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, anexarFaturaCartao, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, enviarWhatsBanc, selecionarMesCompleto, abrirSigilo, fecharSigilo, salvarSigiloBanco, toggleSigilo });
 </script>

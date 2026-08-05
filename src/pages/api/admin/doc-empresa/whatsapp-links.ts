@@ -22,8 +22,15 @@ export const POST: APIRoute = async ({ request }) => {
     if (ids.length > 20) return jsonErr(400, "Máximo de 20 documentos por vez no WhatsApp.");
 
     const db = supabaseAdmin();
-    const { data: rows } = await db.from("doc_empresa_arquivos").select("id, nome, storage_path, doc_id").in("id", ids);
-    if (!rows || !rows.length) return jsonErr(404, "Arquivos não encontrados.");
+    const { data: todas } = await db.from("doc_empresa_arquivos").select("*").in("id", ids);
+    // Sigilosos são barrados AQUI, no servidor — o link nem chega a ser gerado.
+    const bloqueados = ((todas || []) as any[]).filter((r) => r.nao_compartilhar).length;
+    const rows = ((todas || []) as any[]).filter((r) => !r.nao_compartilhar);
+    if (!rows.length) {
+      return jsonErr(bloqueados ? 403 : 404, bloqueados
+        ? `Documento sigiloso: ${bloqueados === 1 ? "o documento selecionado está marcado" : `os ${bloqueados} documentos selecionados estão marcados`} como "não compartilhar" e não pode${bloqueados === 1 ? "" : "m"} ser enviado${bloqueados === 1 ? "" : "s"}.`
+        : "Arquivos não encontrados.");
+    }
     const docIds = [...new Set((rows as any[]).map((r) => r.doc_id).filter(Boolean))];
     const { data: docs } = await db.from("doc_empresa").select("id, nome").in("id", docIds);
     const docNome: Record<string, string> = Object.fromEntries(((docs || []) as any[]).map((d) => [d.id, d.nome]));

@@ -3,6 +3,7 @@ import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../lib/
 import { supabaseAdmin, supabaseAdmin2 } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
 import { bloqueioSeSemLeitura } from "../../../../lib/permissoes";
+import { bancosSigilosos, linhaEhSigilosa } from "../../../../lib/sigilo";
 
 export const prerender = false;
 const PERFIS = ["admin", "financeiro", "juridico"];
@@ -26,20 +27,28 @@ export const POST: APIRoute = async ({ request }) => {
     const ftIds = items.filter((i) => i.tipo === "fatura").map((i) => i.id);
     const emIds = items.filter((i) => i.tipo === "emprestimo").map((i) => i.id);
 
+    // Sigilosos (item ou banco inteiro) são barrados AQUI, no servidor — link nem chega a ser gerado.
+    const sigilosos = await bancosSigilosos(db);
+    let bloqueados = 0;
+
     const rows: Array<{ storage_path: string; label: string }> = [];
     if (exIds.length) {
-      const { data } = await db.from("doc_extratos_bancarios").select("id, banco, mes, ano, storage_path, nome_arquivo").in("id", exIds);
-      for (const r of (data || []) as any[]) if (r.storage_path) rows.push({ storage_path: r.storage_path, label: r.nome_arquivo || `Extrato ${r.banco} ${String(r.mes).padStart(2, "0")}-${r.ano}` });
+      const { data } = await db.from("doc_extratos_bancarios").select("*").in("id", exIds);
+      for (const r of (data || []) as any[]) { if (linhaEhSigilosa(r, sigilosos)) { bloqueados++; continue; } if (r.storage_path) rows.push({ storage_path: r.storage_path, label: r.nome_arquivo || `Extrato ${r.banco} ${String(r.mes).padStart(2, "0")}-${r.ano}` }); }
     }
     if (ftIds.length) {
-      const { data } = await db.from("doc_cartao_faturas").select("id, cartao, mes, ano, storage_path, nome_arquivo").in("id", ftIds);
-      for (const r of (data || []) as any[]) if (r.storage_path) rows.push({ storage_path: r.storage_path, label: r.nome_arquivo || `Fatura ${r.cartao} ${String(r.mes).padStart(2, "0")}-${r.ano}` });
+      const { data } = await db.from("doc_cartao_faturas").select("*").in("id", ftIds);
+      for (const r of (data || []) as any[]) { if (linhaEhSigilosa(r, sigilosos)) { bloqueados++; continue; } if (r.storage_path) rows.push({ storage_path: r.storage_path, label: r.nome_arquivo || `Fatura ${r.cartao} ${String(r.mes).padStart(2, "0")}-${r.ano}` }); }
     }
     if (emIds.length) {
-      const { data } = await db.from("doc_emprestimos").select("id, descricao, banco, storage_path, nome_arquivo").in("id", emIds);
-      for (const r of (data || []) as any[]) if (r.storage_path) rows.push({ storage_path: r.storage_path, label: r.nome_arquivo || [r.banco, r.descricao].filter(Boolean).join(" — ") || "Contrato" });
+      const { data } = await db.from("doc_emprestimos").select("*").in("id", emIds);
+      for (const r of (data || []) as any[]) { if (linhaEhSigilosa(r, sigilosos)) { bloqueados++; continue; } if (r.storage_path) rows.push({ storage_path: r.storage_path, label: r.nome_arquivo || [r.banco, r.descricao].filter(Boolean).join(" — ") || "Contrato" }); }
     }
-    if (!rows.length) return jsonErr(404, "Nenhum arquivo encontrado para os itens selecionados.");
+    if (!rows.length) {
+      return jsonErr(bloqueados ? 403 : 404, bloqueados
+        ? `Documento sigiloso: ${bloqueados === 1 ? "o documento selecionado está marcado" : `os ${bloqueados} documentos selecionados estão marcados`} como "não compartilhar" e não pode${bloqueados === 1 ? "" : "m"} ser enviado${bloqueados === 1 ? "" : "s"}.`
+        : "Nenhum arquivo encontrado para os itens selecionados.");
+    }
 
     const seguro = (s: string) => String(s || "").replace(/[*_~`]/g, "​$&"); // neutraliza markdown do WhatsApp
     const linhas: string[] = [];

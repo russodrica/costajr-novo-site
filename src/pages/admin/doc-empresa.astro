@@ -20,7 +20,7 @@ if (!ehForn && !(await temPerfilFresco(claims, ["admin", "financeiro", "juridico
 const db = supabaseAdmin();
 // Carrega TODOS (ativos + arquivados) — a aba "Arquivados" filtra no cliente
 const { data: docsRaw } = await db.from("doc_empresa")
-  .select("*, doc_empresa_arquivos(id,nome,created_at,competencia,arquivado,arquivado_em)").order("nome");
+  .select("*, doc_empresa_arquivos(*)").order("nome");
 let docs: any[] = docsRaw || [];
 
 // Catálogo completo de abas. A VIEW (?view=) decide quais aparecem — assim
@@ -154,7 +154,7 @@ const docsJs = docs.map((d: any) => ({
   id: d.id, categoria: d.categoria, grupo: d.grupo || null, nome: d.nome, periodicidade: d.periodicidade,
   validade: d.validade, validade_na: d.validade_na, data_emissao: d.data_emissao, site: d.site, observacoes: d.observacoes,
   arquivado: d.arquivado, valor_mensal: d.valor_mensal ?? null,
-  arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome, competencia: a.competencia || null, created_at: a.created_at || null, arquivado: !!a.arquivado })),
+  arquivos: (d.doc_empresa_arquivos || []).map((a: any) => ({ id: a.id, nome: a.nome, competencia: a.competencia || null, created_at: a.created_at || null, arquivado: !!a.arquivado, nao_compartilhar: !!a.nao_compartilhar })),
 }));
 const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
 ---
@@ -992,10 +992,26 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     // Cada "slot" (ano ou mês) tem botão p/ anexar direto, preservando a competência.
     const ANO_INICIO_ANUAL = 2017;
     function linhaArq(a: any): string {
+      const sig = !!a.nao_compartilhar;
       return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
-        <span style="flex:1;font-size:13px;color:#374151">📄 ${String(a.nome || "arquivo").replace(/</g, "&lt;")}</span>
+        <span style="flex:1;font-size:13px;color:#374151">${sig ? "🔒" : "📄"} ${String(a.nome || "arquivo").replace(/</g, "&lt;")}</span>
         <a class="btn btn-outline btn-sm" href="/api/admin/doc-empresa/arquivos/${a.id}" target="_blank" rel="noopener">Baixar</a>
+        <button class="btn btn-outline btn-sm" data-requer-edicao title="${sig ? "Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar." : "Marcar como sigiloso (não compartilhar)"}" onclick="toggleSigiloArq('${a.id}',${sig},this)">${sig ? "🔒" : "🔓"}</button>
         <button class="btn btn-danger btn-sm" data-requer-edicao onclick="excluirArq('${a.id}', this)">Excluir</button></div>`;
+    }
+    // 🔒 Marca/desmarca UM arquivo como sigiloso: ele some da lista de "Enviar documentos"
+    // e a API de envio o recusa. Continua visível e baixável aqui para quem tem acesso.
+    async function toggleSigiloArq(fid: string, atual: boolean, btn: HTMLButtonElement) {
+      btn.disabled = true;
+      try {
+        const r = await fetch("/api/admin/doc-empresa/sigilo", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ tipo: "arquivo", id: fid, nao_compartilhar: !atual }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Não deu para salvar");
+        location.reload();
+      } catch (e: any) { alert("Erro: " + (e?.message || "tente de novo")); btn.disabled = false; }
     }
     function slotPeriodo(id: string, comp: string, arqs: any[]): string {
       const files = arqs.filter((a: any) => String(a.competencia || "") === comp);
@@ -1141,7 +1157,9 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
     function fecharEnviar() { overlay("modalEnviar").classList.remove("open"); }
     function renderEnvLista() {
       // só os documentos da ABA/área em que a pessoa está (empresa | contratos | seguros)
-      const ativos = DOCS.filter((d: any) => !d.arquivado && (d.arquivos || []).some((a: any) => !a.arquivado) && naViewClient(d.categoria));
+      // 🔒 arquivos marcados como sigilosos NÃO entram na lista de envio (e a API também os recusa)
+      const compartilhavel = (a: any) => !a.arquivado && !a.nao_compartilhar;
+      const ativos = DOCS.filter((d: any) => !d.arquivado && (d.arquivos || []).some(compartilhavel) && naViewClient(d.categoria));
       const byCat: Record<string, any[]> = {};
       for (const d of ativos) (byCat[d.categoria || "Outros"] = byCat[d.categoria || "Outros"] || []).push(d);
       const cats = Object.keys(byCat).sort();
@@ -1149,7 +1167,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       for (const c of cats) {
         html += `<div style="margin:8px 0 2px;font-weight:700;color:var(--brand);font-size:12px;text-transform:uppercase">${c.replace(/</g, "&lt;")}</div>`;
         for (const d of byCat[c]) {
-          const vigentes = (d.arquivos || []).filter((a: any) => !a.arquivado);
+          const vigentes = (d.arquivos || []).filter(compartilhavel);
           for (const a of vigentes) {
             const lbl = `${d.nome}${vigentes.length > 1 ? " — " + (a.nome || "arquivo") : ""}`;
             html += `<label class="env-item" style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">
@@ -1158,6 +1176,10 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
           }
         }
       }
+      // aviso quando há arquivos escondidos por sigilo (senão a pessoa acha que sumiram)
+      const nSig = DOCS.filter((d: any) => !d.arquivado && naViewClient(d.categoria))
+        .reduce((s: number, d: any) => s + (d.arquivos || []).filter((a: any) => !a.arquivado && a.nao_compartilhar).length, 0);
+      if (nSig) html += `<div style="margin-top:10px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:8px 11px;font-size:12.5px;color:#92400E">🔒 ${nSig} arquivo${nSig === 1 ? "" : "s"} marcado${nSig === 1 ? "" : "s"} como <b>sigiloso</b> ${nSig === 1 ? "não aparece" : "não aparecem"} aqui. Para mudar, use o cadeado 🔒 ao lado do arquivo.</div>`;
       (document.getElementById("envLista") as HTMLElement).innerHTML = html || `<p style="color:#9CA3AF;padding:10px">Nenhum documento com arquivo anexado.</p>`;
       envCountUpd();
     }
@@ -1222,7 +1244,7 @@ const docsJson = JSON.stringify(docsJs).replace(/</g, "\\u003c");
       </div>`;
     }
 
-    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, moverArq, fecharMover, filtrarMover, confirmarMover, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, enviarWhats, envCountUpd, filtrarEnvio });
+    Object.assign(window, { abrirNovo, editar, fechar, setArquivado, excluir, anexos, fecharArq, excluirArq, arquivarArq, reativarArq, moverArq, fecharMover, filtrarMover, confirmarMover, toggleNA, toggleGrupo, filtrar, setSit, setAba, enviarResumo, sortForn, togglePeriodo, anexarSlot, abrirEnviarDocs, fecharEnviar, enviarDocs, enviarWhats, envCountUpd, filtrarEnvio, toggleSigiloArq });
   </script>
 
   <style>
