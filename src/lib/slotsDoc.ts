@@ -152,6 +152,22 @@ function bancoNoTexto(texto: string): string | null {
 }
 
 /**
+ * Extrato ou fatura de cartão? Devolve null quando o texto não diz nada.
+ * Nome de arquivo com INTERVALO de datas (2026-06-01-2026-06-30) = extrato:
+ * fatura é de um mês fechado, extrato cobre um período.
+ */
+export function tipoDocBancario(texto: string): "extrato" | "fatura" | null {
+  const raw = String(texto || "");
+  if (!raw.trim()) return null;
+  const t = norm(raw);
+  if (/\bextratos?\b|conta corrente|\bmovimentac(ao|oes)\b/.test(t)) return "extrato";
+  if (/\bfaturas?\b|cartao de credito|\bfat\b/.test(t)) return "fatura";
+  if (/(?<![0-9])20\d{2}[-_]\d{2}[-_]\d{2}[-_]20\d{2}[-_]\d{2}[-_]\d{2}(?![0-9])/.test(raw)) return "extrato";
+  if (/\bcartao\b/.test(t)) return "fatura";
+  return null;
+}
+
+/**
  * Detecta extrato/fatura. A LEGENDA que a pessoa digitou manda em tudo:
  * banco, período e tipo. Só quando ela não diz é que se olha o nome do arquivo e,
  * por último, o conteúdo do PDF. (Antes o banco saía pela ordem da lista interna:
@@ -165,12 +181,10 @@ export function detectarExtratoBancario(texto: string, legenda = "", nomeArquivo
   const ma = (legenda ? extrairMesAno(legenda) : null) || (nomeArquivo ? extrairMesAno(nomeArquivo) : null) || extrairMesAno(texto);
   if (!ma) return null;
 
-  // tipo: se a legenda disser, vale; senão olha o resto do texto
-  const lg = norm(legenda);
-  let tipo: "extrato" | "fatura";
-  if (/\bextrato\b/.test(lg)) tipo = "extrato";
-  else if (/fatura|\bcartao\b|\bfat\b/.test(lg)) tipo = "fatura";
-  else tipo = /fatura|\bcartao\b|\bfat\b/.test(norm(texto)) ? "fatura" : "extrato";
+  // tipo: legenda > nome do arquivo > conteúdo. "extrato" é testado ANTES de "fatura"
+  // porque um extrato costuma citar "pagamento de fatura" nas transações — o contrário
+  // (uma fatura falar em "extrato") é bem mais raro.
+  const tipo = tipoDocBancario(legenda) || tipoDocBancario(nomeArquivo) || tipoDocBancario(texto) || "extrato";
 
   return { banco, mes: ma.mes, ano: ma.ano, tipo };
 }
