@@ -384,6 +384,16 @@ function resumoLocal(it: any): string {
   .neg-thumb img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
   .neg-thumb-acoes { display: flex; gap: 6px; padding: 7px; }
   .neg-capa-tag { position: absolute; top: 7px; left: 7px; }
+  .neg-solte {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 20px 16px; border: 2px dashed var(--border-strong); border-radius: 12px;
+    background: var(--gray-50); color: var(--ink-mid); text-align: center; cursor: pointer;
+    transition: var(--transition); margin-bottom: 16px;
+  }
+  .neg-solte:hover, .neg-solte:focus-visible { border-color: var(--brand); background: #fff; outline: none; }
+  .neg-solte i { font-size: 26px; color: var(--ink-light); }
+  .neg-solte strong { font-size: .9rem; font-weight: 600; }
+  .neg-solte span { font-size: 12px; color: var(--ink-light); }
   /* realce quando a pessoa arrasta um arquivo por cima do card aberto */
   #negModalItem .modal-box.neg-soltar { outline: 3px dashed var(--brand); outline-offset: -8px; }
   #negModalItem .modal-box.neg-soltar::before {
@@ -510,7 +520,11 @@ function resumoLocal(it: any): string {
     document.getElementById("negItemTitulo")!.textContent = it.titulo;
     desenharDados(it); desenharFotos(it); desenharDocs(it); desenharOps(it);
     negAba("dados");
-    document.getElementById("negModalItem")!.classList.add("open");
+    const modal = document.getElementById("negModalItem")!;
+    modal.classList.add("open");
+    // põe o foco na janela: sem isso o Ctrl+V pode não chegar na página
+    const cx = modal.querySelector(".modal-box") as HTMLElement;
+    cx?.setAttribute("tabindex", "-1"); cx?.focus({ preventScroll: true });
   }
   function negAba(aba: string) {
     for (const p of Array.from(document.querySelectorAll<HTMLElement>("#negModalItem .pill[data-aba]"))) {
@@ -572,7 +586,13 @@ function resumoLocal(it: any): string {
           <input type="file" accept="image/*" multiple hidden onchange="negSubirFoto(this)" />
         </label>
       </div>
-      <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 14px">A foto marcada como capa é a que aparece no card do catálogo. Você também pode <strong>colar com Ctrl+V</strong> ou <strong>arrastar a foto</strong> para dentro desta janela.</p>
+      <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 12px">A foto marcada como capa é a que aparece no card do catálogo.</p>
+      <div class="neg-solte" data-requer-edicao onclick="negEscolherFoto()" tabindex="0"
+           title="Clique para escolher, ou cole com Ctrl+V">
+        <i class="ti ti-photo-plus" aria-hidden="true"></i>
+        <strong>Arraste a foto aqui, cole com Ctrl+V ou clique para escolher</strong>
+        <span>Pode soltar várias de uma vez — cada uma passa pelo recorte.</span>
+      </div>
       ${fotos.length ? `<div class="neg-galeria">${fotos.map((f) => `
         <div class="neg-thumb">
           <a href="/api/admin/negocios/anexos/${f.id}" target="_blank" rel="noopener">
@@ -750,6 +770,12 @@ function resumoLocal(it: any): string {
       alvo.innerHTML = `<div class="alert alert-error">${esc(e?.message || "Não deu para anexar o documento.")}</div>` + antes;
     }
   }
+  function negEscolherFoto() {
+    (document.querySelector("#negAbaFotos input[type=file]") as HTMLInputElement)?.click();
+  }
+  function negEscolherDoc() {
+    (document.querySelector("#negFormDoc [name=arquivo]") as HTMLInputElement)?.click();
+  }
   async function negSubirFoto(input: HTMLInputElement) {
     if (!input.files?.length || !itemAberto) return;
     const arquivos = Array.from(input.files); input.value = "";
@@ -794,8 +820,16 @@ function resumoLocal(it: any): string {
   document.addEventListener("paste", (e: any) => {
     if (!itemAberto || !document.getElementById("negModalItem")!.classList.contains("open")) return;
     if (document.getElementById("negModalCrop")!.classList.contains("open")) return;
-    const alvo = e.target as HTMLElement;
-    if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return; // deixa colar texto nos campos
+    // Só sai da frente de campo de TEXTO (para poder colar texto normalmente).
+    // O input de ARQUIVO não conta: é justamente nele que o foco fica depois de
+    // clicar em "+ Adicionar foto", e antes o Ctrl+V morria aqui.
+    const alvo = e.target as HTMLElement | null;
+    const ehCampoTexto = !!alvo && (
+      alvo.tagName === "TEXTAREA" || alvo.tagName === "SELECT" ||
+      (alvo.tagName === "INPUT" && (alvo as HTMLInputElement).type !== "file") ||
+      alvo.isContentEditable
+    );
+    if (ehCampoTexto) return;
     const arqs = arquivosDoEvento(e);
     if (!arqs.length) return;
     e.preventDefault();
@@ -839,6 +873,11 @@ function resumoLocal(it: any): string {
           <div><button class="btn btn-primary" type="submit">Anexar</button></div>
         </div>
       </form>
+      <div class="neg-solte" data-requer-edicao onclick="negEscolherDoc()" tabindex="0" style="margin-bottom:16px">
+        <i class="ti ti-paperclip" aria-hidden="true"></i>
+        <strong>Arraste o arquivo aqui, cole com Ctrl+V ou clique para escolher</strong>
+        <span>PDF, Word, Excel ou imagem, até 45 MB cada.</span>
+      </div>
       ${docs.length ? `<div class="table-wrap"><table><thead><tr><th>Documento</th><th>Tipo</th><th>Enviado em</th><th></th></tr></thead><tbody>
         ${docs.map((d) => `<tr>
           <td><a href="/api/admin/negocios/anexos/${d.id}" target="_blank" rel="noopener"><strong>${esc(d.titulo || d.nome_arquivo)}</strong></a>
@@ -966,5 +1005,6 @@ function resumoLocal(it: any): string {
     negSubirFoto, negDefinirCapa, negExcluirAnexo, negEnviarDoc,
     negNovoOp, negEditarOp, negMudarStatusOp, negExcluirOp,
     negCropCancelar, negCropConfirmar, negCropCentralizar,
+    negEscolherFoto, negEscolherDoc,
   });
 </script>
