@@ -1,0 +1,28 @@
+---
+import Admin from "../../../layouts/Admin.astro";
+import NegociosCatalogo from "../../../components/NegociosCatalogo.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const TIPO = "empreendimento" as const;
+const filtroStatus = Astro.url.searchParams.get("status") || "todos";
+const busca = Astro.url.searchParams.get("busca") || "";
+
+const db = supabaseAdmin();
+const { data: itens } = await db.from("negocios_imoveis").select("*").eq("tipo", TIPO).order("created_at", { ascending: false }).limit(500);
+const ids = (itens || []).map((i: any) => i.id);
+const { data: anexos } = ids.length
+  ? await db.from("negocios_anexos").select("*").in("imovel_id", ids).order("created_at")
+  : { data: [] as any[] };
+const { data: oportunidades } = ids.length
+  ? await db.from("negocios_oportunidades").select("*").in("imovel_id", ids).order("created_at", { ascending: false })
+  : { data: [] as any[] };
+---
+<Admin title="Venda de Empreendimentos" current="negocios-empreendimentos">
+  <NegociosCatalogo tipo={TIPO} itens={itens || []} anexos={anexos || []} oportunidades={oportunidades || []} filtroStatus={filtroStatus} busca={busca} />
+</Admin>

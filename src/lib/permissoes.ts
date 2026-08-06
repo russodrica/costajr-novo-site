@@ -193,6 +193,16 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     { key: "comercial", label: "Comercial (CRM)", icon: "📊", href: "/admin/comercial" },
     { key: "vobi-comercial", label: "Oportunidades Vobi", icon: "🔗", href: "/admin/vobi-comercial" },
   ] },
+  // NOVOS NEGÓCIOS — venda de terrenos, venda de empreendimentos e busca de imóveis.
+  // A key canônica do grupo é "negocios": é ela que moduloDaRotaApi deduz de
+  // /api/admin/negocios/... (a pasta da API bate com a key), então a trava central
+  // de somente-leitura cobre as três telas de uma vez.
+  { id: "negocios", label: "Novos Negócios", itens: [
+    { key: "negocios", label: "Resumo", icon: "📈", href: "/admin/negocios" },
+    { key: "negocios-terrenos", label: "Venda de Terrenos", icon: "🌳", href: "/admin/negocios/terrenos" },
+    { key: "negocios-empreendimentos", label: "Venda de Empreendimentos", icon: "🏢", href: "/admin/negocios/empreendimentos" },
+    { key: "negocios-buscas", label: "Busca de Imóveis", icon: "🔎", href: "/admin/negocios/buscas" },
+  ] },
   { id: "vendas", label: "Vendas TrazPraCa", itens: [
     { key: "vendas", label: "Catálogo & Preços", icon: "🛒", href: "/admin/vendas" },
     { key: "vendas-canais", label: "Onde está publicado", icon: "📍", href: "/admin/vendas/canais" },
@@ -238,6 +248,7 @@ export const GRUPO_ROLES: Record<string, string[]> = {
   rh:         ["admin", "rh"],
   financeiro: ["admin", "financeiro"],
   comercial:  ["admin", "comercial"],
+  negocios:   ["admin", "comercial"], // Novos Negócios (terrenos, empreendimentos, busca de imóveis)
   vendas:     ["admin"], // negócio pessoal da Adriana (TrazPraCa/ML/Shopee) — só admin por padrão;
                           // dar acesso a outro perfil depois via /admin/permissoes (portal_perm_usuario)
   juridico:   ["admin", "juridico", "financeiro"],

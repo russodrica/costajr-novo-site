@@ -131,6 +131,18 @@ const grupos: NavGroup[] = [
     ],
   },
   {
+    // Novos Negócios (terrenos / empreendimentos / busca de imóveis). O grupo e os
+    // módulos também estão em src/lib/permissoes.ts (GRUPOS_ADMIN, id "negocios"),
+    // que é quem faz o enforcement; este array aqui é só o MENU.
+    id: "negocios", label: "Novos Negócios", cor: "#059669",
+    items: [
+      { href: "/admin/negocios", label: "Resumo", ic: "chart-arrows-vertical", key: "negocios" },
+      { href: "/admin/negocios/terrenos", label: "Venda de Terrenos", ic: "map-2", key: "negocios-terrenos" },
+      { href: "/admin/negocios/empreendimentos", label: "Venda de Empreendimentos", ic: "building-estate", key: "negocios-empreendimentos" },
+      { href: "/admin/negocios/buscas", label: "Busca de Imóveis", ic: "home-search", key: "negocios-buscas" },
+    ],
+  },
+  {
     // Módulo de vendas TrazPraCa → Mercado Livre / Shopee. O grupo/módulo também
     // está declarado em src/lib/permissoes.ts (GRUPOS_ADMIN, id "vendas"), que é
     // quem faz o enforcement; este array aqui é só o MENU.

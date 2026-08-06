@@ -1,0 +1,246 @@
+---
+// Resumo de Novos Negócios — a visão de "o que está em andamento" das três abas.
+// Mostra o funil por status, o dinheiro em jogo no mês, o que está parado sem
+// contato e quais itens têm mais gente interessada.
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+import {
+  TIPO_LABEL, FUNIL, FUNIL_ABERTO, funilLabel, funilBadge,
+  statusLabel, statusBadge, fmtMoeda, fmtData, diasDesde,
+} from "../../../lib/negocios";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+// "Parado" = sem nenhuma movimentação há X dias. Ajustável pela URL (?parados=45).
+const DIAS_PARADO = Math.max(7, Math.min(365, Number(Astro.url.searchParams.get("parados")) || 30));
+
+const db = supabaseAdmin();
+const { data: itensRaw } = await db.from("negocios_imoveis").select("*").eq("ativo", true).limit(1000);
+const itens = itensRaw || [];
+const { data: opsRaw } = await db.from("negocios_oportunidades").select("*").limit(5000);
+const ops = opsRaw || [];
+
+const itemPorId: Record<string, any> = {};
+for (const i of itens) itemPorId[i.id] = i;
+// só conta oportunidade de item que ainda existe e está ativo
+const opsValidas = ops.filter((o: any) => itemPorId[o.imovel_id]);
+
+const HREF_TIPO: Record<string, string> = {
+  terreno: "/admin/negocios/terrenos",
+  empreendimento: "/admin/negocios/empreendimentos",
+  busca: "/admin/negocios/buscas",
+};
+
+// ── Funil por status ────────────────────────────────────────────────────────
+const funil = FUNIL.map((f) => {
+  const lista = opsValidas.filter((o: any) => o.status === f.v);
+  return {
+    ...f,
+    n: lista.length,
+    valor: lista.reduce((s: number, o: any) => s + (Number(o.valor_proposto) || 0), 0),
+  };
+});
+const totalOps = opsValidas.length;
+const maxFunil = Math.max(1, ...funil.map((f) => f.n));
+
+// ── Valor em negociação e fechado no mês ────────────────────────────────────
+const hoje = new Date();
+const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10);
+const emAndamento = opsValidas.filter((o: any) => FUNIL_ABERTO.includes(o.status));
+const valorEmAndamento = emAndamento.reduce((s: number, o: any) => s + (Number(o.valor_proposto) || 0), 0);
+const fechadosMes = opsValidas.filter((o: any) => o.status === "fechado" && (o.fechado_em || "").slice(0, 10) >= inicioMes);
+const valorFechadoMes = fechadosMes.reduce((s: number, o: any) => s + (Number(o.valor_proposto) || 0), 0);
+const perdidosMes = opsValidas.filter((o: any) => o.status === "perdido" && String(o.updated_at || "").slice(0, 10) >= inicioMes).length;
+const nomeMes = hoje.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+// carteira: valor pedido de tudo que ainda está à venda
+const aVenda = itens.filter((i: any) => i.tipo !== "busca" && ["disponivel", "reservado"].includes(i.status));
+const valorCarteira = aVenda.reduce((s: number, i: any) => s + (Number(i.valor) || 0), 0);
+
+// ── Itens parados / sem contato ─────────────────────────────────────────────
+// "Última movimentação" = a mais recente entre o item e os interessados dele.
+const ultimaMov: Record<string, string> = {};
+for (const i of itens) ultimaMov[i.id] = i.updated_at || i.created_at;
+for (const o of opsValidas) {
+  const ref = o.updated_at || o.created_at;
+  if (ref && (!ultimaMov[o.imovel_id] || ref > ultimaMov[o.imovel_id])) ultimaMov[o.imovel_id] = ref;
+}
+const parados = itens
+  .filter((i: any) => !["vendido", "encerrado"].includes(i.status))
+  .map((i: any) => ({ ...i, dias: diasDesde(ultimaMov[i.id]) ?? 0, interessados: opsValidas.filter((o: any) => o.imovel_id === i.id).length }))
+  .filter((i: any) => i.dias >= DIAS_PARADO)
+  .sort((a: any, b: any) => b.dias - a.dias)
+  .slice(0, 12);
+
+// contatos agendados que já passaram da data
+const atrasados = opsValidas
+  .filter((o: any) => o.proximo_contato && o.proximo_contato < hoje.toISOString().slice(0, 10) && FUNIL_ABERTO.includes(o.status))
+  .sort((a: any, b: any) => String(a.proximo_contato).localeCompare(String(b.proximo_contato)))
+  .slice(0, 12);
+
+// ── Ranking dos mais procurados ─────────────────────────────────────────────
+const ranking = itens
+  .map((i: any) => {
+    const lista = opsValidas.filter((o: any) => o.imovel_id === i.id);
+    return {
+      ...i,
+      total: lista.length,
+      abertos: lista.filter((o: any) => FUNIL_ABERTO.includes(o.status)).length,
+      fechados: lista.filter((o: any) => o.status === "fechado").length,
+    };
+  })
+  .filter((i: any) => i.total > 0)
+  .sort((a: any, b: any) => b.total - a.total || b.abertos - a.abertos)
+  .slice(0, 10);
+
+// contagem por tipo, para os cartões do topo
+const porTipo = ["terreno", "empreendimento", "busca"].map((t) => ({
+  t,
+  n: itens.filter((i: any) => i.tipo === t).length,
+  ativos: itens.filter((i: any) => i.tipo === t && !["vendido", "encerrado", "pausado"].includes(i.status)).length,
+}));
+
+const semDados = itens.length === 0;
+---
+<Admin title="Novos Negócios — Resumo" current="negocios">
+  <div class="toolbar">
+    <span class="toolbar-title">Resumo de Novos Negócios</span>
+    <a class="btn btn-secondary btn-sm" href="/admin/negocios/terrenos">Terrenos</a>
+    <a class="btn btn-secondary btn-sm" href="/admin/negocios/empreendimentos">Empreendimentos</a>
+    <a class="btn btn-secondary btn-sm" href="/admin/negocios/buscas">Busca de imóveis</a>
+  </div>
+
+  {semDados ? (
+    <div class="card">
+      <div class="empty-state">
+        <strong>Ainda não há nada cadastrado</strong>
+        <p>Comece cadastrando um terreno, um empreendimento ou um pedido de busca. Este resumo se monta sozinho depois.</p>
+      </div>
+    </div>
+  ) : (
+    <>
+      <div class="card-grid">
+        <div class="stat-card">
+          <div class="stat-value">{fmtMoeda(valorEmAndamento)}</div>
+          <div class="stat-label">Em negociação agora ({emAndamento.length} interessado{emAndamento.length === 1 ? "" : "s"})</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--success)">{fmtMoeda(valorFechadoMes)}</div>
+          <div class="stat-label">Fechado em {nomeMes} ({fechadosMes.length} negócio{fechadosMes.length === 1 ? "" : "s"})</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{fmtMoeda(valorCarteira)}</div>
+          <div class="stat-label">Carteira à venda ({aVenda.length} item{aVenda.length === 1 ? "" : "ns"})</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style={parados.length ? "color:var(--warning)" : ""}>{parados.length}</div>
+          <div class="stat-label">Parados há {DIAS_PARADO} dias ou mais</div>
+        </div>
+      </div>
+
+      <div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(210px,1fr))">
+        {porTipo.map((p) => (
+          <a class="stat-card" href={HREF_TIPO[p.t]}>
+            <div class="stat-value">{p.n}</div>
+            <div class="stat-label">{TIPO_LABEL[p.t]}{p.t === "busca" ? "s" : "s"} · {p.ativos} em aberto</div>
+          </a>
+        ))}
+      </div>
+
+      <div class="card" style="margin-bottom:24px">
+        <div class="section-header"><span class="section-title">Funil dos interessados</span>
+          <span style="font-size:12.5px;color:var(--ink-light)">{totalOps} interessado{totalOps === 1 ? "" : "s"} no total</span></div>
+        {totalOps ? (
+          <div style="display:flex;flex-direction:column;gap:12px">
+            {funil.map((f) => (
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px">
+                  <span style="font-weight:600;font-size:.92rem">{f.label}</span>
+                  <span style="font-size:12.5px;color:var(--ink-mid)">{f.n} · {fmtMoeda(f.valor)}</span>
+                </div>
+                <div style="height:11px;background:var(--gray-100);border-radius:99px;overflow:hidden">
+                  <div style={`height:100%;width:${Math.round((f.n / maxFunil) * 100)}%;background:${f.cor};border-radius:99px`}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : <div class="empty-state" style="padding:22px"><strong>Nenhum interessado cadastrado ainda</strong><p>Abra um card do catálogo e use a aba “Interessados”.</p></div>}
+        {perdidosMes ? <p style="font-size:12.5px;color:var(--ink-light);margin:14px 0 0">{perdidosMes} negócio{perdidosMes === 1 ? "" : "s"} marcado{perdidosMes === 1 ? "" : "s"} como perdido em {nomeMes}.</p> : null}
+      </div>
+
+      <div class="card" style="margin-bottom:24px;padding:0;overflow:hidden">
+        <div class="section-header" style="padding:18px 20px 0"><span class="section-title">Mais procurados</span></div>
+        {ranking.length ? (
+          <div class="table-wrap"><table>
+            <thead><tr><th>Item</th><th>Tipo</th><th>Situação</th><th>Interessados</th><th>Em andamento</th><th>Fechados</th></tr></thead>
+            <tbody>
+              {ranking.map((i: any) => (
+                <tr>
+                  <td><a href={`${HREF_TIPO[i.tipo]}?item=${i.id}`}><strong>{i.titulo}</strong></a>
+                    <div style="font-size:11.5px;color:var(--ink-light)">{[i.bairro, i.cidade].filter(Boolean).join(", ") || "—"}</div></td>
+                  <td style="font-size:12.5px">{TIPO_LABEL[i.tipo]}</td>
+                  <td><span class={`badge ${statusBadge(i.tipo, i.status)}`}>{statusLabel(i.tipo, i.status)}</span></td>
+                  <td><strong>{i.total}</strong></td>
+                  <td>{i.abertos || "—"}</td>
+                  <td>{i.fechados || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        ) : <div class="empty-state" style="padding:24px"><strong>Sem interessados cadastrados</strong><p>O ranking aparece assim que houver gente registrada nos cards.</p></div>}
+      </div>
+
+      <div class="card" style="margin-bottom:24px;padding:0;overflow:hidden">
+        <div class="section-header" style="padding:18px 20px 0">
+          <span class="section-title">Parados há {DIAS_PARADO} dias ou mais</span>
+          <span class="pills">
+            {[15, 30, 60, 90].map((d) => (
+              <a class={`pill ${DIAS_PARADO === d ? "active" : ""}`} href={`/admin/negocios?parados=${d}`}>{d} dias</a>
+            ))}
+          </span>
+        </div>
+        {parados.length ? (
+          <div class="table-wrap"><table>
+            <thead><tr><th>Item</th><th>Tipo</th><th>Situação</th><th>Interessados</th><th>Sem movimento há</th></tr></thead>
+            <tbody>
+              {parados.map((i: any) => (
+                <tr>
+                  <td><a href={`${HREF_TIPO[i.tipo]}?item=${i.id}`}><strong>{i.titulo}</strong></a>
+                    <div style="font-size:11.5px;color:var(--ink-light)">{[i.bairro, i.cidade].filter(Boolean).join(", ") || "—"}</div></td>
+                  <td style="font-size:12.5px">{TIPO_LABEL[i.tipo]}</td>
+                  <td><span class={`badge ${statusBadge(i.tipo, i.status)}`}>{statusLabel(i.tipo, i.status)}</span></td>
+                  <td>{i.interessados || "—"}</td>
+                  <td><span class={`badge ${i.dias >= 90 ? "badge-red" : i.dias >= 60 ? "badge-orange" : "badge-yellow"}`}>{i.dias} dias</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        ) : <div class="empty-state" style="padding:24px"><strong>Nada parado</strong><p>Todos os itens tiveram movimento nos últimos {DIAS_PARADO} dias.</p></div>}
+      </div>
+
+      {atrasados.length ? (
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="section-header" style="padding:18px 20px 0"><span class="section-title">Contatos com data vencida</span></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Interessado</th><th>Item</th><th>Status</th><th>Contato marcado para</th></tr></thead>
+            <tbody>
+              {atrasados.map((o: any) => (
+                <tr>
+                  <td><strong>{o.nome}</strong>
+                    <div style="font-size:11.5px;color:var(--ink-light)">{[o.telefone, o.email].filter(Boolean).join(" · ") || "—"}</div></td>
+                  <td style="font-size:12.5px"><a href={`${HREF_TIPO[itemPorId[o.imovel_id]?.tipo]}?item=${o.imovel_id}`}>{itemPorId[o.imovel_id]?.titulo}</a></td>
+                  <td><span class={`badge ${funilBadge(o.status)}`}>{funilLabel(o.status)}</span></td>
+                  <td><span class="badge badge-red">{fmtData(o.proximo_contato)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        </div>
+      ) : null}
+    </>
+  )}
+</Admin>

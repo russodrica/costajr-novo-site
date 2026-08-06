@@ -1,0 +1,671 @@
+---
+// Catálogo de Novos Negócios — a MESMA tela serve Terrenos, Empreendimentos e
+// Busca de Imóveis (muda o `tipo`, os rótulos e alguns campos do formulário).
+// Um só arquivo evita que as três abas saiam do compasso com o tempo.
+import {
+  TIPO_TELA, STATUS_ITEM, statusLabel, statusBadge,
+  FUNIL, FUNIL_ABERTO, funilLabel, funilBadge, TIPOS_ANEXO,
+  fmtMoeda, fmtData,
+} from "../lib/negocios";
+
+export interface Props {
+  tipo: "terreno" | "empreendimento" | "busca";
+  itens: any[];
+  anexos: any[];
+  oportunidades: any[];
+  filtroStatus: string;
+  busca: string;
+}
+const { tipo, itens, anexos, oportunidades, filtroStatus, busca } = Astro.props;
+
+const tela = TIPO_TELA[tipo];
+const statusLista = STATUS_ITEM[tipo];
+const ehBusca = tipo === "busca";
+
+// índices para montar o card sem varrer a lista toda a cada item
+const capaDe: Record<string, string> = {};
+for (const it of itens) if (it.capa_anexo_id) capaDe[it.id] = it.capa_anexo_id;
+const fotosPorItem: Record<string, number> = {};
+const docsPorItem: Record<string, number> = {};
+for (const a of anexos) {
+  if (a.especie === "foto") fotosPorItem[a.imovel_id] = (fotosPorItem[a.imovel_id] || 0) + 1;
+  else docsPorItem[a.imovel_id] = (docsPorItem[a.imovel_id] || 0) + 1;
+}
+const opsPorItem: Record<string, any[]> = {};
+for (const o of oportunidades) (opsPorItem[o.imovel_id] ||= []).push(o);
+
+// contagem por situação para as pills (sempre sobre TODOS os itens do tipo)
+const porStatus: Record<string, number> = {};
+for (const it of itens) porStatus[it.status] = (porStatus[it.status] || 0) + 1;
+
+// aplica os filtros da barra (a query já trouxe só este tipo)
+const b = busca.trim().toLowerCase();
+const visiveis = itens.filter((it) => {
+  if (filtroStatus && filtroStatus !== "todos" && it.status !== filtroStatus) return false;
+  if (!b) return true;
+  return [it.titulo, it.codigo, it.bairro, it.cidade, it.cliente_nome, it.responsavel]
+    .filter(Boolean).some((v: string) => String(v).toLowerCase().includes(b));
+});
+
+function resumoLocal(it: any): string {
+  return [it.bairro, it.cidade, it.uf].filter(Boolean).join(", ") || "Local não informado";
+}
+---
+
+<div class="toolbar">
+  <span class="toolbar-title">{tela.titulo} <span style="font-weight:500;color:var(--ink-light)">({itens.length})</span></span>
+  <form method="get" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="status" value={filtroStatus} />
+    <input class="search-input" type="search" name="busca" value={busca} placeholder="Buscar título, código, bairro…" />
+    <button class="btn btn-secondary" type="submit">Buscar</button>
+  </form>
+  <button class="btn btn-primary" data-requer-edicao onclick="negNovo()">+ Novo {tela.singular}</button>
+</div>
+
+<p style="color:var(--ink-mid);font-size:13.5px;margin:-4px 0 14px;max-width:70ch">{tela.ajuda}</p>
+
+<div class="pills" style="margin-bottom:16px">
+  <a class={`pill ${!filtroStatus || filtroStatus === "todos" ? "active" : ""}`} href={`?busca=${encodeURIComponent(busca)}`}>
+    Todos <span class="count">{itens.length}</span>
+  </a>
+  {statusLista.map((s) => (
+    <a class={`pill ${filtroStatus === s.v ? "active" : ""}`} href={`?status=${s.v}&busca=${encodeURIComponent(busca)}`}>
+      {s.label} <span class="count">{porStatus[s.v] || 0}</span>
+    </a>
+  ))}
+</div>
+
+<div id="negMsg"></div>
+
+{visiveis.length ? (
+  <div class="neg-grid">
+    {visiveis.map((it) => {
+      const ops = opsPorItem[it.id] || [];
+      const abertas = ops.filter((o: any) => FUNIL_ABERTO.includes(o.status)).length;
+      const fechadas = ops.filter((o: any) => o.status === "fechado").length;
+      return (
+        <article class="neg-card" onclick={`negAbrir('${it.id}')`}>
+          <div class="neg-foto">
+            {capaDe[it.id]
+              ? <img src={`/api/admin/negocios/anexos/${capaDe[it.id]}`} alt={it.titulo} loading="lazy" />
+              : <div class="neg-foto-vazia"><i class="ti ti-photo" aria-hidden="true"></i><span>Sem foto</span></div>}
+            <span class={`badge ${statusBadge(tipo, it.status)} neg-foto-badge`}>{statusLabel(tipo, it.status)}</span>
+          </div>
+          <div class="neg-corpo">
+            <strong class="neg-titulo">{it.titulo}</strong>
+            <span class="neg-sub">{it.codigo ? `${it.codigo} · ` : ""}{resumoLocal(it)}</span>
+            <div class="neg-valor">
+              {ehBusca
+                ? (it.faixa_valor_min || it.faixa_valor_max
+                    ? `${fmtMoeda(it.faixa_valor_min)} a ${fmtMoeda(it.faixa_valor_max)}`
+                    : "Faixa não informada")
+                : fmtMoeda(it.valor)}
+            </div>
+            <div class="neg-linha">
+              {!ehBusca && it.area_total ? <span><i class="ti ti-ruler-2"></i> {Number(it.area_total).toLocaleString("pt-BR")} m²</span> : null}
+              {!ehBusca && it.quartos ? <span><i class="ti ti-bed"></i> {it.quartos}</span> : null}
+              {ehBusca && it.cliente_nome ? <span><i class="ti ti-user"></i> {it.cliente_nome}</span> : null}
+              {fotosPorItem[it.id] ? <span><i class="ti ti-photo"></i> {fotosPorItem[it.id]}</span> : null}
+              {docsPorItem[it.id] ? <span><i class="ti ti-paperclip"></i> {docsPorItem[it.id]}</span> : null}
+            </div>
+            <div class="neg-rodape">
+              <span class="badge badge-gray">{ops.length} interessado{ops.length === 1 ? "" : "s"}</span>
+              {abertas ? <span class="badge badge-yellow">{abertas} em andamento</span> : null}
+              {fechadas ? <span class="badge badge-green">{fechadas} fechado{fechadas === 1 ? "" : "s"}</span> : null}
+            </div>
+          </div>
+        </article>
+      );
+    })}
+  </div>
+) : (
+  <div class="card">
+    <div class="empty-state">
+      <strong>Nada por aqui ainda</strong>
+      <p>{itens.length ? "Nenhum item bate com o filtro. Limpe a busca ou troque a situação." : `Cadastre o primeiro ${tela.singular} no botão “+ Novo ${tela.singular}”.`}</p>
+    </div>
+  </div>
+)}
+
+<!-- ── Modal do cadastro (novo / editar dados) ── -->
+<div class="modal-overlay" id="negModalForm">
+  <div class="modal-box" style="max-width:760px">
+    <div class="modal-header">
+      <h2 id="negFormTitulo">Novo {tela.singular}</h2>
+      <button class="modal-close" type="button" onclick="negFechar('negModalForm')" aria-label="Fechar">✕</button>
+    </div>
+    <form id="negForm">
+      <input type="hidden" name="id" />
+      <div class="form-row">
+        <div class="form-group" style="grid-column:1/-1"><label>Título no catálogo *</label>
+          <input name="titulo" required placeholder={ehBusca ? "Ex: Casa 3 quartos para a família Souza" : "Ex: Terreno 450 m² — Jardim América"} /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Código interno</label><input name="codigo" placeholder="Ex: TER-014" /></div>
+        <div class="form-group"><label>Situação</label>
+          <select name="status">{statusLista.map((s) => <option value={s.v}>{s.label}</option>)}</select></div>
+        <div class="form-group"><label>Responsável</label><input name="responsavel" placeholder="Quem cuida deste negócio" /></div>
+      </div>
+      <div class="form-group"><label>Descrição</label><textarea name="descricao" placeholder="O que é importante saber sobre este item"></textarea></div>
+
+      {ehBusca ? (
+        <>
+          <div class="neg-sec">Cliente que está procurando</div>
+          <div class="form-row">
+            <div class="form-group"><label>Nome do cliente</label><input name="cliente_nome" /></div>
+            <div class="form-group"><label>Contato</label><input name="cliente_contato" placeholder="Telefone ou e-mail" /></div>
+            <div class="form-group"><label>Origem</label><input name="origem" placeholder="Indicação, site, anúncio…" /></div>
+          </div>
+          <div class="form-group"><label>Perfil procurado</label><textarea name="perfil_procurado" placeholder="Ex: 3 quartos, até 20 min do centro, com quintal"></textarea></div>
+          <div class="form-row">
+            <div class="form-group"><label>Faixa de valor — de</label><input name="faixa_valor_min" inputmode="decimal" placeholder="0,00" /></div>
+            <div class="form-group"><label>Faixa de valor — até</label><input name="faixa_valor_max" inputmode="decimal" placeholder="0,00" /></div>
+            <div class="form-group"><label>Comissão (%)</label><input name="comissao_percent" inputmode="decimal" /></div>
+          </div>
+          <div class="neg-sec">Região desejada</div>
+        </>
+      ) : (
+        <>
+          <div class="neg-sec">Valores</div>
+          <div class="form-row">
+            <div class="form-group"><label>Valor pedido</label><input name="valor" inputmode="decimal" placeholder="0,00" /></div>
+            <div class="form-group"><label>Valor mínimo (interno)</label><input name="valor_minimo" inputmode="decimal" placeholder="0,00" /></div>
+            <div class="form-group"><label>Comissão (%)</label><input name="comissao_percent" inputmode="decimal" /></div>
+          </div>
+          <div class="neg-sec">Localização</div>
+        </>
+      )}
+
+      <div class="form-row">
+        <div class="form-group" style="grid-column:span 2"><label>Endereço</label><input name="endereco" /></div>
+        <div class="form-group" style="max-width:110px"><label>Número</label><input name="numero" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Bairro</label><input name="bairro" /></div>
+        <div class="form-group"><label>Cidade</label><input name="cidade" /></div>
+        <div class="form-group" style="max-width:90px"><label>UF</label><input name="uf" maxlength="2" /></div>
+        <div class="form-group" style="max-width:130px"><label>CEP</label><input name="cep" /></div>
+      </div>
+      <div class="form-group"><label>Ponto de referência</label><input name="referencia" /></div>
+
+      {!ehBusca && (
+        <>
+          <div class="neg-sec">Medidas</div>
+          <div class="form-row">
+            <div class="form-group"><label>Área do terreno (m²)</label><input name="area_total" inputmode="decimal" /></div>
+            <div class="form-group"><label>Área construída (m²)</label><input name="area_construida" inputmode="decimal" /></div>
+            <div class="form-group" style="max-width:110px"><label>Quartos</label><input name="quartos" inputmode="numeric" /></div>
+            <div class="form-group" style="max-width:110px"><label>Suítes</label><input name="suites" inputmode="numeric" /></div>
+            <div class="form-group" style="max-width:110px"><label>Banheiros</label><input name="banheiros" inputmode="numeric" /></div>
+            <div class="form-group" style="max-width:110px"><label>Vagas</label><input name="vagas" inputmode="numeric" /></div>
+          </div>
+        </>
+      )}
+
+      {tipo === "terreno" && (
+        <>
+          <div class="neg-sec">Documentação do terreno</div>
+          <div class="form-row">
+            <div class="form-group"><label>Matrícula</label><input name="matricula" /></div>
+            <div class="form-group"><label>Inscrição municipal</label><input name="inscricao_municipal" /></div>
+            <div class="form-group"><label>Zoneamento</label><input name="zoneamento" placeholder="Ex: ZR-2" /></div>
+            <div class="form-group"><label>Topografia</label><input name="topografia" placeholder="Plano, aclive, declive…" /></div>
+          </div>
+        </>
+      )}
+
+      {tipo === "empreendimento" && (
+        <>
+          <div class="neg-sec">Dados do empreendimento</div>
+          <div class="form-row">
+            <div class="form-group"><label>Incorporadora / construtora</label><input name="incorporadora" /></div>
+            <div class="form-group"><label>Previsão de entrega</label><input name="previsao_entrega" type="date" /></div>
+            <div class="form-group"><label>Unidades no total</label><input name="unidades_total" inputmode="numeric" /></div>
+            <div class="form-group"><label>Unidades disponíveis</label><input name="unidades_disponiveis" inputmode="numeric" /></div>
+          </div>
+          <div class="form-group"><label>Matrícula</label><input name="matricula" /></div>
+        </>
+      )}
+
+      {!ehBusca && (
+        <>
+          <div class="neg-sec">Captação</div>
+          <div class="form-row">
+            <div class="form-group"><label>Proprietário</label><input name="proprietario_nome" /></div>
+            <div class="form-group"><label>Contato do proprietário</label><input name="proprietario_contato" /></div>
+            <div class="form-group"><label>Origem</label><input name="origem" placeholder="Indicação, prospecção, site…" /></div>
+          </div>
+        </>
+      )}
+
+      <div class="form-group"><label>Observações internas</label><textarea name="observacoes"></textarea></div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="negFechar('negModalForm')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Modal do card aberto (dados + fotos + documentos + interessados) ── -->
+<div class="modal-overlay" id="negModalItem">
+  <div class="modal-box" style="max-width:900px">
+    <div class="modal-header">
+      <h2 id="negItemTitulo">—</h2>
+      <button class="modal-close" type="button" onclick="negFecharItem()" aria-label="Fechar">✕</button>
+    </div>
+    <div class="pills" style="padding:14px 24px 0">
+      <button class="pill active" type="button" data-aba="dados" onclick="negAba('dados')">Dados</button>
+      <button class="pill" type="button" data-aba="fotos" onclick="negAba('fotos')">Fotos</button>
+      <button class="pill" type="button" data-aba="docs" onclick="negAba('docs')">Documentos</button>
+      <button class="pill" type="button" data-aba="ops" onclick="negAba('ops')">Interessados</button>
+    </div>
+    <div style="padding:16px 24px 24px">
+      <div id="negAbaDados"></div>
+      <div id="negAbaFotos" hidden></div>
+      <div id="negAbaDocs" hidden></div>
+      <div id="negAbaOps" hidden></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal do interessado ── -->
+<div class="modal-overlay" id="negModalOp">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <h2 id="negOpTitulo">Novo interessado</h2>
+      <button class="modal-close" type="button" onclick="negFechar('negModalOp')" aria-label="Fechar">✕</button>
+    </div>
+    <form id="negFormOp">
+      <input type="hidden" name="id" /><input type="hidden" name="imovel_id" />
+      <div class="form-group"><label>Nome *</label><input name="nome" required /></div>
+      <div class="form-row">
+        <div class="form-group"><label>Telefone</label><input name="telefone" /></div>
+        <div class="form-group"><label>E-mail</label><input name="email" type="email" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Status</label>
+          <select name="status">{FUNIL.map((f) => <option value={f.v}>{f.label}</option>)}</select></div>
+        <div class="form-group"><label>Valor proposto</label><input name="valor_proposto" inputmode="decimal" placeholder="0,00" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Origem</label><input name="origem" placeholder="Indicação, site, plantão…" /></div>
+        <div class="form-group"><label>Responsável</label><input name="responsavel" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Último contato</label><input name="ultimo_contato" type="date" /></div>
+        <div class="form-group"><label>Próximo contato</label><input name="proximo_contato" type="date" /></div>
+      </div>
+      <div class="form-group" id="negOpPerdaWrap" hidden><label>Motivo da perda</label><input name="motivo_perda" placeholder="Preço, prazo, escolheu outro…" /></div>
+      <div class="form-group"><label>Observações</label><textarea name="observacoes"></textarea></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="negFechar('negModalOp')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="application/json" id="negDados" set:html={JSON.stringify({
+  tipo, itens, anexos, oportunidades,
+  statusLista, funil: FUNIL, tiposAnexo: TIPOS_ANEXO, ehBusca,
+})}></script>
+
+<style>
+  .neg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 16px; }
+  .neg-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-sm); overflow: hidden; cursor: pointer; transition: var(--transition);
+    display: flex; flex-direction: column;
+  }
+  .neg-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .neg-foto { position: relative; aspect-ratio: 4 / 3; background: var(--gray-100); }
+  .neg-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .neg-foto-vazia { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--ink-light); }
+  .neg-foto-vazia i { font-size: 28px; }
+  .neg-foto-vazia span { font-size: 12px; }
+  .neg-foto-badge { position: absolute; top: 10px; left: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+  .neg-corpo { padding: 13px 14px 14px; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+  .neg-titulo { font-family: 'Montserrat', sans-serif; font-size: .95rem; line-height: 1.3; }
+  .neg-sub { font-size: 12px; color: var(--ink-light); }
+  .neg-valor { font-family: 'Montserrat', sans-serif; font-weight: 700; color: var(--brand); font-size: 1.02rem; margin-top: 2px; }
+  .neg-linha { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--ink-mid); }
+  .neg-linha i { margin-right: 3px; }
+  .neg-rodape { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; padding-top: 9px; }
+  .neg-sec {
+    font-family: 'Montserrat', sans-serif; font-size: .8rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--ink-light); padding: 6px 24px 8px; margin-top: 6px;
+    border-top: 1px solid var(--border-light);
+  }
+  .neg-dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 20px; }
+  .neg-dl div span { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-light); }
+  .neg-dl div strong { font-size: .92rem; font-weight: 600; }
+  .neg-galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .neg-thumb { position: relative; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--gray-100); }
+  .neg-thumb img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
+  .neg-thumb-acoes { display: flex; gap: 6px; padding: 7px; }
+  .neg-capa-tag { position: absolute; top: 7px; left: 7px; }
+</style>
+
+<script>
+  type Dados = { tipo: string; itens: any[]; anexos: any[]; oportunidades: any[]; statusLista: any[]; funil: any[]; tiposAnexo: any[]; ehBusca: boolean };
+  const D: Dados = JSON.parse(document.getElementById("negDados")!.textContent || "{}");
+  const esc = (s: any) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+  const moeda = (v: any) => (v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }));
+  const dataBr = (d: any) => (!d ? "—" : new Date(String(d) + (String(d).length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR"));
+  const sLabel = (v: string) => D.statusLista.find((s: any) => s.v === v)?.label || v;
+  const sBadge = (v: string) => D.statusLista.find((s: any) => s.v === v)?.badge || "badge-gray";
+  const fLabel = (v: string) => D.funil.find((f: any) => f.v === v)?.label || v;
+  const fBadge = (v: string) => D.funil.find((f: any) => f.v === v)?.badge || "badge-gray";
+
+  let itemAberto: string | null = null;
+
+  function msg(texto: string, erro = true) {
+    document.getElementById("negMsg")!.innerHTML = `<div class="alert ${erro ? "alert-error" : "alert-success"}">${esc(texto)}</div>`;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function negFechar(id: string) { document.getElementById(id)!.classList.remove("open"); }
+  function negFecharItem() {
+    negFechar("negModalItem");
+    itemAberto = null;
+    // tira o ?item= da barra de endereço para o F5 não reabrir o card
+    const u = new URL(location.href); u.searchParams.delete("item");
+    history.replaceState(null, "", u.toString());
+  }
+  /** Recarrega a página mantendo o card aberto (a fonte da verdade é sempre o banco). */
+  function recarregar(itemId?: string | null) {
+    const u = new URL(location.href);
+    if (itemId) u.searchParams.set("item", itemId); else u.searchParams.delete("item");
+    location.href = u.toString();
+  }
+
+  // ── cadastro ──────────────────────────────────────────────────────────────
+  function negNovo() {
+    const f = document.getElementById("negForm") as HTMLFormElement;
+    f.reset();
+    (f.querySelector("[name=id]") as HTMLInputElement).value = "";
+    document.getElementById("negFormTitulo")!.textContent = "Novo cadastro";
+    document.getElementById("negModalForm")!.classList.add("open");
+  }
+  function negEditar(id: string) {
+    const it = D.itens.find((x) => x.id === id); if (!it) return;
+    const f = document.getElementById("negForm") as HTMLFormElement;
+    f.reset();
+    f.querySelectorAll<HTMLInputElement>("[name]").forEach((el) => {
+      const v = (it as any)[el.name];
+      if (v === null || v === undefined) { el.value = ""; return; }
+      el.value = el.type === "date" ? String(v).slice(0, 10) : String(v);
+    });
+    (f.querySelector("[name=id]") as HTMLInputElement).value = it.id;
+    document.getElementById("negFormTitulo")!.textContent = "Editar cadastro";
+    document.getElementById("negModalForm")!.classList.add("open");
+  }
+
+  document.getElementById("negForm")!.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target as HTMLFormElement;
+    const btn = f.querySelector('button[type=submit]') as HTMLButtonElement;
+    const body: Record<string, any> = Object.fromEntries(new FormData(f).entries());
+    const id = String(body.id || ""); delete body.id;
+    body.tipo = D.tipo;
+    btn.disabled = true;
+    const res = await fetch(id ? `/api/admin/negocios/imoveis/${id}` : "/api/admin/negocios/imoveis", {
+      method: id ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    btn.disabled = false;
+    if (res.ok) { const d = await res.json(); recarregar(id || d?.id); }
+    else { negFechar("negModalForm"); msg((await res.json()).error || "Não deu para salvar."); }
+  });
+
+  async function negExcluir(id: string) {
+    const it = D.itens.find((x) => x.id === id); if (!it) return;
+    if (!confirm(`Excluir "${it.titulo}"?\n\nIsso apaga também as fotos, os documentos e os interessados deste cadastro. Não dá para desfazer.`)) return;
+    const res = await fetch(`/api/admin/negocios/imoveis/${id}`, { method: "DELETE" });
+    if (res.ok) recarregar(null); else msg((await res.json()).error || "Não deu para excluir.");
+  }
+
+  // ── card aberto ───────────────────────────────────────────────────────────
+  function negAbrir(id: string) {
+    const it = D.itens.find((x) => x.id === id); if (!it) return;
+    itemAberto = id;
+    document.getElementById("negItemTitulo")!.textContent = it.titulo;
+    desenharDados(it); desenharFotos(it); desenharDocs(it); desenharOps(it);
+    negAba("dados");
+    document.getElementById("negModalItem")!.classList.add("open");
+  }
+  function negAba(aba: string) {
+    for (const p of Array.from(document.querySelectorAll<HTMLElement>("#negModalItem .pill[data-aba]"))) {
+      p.classList.toggle("active", p.dataset.aba === aba);
+    }
+    const mapa: Record<string, string> = { dados: "negAbaDados", fotos: "negAbaFotos", docs: "negAbaDocs", ops: "negAbaOps" };
+    for (const [k, elId] of Object.entries(mapa)) (document.getElementById(elId) as HTMLElement).hidden = k !== aba;
+  }
+
+  function linha(rotulo: string, valor: any) {
+    if (valor === null || valor === undefined || valor === "" || valor === "—") return "";
+    return `<div><span>${esc(rotulo)}</span><strong>${esc(valor)}</strong></div>`;
+  }
+  function desenharDados(it: any) {
+    const loc = [it.endereco && `${it.endereco}${it.numero ? ", " + it.numero : ""}`, it.bairro, it.cidade, it.uf, it.cep].filter(Boolean).join(" · ");
+    let campos = "";
+    if (D.ehBusca) {
+      campos += linha("Cliente", it.cliente_nome) + linha("Contato", it.cliente_contato)
+        + linha("Faixa de valor", (it.faixa_valor_min || it.faixa_valor_max) ? `${moeda(it.faixa_valor_min)} a ${moeda(it.faixa_valor_max)}` : "")
+        + linha("Perfil procurado", it.perfil_procurado);
+    } else {
+      campos += linha("Valor pedido", it.valor != null ? moeda(it.valor) : "")
+        + linha("Valor mínimo (interno)", it.valor_minimo != null ? moeda(it.valor_minimo) : "")
+        + linha("Comissão", it.comissao_percent != null ? `${it.comissao_percent}%` : "")
+        + linha("Área do terreno", it.area_total ? `${Number(it.area_total).toLocaleString("pt-BR")} m²` : "")
+        + linha("Área construída", it.area_construida ? `${Number(it.area_construida).toLocaleString("pt-BR")} m²` : "")
+        + linha("Quartos", it.quartos) + linha("Suítes", it.suites) + linha("Banheiros", it.banheiros) + linha("Vagas", it.vagas)
+        + linha("Matrícula", it.matricula) + linha("Inscrição municipal", it.inscricao_municipal)
+        + linha("Zoneamento", it.zoneamento) + linha("Topografia", it.topografia)
+        + linha("Incorporadora", it.incorporadora) + linha("Previsão de entrega", it.previsao_entrega ? dataBr(it.previsao_entrega) : "")
+        + linha("Unidades", it.unidades_total != null ? `${it.unidades_disponiveis ?? "—"} de ${it.unidades_total} disponíveis` : "")
+        + linha("Proprietário", it.proprietario_nome) + linha("Contato do proprietário", it.proprietario_contato);
+    }
+    campos += linha("Origem", it.origem) + linha("Responsável", it.responsavel) + linha("Cadastrado em", dataBr(it.created_at));
+
+    document.getElementById("negAbaDados")!.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <span class="badge ${sBadge(it.status)}">${esc(sLabel(it.status))}</span>
+        ${it.codigo ? `<span class="badge badge-gray">${esc(it.codigo)}</span>` : ""}
+        <span style="flex:1"></span>
+        <button class="btn btn-secondary btn-sm" data-requer-edicao onclick="negEditar('${it.id}')">Editar dados</button>
+        <button class="btn btn-outline btn-sm" data-requer-edicao onclick="negExcluir('${it.id}')">Excluir</button>
+      </div>
+      ${loc ? `<p style="color:var(--ink-mid);font-size:13.5px;margin:0 0 14px"><i class="ti ti-map-pin"></i> ${esc(loc)}</p>` : ""}
+      ${it.descricao ? `<p style="font-size:14px;line-height:1.55;margin:0 0 16px;white-space:pre-wrap">${esc(it.descricao)}</p>` : ""}
+      <div class="neg-dl">${campos || '<div><span>Sem dados preenchidos</span></div>'}</div>
+      ${it.observacoes ? `<div style="margin-top:16px;padding:12px 14px;background:var(--gray-50);border-radius:10px;font-size:13.5px;white-space:pre-wrap"><strong>Observações internas:</strong> ${esc(it.observacoes)}</div>` : ""}
+    `;
+  }
+
+  // ── fotos ─────────────────────────────────────────────────────────────────
+  function desenharFotos(it: any) {
+    const fotos = D.anexos.filter((a) => a.imovel_id === it.id && a.especie === "foto");
+    document.getElementById("negAbaFotos")!.innerHTML = `
+      <div class="toolbar" style="margin-bottom:14px">
+        <span class="toolbar-title" style="font-size:.98rem">Fotos do catálogo (${fotos.length})</span>
+        <label class="btn btn-primary btn-sm" data-requer-edicao style="cursor:pointer">
+          + Adicionar foto
+          <input type="file" accept="image/*" multiple hidden onchange="negSubirFoto(this)" />
+        </label>
+      </div>
+      <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 14px">A foto marcada como capa é a que aparece no card do catálogo.</p>
+      ${fotos.length ? `<div class="neg-galeria">${fotos.map((f) => `
+        <div class="neg-thumb">
+          <a href="/api/admin/negocios/anexos/${f.id}" target="_blank" rel="noopener">
+            <img src="/api/admin/negocios/anexos/${f.id}" alt="${esc(f.titulo || "Foto")}" loading="lazy" />
+          </a>
+          ${it.capa_anexo_id === f.id ? '<span class="badge badge-green neg-capa-tag">Capa</span>' : ""}
+          <div class="neg-thumb-acoes">
+            ${it.capa_anexo_id === f.id ? "" : `<button class="btn btn-outline btn-sm" data-requer-edicao onclick="negDefinirCapa('${it.id}','${f.id}')">Usar de capa</button>`}
+            <button class="btn btn-outline btn-sm" data-requer-edicao onclick="negExcluirAnexo('${f.id}')">Remover</button>
+          </div>
+        </div>`).join("")}</div>`
+        : '<div class="empty-state"><strong>Nenhuma foto ainda</strong><p>Suba a primeira — ela vira a capa do catálogo automaticamente.</p></div>'}
+    `;
+  }
+  async function negSubirFoto(input: HTMLInputElement) {
+    if (!input.files?.length || !itemAberto) return;
+    const arquivos = Array.from(input.files); input.value = "";
+    for (const arq of arquivos) {
+      const fd = new FormData();
+      fd.append("arquivo", arq); fd.append("imovel_id", itemAberto); fd.append("especie", "foto"); fd.append("titulo", arq.name);
+      const res = await fetch("/api/admin/negocios/anexos", { method: "POST", body: fd });
+      if (!res.ok) { negFecharItem(); msg((await res.json()).error || "Não deu para enviar a foto."); return; }
+    }
+    recarregar(itemAberto);
+  }
+  async function negDefinirCapa(imovelId: string, anexoId: string) {
+    const res = await fetch(`/api/admin/negocios/imoveis/${imovelId}`, {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ capa_anexo_id: anexoId }),
+    });
+    if (res.ok) recarregar(imovelId); else msg((await res.json()).error || "Não deu para trocar a capa.");
+  }
+  async function negExcluirAnexo(anexoId: string) {
+    if (!confirm("Remover este arquivo?")) return;
+    const res = await fetch(`/api/admin/negocios/anexos/${anexoId}`, { method: "DELETE" });
+    if (res.ok) recarregar(itemAberto); else msg((await res.json()).error || "Não deu para remover.");
+  }
+
+  // ── documentos ────────────────────────────────────────────────────────────
+  function desenharDocs(it: any) {
+    const docs = D.anexos.filter((a) => a.imovel_id === it.id && a.especie === "documento");
+    const opts = D.tiposAnexo.map((t: any) => `<option value="${t.v}">${esc(t.label)}</option>`).join("");
+    document.getElementById("negAbaDocs")!.innerHTML = `
+      <form id="negFormDoc" class="card" data-requer-edicao style="padding:14px;margin-bottom:16px">
+        <div class="form-row" style="align-items:end">
+          <div class="form-group" style="margin-bottom:0"><label>Tipo</label><select name="tipo">${opts}</select></div>
+          <div class="form-group" style="margin-bottom:0"><label>Título</label><input name="titulo" placeholder="Ex: Matrícula 41.203" /></div>
+          <div class="form-group" style="margin-bottom:0"><label>Arquivo (até 25 MB)</label><input name="arquivo" type="file" required /></div>
+          <div><button class="btn btn-primary" type="submit">Anexar</button></div>
+        </div>
+      </form>
+      ${docs.length ? `<div class="table-wrap"><table><thead><tr><th>Documento</th><th>Tipo</th><th>Enviado em</th><th></th></tr></thead><tbody>
+        ${docs.map((d) => `<tr>
+          <td><a href="/api/admin/negocios/anexos/${d.id}" target="_blank" rel="noopener"><strong>${esc(d.titulo || d.nome_arquivo)}</strong></a>
+            <div style="font-size:11.5px;color:var(--ink-light)">${esc(d.nome_arquivo || "")}${d.tamanho ? ` · ${(d.tamanho / 1048576).toFixed(1)} MB` : ""}</div></td>
+          <td>${esc(D.tiposAnexo.find((t: any) => t.v === d.tipo)?.label || d.tipo || "—")}</td>
+          <td style="font-size:12.5px">${dataBr(d.created_at)}</td>
+          <td style="text-align:right"><button class="btn btn-outline btn-sm" data-requer-edicao onclick="negExcluirAnexo('${d.id}')">Remover</button></td>
+        </tr>`).join("")}
+      </tbody></table></div>`
+        : '<div class="empty-state"><strong>Nenhum documento anexado</strong><p>Matrícula, IPTU, certidões e contratos ficam guardados aqui.</p></div>'}
+    `;
+    document.getElementById("negFormDoc")?.addEventListener("submit", negEnviarDoc);
+  }
+  async function negEnviarDoc(e: Event) {
+    e.preventDefault();
+    if (!itemAberto) return;
+    const f = e.target as HTMLFormElement;
+    const btn = f.querySelector("button[type=submit]") as HTMLButtonElement;
+    const fd = new FormData(f);
+    fd.append("imovel_id", itemAberto); fd.append("especie", "documento");
+    btn.disabled = true; btn.textContent = "Enviando…";
+    const res = await fetch("/api/admin/negocios/anexos", { method: "POST", body: fd });
+    btn.disabled = false; btn.textContent = "Anexar";
+    if (res.ok) recarregar(itemAberto);
+    else { negFecharItem(); msg((await res.json()).error || "Não deu para anexar o documento."); }
+  }
+
+  // ── interessados ──────────────────────────────────────────────────────────
+  function desenharOps(it: any) {
+    const ops = D.oportunidades.filter((o) => o.imovel_id === it.id);
+    const porStatus = D.funil.map((f: any) => ({ ...f, n: ops.filter((o) => o.status === f.v).length }));
+    document.getElementById("negAbaOps")!.innerHTML = `
+      <div class="toolbar" style="margin-bottom:12px">
+        <span class="toolbar-title" style="font-size:.98rem">Interessados (${ops.length})</span>
+        <button class="btn btn-primary btn-sm" data-requer-edicao onclick="negNovoOp()">+ Novo interessado</button>
+      </div>
+      <div class="pills" style="margin-bottom:14px">${porStatus.map((f: any) => `<span class="pill" style="cursor:default">${esc(f.label)} <span class="count">${f.n}</span></span>`).join("")}</div>
+      ${ops.length ? `<div class="table-wrap"><table><thead><tr><th>Nome</th><th>Contato</th><th>Proposta</th><th>Status</th><th>Próximo contato</th><th></th></tr></thead><tbody>
+        ${ops.map((o) => `<tr>
+          <td><strong>${esc(o.nome)}</strong>${o.origem ? `<div style="font-size:11.5px;color:var(--ink-light)">${esc(o.origem)}</div>` : ""}</td>
+          <td style="font-size:12.5px">${esc([o.telefone, o.email].filter(Boolean).join(" · ") || "—")}</td>
+          <td>${o.valor_proposto != null ? moeda(o.valor_proposto) : "—"}</td>
+          <td>
+            <select class="filter-select" data-requer-edicao style="font-size:12px;padding:4px 8px" onchange="negMudarStatusOp('${o.id}', this.value)">
+              ${D.funil.map((f: any) => `<option value="${f.v}"${f.v === o.status ? " selected" : ""}>${esc(f.label)}</option>`).join("")}
+            </select>
+            ${o.status === "perdido" && o.motivo_perda ? `<div style="font-size:11.5px;color:var(--ink-light);margin-top:3px">${esc(o.motivo_perda)}</div>` : ""}
+          </td>
+          <td style="font-size:12.5px">${o.proximo_contato ? dataBr(o.proximo_contato) : "—"}</td>
+          <td style="white-space:nowrap;text-align:right">
+            <button class="btn btn-secondary btn-sm" data-requer-edicao onclick="negEditarOp('${o.id}')">Editar</button>
+            <button class="btn btn-outline btn-sm" data-requer-edicao onclick="negExcluirOp('${o.id}')">Remover</button>
+          </td>
+        </tr>`).join("")}
+      </tbody></table></div>`
+        : '<div class="empty-state"><strong>Nenhum interessado ainda</strong><p>Cadastre quem procurou por este item e acompanhe até fechar.</p></div>'}
+    `;
+  }
+  function negNovoOp() {
+    if (!itemAberto) return;
+    const f = document.getElementById("negFormOp") as HTMLFormElement;
+    f.reset();
+    (f.querySelector("[name=id]") as HTMLInputElement).value = "";
+    (f.querySelector("[name=imovel_id]") as HTMLInputElement).value = itemAberto;
+    document.getElementById("negOpTitulo")!.textContent = "Novo interessado";
+    (document.getElementById("negOpPerdaWrap") as HTMLElement).hidden = true;
+    document.getElementById("negModalOp")!.classList.add("open");
+  }
+  function negEditarOp(id: string) {
+    const o = D.oportunidades.find((x) => x.id === id); if (!o) return;
+    const f = document.getElementById("negFormOp") as HTMLFormElement;
+    f.reset();
+    f.querySelectorAll<HTMLInputElement>("[name]").forEach((el) => {
+      const v = (o as any)[el.name];
+      el.value = v === null || v === undefined ? "" : (el.type === "date" ? String(v).slice(0, 10) : String(v));
+    });
+    (f.querySelector("[name=id]") as HTMLInputElement).value = o.id;
+    (f.querySelector("[name=imovel_id]") as HTMLInputElement).value = o.imovel_id;
+    document.getElementById("negOpTitulo")!.textContent = "Editar interessado";
+    (document.getElementById("negOpPerdaWrap") as HTMLElement).hidden = o.status !== "perdido";
+    document.getElementById("negModalOp")!.classList.add("open");
+  }
+  document.querySelector("#negFormOp [name=status]")!.addEventListener("change", (e) => {
+    (document.getElementById("negOpPerdaWrap") as HTMLElement).hidden = (e.target as HTMLSelectElement).value !== "perdido";
+  });
+  document.getElementById("negFormOp")!.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target as HTMLFormElement;
+    const btn = f.querySelector("button[type=submit]") as HTMLButtonElement;
+    const body: Record<string, any> = Object.fromEntries(new FormData(f).entries());
+    const id = String(body.id || ""); delete body.id;
+    const imovelId = String(body.imovel_id || "");
+    btn.disabled = true;
+    const res = await fetch(id ? `/api/admin/negocios/oportunidades/${id}` : "/api/admin/negocios/oportunidades", {
+      method: id ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    btn.disabled = false;
+    if (res.ok) recarregar(imovelId);
+    else { negFechar("negModalOp"); msg((await res.json()).error || "Não deu para salvar o interessado."); }
+  });
+  async function negMudarStatusOp(id: string, status: string) {
+    const res = await fetch(`/api/admin/negocios/oportunidades/${id}`, {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }),
+    });
+    if (res.ok) recarregar(itemAberto); else msg((await res.json()).error || "Não deu para mudar o status.");
+  }
+  async function negExcluirOp(id: string) {
+    if (!confirm("Remover este interessado?")) return;
+    const res = await fetch(`/api/admin/negocios/oportunidades/${id}`, { method: "DELETE" });
+    if (res.ok) recarregar(itemAberto); else msg((await res.json()).error || "Não deu para remover.");
+  }
+
+  // reabre o card depois de um salvamento (recarregar() põe ?item= na URL)
+  const paramItem = new URL(location.href).searchParams.get("item");
+  if (paramItem) setTimeout(() => negAbrir(paramItem), 0);
+
+  // O bundler do Astro remove função que só é usada em onclick inline — por isso
+  // todas passam pelo window de propósito (já mordeu antes neste projeto).
+  Object.assign(window, {
+    negNovo, negEditar, negExcluir, negAbrir, negAba, negFechar, negFecharItem,
+    negSubirFoto, negDefinirCapa, negExcluirAnexo, negEnviarDoc,
+    negNovoOp, negEditarOp, negMudarStatusOp, negExcluirOp,
+  });
+</script>
