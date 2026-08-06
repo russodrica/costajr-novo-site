@@ -345,7 +345,12 @@ function resumoLocal(it: any): string {
   statusLista, funil: FUNIL, tiposAnexo: TIPOS_ANEXO, ehBusca,
 })}></script>
 
-<style>
+<!-- is:global de propósito: boa parte desta tela (galeria de fotos, tabela de
+     documentos, ficha de dados) é desenhada por JavaScript DEPOIS que a página
+     carrega, e o CSS com escopo do Astro não alcança elemento criado assim —
+     a galeria saía gigante e sem formatação. Todas as classes começam com
+     `neg-`, então não há risco de vazar estilo para outra tela. -->
+<style is:global>
   .neg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 16px; }
   .neg-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -381,7 +386,7 @@ function resumoLocal(it: any): string {
   .neg-capa-tag { position: absolute; top: 7px; left: 7px; }
   /* recorte da foto — o quadro tem a MESMA proporção do card (4/3) */
   .neg-crop-vp {
-    position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden;
+    position: relative; width: min(100%, calc(46vh * 4 / 3)); aspect-ratio: 4 / 3; margin: 0 auto; overflow: hidden;
     background: #111; border-radius: 10px; cursor: grab; touch-action: none;
   }
   .neg-crop-vp.arrastando { cursor: grabbing; }
