@@ -379,7 +379,7 @@ function resumoLocal(it: any): string {
   .neg-dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 20px; }
   .neg-dl div span { display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-light); }
   .neg-dl div strong { font-size: .92rem; font-weight: 600; }
-  .neg-galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .neg-galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 12px; }
   .neg-thumb { position: relative; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--gray-100); }
   .neg-thumb img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
   .neg-thumb-acoes { display: flex; gap: 6px; padding: 7px; }
@@ -410,6 +410,12 @@ function resumoLocal(it: any): string {
   const sBadge = (v: string) => D.statusLista.find((s: any) => s.v === v)?.badge || "badge-gray";
   const fLabel = (v: string) => D.funil.find((f: any) => f.v === v)?.label || v;
   const fBadge = (v: string) => D.funil.find((f: any) => f.v === v)?.badge || "badge-gray";
+
+  /** DELETE sem content-type é tratado pelo Astro como envio de formulário e
+   *  recusado pela proteção anti-CSRF ("Cross-site DELETE form submissions are
+   *  forbidden") — era por isso que o botão Remover não fazia nada. Declarar
+   *  JSON dispensa a checagem. */
+  const CT_JSON = { "content-type": "application/json" };
 
   let itemAberto: string | null = null;
 
@@ -487,7 +493,7 @@ function resumoLocal(it: any): string {
   async function negExcluir(id: string) {
     const it = D.itens.find((x) => x.id === id); if (!it) return;
     if (!confirm(`Excluir "${it.titulo}"?\n\nIsso apaga também as fotos, os documentos e os interessados deste cadastro. Não dá para desfazer.`)) return;
-    const res = await fetch(`/api/admin/negocios/imoveis/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/negocios/imoveis/${id}`, { method: "DELETE", headers: CT_JSON });
     if (res.ok) recarregar(null); else msg((await res.json()).error || "Não deu para excluir.");
   }
 
@@ -735,7 +741,7 @@ function resumoLocal(it: any): string {
   }
   async function negExcluirAnexo(anexoId: string) {
     if (!confirm("Remover este arquivo?")) return;
-    const res = await fetch(`/api/admin/negocios/anexos/${anexoId}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/negocios/anexos/${anexoId}`, { method: "DELETE", headers: CT_JSON });
     if (res.ok) recarregar(itemAberto); else msg((await res.json()).error || "Não deu para remover.");
   }
 
@@ -868,7 +874,7 @@ function resumoLocal(it: any): string {
   }
   async function negExcluirOp(id: string) {
     if (!confirm("Remover este interessado?")) return;
-    const res = await fetch(`/api/admin/negocios/oportunidades/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/negocios/oportunidades/${id}`, { method: "DELETE", headers: CT_JSON });
     if (res.ok) recarregar(itemAberto); else msg((await res.json()).error || "Não deu para remover.");
   }
 
