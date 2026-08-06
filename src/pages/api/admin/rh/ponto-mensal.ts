@@ -19,7 +19,7 @@ export const GET: APIRoute = async ({ request, url }) => {
     const db = supabaseAdmin();
     const { data: colabs, error } = await db
       .from("rh_colaboradores")
-      .select("id, nome, cpf, regime, status")
+      .select("id, nome, cpf, regime, status, rhid_person_id")
       .in("regime", ["clt", "socio"])
       .neq("status", "desligado")
       .order("nome");
@@ -43,8 +43,10 @@ export const GET: APIRoute = async ({ request, url }) => {
     for (let i = 0; i < colabs.length; i += limite) {
       const lote = colabs.slice(i, i + limite);
       const parcial = await Promise.all(lote.map(async (c) => {
+        // vínculo manual (tela de Vínculo) tem prioridade sobre o CPF: resolve o
+        // caso em que o CPF está escrito diferente nos dois sistemas
         const cpf = (c.cpf || "").replace(/\D/g, "");
-        const rhidId = cpfParaId.get(cpf);
+        const rhidId = (c as any).rhid_person_id ?? cpfParaId.get(cpf);
         if (!rhidId) return { id: c.id, nome: c.nome, regime: c.regime, encontrado: false, resumo: null };
 
         const dias = await apuracaoMensal(rhidId, mes);
