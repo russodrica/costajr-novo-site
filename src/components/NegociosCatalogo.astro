@@ -275,6 +275,33 @@ function resumoLocal(it: any): string {
   </div>
 </div>
 
+<!-- ── Recorte da foto (padroniza o tamanho no catálogo) ── -->
+<div class="modal-overlay" id="negModalCrop">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <h2 id="negCropTitulo">Ajustar a foto</h2>
+      <button class="modal-close" type="button" onclick="negCropCancelar()" aria-label="Fechar">✕</button>
+    </div>
+    <div style="padding:16px 24px 0">
+      <p style="font-size:12.5px;color:var(--ink-mid);margin:0 0 12px">
+        Arraste a foto e use o zoom. O que ficar dentro do quadro é o que aparece no card —
+        assim todas as fotos do catálogo ficam do mesmo tamanho.
+      </p>
+      <div class="neg-crop-vp" id="negCropViewport"><img id="negCropImg" alt="" /></div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+        <i class="ti ti-zoom-out" aria-hidden="true"></i>
+        <input type="range" id="negCropZoom" min="100" max="300" value="100" style="flex:1" aria-label="Zoom" />
+        <i class="ti ti-zoom-in" aria-hidden="true"></i>
+        <button type="button" class="btn btn-outline btn-sm" onclick="negCropCentralizar()">Centralizar</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="negCropCancelar()">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="negCropConfirmar()">Usar esta foto</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Modal do interessado ── -->
 <div class="modal-overlay" id="negModalOp">
   <div class="modal-box" style="max-width:560px">
@@ -352,6 +379,20 @@ function resumoLocal(it: any): string {
   .neg-thumb img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
   .neg-thumb-acoes { display: flex; gap: 6px; padding: 7px; }
   .neg-capa-tag { position: absolute; top: 7px; left: 7px; }
+  /* recorte da foto — o quadro tem a MESMA proporção do card (4/3) */
+  .neg-crop-vp {
+    position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden;
+    background: #111; border-radius: 10px; cursor: grab; touch-action: none;
+  }
+  .neg-crop-vp.arrastando { cursor: grabbing; }
+  .neg-crop-vp img { position: absolute; top: 0; left: 0; max-width: none; user-select: none; -webkit-user-drag: none; }
+  .neg-crop-vp::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.55);
+    background:
+      linear-gradient(to right, transparent 33.2%, rgba(255,255,255,.28) 33.2%, rgba(255,255,255,.28) 33.5%, transparent 33.5%, transparent 66.4%, rgba(255,255,255,.28) 66.4%, rgba(255,255,255,.28) 66.7%, transparent 66.7%),
+      linear-gradient(to bottom, transparent 33.2%, rgba(255,255,255,.28) 33.2%, rgba(255,255,255,.28) 33.5%, transparent 33.5%, transparent 66.4%, rgba(255,255,255,.28) 66.4%, rgba(255,255,255,.28) 66.7%, transparent 66.7%);
+  }
 </style>
 
 <script>
@@ -529,16 +570,157 @@ function resumoLocal(it: any): string {
         : '<div class="empty-state"><strong>Nenhuma foto ainda</strong><p>Suba a primeira — ela vira a capa do catálogo automaticamente.</p></div>'}
     `;
   }
+  /** Envio de arquivo em 3 passos — o MESMO caminho dos Documentos da Empresa:
+   *  1) pede uma URL assinada,  2) manda o arquivo DIRETO ao bucket,
+   *  3) registra a linha no banco.
+   *  Não dá para usar formulário (multipart): a proteção anti-CSRF do Astro
+   *  recusa POST de formulário e o arquivo nunca chegava — foi exatamente o que
+   *  fez a primeira foto sumir. De quebra, o arquivo não passa pela Vercel,
+   *  então some também o limite de tamanho da função. */
+  async function subirArquivo(arq: File, especie: "foto" | "documento", extra: Record<string, any> = {}) {
+    if (arq.size > 45 * 1024 * 1024) throw new Error(`"${arq.name}" tem mais de 45 MB.`);
+    const r1 = await fetch("/api/admin/negocios/anexos/upload-url", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ imovel_id: itemAberto, especie, tipo: extra.tipo, nome: arq.name }),
+    });
+    if (!r1.ok) throw new Error((await r1.json().catch(() => ({}))).error || "Não deu para preparar o envio.");
+    const { signed_url, path, nome_original } = await r1.json();
+
+    const r2 = await fetch(signed_url, { method: "PUT", headers: { "content-type": arq.type || "application/octet-stream" }, body: arq });
+    if (!r2.ok) throw new Error(`Falha no envio do arquivo (HTTP ${r2.status}).`);
+
+    const r3 = await fetch("/api/admin/negocios/anexos", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ imovel_id: itemAberto, storage_path: path, nome_arquivo: nome_original, content_type: arq.type, tamanho: arq.size, ...extra }),
+    });
+    if (!r3.ok) throw new Error((await r3.json().catch(() => ({}))).error || "O arquivo subiu, mas não deu para registrar.");
+  }
+
+  // ── Recorte da foto ───────────────────────────────────────────────────────
+  // Todo card do catálogo tem proporção 4:3. Sem recortar, uma foto em pé e uma
+  // deitada ficam com enquadramentos completamente diferentes — a pessoa escolhe
+  // aqui o pedaço que aparece, e o resultado sai sempre em 1200x900.
+  const SAIDA_W = 1200, SAIDA_H = 900;
+  let crop: any = null;
+
+  function cropAplicar() {
+    const s = crop; const k = s.base * s.escala;
+    s.img.style.width = `${s.natW * k}px`;
+    s.img.style.height = `${s.natH * k}px`;
+    s.img.style.left = `${s.x}px`;
+    s.img.style.top = `${s.y}px`;
+  }
+  function cropLimitar() {
+    const s = crop; const k = s.base * s.escala;
+    s.x = Math.min(0, Math.max(s.vw - s.natW * k, s.x));
+    s.y = Math.min(0, Math.max(s.vh - s.natH * k, s.y));
+  }
+  function negCropCentralizar() {
+    if (!crop) return;
+    const k = crop.base * crop.escala;
+    crop.x = (crop.vw - crop.natW * k) / 2;
+    crop.y = (crop.vh - crop.natH * k) / 2;
+    cropLimitar(); cropAplicar();
+  }
+  /** Abre o recorte e devolve o arquivo já cortado (ou null se a pessoa cancelar).
+   *  Se o navegador não conseguir abrir a imagem (HEIC do iPhone, por exemplo),
+   *  manda o arquivo original em vez de travar o envio. */
+  function abrirCrop(arq: File): Promise<File | null> {
+    return new Promise((resolve) => {
+      const img = document.getElementById("negCropImg") as HTMLImageElement;
+      const vp = document.getElementById("negCropViewport") as HTMLElement;
+      const url = URL.createObjectURL(arq);
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(arq); };
+      img.onload = () => {
+        const vw = vp.clientWidth || 480, vh = vp.clientHeight || 360;
+        crop = {
+          img, url, arq, resolve,
+          natW: img.naturalWidth, natH: img.naturalHeight, vw, vh,
+          base: Math.max(vw / img.naturalWidth, vh / img.naturalHeight),
+          escala: 1, x: 0, y: 0,
+        };
+        (document.getElementById("negCropZoom") as HTMLInputElement).value = "100";
+        document.getElementById("negCropTitulo")!.textContent = `Ajustar “${arq.name.slice(0, 40)}”`;
+        negCropCentralizar();
+        document.getElementById("negModalCrop")!.classList.add("open");
+      };
+      img.src = url;
+    });
+  }
+  function cropFechar(resultado: File | null) {
+    const s = crop; crop = null;
+    document.getElementById("negModalCrop")!.classList.remove("open");
+    if (s) { URL.revokeObjectURL(s.url); s.resolve(resultado); }
+  }
+  function negCropCancelar() { cropFechar(null); }
+  function negCropConfirmar() {
+    if (!crop) return;
+    const s = crop, k = s.base * s.escala;
+    const cv = document.createElement("canvas");
+    cv.width = SAIDA_W; cv.height = SAIDA_H;
+    const ctx = cv.getContext("2d")!;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(s.img, -s.x / k, -s.y / k, s.vw / k, s.vh / k, 0, 0, SAIDA_W, SAIDA_H);
+    const nomeBase = s.arq.name.replace(/\.[^.]+$/, "") || "foto";
+    cv.toBlob((b) => {
+      if (!b) { cropFechar(s.arq); return; }
+      cropFechar(new File([b], `${nomeBase}.jpg`, { type: "image/jpeg" }));
+    }, "image/jpeg", 0.86);
+  }
+
+  (document.getElementById("negCropZoom") as HTMLInputElement).addEventListener("input", (e) => {
+    if (!crop) return;
+    const novo = Number((e.target as HTMLInputElement).value) / 100;
+    // mantém o centro do quadro no mesmo ponto da foto ao aproximar/afastar
+    const cx = (crop.vw / 2 - crop.x) / (crop.base * crop.escala);
+    const cy = (crop.vh / 2 - crop.y) / (crop.base * crop.escala);
+    crop.escala = novo;
+    crop.x = crop.vw / 2 - cx * crop.base * novo;
+    crop.y = crop.vh / 2 - cy * crop.base * novo;
+    cropLimitar(); cropAplicar();
+  });
+  {
+    const vp = document.getElementById("negCropViewport") as HTMLElement;
+    let arrastando = false, px = 0, py = 0;
+    vp.addEventListener("pointerdown", (e) => {
+      if (!crop) return;
+      arrastando = true; px = e.clientX; py = e.clientY;
+      vp.classList.add("arrastando"); vp.setPointerCapture(e.pointerId);
+    });
+    vp.addEventListener("pointermove", (e) => {
+      if (!arrastando || !crop) return;
+      crop.x += e.clientX - px; crop.y += e.clientY - py;
+      px = e.clientX; py = e.clientY;
+      cropLimitar(); cropAplicar();
+    });
+    const soltar = (e: PointerEvent) => {
+      if (!arrastando) return;
+      arrastando = false; vp.classList.remove("arrastando");
+      try { vp.releasePointerCapture(e.pointerId); } catch { /* ok */ }
+    };
+    vp.addEventListener("pointerup", soltar);
+    vp.addEventListener("pointercancel", soltar);
+  }
+
   async function negSubirFoto(input: HTMLInputElement) {
     if (!input.files?.length || !itemAberto) return;
     const arquivos = Array.from(input.files); input.value = "";
+    // recorta TODAS antes de enviar — assim a pessoa não fica esperando entre uma e outra
+    const prontas: File[] = [];
     for (const arq of arquivos) {
-      const fd = new FormData();
-      fd.append("arquivo", arq); fd.append("imovel_id", itemAberto); fd.append("especie", "foto"); fd.append("titulo", arq.name);
-      const res = await fetch("/api/admin/negocios/anexos", { method: "POST", body: fd });
-      if (!res.ok) { negFecharItem(); msg((await res.json()).error || "Não deu para enviar a foto."); return; }
+      const f = await abrirCrop(arq);
+      if (f) prontas.push(f);
     }
-    recarregar(itemAberto);
+    if (!prontas.length) return;
+    const alvo = document.getElementById("negAbaFotos")!;
+    const antes = alvo.innerHTML;
+    alvo.innerHTML = '<div class="loading"><span class="spinner"></span> Enviando…</div>';
+    try {
+      for (const f of prontas) await subirArquivo(f, "foto", { titulo: f.name });
+      recarregar(itemAberto, "fotos");
+    } catch (e: any) {
+      alvo.innerHTML = `<div class="alert alert-error">${esc(e?.message || "Não deu para enviar a foto.")}</div>` + antes;
+    }
   }
   async function negDefinirCapa(imovelId: string, anexoId: string) {
     const res = await fetch(`/api/admin/negocios/imoveis/${imovelId}`, {
@@ -583,13 +765,19 @@ function resumoLocal(it: any): string {
     if (!itemAberto) return;
     const f = e.target as HTMLFormElement;
     const btn = f.querySelector("button[type=submit]") as HTMLButtonElement;
-    const fd = new FormData(f);
-    fd.append("imovel_id", itemAberto); fd.append("especie", "documento");
+    const arq = (f.querySelector("[name=arquivo]") as HTMLInputElement).files?.[0];
+    if (!arq) return;
+    const tipo = (f.querySelector("[name=tipo]") as HTMLSelectElement).value;
+    const titulo = (f.querySelector("[name=titulo]") as HTMLInputElement).value.trim();
     btn.disabled = true; btn.textContent = "Enviando…";
-    const res = await fetch("/api/admin/negocios/anexos", { method: "POST", body: fd });
-    btn.disabled = false; btn.textContent = "Anexar";
-    if (res.ok) recarregar(itemAberto);
-    else { negFecharItem(); msg((await res.json()).error || "Não deu para anexar o documento."); }
+    try {
+      await subirArquivo(arq, "documento", { tipo, titulo });
+      recarregar(itemAberto, "docs");
+    } catch (err: any) {
+      btn.disabled = false; btn.textContent = "Anexar";
+      const box = document.getElementById("negAbaDocs")!;
+      box.insertAdjacentHTML("afterbegin", `<div class="alert alert-error">${esc(err?.message || "Não deu para anexar o documento.")}</div>`);
+    }
   }
 
   // ── interessados ──────────────────────────────────────────────────────────
@@ -691,5 +879,6 @@ function resumoLocal(it: any): string {
     negNovo, negEditar, negExcluir, negAbrir, negAba, negFechar, negFecharItem,
     negSubirFoto, negDefinirCapa, negExcluirAnexo, negEnviarDoc,
     negNovoOp, negEditarOp, negMudarStatusOp, negExcluirOp,
+    negCropCancelar, negCropConfirmar, negCropCentralizar,
   });
 </script>
