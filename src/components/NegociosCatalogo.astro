@@ -384,6 +384,12 @@ function resumoLocal(it: any): string {
   .neg-thumb img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
   .neg-thumb-acoes { display: flex; gap: 6px; padding: 7px; }
   .neg-capa-tag { position: absolute; top: 7px; left: 7px; }
+  /* realce quando a pessoa arrasta um arquivo por cima do card aberto */
+  #negModalItem .modal-box.neg-soltar { outline: 3px dashed var(--brand); outline-offset: -8px; }
+  #negModalItem .modal-box.neg-soltar::before {
+    content: "Solte aqui para anexar"; position: sticky; top: 0; z-index: 5; display: block;
+    background: var(--brand); color: #fff; text-align: center; padding: 7px; font-size: 13px; font-weight: 600;
+  }
   /* recorte da foto — o quadro tem a MESMA proporção do card (4/3) */
   .neg-crop-vp {
     position: relative; width: min(100%, calc(46vh * 4 / 3)); aspect-ratio: 4 / 3; margin: 0 auto; overflow: hidden;
@@ -566,7 +572,7 @@ function resumoLocal(it: any): string {
           <input type="file" accept="image/*" multiple hidden onchange="negSubirFoto(this)" />
         </label>
       </div>
-      <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 14px">A foto marcada como capa é a que aparece no card do catálogo.</p>
+      <p style="font-size:12.5px;color:var(--ink-light);margin:-6px 0 14px">A foto marcada como capa é a que aparece no card do catálogo. Você também pode <strong>colar com Ctrl+V</strong> ou <strong>arrastar a foto</strong> para dentro desta janela.</p>
       ${fotos.length ? `<div class="neg-galeria">${fotos.map((f) => `
         <div class="neg-thumb">
           <a href="/api/admin/negocios/anexos/${f.id}" target="_blank" rel="noopener">
@@ -713,9 +719,8 @@ function resumoLocal(it: any): string {
     vp.addEventListener("pointercancel", soltar);
   }
 
-  async function negSubirFoto(input: HTMLInputElement) {
-    if (!input.files?.length || !itemAberto) return;
-    const arquivos = Array.from(input.files); input.value = "";
+  async function enviarFotos(arquivos: File[]) {
+    if (!itemAberto || !arquivos.length) return;
     // recorta TODAS antes de enviar — assim a pessoa não fica esperando entre uma e outra
     const prontas: File[] = [];
     for (const arq of arquivos) {
@@ -732,6 +737,82 @@ function resumoLocal(it: any): string {
     } catch (e: any) {
       alvo.innerHTML = `<div class="alert alert-error">${esc(e?.message || "Não deu para enviar a foto.")}</div>` + antes;
     }
+  }
+  async function enviarDocs(arquivos: File[], tipo = "outro") {
+    if (!itemAberto || !arquivos.length) return;
+    const alvo = document.getElementById("negAbaDocs")!;
+    const antes = alvo.innerHTML;
+    alvo.innerHTML = '<div class="loading"><span class="spinner"></span> Enviando…</div>';
+    try {
+      for (const f of arquivos) await subirArquivo(f, "documento", { tipo, titulo: f.name });
+      recarregar(itemAberto, "docs");
+    } catch (e: any) {
+      alvo.innerHTML = `<div class="alert alert-error">${esc(e?.message || "Não deu para anexar o documento.")}</div>` + antes;
+    }
+  }
+  async function negSubirFoto(input: HTMLInputElement) {
+    if (!input.files?.length || !itemAberto) return;
+    const arquivos = Array.from(input.files); input.value = "";
+    await enviarFotos(arquivos);
+  }
+
+  // ── Colar (Ctrl+V) e arrastar arquivos para dentro do card ────────────────
+  // Print de tela, foto do WhatsApp, PDF do e-mail: dá para largar direto aqui,
+  // sem passar pela janela de "escolher arquivo".
+  function arquivosDoEvento(e: any): File[] {
+    const dt = e.clipboardData || e.dataTransfer;
+    if (!dt) return [];
+    const out: File[] = [];
+    if (dt.files?.length) out.push(...Array.from(dt.files as FileList));
+    else if (dt.items) {
+      for (const it of Array.from(dt.items as any) as any[]) {
+        if (it.kind === "file") { const f = it.getAsFile(); if (f) out.push(f); }
+      }
+    }
+    return out.filter((f) => f && f.size > 0);
+  }
+  /** Print colado costuma vir sem nome de verdade — dá um nome legível. */
+  function nomear(f: File, i: number): File {
+    if (f.name && f.name !== "image.png" && f.name !== "blob") return f;
+    const ext = (f.type.split("/")[1] || "png").replace(/[^a-z0-9]/g, "");
+    return new File([f], `colado-${i + 1}.${ext}`, { type: f.type });
+  }
+  function abaAberta(): string {
+    return (document.querySelector("#negModalItem .pill.active[data-aba]") as HTMLElement)?.dataset.aba || "dados";
+  }
+  async function receberArquivos(brutos: File[]) {
+    if (!itemAberto || !brutos.length) return;
+    const arqs = brutos.map(nomear);
+    // na aba Documentos tudo entra como documento; nas outras, imagem vira foto
+    if (abaAberta() === "docs") { await enviarDocs(arqs); return; }
+    const imagens = arqs.filter((f) => f.type.startsWith("image/"));
+    const outros = arqs.filter((f) => !f.type.startsWith("image/"));
+    if (imagens.length) await enviarFotos(imagens);
+    if (outros.length) await enviarDocs(outros);
+  }
+
+  document.addEventListener("paste", (e: any) => {
+    if (!itemAberto || !document.getElementById("negModalItem")!.classList.contains("open")) return;
+    if (document.getElementById("negModalCrop")!.classList.contains("open")) return;
+    const alvo = e.target as HTMLElement;
+    if (alvo && /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName)) return; // deixa colar texto nos campos
+    const arqs = arquivosDoEvento(e);
+    if (!arqs.length) return;
+    e.preventDefault();
+    receberArquivos(arqs);
+  });
+  {
+    const box = document.querySelector("#negModalItem .modal-box") as HTMLElement;
+    let dentro = 0;
+    box.addEventListener("dragenter", (e) => { if (!itemAberto) return; e.preventDefault(); dentro++; box.classList.add("neg-soltar"); });
+    box.addEventListener("dragover", (e) => { if (!itemAberto) return; e.preventDefault(); });
+    box.addEventListener("dragleave", () => { if (--dentro <= 0) { dentro = 0; box.classList.remove("neg-soltar"); } });
+    box.addEventListener("drop", (e: any) => {
+      if (!itemAberto) return;
+      e.preventDefault(); dentro = 0; box.classList.remove("neg-soltar");
+      const arqs = arquivosDoEvento(e);
+      if (arqs.length) receberArquivos(arqs);
+    });
   }
   async function negDefinirCapa(imovelId: string, anexoId: string) {
     const res = await fetch(`/api/admin/negocios/imoveis/${imovelId}`, {
@@ -767,7 +848,7 @@ function resumoLocal(it: any): string {
           <td style="text-align:right"><button class="btn btn-outline btn-sm" data-requer-edicao onclick="negExcluirAnexo('${d.id}')">Remover</button></td>
         </tr>`).join("")}
       </tbody></table></div>`
-        : '<div class="empty-state"><strong>Nenhum documento anexado</strong><p>Matrícula, IPTU, certidões e contratos ficam guardados aqui.</p></div>'}
+        : '<div class="empty-state"><strong>Nenhum documento anexado</strong><p>Matrícula, IPTU, certidões e contratos ficam guardados aqui.<br>Dá para <strong>colar com Ctrl+V</strong> ou <strong>arrastar o arquivo</strong> para dentro desta janela.</p></div>'}
     `;
     document.getElementById("negFormDoc")?.addEventListener("submit", negEnviarDoc);
   }
@@ -781,14 +862,8 @@ function resumoLocal(it: any): string {
     const tipo = (f.querySelector("[name=tipo]") as HTMLSelectElement).value;
     const titulo = (f.querySelector("[name=titulo]") as HTMLInputElement).value.trim();
     btn.disabled = true; btn.textContent = "Enviando…";
-    try {
-      await subirArquivo(arq, "documento", { tipo, titulo });
-      recarregar(itemAberto, "docs");
-    } catch (err: any) {
-      btn.disabled = false; btn.textContent = "Anexar";
-      const box = document.getElementById("negAbaDocs")!;
-      box.insertAdjacentHTML("afterbegin", `<div class="alert alert-error">${esc(err?.message || "Não deu para anexar o documento.")}</div>`);
-    }
+    const comTitulo = titulo ? new File([arq], arq.name, { type: arq.type }) : arq;
+    await enviarDocs([comTitulo], tipo);
   }
 
   // ── interessados ──────────────────────────────────────────────────────────
