@@ -316,6 +316,7 @@ export type DiaResumo = {
   falta: boolean;     // horário esperado mas nenhuma batida real
   horasMin: number;   // minutos trabalhados (pares entrada/saída)
   semSaida: boolean;  // entrou mas não bateu saída
+  batidas: string[];  // horários do dia em HH:MM, em ordem (para o espelho de ponto)
 };
 
 // Busca a apuração de um mês inteiro para UMA pessoa do RHiD.
@@ -359,6 +360,8 @@ export async function apuracaoMensal(idPerson: number, anoMes: string): Promise<
           falta: punches.length === 0 && hasFalta,
           horasMin,
           semSaida,
+          // horário de cada batida, para o espelho de ponto mostrar entrada/saída
+          batidas: punches.map((d) => new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Sao_Paulo" }).format(d)),
         });
       }
     }

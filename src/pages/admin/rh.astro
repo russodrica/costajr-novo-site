@@ -320,6 +320,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     <div class="toolbar">
       <span class="toolbar-title">Documentos</span>
       <span style="flex:1"></span>
+      <button class="btn btn-outline" onclick="abrirVinculoRhid()" title="Ligar cada pessoa do Portal à pessoa da ControliD">🔗 Vínculo ControliD</button>
+      <button class="btn btn-outline" onclick="abrirEspelho()" title="Gerar o espelho de ponto e guardar na ficha">🕐 Gerar espelho de ponto</button>
       <button class="btn btn-secondary" onclick="abrirEnviarRh()" title="Selecione documentos e envie todos num e-mail só">📨 Enviar documentos</button>
       <button class="btn btn-primary" onclick="abrirModalDoc()">+ Novo documento</button>
     </div>
@@ -835,6 +837,50 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
   </div>
 
   <!-- ════════ MODAL DOCUMENTO (novo/editar) ════════ -->
+  <div class="modal-overlay" id="modalVinculoRhid">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header"><h2>🔗 Vínculo com a ControliD</h2><button class="modal-close" onclick="fecharVinculoRhid()">✕</button></div>
+      <div style="padding:16px 24px;max-height:82vh;overflow:auto">
+        <p style="margin:0 0 14px;color:var(--muted);font-size:13px">
+          O ponto é buscado casando o <b>CPF</b> dos dois sistemas. Quando o CPF está escrito
+          diferente, o Portal não acha a pessoa e o ponto vem vazio — foi o que aconteceu aqui.
+          Ligue na mão embaixo e o problema fica resolvido para sempre.
+        </p>
+        <div id="vincLista"><p style="color:#9CA3AF">Carregando…</p></div>
+        <div id="vincMsg" style="margin-top:10px"></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+          <button type="button" class="btn btn-primary" onclick="fecharVinculoRhid()">Concluído</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalEspelho">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header"><h2>🕐 Gerar espelho de ponto</h2><button class="modal-close" onclick="fecharEspelho()">✕</button></div>
+      <div style="padding:16px 24px;max-height:82vh;overflow:auto">
+        <p style="margin:0 0 14px;color:var(--muted);font-size:13px">
+          Gera o espelho de cada mês a partir da ControliD e guarda na ficha do colaborador.
+          Pode rodar quantas vezes quiser: o espelho de um mês já existente é <b>substituído</b>, não duplicado.
+        </p>
+        <div class="form-group"><label>Colaboradores</label><div id="espColabs" style="border:1px solid var(--border);border-radius:8px;max-height:24vh;overflow:auto;padding:6px 12px"></div></div>
+        <div style="display:flex;gap:10px">
+          <div class="form-group" style="flex:1"><label>De (mês)</label><input type="month" id="espDe" class="input" /></div>
+          <div class="form-group" style="flex:1"><label>Até (mês)</label><input type="month" id="espAte" class="input" /></div>
+        </div>
+        <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:9px 12px;font-size:12.5px;color:#075985">
+          💡 Todo dia 10 uma rotina sobe sozinha o espelho do mês anterior, já com os ajustes fechados.
+          Use esta tela para o histórico ou para refazer um mês.
+        </div>
+        <div id="espMsg" style="margin-top:10px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+          <button type="button" class="btn btn-secondary" onclick="fecharEspelho()">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btnEspelho" onclick="gerarEspelho()">Gerar e salvar na ficha</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalEnviarRh">
     <div class="modal-box" style="max-width:660px">
       <div class="modal-header"><h2>📨 Enviar documentos por e-mail</h2><button class="modal-close" onclick="fecharEnviarRh()">✕</button></div>
@@ -2442,6 +2488,117 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).verDocsAdmissao = verDocsAdmissao;
     (window as any).concluirAdmissao = concluirAdmissao;
     (window as any).cancelarAdmissao = cancelarAdmissao;
+    // ── 🔗 Vínculo com a ControliD ───────────────────────────────────────────
+    // O ponto é casado por CPF; quando o CPF diverge entre os sistemas, a pessoa
+    // "some" e o ponto vem vazio. Aqui dá para amarrar na mão, de uma vez por todas.
+    let VINC: any = null;
+    function fecharVinculoRhid() { document.getElementById("modalVinculoRhid")?.classList.remove("open"); }
+    async function abrirVinculoRhid() {
+      document.getElementById("modalVinculoRhid")?.classList.add("open");
+      (document.getElementById("vincMsg") as HTMLElement).innerHTML = "";
+      (document.getElementById("vincLista") as HTMLElement).innerHTML = `<p style="color:#9CA3AF">Carregando…</p>`;
+      try {
+        const r = await fetch("/api/admin/rh/rhid-vinculo");
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Não deu para carregar");
+        VINC = d;
+        renderVinc();
+      } catch (e: any) {
+        (document.getElementById("vincLista") as HTMLElement).innerHTML = `<div class="alert alert-error">${String(e?.message || "Erro").replace(/</g, "&lt;")}</div>`;
+      }
+    }
+    function renderVinc() {
+      const esc = (t: any) => String(t == null ? "" : t).replace(/</g, "&lt;");
+      const opts = (sel: number | null) => `<option value="">— não ligado —</option>` + (VINC.rhid || [])
+        .map((p: any) => `<option value="${p.id}" ${String(sel) === String(p.id) ? "selected" : ""}>${esc(p.nome)}${p.ativo ? "" : " (inativo)"}${p.cpf ? " · " + esc(p.cpf) : ""}</option>`).join("");
+      const linhas = (VINC.colaboradores || []).map((c: any) => {
+        const cor = c.origem === "manual" ? "#065F46" : c.origem === "cpf" ? "#075985" : "#B45309";
+        const rot = c.origem === "manual" ? "ligado na mão" : c.origem === "cpf" ? "casou pelo CPF" : "SEM VÍNCULO";
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border-light)">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:13.5px">${esc(c.nome)}</div>
+            <div style="font-size:11.5px;color:${cor}">${rot}${c.rhid_nome ? " · " + esc(c.rhid_nome) : ""}</div>
+          </div>
+          <select class="input" style="width:250px;font-size:12.5px" onchange="salvarVinc('${c.id}', this)">${opts(c.rhid_person_id ?? c.auto_por_cpf)}</select>
+        </div>`;
+      }).join("");
+      (document.getElementById("vincLista") as HTMLElement).innerHTML = linhas || `<p style="color:#9CA3AF">Nenhum colaborador.</p>`;
+    }
+    async function salvarVinc(colabId: string, sel: HTMLSelectElement) {
+      const box = document.getElementById("vincMsg") as HTMLElement;
+      sel.disabled = true;
+      try {
+        const r = await fetch("/api/admin/rh/rhid-vinculo", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ colaborador_id: colabId, rhid_person_id: sel.value || null }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Não deu para salvar");
+        box.innerHTML = `<div class="alert alert-success">✓ Vínculo salvo.</div>`;
+        await abrirVinculoRhid();
+      } catch (e: any) {
+        box.innerHTML = `<div class="alert alert-error">${String(e?.message || "Erro").replace(/</g, "&lt;")}</div>`;
+        sel.disabled = false;
+      }
+    }
+
+    // ── 🕐 Espelho de ponto ──────────────────────────────────────────────────
+    function fecharEspelho() { document.getElementById("modalEspelho")?.classList.remove("open"); }
+    function abrirEspelho() {
+      const ativos = (DADOS.colaboradores || []).filter((c: any) => c.status !== "desligado" && ["clt", "socio"].includes(c.regime));
+      (document.getElementById("espColabs") as HTMLElement).innerHTML = ativos.map((c: any) => `
+        <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">
+          <input type="checkbox" class="esp-chk" value="${c.id}" checked style="width:auto" />
+          <span>${String(c.nome).replace(/</g, "&lt;")}</span></label>`).join("") || `<p style="color:#9CA3AF;padding:8px">Nenhum colaborador com ponto.</p>`;
+      // padrão: do início do ano até o mês passado (histórico que ela pediu)
+      const hoje = new Date();
+      const ant = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const mm = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      (document.getElementById("espDe") as HTMLInputElement).value = `${ant.getFullYear()}-01`;
+      (document.getElementById("espAte") as HTMLInputElement).value = mm(ant);
+      (document.getElementById("espMsg") as HTMLElement).innerHTML = "";
+      document.getElementById("modalEspelho")?.classList.add("open");
+    }
+    async function gerarEspelho() {
+      const ids = Array.from(document.querySelectorAll<HTMLInputElement>("#espColabs .esp-chk:checked")).map((c) => c.value);
+      const de = (document.getElementById("espDe") as HTMLInputElement).value;
+      const ate = (document.getElementById("espAte") as HTMLInputElement).value;
+      const box = document.getElementById("espMsg") as HTMLElement;
+      if (!ids.length) { box.innerHTML = `<div class="alert alert-error">Escolha ao menos um colaborador.</div>`; return; }
+      if (!de || !ate) { box.innerHTML = `<div class="alert alert-error">Informe o período (de / até).</div>`; return; }
+      if (de > ate) { box.innerHTML = `<div class="alert alert-error">O mês inicial não pode ser depois do final.</div>`; return; }
+      const btn = document.getElementById("btnEspelho") as HTMLButtonElement;
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = "Gerando… (pode demorar)";
+      box.innerHTML = `<div style="color:#6B7280;font-size:13px">Buscando na ControliD e montando os PDFs…</div>`;
+      try {
+        const r = await fetch("/api/admin/rh/espelho-ponto", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ colaborador_ids: ids, de, ate }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Erro ao gerar");
+        const falhas = (d.resultados || []).filter((x: any) => !x.ok);
+        let html = `<div class="alert alert-success">✓ ${d.gerados} espelho(s) salvo(s) na ficha.</div>`;
+        if (falhas.length) {
+          const porMotivo: Record<string, string[]> = {};
+          for (const f of falhas) (porMotivo[f.motivo] ||= []).push(`${f.colaborador} ${f.anoMes}`);
+          html += `<div style="margin-top:8px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:9px 12px;font-size:12.5px;color:#92400E">
+            <b>${falhas.length} não gerado(s):</b>` + Object.entries(porMotivo).map(([m, l]) =>
+              `<div style="margin-top:4px">${String(m).replace(/</g, "&lt;")} <span style="color:#B45309">(${l.length}: ${l.slice(0, 4).join(", ")}${l.length > 4 ? "…" : ""})</span></div>`).join("") + `</div>`;
+        }
+        box.innerHTML = html;
+        if (d.gerados) setTimeout(() => location.reload(), 2500);
+      } catch (e: any) {
+        box.innerHTML = `<div class="alert alert-error">${String(e?.message || "Falha").replace(/</g, "&lt;")}</div>`;
+      } finally { btn.disabled = false; btn.textContent = orig; }
+    }
+    (window as any).abrirVinculoRhid = abrirVinculoRhid;
+    (window as any).fecharVinculoRhid = fecharVinculoRhid;
+    (window as any).salvarVinc = salvarVinc;
+    (window as any).abrirEspelho = abrirEspelho;
+    (window as any).fecharEspelho = fecharEspelho;
+    (window as any).gerarEspelho = gerarEspelho;
+
     // ── 📨 Enviar documentos de RH por e-mail ────────────────────────────────
     // Só e-mail (anexo), sem WhatsApp: link temporário de documento de funcionário
     // pode ser repassado. Documento que é só link externo não entra na lista.

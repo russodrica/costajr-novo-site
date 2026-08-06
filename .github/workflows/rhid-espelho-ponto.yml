@@ -1,0 +1,38 @@
+name: RHiD Espelho de Ponto (dia 10)
+
+# Todo dia 10, arquiva na ficha de cada colaborador o espelho de ponto do MES
+# ANTERIOR - ja fechado e com os ajustes feitos (pedido da Adriana).
+# Brasil = UTC-3 -> 08h BRT = 11h UTC. Minuto 23 reduz o atraso de fila.
+# Rodar de novo e seguro: o espelho daquele mes e substituido, nao duplicado.
+on:
+  schedule:
+    - cron: "23 11 10 * *" # dia 10, ~08h BRT
+  workflow_dispatch:
+    inputs:
+      mes:
+        description: "mes YYYY-MM (vazio = mes anterior)"
+        required: false
+        default: ""
+
+jobs:
+  espelho:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gerar e arquivar espelhos de ponto
+        env:
+          KEY: ${{ secrets.INTEGRA_TELEGRAM_SECRET }}
+        run: |
+          set -e
+          if [ -z "$KEY" ]; then
+            echo "ERRO: secret INTEGRA_TELEGRAM_SECRET nao configurado."
+            exit 1
+          fi
+          MES="${{ github.event.inputs.mes }}"
+          URL="https://www.costajr.com.br/api/integra/rhid-espelho-mensal?key=$KEY"
+          if [ -n "$MES" ]; then URL="$URL&mes=$MES"; fi
+          echo "Gerando espelhos (mes=${MES:-anterior})..."
+          code=$(curl -sS -m 300 -L -o resp.json -w "%{http_code}" "$URL")
+          echo "HTTP $code"
+          cat resp.json || true
+          echo
+          test "$code" = "200"
