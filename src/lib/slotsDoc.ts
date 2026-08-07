@@ -82,6 +82,43 @@ export function categoriaEmpresaPorTexto(texto: string): { categoria: string; ro
 export function ehDocEmpresa(texto: string): boolean { return categoriaEmpresaPorTexto(texto) !== null; }
 
 // Extrai uma data de validade (dd/mm/aaaa, dd-mm-aaaa, aaaa-mm-dd) de um texto, em ISO (aaaa-mm-dd).
+/**
+ * Datas de EMISSÃO e VENCIMENTO de uma certidão/documento.
+ *
+ * `detectarValidade` pega a PRIMEIRA data que aparece no texto — no CRF do FGTS
+ * isso dava a data de emissão, e o painel continuava mostrando o vencimento
+ * antigo mesmo depois de anexar a certidão nova. Aqui a leitura é pelo RÓTULO:
+ * "Validade: 07/08/2026 a 05/09/2026" devolve emissão 07/08 e vencimento 05/09.
+ */
+const _D = "(\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]20\\d{2}|20\\d{2}-\\d{1,2}-\\d{1,2})";
+function _iso(d: string): string | null {
+  const s = String(d || "").trim();
+  let m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](20\d{2})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  m = s.match(/^(20\d{2})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  return null;
+}
+export function detectarVencimento(texto: string): { emissao: string | null; vencimento: string | null } {
+  // norm() troca "-" por espaço (bom para nome de arquivo, péssimo para data):
+  // "2026-09-05" virava "2026 09 05". Aqui a limpeza preserva os separadores.
+  const t = String(texto || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+  // 1) intervalo — "validade 07/08/2026 a 05/09/2026" / "vigencia de ... ate ..."
+  let m = t.match(new RegExp(`(?:validade|valida|valido|vigencia)[^0-9]{0,25}${_D}\\s*(?:ate a data de|ate|a|-|ate o dia)\\s*${_D}`));
+  if (m) return { emissao: _iso(m[1]), vencimento: _iso(m[2]) };
+  // 2) rótulo explícito de vencimento
+  m = t.match(new RegExp(`(?:vencimento|vence em|vence:|valido ate|valida ate|validade ate|expira em)[^0-9]{0,25}${_D}`));
+  if (m) return { emissao: emissaoNoTexto(t), vencimento: _iso(m[1]) };
+  // 3) "validade: <data>" simples
+  m = t.match(new RegExp(`validade[^0-9]{0,25}${_D}`));
+  if (m) return { emissao: emissaoNoTexto(t), vencimento: _iso(m[1]) };
+  return { emissao: emissaoNoTexto(t), vencimento: null };
+}
+function emissaoNoTexto(t: string): string | null {
+  const m = t.match(new RegExp(`(?:emissao|emitida em|emitido em|expedida em|expedido em|data de emissao)[^0-9]{0,25}${_D}`));
+  return m ? _iso(m[1]) : null;
+}
+
 export function detectarValidade(texto: string): string | null {
   const t = String(texto || "");
   let m = t.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);

@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { supabaseAdmin, supabaseAdmin2 } from "./supabase";
 import { enviarTelegram, escTg } from "./telegram";
-import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, rankearDocsEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario, extrairMesAno } from "./slotsDoc";
+import { SLOTS_DOC, slotPorKey, detectarSlotPorTexto, detectarValidade, casarColaborador, casarDocEmpresa, rankearDocsEmpresa, ehDocEmpresa, categoriaEmpresaPorTexto, detectarExtratoBancario, extrairMesAno, detectarVencimento } from "./slotsDoc";
 import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson, type HistMsg } from "./llm";
 import { aplicarEntregaEpiDaFicha, type EpiAplicado } from "./epiLeitura";
 import { registrarAcao } from "./auditoria";
@@ -910,6 +910,9 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
     doc_path: storagePath, doc_nome: nome, ct, ia_nome: iaNome || (msg.caption || "").trim(), autor: `${nomeRemetente(msg.from)} (via grupo Telegram)`,
     sug_colab_id: match?.id || null, sug_colab_nome: match?.nome || null,
     sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade, sug_validade: validade || null, ia,
+    // datas lidas pelo RÓTULO ("Validade: X a Y") — usadas para atualizar o
+    // vencimento do cadastro em Documentos da Empresa ao anexar
+    ...(() => { const v = detectarVencimento(`${nome} ${textoExtra || ""}`); return { doc_emissao: v.emissao, doc_vencimento: v.vencimento }; })(),
   };
   await salvarSessao(db, { telegram_user_id: "gdoc:" + token, chat_id: String(chatId), estado: "pendente", dados });
   // Se já PARECE documento da empresa (palavra-chave + legenda), casa com o cadastro e propõe o
@@ -1233,14 +1236,47 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     const { data: row, error } = await db.from("doc_empresa_arquivos").insert({ doc_id: d.emp_id, nome: d.doc_nome, storage_path: newPath, criado_por: d.autor, ...(competenciaEmp ? { competencia: competenciaEmp } : {}) }).select().single();
     if (error) { await supabaseAdmin2().storage.from("doc-empresa").remove([newPath]).catch(() => {}); await enviar(B, chatId, "❌ Não anexou: " + escTg(error.message)); return; }
     await db.storage.from("rh").remove([d.doc_path]).catch(() => {});
+
+    // ── ATUALIZA O VENCIMENTO DO CADASTRO ──
+    // Antes o arquivo entrava e o painel continuava mostrando a data velha: anexar
+    // a CND nova não adiantava nada, o documento seguia "Vencido". Só avança para
+    // uma data MAIOR — reanexar uma certidão antiga não pode retroceder o painel.
+    let avisoData = "";
+    if (d.doc_vencimento) {
+      const { data: atual } = await db.from("doc_empresa").select("validade").eq("id", d.emp_id).maybeSingle();
+      const anterior = atual?.validade || null;
+      if (!anterior || String(d.doc_vencimento) > String(anterior)) {
+        const patch: Record<string, unknown> = { validade: d.doc_vencimento, validade_na: false };
+        if (d.doc_emissao) patch.data_emissao = d.doc_emissao;
+        const { error: eUpd } = await db.from("doc_empresa").update(patch).eq("id", d.emp_id);
+        if (!eUpd) {
+          avisoData = `\n📅 Vencimento atualizado para <b>${fmtDataBr(d.doc_vencimento)}</b>.`;
+          await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
+            acao: "editar", entidade: "doc_empresa", registro_id: d.emp_id,
+            descricao: `Telegram: vencimento de "${d.emp_nome}" atualizado para ${d.doc_vencimento}`,
+            dados: { de: anterior, para: d.doc_vencimento },
+          });
+        }
+      } else {
+        avisoData = `\n📅 O cadastro já vence em <b>${fmtDataBr(anterior)}</b> — mantive essa data.`;
+      }
+    }
+
     await registrarAcao(db, { req: undefined as any, admin: { email: d.autor } as any }, {
       acao: "criar", entidade: "doc_empresa_arquivos", registro_id: row?.id ?? null,
       descricao: `Telegram (grupo): anexou "${d.doc_nome}" ao documento da empresa ${d.emp_nome}`, dados: { doc_id: d.emp_id },
     });
     await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gdoc:" + token);
-    await enviar(B, chatId, `✅ <b>Arquivado!</b> "${escTg(d.doc_nome)}" → <b>${escTg(d.emp_nome)}</b> (${escTg(d.emp_cat || "Documentos da Empresa")}). 🙌`);
+    await enviar(B, chatId, `✅ <b>Arquivado!</b> "${escTg(d.doc_nome)}" → <b>${escTg(d.emp_nome)}</b> (${escTg(d.emp_cat || "Documentos da Empresa")}). 🙌${avisoData}`);
     return;
   }
+}
+
+/** Data ISO em formato brasileiro, para a mensagem do bot. */
+function fmtDataBr(iso: string | null): string {
+  if (!iso) return "—";
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso);
 }
 
 // ── GRUPO da BASE DE CONHECIMENTO (texto → JunIA) ────────────────────────
