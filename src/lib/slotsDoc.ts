@@ -173,9 +173,28 @@ export function tipoDocBancario(texto: string): "extrato" | "fatura" | null {
  * por último, o conteúdo do PDF. (Antes o banco saía pela ordem da lista interna:
  * um PDF do Nubank que citasse "Caixa Econômica" no corpo virava Caixa.)
  */
+/**
+ * Documento que CITA um banco mas não é extrato nem fatura.
+ *
+ * O caso que motivou isto: a CND do FGTS é emitida pela CAIXA, então o texto
+ * traz "Caixa Econômica Federal" e uma data — e o bot arquivava a certidão como
+ * extrato bancário de agosto. Vale para certidão, guia, boleto, comprovante
+ * avulso e afins.
+ */
+export function pareceNaoBancario(texto: string): boolean {
+  const t = norm(texto);
+  return /\bcnd\b|\bcrf\b|certidao|certidoes|negativa de debito|regularidade (do|de) (fgts|empregador|contribuinte)|consulta regularidade|situacao fiscal|\bpgdas\b|\bdefis\b|\bdarf\b|\bdctf\b|\bgfip\b|\bfgts\b|guia de recolhimento|guia (de )?(inss|fgts|gfip)|alvara|contrato social|cartao cnpj|procuracao|inscricao estadual|divida ativa|nota fiscal|\bnfe\b|\bnfse\b/.test(t);
+}
+
 export function detectarExtratoBancario(texto: string, legenda = "", nomeArquivo = ""): { banco: string; mes: number; ano: number; tipo: "extrato" | "fatura" } | null {
   const banco = bancoNoTexto(legenda) || bancoNoTexto(nomeArquivo) || bancoNoTexto(texto);
   if (!banco) return null;
+
+  // Se a legenda ou o nome do arquivo dizem "extrato"/"fatura", a pessoa mandou
+  // de propósito e mandamos ver. Fora isso, documento de certidão/guia que só
+  // MENCIONA o banco não pode virar extrato.
+  const disseraExplicito = !!(tipoDocBancario(legenda) || tipoDocBancario(nomeArquivo));
+  if (!disseraExplicito && (pareceNaoBancario(legenda) || pareceNaoBancario(nomeArquivo) || pareceNaoBancario(texto))) return null;
 
   // período: legenda > nome do arquivo > conteúdo
   const ma = (legenda ? extrairMesAno(legenda) : null) || (nomeArquivo ? extrairMesAno(nomeArquivo) : null) || extrairMesAno(texto);
