@@ -892,11 +892,18 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <div class="form-group"><label>Para (um ou mais e-mails, separados por vírgula) *</label><input id="rhEnvTo" class="input" placeholder="contador@email.com, advogado@email.com" /></div>
         <div class="form-group"><label>Assunto</label><input id="rhEnvSubject" class="input" placeholder="Documentos — Costa Júnior Engenharia" /></div>
         <div class="form-group"><label>Mensagem (opcional)</label><textarea id="rhEnvMsg" class="input" rows="2" placeholder="Olá, seguem em anexo os documentos solicitados."></textarea></div>
-        <div style="display:flex;align-items:center;gap:8px;margin:8px 0 6px">
-          <input class="input" id="rhEnvBusca" placeholder="Buscar por pessoa, título ou tipo…" oninput="rhEnvFiltrar()" style="flex:1" />
+        <div class="form-row" style="margin:10px 0 8px">
+          <div class="form-group" style="margin-bottom:0"><label>Colaborador</label>
+            <select class="input" id="rhEnvPessoaSel" onchange="rhEnvRender()"></select></div>
+          <div class="form-group" style="margin-bottom:0"><label>Tipo de documento</label>
+            <select class="input" id="rhEnvTipoSel" onchange="rhEnvRender()"></select></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap">
+          <input class="input" id="rhEnvBusca" placeholder="Buscar por pessoa, título ou tipo…" oninput="rhEnvRender()" style="flex:1;min-width:170px" />
+          <button type="button" class="btn btn-outline btn-sm" onclick="rhEnvMarcar(true)">Marcar tudo que está na lista</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="rhEnvMarcar(false)">Limpar seleção</button>
           <span id="rhEnvCount" style="font-size:12.5px;color:#6B7280;white-space:nowrap">0 selecionado(s)</span>
         </div>
-        <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap" id="rhEnvPessoas"></div>
         <div id="rhEnvLista" style="border:1px solid var(--border);border-radius:8px;max-height:34vh;overflow:auto;padding:6px 12px"></div>
         <div id="rhEnvMsgBox" style="margin-top:10px"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
@@ -2604,58 +2611,109 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     // pode ser repassado. Documento que é só link externo não entra na lista.
     // reaproveita o bloco #dadosRH que a página já embute; documento que é só link
     // externo fica de fora (não há arquivo para anexar num e-mail)
+    const RH_TIPOS: Record<string, string> = {
+      espelho_ponto: "Espelho de ponto (folha de ponto)",
+      contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha de EPI", advertencia: "Advertência",
+      atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Outros",
+    };
+    // O espelho de ponto é gravado como tipo "outro", então ele sumia no meio de
+    // tudo. Aqui ele vira um grupo próprio pelo título — é o documento que mais
+    // se manda em lote (uma competência inteira de uma vez).
+    function rhGrupoDoc(d: any): string {
+      if (/^espelho de ponto/i.test(String(d.titulo || ""))) return "espelho_ponto";
+      return d.tipo || "outro";
+    }
     const RH_ENV: any[] = (DADOS.documentos || [])
       .filter((d: any) => d.storage_path)
-      .map((d: any) => ({ id: d.id, pessoa: d.rh_colaboradores?.nome || "(sem colaborador)", titulo: d.titulo || "documento", tipo: d.tipo || "outro" }));
-    let rhEnvPessoa = "";
+      .map((d: any) => {
+        const base = { id: d.id, pessoa: d.rh_colaboradores?.nome || "(sem colaborador)", titulo: d.titulo || "documento", tipo: d.tipo || "outro" };
+        return { ...base, grupo: rhGrupoDoc(base) };
+      });
+    /** Seleção guardada FORA do HTML: antes ela vivia nos checkboxes, e trocar de
+     *  filtro apagava o que já estava marcado sem avisar. */
+    const RH_SEL = new Set<string>();
+
     function abrirEnviarRh() {
-      rhEnvPessoa = "";
+      RH_SEL.clear();
       (document.getElementById("rhEnvBusca") as HTMLInputElement).value = "";
       (document.getElementById("rhEnvMsgBox") as HTMLElement).innerHTML = "";
-      rhEnvRenderPessoas();
+      const selP = document.getElementById("rhEnvPessoaSel") as HTMLSelectElement;
+      const pessoas = [...new Set(RH_ENV.map((d: any) => d.pessoa))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
+      selP.innerHTML = `<option value="">Todos os colaboradores</option>`
+        + pessoas.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+      const selT = document.getElementById("rhEnvTipoSel") as HTMLSelectElement;
+      const grupos = [...new Set(RH_ENV.map((d: any) => d.grupo))]
+        .sort((a, b) => (RH_TIPOS[a] || a).localeCompare(RH_TIPOS[b] || b, "pt-BR"));
+      selT.innerHTML = `<option value="">Todos os tipos</option>`
+        + grupos.map((g) => {
+            const n = RH_ENV.filter((d: any) => d.grupo === g).length;
+            return `<option value="${esc(g)}">${esc(RH_TIPOS[g] || g)} (${n})</option>`;
+          }).join("");
       rhEnvRender();
       document.getElementById("modalEnviarRh")?.classList.add("open");
     }
     function fecharEnviarRh() { document.getElementById("modalEnviarRh")?.classList.remove("open"); }
-    function rhEnvRenderPessoas() {
-      const pessoas = [...new Set(RH_ENV.map((d: any) => d.pessoa))].sort();
-      const box = document.getElementById("rhEnvPessoas") as HTMLElement;
-      box.innerHTML = `<button type="button" class="pill${rhEnvPessoa === "" ? " active" : ""}" onclick="rhEnvSetPessoa('')">Todos</button>`
-        + pessoas.map((p) => `<button type="button" class="pill${rhEnvPessoa === p ? " active" : ""}" onclick="rhEnvSetPessoa(${JSON.stringify(p)})">${String(p).replace(/</g, "&lt;")}</button>`).join("");
-    }
-    function rhEnvSetPessoa(p: string) { rhEnvPessoa = p; rhEnvRenderPessoas(); rhEnvRender(); }
-    function rhEnvRender() {
+
+    function esc(v: any) { return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string)); }
+
+    /** Documentos que passam pelos filtros atuais. */
+    function rhEnvVisiveis(): any[] {
+      const pessoa = (document.getElementById("rhEnvPessoaSel") as HTMLSelectElement)?.value || "";
+      const grupo = (document.getElementById("rhEnvTipoSel") as HTMLSelectElement)?.value || "";
       const busca = ((document.getElementById("rhEnvBusca") as HTMLInputElement)?.value || "").toLowerCase().trim();
-      const marcados = new Set(Array.from(document.querySelectorAll<HTMLInputElement>("#rhEnvLista .rh-env-chk:checked")).map((c) => c.value));
-      const TIPOS: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha de EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Documento" };
-      const visiveis = RH_ENV.filter((d: any) => {
-        if (rhEnvPessoa && d.pessoa !== rhEnvPessoa) return false;
+      return RH_ENV.filter((d: any) => {
+        if (pessoa && d.pessoa !== pessoa) return false;
+        if (grupo && d.grupo !== grupo) return false;
         if (!busca) return true;
-        return `${d.pessoa} ${d.titulo} ${TIPOS[d.tipo] || d.tipo}`.toLowerCase().includes(busca);
+        return `${d.pessoa} ${d.titulo} ${RH_TIPOS[d.grupo] || d.grupo}`.toLowerCase().includes(busca);
       });
-      // agrupa por pessoa para não misturar documento de gente diferente sem perceber
+    }
+    function rhEnvRender() {
+      const visiveis = rhEnvVisiveis();
       const porPessoa: Record<string, any[]> = {};
       for (const d of visiveis) (porPessoa[d.pessoa] ||= []).push(d);
       let html = "";
-      for (const pessoa of Object.keys(porPessoa).sort()) {
-        html += `<div style="margin:8px 0 2px;font-weight:700;color:var(--brand);font-size:12px;text-transform:uppercase">${String(pessoa).replace(/</g, "&lt;")}</div>`;
-        for (const d of porPessoa[pessoa]) {
+      for (const pessoa of Object.keys(porPessoa).sort((a, b) => a.localeCompare(b, "pt-BR"))) {
+        const docs = porPessoa[pessoa];
+        html += `<div style="display:flex;align-items:center;gap:8px;margin:10px 0 3px">
+          <span style="font-weight:700;color:var(--brand);font-size:12px;text-transform:uppercase">${esc(pessoa)}</span>
+          <button type="button" class="btn btn-outline btn-sm" style="padding:1px 8px;font-size:11px"
+            onclick="rhEnvMarcarPessoa(${JSON.stringify(pessoa).replace(/"/g, "&quot;")})">marcar os ${docs.length}</button>
+        </div>`;
+        for (const d of docs) {
           html += `<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:13px;cursor:pointer">
-            <input type="checkbox" class="rh-env-chk" value="${d.id}" ${marcados.has(d.id) ? "checked" : ""} onchange="rhEnvCount()" style="width:auto" />
-            <span>📄 ${String(d.titulo).replace(/</g, "&lt;")} <span style="color:#9CA3AF;font-size:12px">· ${TIPOS[d.tipo] || d.tipo}</span></span></label>`;
+            <input type="checkbox" class="rh-env-chk" value="${esc(d.id)}" ${RH_SEL.has(d.id) ? "checked" : ""} onchange="rhEnvToggle(this)" style="width:auto" />
+            <span>📄 ${esc(d.titulo)} <span style="color:#9CA3AF;font-size:12px">· ${esc(RH_TIPOS[d.grupo] || d.grupo)}</span></span></label>`;
         }
       }
-      (document.getElementById("rhEnvLista") as HTMLElement).innerHTML = html || `<p style="color:#9CA3AF;padding:10px">Nenhum documento encontrado.</p>`;
+      (document.getElementById("rhEnvLista") as HTMLElement).innerHTML = html
+        || `<p style="color:#9CA3AF;padding:10px">Nenhum documento encontrado com esses filtros.</p>`;
       rhEnvCount();
     }
-    function rhEnvFiltrar() { rhEnvRender(); }
+    function rhEnvToggle(chk: HTMLInputElement) {
+      if (chk.checked) RH_SEL.add(chk.value); else RH_SEL.delete(chk.value);
+      rhEnvCount();
+    }
+    /** Marca (ou desmarca) TUDO que está passando pelos filtros — é assim que se
+     *  manda a folha de ponto de uma competência inteira de uma vez. */
+    function rhEnvMarcar(ligar: boolean) {
+      for (const d of rhEnvVisiveis()) { if (ligar) RH_SEL.add(d.id); else RH_SEL.delete(d.id); }
+      rhEnvRender();
+    }
+    function rhEnvMarcarPessoa(pessoa: string) {
+      for (const d of rhEnvVisiveis()) if (d.pessoa === pessoa) RH_SEL.add(d.id);
+      rhEnvRender();
+    }
     function rhEnvCount() {
-      const n = document.querySelectorAll("#rhEnvLista .rh-env-chk:checked").length;
-      (document.getElementById("rhEnvCount") as HTMLElement).textContent = `${n} selecionado(s)`;
+      const n = RH_SEL.size;
+      const el = document.getElementById("rhEnvCount") as HTMLElement;
+      el.textContent = `${n} selecionado(s)`;
+      el.style.color = n ? "var(--brand)" : "#6B7280";
+      el.style.fontWeight = n ? "700" : "400";
     }
     async function enviarDocsRh() {
       const to = (document.getElementById("rhEnvTo") as HTMLInputElement).value.trim();
-      const ids = Array.from(document.querySelectorAll<HTMLInputElement>("#rhEnvLista .rh-env-chk:checked")).map((c) => c.value);
+      const ids = [...RH_SEL];
       const box = document.getElementById("rhEnvMsgBox") as HTMLElement;
       if (!to) { box.innerHTML = `<div class="alert alert-error">Informe ao menos um e-mail.</div>`; return; }
       if (!ids.length) { box.innerHTML = `<div class="alert alert-error">Selecione ao menos um documento.</div>`; return; }
@@ -2674,17 +2732,18 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || "Erro ao enviar");
         box.innerHTML = `<div class="alert alert-success">✓ Enviado: ${d.enviados} documento(s) para ${String((d.to || []).join(", ")).replace(/</g, "&lt;")}.</div>`;
-        document.querySelectorAll<HTMLInputElement>("#rhEnvLista .rh-env-chk:checked").forEach((c) => (c.checked = false));
-        rhEnvCount();
+        RH_SEL.clear(); rhEnvRender();
       } catch (e: any) {
         box.innerHTML = `<div class="alert alert-error">${String(e?.message || "Falha ao enviar").replace(/</g, "&lt;")}</div>`;
       } finally { btn.disabled = false; btn.textContent = orig; }
     }
     (window as any).abrirEnviarRh = abrirEnviarRh;
     (window as any).fecharEnviarRh = fecharEnviarRh;
-    (window as any).rhEnvFiltrar = rhEnvFiltrar;
+    (window as any).rhEnvRender = rhEnvRender;
     (window as any).rhEnvCount = rhEnvCount;
-    (window as any).rhEnvSetPessoa = rhEnvSetPessoa;
+    (window as any).rhEnvToggle = rhEnvToggle;
+    (window as any).rhEnvMarcar = rhEnvMarcar;
+    (window as any).rhEnvMarcarPessoa = rhEnvMarcarPessoa;
     (window as any).enviarDocsRh = enviarDocsRh;
     (window as any).reloadComAba = reloadComAba;
 
