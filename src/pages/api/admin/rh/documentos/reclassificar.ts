@@ -22,14 +22,16 @@ export const POST: APIRoute = async ({ request, url }) => {
 
     const { data, error } = await db
       .from("rh_documentos")
-      .select("id, titulo, tipo, nome_arquivo, storage_path")
+      // a tabela NÃO tem coluna nome_arquivo — o nome real vem do fim do
+      // storage_path (foi o que derrubou a primeira versão deste endpoint)
+      .select("id, titulo, tipo, storage_path, url")
       .or("tipo.is.null,tipo.eq.outro")
       .limit(5000);
     if (error) return jsonErr(400, error.message);
 
     const mudancas: { id: string; titulo: string; de: string; para: string }[] = [];
     for (const d of data || []) {
-      const nome = (d as any).nome_arquivo || String((d as any).storage_path || "").split("/").pop() || "";
+      const nome = String((d as any).storage_path || (d as any).url || "").split("/").pop() || "";
       const novo = inferirTipoDoc(d.titulo || "", nome, d.tipo || "outro");
       if (novo && novo !== (d.tipo || "outro")) {
         mudancas.push({ id: d.id, titulo: d.titulo || "", de: d.tipo || "(vazio)", para: novo });
