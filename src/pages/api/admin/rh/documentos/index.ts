@@ -14,7 +14,7 @@ export const GET: APIRoute = async ({ request, url }) => {
   try {
     await requireAdminCookie(request);
     const db = supabaseAdmin();
-    let q = db.from("rh_documentos").select("*, rh_colaboradores(nome)").order("created_at", { ascending: false }).limit(1000);
+    let q = db.from("rh_documentos").select("*, rh_colaboradores(nome)").order("created_at", { ascending: false }).limit(3000);
 
     const colaboradorId = url.searchParams.get("colaborador_id");
     const tipo = url.searchParams.get("tipo");

@@ -14,7 +14,7 @@ const db = supabaseAdmin();
 const [colabRes, ausRes, docRes, admRes] = await Promise.all([
   db.from("rh_colaboradores").select("*").order("nome", { ascending: true }),
   db.from("rh_ausencias").select("*, rh_colaboradores(nome)").order("data_inicio", { ascending: false }).limit(200),
-  db.from("rh_documentos").select("*, rh_colaboradores(nome)").order("created_at", { ascending: false }).limit(200),
+  db.from("rh_documentos").select("*, rh_colaboradores(nome)").order("created_at", { ascending: false }).limit(2000),
   db.from("rh_admissoes").select("*, rh_admissoes_docs(id, tipo, nome_arquivo, created_at)").order("created_at", { ascending: false }).limit(200),
 ]);
 const colaboradores: any[] = colabRes.data || [];
@@ -2630,21 +2630,42 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (/^espelho de ponto/i.test(String(d.titulo || ""))) return "espelho_ponto";
       return d.tipo || "outro";
     }
-    const RH_ENV: any[] = (DADOS.documentos || [])
-      .filter((d: any) => d.storage_path)
-      .map((d: any) => {
-        const base = { id: d.id, pessoa: d.rh_colaboradores?.nome || "(sem colaborador)", titulo: d.titulo || "documento", tipo: d.tipo || "outro" };
-        return { ...base, grupo: rhGrupoDoc(base) };
-      });
+    function rhMapDoc(d: any) {
+      const base = { id: d.id, pessoa: d.rh_colaboradores?.nome || "(sem colaborador)", titulo: d.titulo || "documento", tipo: d.tipo || "outro" };
+      return { ...base, grupo: rhGrupoDoc(base) };
+    }
+    // Começa com o que a página já embutiu e, ao abrir, busca a lista COMPLETA no
+    // servidor. A página traz uma fatia por desempenho — antes o envio enxergava
+    // só essa fatia e faltavam documentos na lista.
+    let RH_ENV: any[] = (DADOS.documentos || []).filter((d: any) => d.storage_path).map(rhMapDoc);
     /** Seleção guardada FORA do HTML: antes ela vivia nos checkboxes, e trocar de
      *  filtro apagava o que já estava marcado sem avisar. */
     const RH_SEL = new Set<string>();
 
-    function abrirEnviarRh() {
+    async function rhCarregarDocs() {
+      try {
+        const r = await fetch("/api/admin/rh/documentos");
+        if (!r.ok) return;
+        const todos = await r.json();
+        if (Array.isArray(todos) && todos.length) RH_ENV = todos.filter((d: any) => d.storage_path).map(rhMapDoc);
+      } catch { /* mantém o que a página já tinha */ }
+    }
+    async function abrirEnviarRh() {
       RH_SEL.clear();
       (document.getElementById("rhEnvBusca") as HTMLInputElement).value = "";
       (document.getElementById("rhEnvMsgBox") as HTMLElement).innerHTML = "";
+      rhEnvMontarFiltros();
+      rhEnvRender();
+      document.getElementById("modalEnviarRh")?.classList.add("open");
+      const lista0 = document.getElementById("rhEnvLista") as HTMLElement;
+      lista0.innerHTML = '<div class="loading"><span class="spinner"></span> Carregando documentos…</div>';
+      await rhCarregarDocs();
+      rhEnvMontarFiltros();
+      rhEnvRender();
+    }
+    function rhEnvMontarFiltros() {
       const selP = document.getElementById("rhEnvPessoaSel") as HTMLSelectElement;
+      const pessoaAtual = selP.value, tipoAtual = (document.getElementById("rhEnvTipoSel") as HTMLSelectElement).value;
       const pessoas = [...new Set(RH_ENV.map((d: any) => d.pessoa))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
       selP.innerHTML = `<option value="">Todos os colaboradores</option>`
         + pessoas.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
@@ -2656,8 +2677,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
             const n = RH_ENV.filter((d: any) => d.grupo === g).length;
             return `<option value="${esc(g)}">${esc(RH_TIPOS[g] || g)} (${n})</option>`;
           }).join("");
-      rhEnvRender();
-      document.getElementById("modalEnviarRh")?.classList.add("open");
+      // mantém o que já estava escolhido quando a lista é remontada
+      if (pessoaAtual) selP.value = pessoaAtual;
+      if (tipoAtual) selT.value = tipoAtual;
     }
     function fecharEnviarRh() { document.getElementById("modalEnviarRh")?.classList.remove("open"); }
 
