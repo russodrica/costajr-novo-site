@@ -3,11 +3,12 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
+import { TIPOS_DOC_VALORES, inferirTipoDoc } from "../../../../../lib/rhTiposDoc";
 
 export const prerender = false;
 
 const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
-const TIPOS_DOC = ["contrato", "aso", "ficha_epi", "advertencia", "atestado", "certificado", "cnh", "outro"];
+const TIPOS_DOC = TIPOS_DOC_VALORES;
 const EXT_POR_MIME: Record<string, string> = {
   "application/pdf": "pdf",
   "application/msword": "doc",
@@ -57,7 +58,10 @@ export const POST: APIRoute = async ({ request }) => {
     const observacoes = String(form.get("observacoes") || "").trim() || null;
 
     const row: Record<string, unknown> = {
-      colaborador_id, titulo, tipo: tipo || "outro", storage_path: storagePath,
+      colaborador_id, titulo,
+      // sem tipo escolhido, tenta descobrir pelo título/nome do arquivo
+      tipo: inferirTipoDoc(titulo, nomeOriginal, tipo || "outro"),
+      storage_path: storagePath,
       validade, validade_na: validadeNA, data_aplicacao, observacoes, criado_por: admin.email,
     };
     const { data, error } = await db.from("rh_documentos").insert(row).select().single();

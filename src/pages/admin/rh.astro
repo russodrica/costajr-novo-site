@@ -3,6 +3,7 @@ import Admin from "../../layouts/Admin.astro";
 import RhNav from "../../components/RhNav.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { supabaseAdmin } from "../../lib/supabase";
+import { TIPOS_DOC_RH, TIPO_DOC_LABEL, TIPO_DOC_BADGE } from "../../lib/rhTiposDoc";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -79,8 +80,8 @@ const tiposAus: Record<string, string> = { ferias: "Férias", atestado: "Atestad
 const badgeTipoAus: Record<string, string> = { ferias: "badge-blue", atestado: "badge-purple", falta: "badge-red", licenca: "badge-orange", folga: "badge-green", outro: "badge-gray" };
 const stAus: Record<string, string> = { solicitada: "Solicitada", aprovada: "Aprovada", rejeitada: "Rejeitada", concluida: "Concluída" };
 const badgeStAus: Record<string, string> = { solicitada: "badge-yellow", aprovada: "badge-green", rejeitada: "badge-red", concluida: "badge-gray" };
-const tiposDoc: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Outro" };
-const badgeTipoDoc: Record<string, string> = { contrato: "badge-blue", aso: "badge-green", ficha_epi: "badge-orange", advertencia: "badge-red", atestado: "badge-purple", certificado: "badge-blue", cnh: "badge-gray", outro: "badge-gray" };
+const tiposDoc = TIPO_DOC_LABEL;
+const badgeTipoDoc = TIPO_DOC_BADGE;
 const stAdm: Record<string, string> = { aguardando: "Aguardando docs", docs_enviados: "Docs enviados", concluida: "Concluída", cancelada: "Cancelada" };
 const badgeStAdm: Record<string, string> = { aguardando: "badge-yellow", docs_enviados: "badge-blue", concluida: "badge-green", cancelada: "badge-gray" };
 const tiposDocAdm: Record<string, string> = { rg: "RG ou CNH", cpf: "CPF", cnh: "CNH", ctps: "CTPS digital", comprovante_residencia: "Comprovante de residência", foto: "Foto 3x4", aso: "ASO", outro: "Outro" };
@@ -322,6 +323,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       <span style="flex:1"></span>
       <button class="btn btn-outline" onclick="abrirVinculoRhid()" title="Ligar cada pessoa do Portal à pessoa da ControliD">🔗 Vínculo ControliD</button>
       <button class="btn btn-outline" onclick="abrirEspelho()" title="Gerar o espelho de ponto e guardar na ficha">🕐 Gerar espelho de ponto</button>
+      <button class="btn btn-outline" onclick="classificarDocs()" title="Lê o título de cada documento sem tipo e separa por advertência, suspensão, folha de ponto…">🏷️ Classificar automaticamente</button>
       <button class="btn btn-secondary" onclick="abrirEnviarRh()" title="Selecione documentos e envie todos num e-mail só">📨 Enviar documentos</button>
       <button class="btn btn-primary" onclick="abrirModalDoc()">+ Novo documento</button>
     </div>
@@ -334,7 +336,12 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
               <tr>
                 <td><strong>{d.rh_colaboradores?.nome || "—"}</strong></td>
                 <td>{(d.storage_path || d.url) ? <a href={`/api/admin/rh/documentos/${d.id}/arquivo`} target="_blank" rel="noopener" title="Abre via link seguro temporário">📎 {d.titulo}</a> : d.titulo}</td>
-                <td><span class={`badge ${badgeTipoDoc[d.tipo] || "badge-gray"}`}>{tiposDoc[d.tipo] || d.tipo}</span></td>
+                <td>
+                  <select class="filter-select" data-requer-edicao style="font-size:12px;padding:3px 6px;max-width:190px"
+                          onchange={`mudarTipoDoc('${d.id}', this.value, this)`}>
+                    {TIPOS_DOC_RH.map(t => <option value={t.v} selected={(d.tipo || "outro") === t.v}>{t.label}</option>)}
+                  </select>
+                </td>
                 <td class={classValidade(d.validade)}>
                   {fmtData(d.validade)}
                   {d.validade && d.validade < hoje && <span class="badge badge-red" style="margin-left:6px">Vencido</span>}
@@ -880,6 +887,9 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       </div>
     </div>
   </div>
+
+  <script type="application/json" id="rhTiposDoc" set:html={JSON.stringify(TIPO_DOC_LABEL)}></script>
+  <script type="application/json" id="rhTiposDocLista" set:html={JSON.stringify(TIPOS_DOC_RH.map(t => ({ v: t.v, label: t.label })))}></script>
 
   <div class="modal-overlay" id="modalEnviarRh">
     <div class="modal-box" style="max-width:660px">
@@ -1565,7 +1575,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     const hojeStr = new Date().toISOString().slice(0, 10);
     const em30Str = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
     const escD = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const tiposDocMap: Record<string, string> = { contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha EPI", advertencia: "Advertência", atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Documento" };
+    const tiposDocMap: Record<string, string> = JSON.parse(document.getElementById("rhTiposDoc")!.textContent || "{}");
+    const TIPOS_DOC_LISTA: { v: string; label: string }[] = JSON.parse(document.getElementById("rhTiposDocLista")!.textContent || "[]");
     const perfisMap: Record<string, string> = { admin: "Administrador", manutencao_operacao: "Manutenção - Operação", manutencao_administrativo: "Manutenção - Administrativo", operacional: "Operação", rh: "RH / DP", financeiro: "Financeiro", comercial: "Comercial", juridico: "Jurídico" };
 
     // ── Slots fixos de anexo (espelham as colunas do Monday) ──
@@ -2611,11 +2622,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     // pode ser repassado. Documento que é só link externo não entra na lista.
     // reaproveita o bloco #dadosRH que a página já embute; documento que é só link
     // externo fica de fora (não há arquivo para anexar num e-mail)
-    const RH_TIPOS: Record<string, string> = {
-      espelho_ponto: "Espelho de ponto (folha de ponto)",
-      contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha de EPI", advertencia: "Advertência",
-      atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Outros",
-    };
+    const RH_TIPOS: Record<string, string> = tiposDocMap;
     // O espelho de ponto é gravado como tipo "outro", então ele sumia no meio de
     // tudo. Aqui ele vira um grupo próprio pelo título — é o documento que mais
     // se manda em lote (uma competência inteira de uma vez).
@@ -2737,6 +2744,39 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         box.innerHTML = `<div class="alert alert-error">${String(e?.message || "Falha ao enviar").replace(/</g, "&lt;")}</div>`;
       } finally { btn.disabled = false; btn.textContent = orig; }
     }
+    /** Troca o tipo de um documento direto na lista, sem abrir o formulário. */
+    async function mudarTipoDoc(id: string, tipo: string, el: HTMLSelectElement) {
+      const antes = el.style.borderColor;
+      el.disabled = true;
+      try {
+        const r = await fetch(`/api/admin/rh/documentos/${id}`, {
+          method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ tipo }),
+        });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Erro");
+        el.style.borderColor = "#16A34A";
+        setTimeout(() => { el.style.borderColor = antes; }, 1200);
+      } catch (e: any) {
+        el.style.borderColor = "#DC2626";
+        alert("Não deu para mudar o tipo: " + (e?.message || "tente de novo"));
+      } finally { el.disabled = false; }
+    }
+    /** Lê o título de cada documento sem tipo e separa por advertência, suspensão,
+     *  folha de ponto e os demais. Mostra antes o que vai mudar. */
+    async function classificarDocs() {
+      const previa = await fetch("/api/admin/rh/documentos/reclassificar?seco=1", { method: "POST", headers: { "content-type": "application/json" } });
+      const p = await previa.json().catch(() => ({}));
+      if (!previa.ok) { alert("Erro: " + (p.error || "tente de novo")); return; }
+      if (!p.reconhecidos) { alert(`Analisei ${p.analisados} documento(s) sem tipo e não reconheci nenhum pelo título.\n\nEsses precisam ser marcados na mão, pela lista da coluna Tipo.`); return; }
+      const linhas = Object.entries(p.porTipo || {}).map(([k, v]) => `  • ${v} → ${k}`).join("\n");
+      if (!confirm(`Reconheci ${p.reconhecidos} de ${p.analisados} documento(s) sem tipo:\n\n${linhas}\n\nOs que já têm tipo escolhido não são tocados. Aplicar?`)) return;
+      const r = await fetch("/api/admin/rh/documentos/reclassificar", { method: "POST", headers: { "content-type": "application/json" } });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert("Erro: " + (d.error || "tente de novo")); return; }
+      alert(`Pronto: ${d.atualizados} documento(s) classificados.\n${d.semReconhecer} continuam como "Outro" — o título não diz o que são.`);
+      location.reload();
+    }
+    (window as any).mudarTipoDoc = mudarTipoDoc;
+    (window as any).classificarDocs = classificarDocs;
     (window as any).abrirEnviarRh = abrirEnviarRh;
     (window as any).fecharEnviarRh = fecharEnviarRh;
     (window as any).rhEnvRender = rhEnvRender;

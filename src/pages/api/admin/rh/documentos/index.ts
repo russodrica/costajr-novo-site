@@ -3,10 +3,11 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
+import { TIPOS_DOC_VALORES, inferirTipoDoc } from "../../../../../lib/rhTiposDoc";
 
 export const prerender = false;
 
-const TIPOS_DOC = ["contrato", "aso", "ficha_epi", "advertencia", "atestado", "certificado", "cnh", "outro"];
+const TIPOS_DOC = TIPOS_DOC_VALORES;
 
 // GET /api/admin/rh/documentos?colaborador_id=&tipo=&vencendo=30&vencidos=1
 export const GET: APIRoute = async ({ request, url }) => {

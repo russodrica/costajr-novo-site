@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 import { enviarEmailComAnexo } from "../../../../../lib/mailer";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
+import { TIPO_DOC_LABEL as TIPO_LABEL } from "../../../../../lib/rhTiposDoc";
 
 export const prerender = false;
 // Documento de RH é dado PESSOAL do colaborador (LGPD): só admin e RH enviam.
@@ -11,10 +12,6 @@ const PERFIS = ["admin", "rh"];
 const MAX_TOTAL = 25 * 1024 * 1024; // limite seguro do Resend
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const TIPO_LABEL: Record<string, string> = {
-  contrato: "Contrato", aso: "ASO", ficha_epi: "Ficha de EPI", advertencia: "Advertência",
-  atestado: "Atestado", certificado: "Certificado", cnh: "CNH", outro: "Documento",
-};
 
 function sanitizeNome(s: string) {
   return String(s || "documento").replace(/[/\\:*?"<>| -]/g, "_").replace(/\s+/g, " ").trim().slice(0, 120) || "documento";
