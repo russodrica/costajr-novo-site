@@ -1,0 +1,242 @@
+---
+// Pedidos dos marketplaces — a ponte que o Bling fazia.
+//
+// O que aconteceu (11/08/2026): a Adriana saiu do Bling em 21/06 e ninguém
+// percebeu que a esteira de pedidos tinha parado junto. A tela
+// `/pedidos-marketplaces` da TrazPraCa só se alimenta pelo Bling — o último
+// pedido que chegou lá é justamente de 21/06. Resultado: a venda de 08/08
+// (luminária Millennium Falcon) ficou com etiqueta impressa e nenhum pedido
+// ao fornecedor, e a de 11/08 (kit vinho) foi cancelada pelo comprador por
+// falta de estoque.
+//
+// Esta tela é a ponta de baixo da ponte. O robô (src/pedidos_main.py) lê as
+// vendas no Mercado Livre e grava aqui tudo que o formulário
+// `/pedidos-cadastro` da TrazPraCa pede. Aqui a Adriana copia e cadastra.
+//
+// A compra NÃO é automática, e isso é decisão, não limitação: cadastrar e
+// pagar o pedido no fornecedor é dinheiro saindo da carteira dela. O portal
+// prepara tudo; o clique final é dela — a mesma regra da aprovação de
+// anúncios.
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { temPerfilFresco } from "../../../lib/permissoes";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
+
+const db = supabaseAdmin();
+const [ped, exec] = await Promise.all([
+  db.from("vendas_pedidos").select("*").order("vendido_em", { ascending: false }).limit(300),
+  db.from("vendas_sync_log").select("*").eq("tipo", "pedidos").order("executado_em", { ascending: false }).limit(1),
+]);
+
+// A tela precisa abrir mesmo antes da migration 088 rodar — erro 500 sem
+// explicação é a pior forma de descobrir que falta rodar uma migration.
+const faltaMigration = !!ped.error;
+const pedidos: any[] = ped.data || [];
+const ultimaExec: any = (exec.data || [])[0] || null;
+
+const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+const fdata = (s: any) => (s ? new Date(s).toLocaleDateString("pt-BR") : "—");
+const fmt$ = (n: any) => (n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+
+// Vendas canceladas e compras já feitas saem da fila; o que sobra é trabalho.
+const aComprar = pedidos.filter((p) => p.fornecedor_status === "a_comprar" && p.status_canal !== "cancelled");
+const feitos = pedidos.filter((p) => p.fornecedor_status === "comprado");
+const foraDeJogo = pedidos.filter((p) => p.fornecedor_status === "nao_aplicavel" || p.status_canal === "cancelled");
+
+// Atraso = o ML já pediu o despacho e a compra no fornecedor ainda não foi
+// feita. É exatamente o buraco em que a venda de 08/08 caiu.
+const hoje = new Date();
+const atrasado = (p: any) => p.prazo_despacho && new Date(p.prazo_despacho) < hoje;
+const atrasados = aComprar.filter(atrasado);
+
+const totalAComprar = aComprar.reduce((s, p) => s + Number(p.custo_fornecedor || 0), 0);
+
+const CANAL_LABEL: Record<string, string> = {
+  mercadolivre: "Mercado Livre", shopee: "Shopee",
+};
+
+// Texto pronto para colar no formulário deles, campo a campo, na ordem do
+// assistente de 5 passos (Cliente → Endereço → Marketplace → Produtos).
+const blocoDe = (p: any) => {
+  const itens = (p.itens || []).map((i: any) =>
+    `${i.quantidade || 1}x  SKU ${i.sku || "?"}  —  ${i.nome || ""}`).join("\n");
+  return [
+    `Nome: ${p.comprador_nome || ""}`,
+    `CPF/CNPJ: ${p.comprador_documento || ""}`,
+    `Celular: ${p.comprador_celular || ""}`,
+    `CEP: ${p.entrega_cep || ""}`,
+    `Rua: ${p.entrega_rua || ""}`,
+    `Número: ${p.entrega_numero || ""}`,
+    `Complemento: ${p.entrega_complemento || ""}`,
+    `Bairro: ${p.entrega_bairro || ""}`,
+    `Cidade: ${p.entrega_cidade || ""}`,
+    `Estado: ${p.entrega_estado || ""}`,
+    `Marketplace: ${p.canal || ""}`,
+    `Produtos:`,
+    itens,
+  ].join("\n");
+};
+
+const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado(p) }));
+---
+
+<Admin title="Pedidos dos marketplaces" current="vendas-pedidos">
+  <div style="max-width:1100px">
+    <h1 style="margin:0 0 4px">Pedidos dos marketplaces</h1>
+    <p style="color:#6B7280;margin:0 0 18px">
+      As vendas do Mercado Livre, prontas para cadastrar na TrazPraCa em
+      <a href="https://app.trazpracaclub.com.br/pedidos-cadastro" target="_blank" rel="noopener">Pedidos → Cadastrar Pedido</a>.
+      Última leitura: {ultimaExec ? fdt(ultimaExec.executado_em) : "nunca"}.
+    </p>
+
+    {faltaMigration && (
+      <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:14px;margin-bottom:18px">
+        <strong>Falta rodar a migration 088.</strong> A tabela <code>vendas_pedidos</code> ainda não existe no banco.
+        Rode <code>db/migrations/088_vendas_pedidos.sql</code> no Supabase e recarregue esta página.
+      </div>
+    )}
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      <div style="flex:1;min-width:170px;background:#FEE2E2;border-radius:8px;padding:14px">
+        <div style="font-size:26px;font-weight:700;color:#B91C1C">{aComprar.length}</div>
+        <div style="color:#7F1D1D;font-size:13px">a comprar na TrazPraCa</div>
+      </div>
+      <div style="flex:1;min-width:170px;background:#FEF3C7;border-radius:8px;padding:14px">
+        <div style="font-size:26px;font-weight:700;color:#B45309">{atrasados.length}</div>
+        <div style="color:#78350F;font-size:13px">com prazo de despacho vencido</div>
+      </div>
+      <div style="flex:1;min-width:170px;background:#DCFCE7;border-radius:8px;padding:14px">
+        <div style="font-size:26px;font-weight:700;color:#15803D">{feitos.length}</div>
+        <div style="color:#14532D;font-size:13px">já comprados</div>
+      </div>
+      <div style="flex:1;min-width:170px;background:#F3F4F6;border-radius:8px;padding:14px">
+        <div style="font-size:26px;font-weight:700">{fmt$(totalAComprar)}</div>
+        <div style="color:#6B7280;font-size:13px">custo estimado do que falta</div>
+      </div>
+    </div>
+
+    <div id="aviso" style="display:none;border-radius:8px;padding:12px;margin-bottom:16px"></div>
+
+    {linhas.length === 0 && !faltaMigration && (
+      <p style="color:#6B7280">
+        Nenhuma venda lida ainda. Rode o workflow <strong>“Vendas - Pedidos dos marketplaces”</strong> no GitHub.
+      </p>
+    )}
+
+    {linhas.map((p) => (
+      <div data-pedido={p.id} style={`border:1px solid ${p.atrasado && p.fornecedor_status === "a_comprar" ? "#DC2626" : "#E5E7EB"};border-radius:10px;padding:16px;margin-bottom:14px;background:${p.fornecedor_status === "comprado" ? "#F8FDF9" : p.fornecedor_status === "nao_aplicavel" ? "#FAFAFA" : "#fff"}`}>
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+          <div>
+            <div style="font-weight:600">
+              {CANAL_LABEL[p.canal] || p.canal} · #{p.pedido_canal}
+              {p.status_canal === "cancelled" && <span style="margin-left:8px;background:#F3F4F6;color:#6B7280;border-radius:99px;padding:2px 10px;font-size:12px">venda cancelada</span>}
+              {p.fornecedor_status === "comprado" && <span style="margin-left:8px;background:#DCFCE7;color:#15803D;border-radius:99px;padding:2px 10px;font-size:12px">comprado</span>}
+              {p.fornecedor_status === "a_comprar" && p.status_canal !== "cancelled" && <span style="margin-left:8px;background:#FEE2E2;color:#B91C1C;border-radius:99px;padding:2px 10px;font-size:12px">a comprar</span>}
+            </div>
+            <div style="color:#6B7280;font-size:13px;margin-top:2px">
+              Vendido em {fdt(p.vendido_em)}
+              {p.prazo_despacho && ` · despachar até ${fdata(p.prazo_despacho)}`}
+              {p.comprado_em && ` · comprado em ${fdt(p.comprado_em)}`}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:700">{fmt$(p.valor_total)}</div>
+            <div style="color:#6B7280;font-size:12px">
+              líquido {fmt$(p.liquido)} · custo {fmt$(p.custo_fornecedor)}
+            </div>
+          </div>
+        </div>
+
+        <ul style="margin:10px 0 12px;padding-left:18px;color:#374151">
+          {(p.itens || []).map((i: any) => (
+            <li>{i.quantidade || 1}× <strong>SKU {i.sku || "sem SKU"}</strong> — {i.nome}</li>
+          ))}
+        </ul>
+
+        <details>
+          <summary style="cursor:pointer;color:#2563EB;font-size:14px">Dados para cadastrar na TrazPraCa</summary>
+          <pre data-bloco style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:12px;margin-top:8px;white-space:pre-wrap;font-size:13px">{p.bloco}</pre>
+          {!p.comprador_documento && (
+            <p style="color:#B45309;font-size:13px;margin:4px 0">
+              O Mercado Livre não devolveu o CPF desta venda — pegue no detalhe da venda e complete no formulário.
+            </p>
+          )}
+          <button type="button" data-copiar style="margin-top:6px;padding:8px 14px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;cursor:pointer">Copiar tudo</button>
+        </details>
+
+        {p.fornecedor_status !== "comprado" && p.status_canal !== "cancelled" && (
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px">
+            <input data-numero placeholder="nº do pedido na TrazPraCa (opcional)" style="padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;min-width:260px" />
+            <button type="button" data-comprado style="padding:8px 14px;border:0;border-radius:6px;background:#15803D;color:#fff;cursor:pointer">Já comprei na TrazPraCa</button>
+            <button type="button" data-naoaplica style="padding:8px 14px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;cursor:pointer">Não se aplica</button>
+          </div>
+        )}
+        {p.fornecedor_status === "comprado" && (
+          <div style="margin-top:10px;font-size:13px;color:#15803D">
+            Pedido {p.fornecedor_pedido ? `nº ${p.fornecedor_pedido} ` : ""}registrado por {p.comprado_por || "—"}.
+            <button type="button" data-desfazer style="margin-left:8px;padding:4px 10px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">desfazer</button>
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+</Admin>
+
+<script is:inline>
+  // Sem confirm() e sem alert(): a Adriana já apertou um botão que não deu
+  // sinal de vida (05/08) e ficou sem saber se tinha funcionado. Toda
+  // resposta aparece na própria página.
+  function aviso(texto, tipo) {
+    const el = document.getElementById("aviso");
+    const cores = {
+      ok:   ["#DCFCE7", "#15803D"],
+      erro: ["#FEE2E2", "#B91C1C"],
+      info: ["#EFF6FF", "#1D4ED8"],
+    }[tipo] || ["#F3F4F6", "#374151"];
+    el.style.background = cores[0];
+    el.style.color = cores[1];
+    el.textContent = texto;
+    el.style.display = "block";
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function marcar(cartao, estado) {
+    const id = cartao.getAttribute("data-pedido");
+    const numero = (cartao.querySelector("[data-numero]") || {}).value || "";
+    aviso("Salvando…", "info");
+    try {
+      const r = await fetch("/api/admin/vendas/pedidos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, fornecedor_status: estado, fornecedor_pedido: numero }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { aviso(j.error || j.message || `Erro ${r.status}`, "erro"); return; }
+      aviso(estado === "comprado" ? "Marcado como comprado. Recarregando…" : "Atualizado. Recarregando…", "ok");
+      setTimeout(() => location.reload(), 700);
+    } catch (e) {
+      aviso("Falha de rede: " + e.message, "erro");
+    }
+  }
+
+  document.addEventListener("click", (ev) => {
+    const cartao = ev.target.closest("[data-pedido]");
+    if (!cartao) return;
+    if (ev.target.matches("[data-comprado]"))  marcar(cartao, "comprado");
+    if (ev.target.matches("[data-naoaplica]")) marcar(cartao, "nao_aplicavel");
+    if (ev.target.matches("[data-desfazer]"))  marcar(cartao, "a_comprar");
+    if (ev.target.matches("[data-copiar]")) {
+      const texto = cartao.querySelector("[data-bloco]").textContent;
+      navigator.clipboard.writeText(texto)
+        .then(() => aviso("Dados copiados. Cole em Pedidos → Cadastrar Pedido na TrazPraCa.", "ok"))
+        .catch(() => aviso("O navegador bloqueou a cópia — selecione o texto e copie na mão.", "erro"));
+    }
+  });
+</script>
