@@ -34,7 +34,30 @@ function ehTokenFornecedor(claims: { role?: string; roles?: string[] } | null): 
   return perfis.includes("fornecedor");
 }
 
+// ── Domínio da CR INTERMEDIAÇÕES IMOBILIÁRIAS ────────────────────────────────
+// crintermediacao.com.br mora no MESMO projeto do portal (um deploy só), mas o
+// visitante não pode cair na Costa Júnior: "/" vira a home da CR e "/autorizacao"
+// vira o formulário. Qualquer /admin nesse domínio volta para o portal.
+const HOSTS_CR = new Set([
+  "crintermediacao.com.br",
+  "www.crintermediacao.com.br",
+]);
+
 export const onRequest = defineMiddleware(async (context, next) => {
+  // roteamento por domínio antes de tudo — é só reescrita de caminho, não mexe
+  // em autenticação nem em permissão
+  try {
+    const u = new URL(context.request.url);
+    if (HOSTS_CR.has(u.hostname.toLowerCase())) {
+      const p = u.pathname.replace(/\/+$/, "") || "/";
+      if (p === "/") return context.rewrite("/cr-site");
+      if (p === "/autorizacao" || p === "/autorizacao-venda") return context.rewrite("/cr");
+      if (p === "/admin" || p.startsWith("/admin/")) {
+        return context.redirect(`https://www.costajr.com.br${u.pathname}${u.search}`, 302);
+      }
+    }
+  } catch { /* nunca derruba a request pelo roteamento de domínio */ }
+
   // ── Cerca do fornecedor: qualquer /api/* fora da allowlist → 403 ──
   try {
     const req = context.request;

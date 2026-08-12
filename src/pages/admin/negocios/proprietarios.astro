@@ -27,8 +27,8 @@ const { data: vinc } = await db.from("negocios_imoveis").select("proprietario_id
 const porProp: Record<string, number> = {};
 for (const v of vinc || []) porProp[(v as any).proprietario_id] = (porProp[(v as any).proprietario_id] || 0) + 1;
 
-// link curto e com a marca CR — é o que vai para o proprietário
-const LINK = "https://www.costajr.com.br/cr";
+// domínio próprio da CR — o proprietário não vê a Costa Júnior em lugar nenhum
+const LINK = "https://crintermediacao.com.br/autorizacao";
 const BADGE: Record<string, string> = { novo: "badge-yellow", aprovado: "badge-green", arquivado: "badge-gray" };
 const ROTULO: Record<string, string> = { novo: "Novo", aprovado: "Aprovado", arquivado: "Arquivado" };
 function fmtCpf(c: string | null) {
@@ -51,7 +51,7 @@ function fmtQuando(iso: string | null) {
       <div style="flex:1;min-width:260px">
         <strong style="font-size:.92rem">Link para enviar ao proprietário</strong>
         <p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-mid)">
-          Mande por WhatsApp ou e-mail. A página abre com a marca <strong>CR</strong>, sem
+          Mande por WhatsApp ou e-mail. A página abre no site da <strong>CR</strong>, sem
           menção à Costa Júnior. A pessoa preenche os dados, lê o termo e aceita —
           o cadastro cai aqui na hora, e você recebe aviso por e-mail e no Telegram.
           Intermediária no termo: <strong>{INTERMEDIARIO}</strong>.
