@@ -13,10 +13,12 @@ export interface Props {
   itens: any[];
   anexos: any[];
   oportunidades: any[];
+  conversas: any[];
+  usuario: string;
   filtroStatus: string;
   busca: string;
 }
-const { tipo, itens, anexos, oportunidades, filtroStatus, busca } = Astro.props;
+const { tipo, itens, anexos, oportunidades, conversas, usuario, filtroStatus, busca } = Astro.props;
 
 const tela = TIPO_TELA[tipo];
 const statusLista = STATUS_ITEM[tipo];
@@ -28,6 +30,7 @@ for (const it of itens) if (it.capa_anexo_id) capaDe[it.id] = it.capa_anexo_id;
 const fotosPorItem: Record<string, number> = {};
 const docsPorItem: Record<string, number> = {};
 for (const a of anexos) {
+  if (a.conversa_id) continue; // print de anotação não conta na vitrine
   if (a.especie === "foto") fotosPorItem[a.imovel_id] = (fotosPorItem[a.imovel_id] || 0) + 1;
   else docsPorItem[a.imovel_id] = (docsPorItem[a.imovel_id] || 0) + 1;
 }
@@ -265,12 +268,14 @@ function resumoLocal(it: any): string {
       <button class="pill" type="button" data-aba="fotos" onclick="negAba('fotos')">Fotos</button>
       <button class="pill" type="button" data-aba="docs" onclick="negAba('docs')">Documentos</button>
       <button class="pill" type="button" data-aba="ops" onclick="negAba('ops')">Interessados</button>
+      <button class="pill" type="button" data-aba="hist" onclick="negAba('hist')">Histórico</button>
     </div>
     <div style="padding:16px 24px 24px">
       <div id="negAbaDados"></div>
       <div id="negAbaFotos" hidden></div>
       <div id="negAbaDocs" hidden></div>
       <div id="negAbaOps" hidden></div>
+      <div id="negAbaHist" hidden></div>
     </div>
   </div>
 </div>
@@ -284,8 +289,10 @@ function resumoLocal(it: any): string {
     </div>
     <div style="padding:16px 24px 0">
       <p style="font-size:12.5px;color:var(--ink-mid);margin:0 0 12px">
-        Arraste a foto e use o zoom. O que ficar dentro do quadro é o que aparece no card —
-        assim todas as fotos do catálogo ficam do mesmo tamanho.
+        Arraste a foto e use o zoom: o que ficar dentro do quadro é o que aparece no card,
+        e é assim que as capas ficam todas do mesmo tamanho.
+        <br><strong>Planta, croqui ou documento?</strong> Use <em>“Usar a foto inteira”</em> — ela entra
+        completa, sem cortar nada.
       </p>
       <div class="neg-crop-vp" id="negCropViewport"><img id="negCropImg" alt="" /></div>
       <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
@@ -295,10 +302,48 @@ function resumoLocal(it: any): string {
         <button type="button" class="btn btn-outline btn-sm" onclick="negCropCentralizar()">Centralizar</button>
       </div>
     </div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" onclick="negCropCancelar()">Cancelar</button>
-      <button type="button" class="btn btn-primary" onclick="negCropConfirmar()">Usar esta foto</button>
+    <div class="modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <button type="button" class="btn btn-outline" onclick="negCropInteira()" title="Envia a imagem completa, sem cortar nada">
+        Usar a foto inteira
+      </button>
+      <span style="display:flex;gap:10px">
+        <button type="button" class="btn btn-secondary" onclick="negCropCancelar()">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="negCropConfirmar()">Usar o recorte</button>
+      </span>
     </div>
+  </div>
+</div>
+
+<!-- ── Nova anotação do histórico ── -->
+<div class="modal-overlay" id="negModalHist">
+  <div class="modal-box" style="max-width:600px">
+    <div class="modal-header">
+      <h2>Nova anotação</h2>
+      <button class="modal-close" type="button" onclick="negFechar('negModalHist')" aria-label="Fechar">✕</button>
+    </div>
+    <form id="negFormHist">
+      <div id="negHistErro" style="padding:16px 24px 0" hidden></div>
+      <div class="form-row">
+        <div class="form-group"><label>Data</label><input name="data" type="date" required /></div>
+        <div class="form-group"><label>Quem está registrando</label>
+          <input value={usuario} disabled title="Vem de quem está logado — não dá para trocar" /></div>
+      </div>
+      <div class="form-group"><label>O que aconteceu *</label>
+        <textarea name="texto" required rows="5" placeholder="Ex: Liguei para o proprietário. Ele aceita R$ 430 mil à vista e vai mandar a matrícula até sexta."></textarea></div>
+      <div class="form-group">
+        <label>Prints e fotos (opcional)</label>
+        <div class="neg-solte" onclick="negEscolherPrint()" tabindex="0" style="padding:14px">
+          <i class="ti ti-camera" aria-hidden="true"></i>
+          <strong>Arraste aqui, cole com Ctrl+V ou clique para escolher</strong>
+          <span id="negHistArqs">Nenhum arquivo escolhido</span>
+        </div>
+        <input type="file" id="negHistFile" accept="image/*,.pdf" multiple hidden onchange="negPrintsEscolhidos(this)" />
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="negFechar('negModalHist')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar anotação</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -341,7 +386,7 @@ function resumoLocal(it: any): string {
 </div>
 
 <script type="application/json" id="negDados" set:html={JSON.stringify({
-  tipo, itens, anexos, oportunidades,
+  tipo, itens, anexos, oportunidades, conversas, usuario,
   statusLista, funil: FUNIL, tiposAnexo: TIPOS_ANEXO, ehBusca,
 })}></script>
 
@@ -381,9 +426,17 @@ function resumoLocal(it: any): string {
   .neg-dl div strong { font-size: .92rem; font-weight: 600; }
   .neg-galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 12px; }
   .neg-thumb { position: relative; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--gray-100); }
-  .neg-thumb img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
+  .neg-thumb img { width: 100%; aspect-ratio: 4/3; object-fit: contain; background: #F3F4F6; display: block; }
   .neg-thumb-acoes { display: flex; gap: 6px; padding: 7px; }
   .neg-capa-tag { position: absolute; top: 7px; left: 7px; }
+  .neg-timeline { display: flex; flex-direction: column; gap: 12px; }
+  .neg-nota { border: 1px solid var(--border); border-left: 3px solid var(--brand); border-radius: 10px; padding: 12px 14px; background: #fff; }
+  .neg-nota-top { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; flex-wrap: wrap; }
+  .neg-nota-top strong { font-size: .88rem; color: var(--ink-mid); }
+  .neg-nota-txt { margin: 0; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }
+  .neg-nota-prints { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .neg-nota-prints img { width: 116px; height: 87px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
+  .neg-nota-arq { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; }
   .neg-solte {
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     padding: 20px 16px; border: 2px dashed var(--border-strong); border-radius: 12px;
@@ -417,7 +470,7 @@ function resumoLocal(it: any): string {
 </style>
 
 <script>
-  type Dados = { tipo: string; itens: any[]; anexos: any[]; oportunidades: any[]; statusLista: any[]; funil: any[]; tiposAnexo: any[]; ehBusca: boolean };
+  type Dados = { tipo: string; itens: any[]; anexos: any[]; oportunidades: any[]; conversas: any[]; usuario: string; statusLista: any[]; funil: any[]; tiposAnexo: any[]; ehBusca: boolean };
   const D: Dados = JSON.parse(document.getElementById("negDados")!.textContent || "{}");
   const esc = (s: any) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
   const moeda = (v: any) => (v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }));
@@ -518,7 +571,7 @@ function resumoLocal(it: any): string {
     const it = D.itens.find((x) => x.id === id); if (!it) return;
     itemAberto = id;
     document.getElementById("negItemTitulo")!.textContent = it.titulo;
-    desenharDados(it); desenharFotos(it); desenharDocs(it); desenharOps(it);
+    desenharDados(it); desenharFotos(it); desenharDocs(it); desenharOps(it); desenharHist(it);
     negAba("dados");
     const modal = document.getElementById("negModalItem")!;
     modal.classList.add("open");
@@ -530,7 +583,7 @@ function resumoLocal(it: any): string {
     for (const p of Array.from(document.querySelectorAll<HTMLElement>("#negModalItem .pill[data-aba]"))) {
       p.classList.toggle("active", p.dataset.aba === aba);
     }
-    const mapa: Record<string, string> = { dados: "negAbaDados", fotos: "negAbaFotos", docs: "negAbaDocs", ops: "negAbaOps" };
+    const mapa: Record<string, string> = { dados: "negAbaDados", fotos: "negAbaFotos", docs: "negAbaDocs", ops: "negAbaOps", hist: "negAbaHist" };
     for (const [k, elId] of Object.entries(mapa)) (document.getElementById(elId) as HTMLElement).hidden = k !== aba;
   }
 
@@ -577,7 +630,7 @@ function resumoLocal(it: any): string {
 
   // ── fotos ─────────────────────────────────────────────────────────────────
   function desenharFotos(it: any) {
-    const fotos = D.anexos.filter((a) => a.imovel_id === it.id && a.especie === "foto");
+    const fotos = D.anexos.filter((a) => a.imovel_id === it.id && a.especie === "foto" && !a.conversa_id);
     document.getElementById("negAbaFotos")!.innerHTML = `
       <div class="toolbar" style="margin-bottom:14px">
         <span class="toolbar-title" style="font-size:.98rem">Fotos do catálogo (${fotos.length})</span>
@@ -614,7 +667,7 @@ function resumoLocal(it: any): string {
    *  recusa POST de formulário e o arquivo nunca chegava — foi exatamente o que
    *  fez a primeira foto sumir. De quebra, o arquivo não passa pela Vercel,
    *  então some também o limite de tamanho da função. */
-  async function subirArquivo(arq: File, especie: "foto" | "documento", extra: Record<string, any> = {}) {
+  async function subirArquivo(arq: File, especie: "foto" | "documento" | "conversa", extra: Record<string, any> = {}) {
     if (arq.size > 45 * 1024 * 1024) throw new Error(`"${arq.name}" tem mais de 45 MB.`);
     const r1 = await fetch("/api/admin/negocios/anexos/upload-url", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -690,6 +743,9 @@ function resumoLocal(it: any): string {
     if (s) { URL.revokeObjectURL(s.url); s.resolve(resultado); }
   }
   function negCropCancelar() { cropFechar(null); }
+  /** Manda a imagem original, sem recorte. É o caminho para planta, croqui e
+   *  qualquer foto em que cortar as bordas perderia informação. */
+  function negCropInteira() { if (crop) cropFechar(crop.arq); }
   function negCropConfirmar() {
     if (!crop) return;
     const s = crop, k = s.base * s.escala;
@@ -818,7 +874,17 @@ function resumoLocal(it: any): string {
   }
 
   document.addEventListener("paste", (e: any) => {
-    if (!itemAberto || !document.getElementById("negModalItem")!.classList.contains("open")) return;
+    if (!itemAberto) return;
+    // com a janela de anotação aberta, o que for colado vira print DELA
+    if (document.getElementById("negModalHist")!.classList.contains("open")) {
+      const arqs = arquivosDoEvento(e);
+      if (!arqs.length) return;
+      e.preventDefault();
+      printsPend = printsPend.concat(arqs.map(nomear));
+      mostrarPrints();
+      return;
+    }
+    if (!document.getElementById("negModalItem")!.classList.contains("open")) return;
     if (document.getElementById("negModalCrop")!.classList.contains("open")) return;
     // Só sai da frente de campo de TEXTO (para poder colar texto normalmente).
     // O input de ARQUIVO não conta: é justamente nele que o foco fica depois de
@@ -862,7 +928,7 @@ function resumoLocal(it: any): string {
 
   // ── documentos ────────────────────────────────────────────────────────────
   function desenharDocs(it: any) {
-    const docs = D.anexos.filter((a) => a.imovel_id === it.id && a.especie === "documento");
+    const docs = D.anexos.filter((a) => a.imovel_id === it.id && a.especie === "documento" && !a.conversa_id);
     const opts = D.tiposAnexo.map((t: any) => `<option value="${t.v}">${esc(t.label)}</option>`).join("");
     document.getElementById("negAbaDocs")!.innerHTML = `
       <form id="negFormDoc" class="card" data-requer-edicao style="padding:14px;margin-bottom:16px">
@@ -903,6 +969,95 @@ function resumoLocal(it: any): string {
     btn.disabled = true; btn.textContent = "Enviando…";
     const comTitulo = titulo ? new File([arq], arq.name, { type: arq.type }) : arq;
     await enviarDocs([comTitulo], tipo);
+  }
+
+  // ── histórico de conversas ────────────────────────────────────────────────
+  // O diário do negócio: o que foi falado, quando e por quem. O autor vem do
+  // usuário logado (o servidor carimba) — quem registrou não se apaga depois.
+  let printsPend: File[] = [];
+
+  function desenharHist(it: any) {
+    const notas = D.conversas.filter((c) => c.imovel_id === it.id)
+      .sort((a, b) => String(b.data).localeCompare(String(a.data)) || String(b.created_at).localeCompare(String(a.created_at)));
+    document.getElementById("negAbaHist")!.innerHTML = `
+      <div class="toolbar" style="margin-bottom:12px">
+        <span class="toolbar-title" style="font-size:.98rem">Histórico de conversas (${notas.length})</span>
+        <button class="btn btn-primary btn-sm" data-requer-edicao onclick="negNovaNota()">+ Nova anotação</button>
+      </div>
+      ${notas.length ? `<div class="neg-timeline">${notas.map((c) => {
+        const prints = D.anexos.filter((a) => a.conversa_id === c.id);
+        return `<div class="neg-nota">
+          <div class="neg-nota-top">
+            <span class="badge badge-blue">${dataBr(c.data)}</span>
+            <strong>${esc(c.autor || "—")}</strong>
+            <span style="flex:1"></span>
+            <button class="btn btn-outline btn-sm" data-requer-edicao onclick="negExcluirNota('${c.id}')">Remover</button>
+          </div>
+          <p class="neg-nota-txt">${esc(c.texto)}</p>
+          ${prints.length ? `<div class="neg-nota-prints">${prints.map((f) => `
+            <a href="/api/admin/negocios/anexos/${f.id}" target="_blank" rel="noopener" title="${esc(f.titulo || "")}">
+              ${String(f.content_type || "").startsWith("image/")
+                ? `<img src="/api/admin/negocios/anexos/${f.id}" alt="${esc(f.titulo || "print")}" loading="lazy" />`
+                : `<span class="neg-nota-arq"><i class="ti ti-file-text"></i> ${esc(f.titulo || "arquivo")}</span>`}
+            </a>`).join("")}</div>` : ""}
+        </div>`;
+      }).join("")}</div>`
+        : '<div class="empty-state"><strong>Nenhuma anotação ainda</strong><p>Registre ligações, visitas e propostas. Fica tudo com data e nome de quem escreveu.</p></div>'}
+    `;
+  }
+
+  function negNovaNota() {
+    if (!itemAberto) return;
+    const f = document.getElementById("negFormHist") as HTMLFormElement;
+    f.reset();
+    printsPend = [];
+    document.getElementById("negHistArqs")!.textContent = "Nenhum arquivo escolhido";
+    (document.getElementById("negHistErro") as HTMLElement).hidden = true;
+    (f.querySelector("[name=data]") as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
+    document.getElementById("negModalHist")!.classList.add("open");
+    setTimeout(() => (f.querySelector("[name=texto]") as HTMLTextAreaElement)?.focus(), 50);
+  }
+  function negEscolherPrint() { (document.getElementById("negHistFile") as HTMLInputElement)?.click(); }
+  function negPrintsEscolhidos(input: HTMLInputElement) {
+    if (input.files?.length) printsPend = printsPend.concat(Array.from(input.files));
+    input.value = "";
+    mostrarPrints();
+  }
+  function mostrarPrints() {
+    document.getElementById("negHistArqs")!.textContent = printsPend.length
+      ? `${printsPend.length} arquivo(s): ${printsPend.map((f) => f.name).join(", ").slice(0, 80)}`
+      : "Nenhum arquivo escolhido";
+  }
+
+  document.getElementById("negFormHist")!.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!itemAberto) return;
+    const f = e.target as HTMLFormElement;
+    const btn = f.querySelector("button[type=submit]") as HTMLButtonElement;
+    const dataV = (f.querySelector("[name=data]") as HTMLInputElement).value;
+    const texto = (f.querySelector("[name=texto]") as HTMLTextAreaElement).value.trim();
+    btn.disabled = true; btn.textContent = "Salvando…";
+    try {
+      const r = await fetch("/api/admin/negocios/conversas", {
+        method: "POST", headers: CT_JSON,
+        body: JSON.stringify({ imovel_id: itemAberto, data: dataV, texto }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Não deu para salvar a anotação.");
+      const nota = await r.json();
+      // os prints sobem DEPOIS: eles precisam do id da anotação para ficar amarrados a ela
+      for (const arq of printsPend) await subirArquivo(arq, "conversa", { conversa_id: nota.id, titulo: arq.name });
+      recarregar(itemAberto, "hist");
+    } catch (err: any) {
+      btn.disabled = false; btn.textContent = "Salvar anotação";
+      erroNoForm("negHistErro", err?.message || "Não deu para salvar.");
+    }
+  });
+
+  async function negExcluirNota(id: string) {
+    if (!confirm("Remover esta anotação? Os prints dela também saem.")) return;
+    const res = await fetch(`/api/admin/negocios/conversas/${id}`, { method: "DELETE", headers: CT_JSON });
+    if (res.ok) recarregar(itemAberto, "hist");
+    else msg((await res.json().catch(() => ({}))).error || "Não deu para remover.");
   }
 
   // ── interessados ──────────────────────────────────────────────────────────
@@ -1004,7 +1159,8 @@ function resumoLocal(it: any): string {
     negNovo, negEditar, negExcluir, negAbrir, negAba, negFechar, negFecharItem,
     negSubirFoto, negDefinirCapa, negExcluirAnexo, negEnviarDoc,
     negNovoOp, negEditarOp, negMudarStatusOp, negExcluirOp,
-    negCropCancelar, negCropConfirmar, negCropCentralizar,
+    negNovaNota, negExcluirNota, negEscolherPrint, negPrintsEscolhidos,
+    negCropCancelar, negCropConfirmar, negCropCentralizar, negCropInteira,
     negEscolherFoto, negEscolherDoc,
   });
 </script>

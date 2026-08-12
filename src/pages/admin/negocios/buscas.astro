@@ -6,7 +6,8 @@ import { supabaseAdmin } from "../../../lib/supabase";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
-try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 
 const TIPO = "busca" as const;
@@ -22,7 +23,17 @@ const { data: anexos } = ids.length
 const { data: oportunidades } = ids.length
   ? await db.from("negocios_oportunidades").select("*").in("imovel_id", ids).order("created_at", { ascending: false })
   : { data: [] as any[] };
+const { data: conversas } = ids.length
+  ? await db.from("negocios_conversas").select("*").in("imovel_id", ids).order("data", { ascending: false })
+  : { data: [] as any[] };
+// nome de quem está logado — só para MOSTRAR no formulário; quem carimba o autor
+// de verdade é o servidor, ao gravar a anotação
+let usuario = claims.email || "";
+try {
+  const { data: prof } = await db.from("portal_profiles").select("display_name, full_name").eq("id", claims.sub).maybeSingle();
+  usuario = prof?.display_name || prof?.full_name || usuario;
+} catch { /* fica o e-mail */ }
 ---
 <Admin title="Busca de Imóveis" current="negocios-buscas">
-  <NegociosCatalogo tipo={TIPO} itens={itens || []} anexos={anexos || []} oportunidades={oportunidades || []} filtroStatus={filtroStatus} busca={busca} />
+  <NegociosCatalogo tipo={TIPO} itens={itens || []} anexos={anexos || []} oportunidades={oportunidades || []} conversas={conversas || []} usuario={usuario} filtroStatus={filtroStatus} busca={busca} />
 </Admin>

@@ -34,7 +34,8 @@ export const POST: APIRoute = async ({ request }) => {
     const { data: imovel } = await db.from("negocios_imoveis").select("id").eq("id", imovel_id).maybeSingle();
     if (!imovel) return jsonErr(404, "Cadastro não encontrado.");
 
-    const especie = String(body.especie || "documento") === "foto" ? "foto" : "documento";
+    const pedida = String(body.especie || "documento");
+    const especie = pedida === "foto" ? "foto" : pedida === "conversa" ? "conversa" : "documento";
     const tipo = String(body.tipo || "outro").trim();
     if (especie === "documento" && !TIPOS_ANEXO_VALORES.includes(tipo)) return jsonErr(400, "Tipo de documento inválido.");
 
@@ -49,7 +50,8 @@ export const POST: APIRoute = async ({ request }) => {
 
     await garantirBucketNegocios();
     const slug = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const path = `${especie === "foto" ? "fotos" : "docs"}/${imovel_id}/${slug}.${ext}`;
+    const pasta = especie === "foto" ? "fotos" : especie === "conversa" ? "conversas" : "docs";
+    const path = `${pasta}/${imovel_id}/${slug}.${ext}`;
     const { data, error } = await storageNegocios().storage.from(BUCKET_NEGOCIOS).createSignedUploadUrl(path);
     if (error) return jsonErr(500, `Não deu para preparar o envio: ${error.message}`);
 

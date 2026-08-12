@@ -45,18 +45,30 @@ export const POST: APIRoute = async ({ request }) => {
     if (!imovel) return jsonErr(404, "Cadastro não encontrado.");
     // o caminho tem de ser da pasta DESTE imóvel — senão dá para registrar o
     // arquivo de outro cadastro como se fosse deste
-    if (!storage_path.startsWith(`fotos/${imovel_id}/`) && !storage_path.startsWith(`docs/${imovel_id}/`)) {
+    const pastasOk = [`fotos/${imovel_id}/`, `docs/${imovel_id}/`, `conversas/${imovel_id}/`];
+    if (!pastasOk.some((p) => storage_path.startsWith(p))) {
       return jsonErr(400, "Caminho de arquivo inválido.");
     }
 
-    const especie = storage_path.startsWith("fotos/") ? "foto" : "documento";
+    const especie = storage_path.startsWith("fotos/") ? "foto"
+      : storage_path.startsWith("conversas/") ? "conversa" : "documento";
+
+    // print de anotação precisa apontar para uma anotação DESTE cadastro
+    let conversa_id: string | null = null;
+    if (especie === "conversa") {
+      conversa_id = String(body.conversa_id || "") || null;
+      if (!conversa_id) return jsonErr(400, "Anotação não informada.");
+      const { data: cv } = await db.from("negocios_conversas").select("id").eq("id", conversa_id).eq("imovel_id", imovel_id).maybeSingle();
+      if (!cv) return jsonErr(400, "Anotação inválida.");
+    }
     const tipo = String(body.tipo || "outro").trim();
     if (especie === "documento" && !TIPOS_ANEXO_VALORES.includes(tipo)) return jsonErr(400, "Tipo de documento inválido.");
 
     const nome_arquivo = String(body.nome_arquivo || "").slice(0, 150) || null;
     const titulo = String(body.titulo || "").trim() || nome_arquivo || (especie === "foto" ? "Foto" : "Documento");
     const row = {
-      imovel_id, especie, titulo, tipo: especie === "foto" ? null : tipo,
+      imovel_id, especie, titulo, conversa_id,
+      tipo: especie === "documento" ? tipo : null,
       storage_path, nome_arquivo,
       content_type: String(body.content_type || "").slice(0, 120) || null,
       tamanho: Number(body.tamanho) || null,
@@ -69,6 +81,7 @@ export const POST: APIRoute = async ({ request }) => {
       return jsonErr(400, error.message);
     }
 
+    // print de conversa não entra na vitrine nem vira capa
     // primeira foto vira a capa do catálogo automaticamente
     let virouCapa = false;
     if (especie === "foto" && !imovel.capa_anexo_id) {
