@@ -48,7 +48,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // em autenticação nem em permissão
   try {
     const u = new URL(context.request.url);
-    if (HOSTS_CR.has(u.hostname.toLowerCase())) {
+    // O host PÚBLICO vem no cabeçalho, não em request.url: na Vercel a URL que
+    // chega na função é a interna, então `u.hostname` não é crintermediacao.com.br
+    // e a reescrita nunca acontecia (o domínio da CR abria o site da Costa Júnior).
+    const hostPublico = String(
+      context.request.headers.get("x-forwarded-host") ||
+      context.request.headers.get("host") ||
+      u.hostname,
+    ).split(",")[0].split(":")[0].trim().toLowerCase();
+    if (HOSTS_CR.has(hostPublico)) {
       const p = u.pathname.replace(/\/+$/, "") || "/";
       if (p === "/") return context.rewrite("/cr-site");
       if (p === "/autorizacao" || p === "/autorizacao-venda") return context.rewrite("/cr");
