@@ -85,10 +85,19 @@ export const POST: APIRoute = async ({ request }) => {
       termo_versao: TERMO_VERSAO, termo_texto,
       aceite_ip: ip, aceite_user_agent: String(request.headers.get("user-agent") || "").slice(0, 300),
       assinatura_nome: assinatura,
-      prazo_dias: PRAZO_DIAS, aviso_dias: AVISO_DIAS,
+      // Prazo INDETERMINADO: a coluna nasceu `not null default 90` e, quando o
+      // termo virou "vale até o proprietário pedir o cancelamento", mandar null
+      // aqui passou a violar o NOT NULL — e isso derrubava TODO cadastro.
+      // Só mandamos o campo quando existe prazo.
+      ...(PRAZO_DIAS == null ? {} : { prazo_dias: PRAZO_DIAS }),
+      aviso_dias: AVISO_DIAS,
       status: "novo",
     }).select("id, nome").single();
-    if (error) return jsonErr(400, "Não deu para registrar agora. Tente de novo em instantes.");
+    if (error) {
+      // motivo real vai para o log da Vercel; para o proprietário, texto simples
+      console.error("[autorizacao-venda] insert falhou:", error.code, error.message, error.details);
+      return jsonErr(400, "Não deu para registrar agora. Tente de novo em instantes.");
+    }
 
     // ── avisos (nunca derrubam o cadastro se falharem) ──
     const resumo = [
