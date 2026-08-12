@@ -7,14 +7,22 @@
 // Ao mudar o texto, MUDE A VERSÃO. Os aceites antigos guardam o texto integral
 // que a pessoa leu, então nada quebra retroativamente.
 
-export const TERMO_VERSAO = "2026-08-12";
+export const TERMO_VERSAO = "2026-08-12.2";
 
 /** Quem intermedia a venda (confirmado pela Adriana em 12/08/2026). */
 export const INTERMEDIARIO = "CR INTERMEDIAÇÕES IMOBILIÁRIAS";
 
-/** Prazo e aviso prévio são FIXOS — padroniza e evita discussão depois. */
-export const PRAZO_DIAS = 90;
+/** Prazo INDETERMINADO: a autorização vale até o proprietário pedir o
+ *  cancelamento (decisão da Adriana em 12/08/2026 — antes eram 90 dias fixos).
+ *  Por isso prazo_dias vai como null no banco; o aviso prévio continua valendo
+ *  para o cancelamento produzir efeito. */
+export const PRAZO_DIAS: number | null = null;
 export const AVISO_DIAS = 5;
+
+/** Contato do termo e da página. E-mail escolhido pela Adriana em 12/08/2026:
+ *  adm@ e não o pessoal dela. */
+export const CONTATO_EMAIL = "adm@costajr.com.br";
+export const CONTATO_TELEFONE = "+55 11 91732-3082";
 
 export type DadosTermo = {
   nome?: string; nacionalidade?: string; estado_civil?: string; profissao?: string;
@@ -68,7 +76,7 @@ export function clausulas(d: DadosTermo): { titulo: string; texto: string }[] {
     },
     {
       titulo: "CLÁUSULA 5ª – DO PRAZO E DA REVOGAÇÃO",
-      texto: `O presente termo vigorará pelo prazo de ${PRAZO_DIAS} (noventa) dias a contar da data do aceite, podendo ser renovado por igual período mediante acordo entre as partes, ou revogado a qualquer tempo por qualquer das partes, mediante comunicação por escrito com antecedência mínima de ${AVISO_DIAS} (cinco) dias.`,
+      texto: `O presente termo vigorará por prazo indeterminado, a contar da data do aceite, permanecendo válido até que o(a) PROPRIETÁRIO(A) solicite o seu cancelamento. A revogação poderá ser feita a qualquer tempo, por qualquer das partes, mediante comunicação por escrito, produzindo efeitos ${AVISO_DIAS} (cinco) dias após o recebimento da comunicação, prazo destinado à retirada dos anúncios e à conclusão das tratativas já em andamento.`,
     },
     {
       titulo: "CLÁUSULA 6ª – DISPOSIÇÕES GERAIS",
@@ -76,7 +84,7 @@ export function clausulas(d: DadosTermo): { titulo: string; texto: string }[] {
     },
     {
       titulo: "CLÁUSULA 7ª – DOS DADOS PESSOAIS (LGPD)",
-      texto: `Os dados pessoais informados serão tratados exclusivamente para a finalidade de intermediação da venda do IMÓVEL, nos termos da Lei nº 13.709/2018. O(A) PROPRIETÁRIO(A) pode solicitar acesso, correção ou exclusão dos seus dados a qualquer momento pelo e-mail adriana@costajr.com.br.`,
+      texto: `Os dados pessoais informados serão tratados exclusivamente para a finalidade de intermediação da venda do IMÓVEL, nos termos da Lei nº 13.709/2018. O(A) PROPRIETÁRIO(A) pode solicitar acesso, correção ou exclusão dos seus dados a qualquer momento pelo e-mail ${CONTATO_EMAIL} ou pelo telefone ${CONTATO_TELEFONE}.`,
     },
   ];
 }

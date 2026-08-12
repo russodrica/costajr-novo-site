@@ -4,7 +4,7 @@
 //
 // A página é autossuficiente de propósito — nada de layout do admin aqui, para
 // não arrastar menu, sessão e scripts internos para fora do portal.
-import { clausulas, INTERMEDIARIO, PRAZO_DIAS, AVISO_DIAS, TERMO_VERSAO } from "../lib/termoVenda";
+import { clausulas, INTERMEDIARIO, AVISO_DIAS, TERMO_VERSAO, CONTATO_EMAIL, CONTATO_TELEFONE } from "../lib/termoVenda";
 export const prerender = false;
 const blocos = clausulas({});
 ---
@@ -73,8 +73,8 @@ const blocos = clausulas({});
       <h1>Autorização de Venda do Imóvel</h1>
       <p class="sub">
         Preencha seus dados e os do imóvel e leia o termo ao final. Leva cerca de 3 minutos.
-        A autorização vale por {PRAZO_DIAS} dias e pode ser cancelada a qualquer momento,
-        avisando com {AVISO_DIAS} dias de antecedência.
+        A autorização não tem prazo de validade: ela vale até você pedir o cancelamento,
+        que pode ser feito a qualquer momento e passa a valer {AVISO_DIAS} dias depois do aviso.
       </p>
 
       <div id="aviso" class="aviso"></div>
@@ -166,7 +166,7 @@ const blocos = clausulas({});
 
           <p class="lgpd">
             Seus dados serão usados apenas para intermediar a venda deste imóvel (LGPD, Lei 13.709/2018).
-            Para acessar, corrigir ou excluir seus dados, fale conosco pelo telefone +55 11 91732-3082.
+            Para acessar, corrigir ou excluir seus dados, escreva para {CONTATO_EMAIL} ou ligue para {CONTATO_TELEFONE}.
             Registramos data, hora e endereço de internet do aceite como comprovante.
           </p>
 
@@ -188,7 +188,7 @@ const blocos = clausulas({});
 
     <p class="rodape">
       <strong>{INTERMEDIARIO}</strong><br>
-      Contato e atendimento: +55 11 91732-3082<br>
+      {CONTATO_EMAIL} · {CONTATO_TELEFONE}<br>
       <span style="font-size:.72rem">Termo versão {TERMO_VERSAO}</span>
     </p>
   </div>
