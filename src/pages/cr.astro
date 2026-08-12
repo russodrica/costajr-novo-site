@@ -1,0 +1,241 @@
+---
+// Formulário PÚBLICO (sem login): o proprietário se cadastra e aceita o Termo
+// de Autorização de Venda. O link é enviado por WhatsApp/e-mail.
+//
+// A página é autossuficiente de propósito — nada de layout do admin aqui, para
+// não arrastar menu, sessão e scripts internos para fora do portal.
+import { clausulas, INTERMEDIARIO, PRAZO_DIAS, AVISO_DIAS, TERMO_VERSAO } from "../lib/termoVenda";
+export const prerender = false;
+const blocos = clausulas({});
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Autorização de Venda — CR Intermediações Imobiliárias</title>
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="icon" href="/logo-cr.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@600;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* Identidade CR — de propósito SEM a marca Costa Júnior: este link vai direto
+       ao proprietário e a intermediação é apartada. Paleta tirada do próprio
+       logo: dourado sobre lilás. */
+    :root { --ouro:#B8912F; --ouro-esc:#8F6F1F; --lilas:#6F6280; --lilas-cl:#EFEBF3; --claro:#F7F5F9; --borda:#E4DEEA; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--claro); color:#3B3542; font-family:'Open Sans',Arial,sans-serif; line-height:1.55; }
+    header { background:linear-gradient(135deg,#8A7C9A 0%,#9C8DAC 45%,#6F6280 100%); padding:26px 20px 20px; text-align:center; border-bottom:3px solid var(--ouro); }
+    header img { height:112px; width:auto; display:block; margin:0 auto; border-radius:12px; filter:drop-shadow(0 8px 20px rgba(0,0,0,.25)); }
+    /* se o arquivo do logo ainda não estiver publicado, a página não fica quebrada */
+    #cr-fallback { display:none; font-family:'Cormorant Garamond',Georgia,serif; font-size:3.2rem; font-weight:700;
+                   letter-spacing:3px; color:#F0DFAE; text-shadow:0 3px 10px rgba(0,0,0,.3); line-height:1; }
+    .marca { margin:12px 0 0; color:#F4F0F8; font-family:'Montserrat',sans-serif; font-size:.72rem; font-weight:600; letter-spacing:2.6px; text-transform:uppercase; }
+    .wrap { max-width:760px; margin:0 auto; padding:22px 16px 60px; }
+    h1 { font-family:'Cormorant Garamond',Georgia,serif; color:var(--ouro-esc); font-size:1.72rem; margin:18px 0 6px; }
+    h2 { font-family:'Montserrat',sans-serif; color:var(--lilas); font-size:.92rem; margin:26px 0 10px; text-transform:uppercase; letter-spacing:.8px; }
+    .sub { color:var(--lilas); margin:0 0 18px; }
+    .card { background:#fff; border:1px solid var(--borda); border-radius:12px; padding:20px; margin-bottom:18px; box-shadow:0 1px 3px rgba(111,98,128,.06); }
+    label { display:block; font-size:.86rem; font-weight:600; color:#5A5265; margin:0 0 4px; }
+    input, select, textarea { width:100%; padding:10px 12px; border:1px solid #D6CFDE; border-radius:8px; font-size:.95rem; font-family:inherit; outline:none; }
+    input:focus, select:focus, textarea:focus { border-color:var(--ouro); box-shadow:0 0 0 3px rgba(184,145,47,.16); }
+    .linha { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:12px; }
+    .campo { margin-bottom:12px; }
+    .obr::after { content:" *"; color:var(--ouro-esc); }
+    .termo { background:#FBFAFC; border:1px solid var(--borda); border-radius:10px; padding:16px; max-height:340px; overflow:auto; font-size:.86rem; }
+    .termo h3 { font-family:'Montserrat',sans-serif; font-size:.8rem; color:var(--ouro-esc); margin:14px 0 4px; text-transform:uppercase; letter-spacing:.5px; }
+    .termo h3:first-child { margin-top:0; }
+    .aceite { display:flex; gap:10px; align-items:flex-start; background:#FBF6E9; border:1px solid #E7D6A6; border-radius:10px; padding:14px; margin-top:14px; }
+    .aceite input { width:20px; height:20px; margin-top:2px; flex:none; }
+    .aceite label { font-weight:600; color:#6E5613; margin:0; font-size:.9rem; }
+    button { width:100%; padding:14px; background:linear-gradient(135deg,#C7A03A,#9A7A22); color:#fff; border:0; border-radius:10px; font-size:1rem; font-weight:700; font-family:'Montserrat',sans-serif; letter-spacing:.4px; cursor:pointer; margin-top:16px; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .aviso { padding:12px 14px; border-radius:8px; margin:14px 0; font-size:.9rem; display:none; }
+    .erro { background:#FEE2E2; color:#991B1B; border:1px solid #FECACA; }
+    .ok { background:#DCFCE7; color:#166534; border:1px solid #BBF7D0; }
+    .rodape { text-align:center; color:var(--lilas); font-size:.78rem; margin-top:26px; }
+    .lgpd { font-size:.8rem; color:var(--lilas); margin-top:10px; }
+    #sucesso { display:none; text-align:center; padding:40px 20px; }
+    #sucesso h1 { color:#166534; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/logo-cr.png" alt="CR Intermediações Imobiliárias"
+         onerror="this.style.display='none';document.getElementById('cr-fallback').style.display='block'" />
+    <div id="cr-fallback">CR</div>
+    <p class="marca">CR Intermediações Imobiliárias</p>
+  </header>
+
+  <div class="wrap">
+    <div id="form-area">
+      <h1>Autorização de Venda do Imóvel</h1>
+      <p class="sub">
+        Preencha seus dados e os do imóvel e leia o termo ao final. Leva cerca de 3 minutos.
+        A autorização vale por {PRAZO_DIAS} dias e pode ser cancelada a qualquer momento,
+        avisando com {AVISO_DIAS} dias de antecedência.
+      </p>
+
+      <div id="aviso" class="aviso"></div>
+
+      <form id="f">
+        <div class="card">
+          <h2 style="margin-top:0">Seus dados</h2>
+          <div class="campo"><label class="obr">Nome completo</label><input name="nome" required autocomplete="name" /></div>
+          <div class="linha">
+            <div><label class="obr">CPF</label><input name="cpf" required inputmode="numeric" placeholder="000.000.000-00" /></div>
+            <div><label>RG</label><input name="rg" /></div>
+          </div>
+          <div class="linha">
+            <div><label class="obr">Telefone / WhatsApp</label><input name="telefone" required inputmode="tel" placeholder="(11) 90000-0000" /></div>
+            <div><label>E-mail</label><input name="email" type="email" autocomplete="email" /></div>
+          </div>
+          <div class="linha">
+            <div><label>Nacionalidade</label><input name="nacionalidade" value="Brasileira" /></div>
+            <div><label>Estado civil</label>
+              <select name="estado_civil">
+                <option value="">Selecione…</option>
+                <option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option>
+                <option>Viúvo(a)</option><option>União estável</option>
+              </select>
+            </div>
+            <div><label>Profissão</label><input name="profissao" /></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-top:0">Seu endereço residencial</h2>
+          <div class="linha">
+            <div><label>CEP</label><input name="cep" inputmode="numeric" placeholder="00000-000" /></div>
+            <div style="grid-column:span 2"><label>Endereço</label><input name="endereco" /></div>
+            <div><label>Número</label><input name="numero" /></div>
+          </div>
+          <div class="linha">
+            <div><label>Complemento</label><input name="complemento" /></div>
+            <div><label>Bairro</label><input name="bairro" /></div>
+            <div><label>Cidade</label><input name="cidade" /></div>
+            <div style="max-width:90px"><label>UF</label><input name="uf" maxlength="2" /></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-top:0">O imóvel que será anunciado</h2>
+          <div class="linha">
+            <div style="grid-column:span 2"><label class="obr">Endereço do imóvel</label><input name="imovel_endereco" required /></div>
+            <div><label>Número</label><input name="imovel_numero" /></div>
+          </div>
+          <div class="linha">
+            <div><label>Bairro</label><input name="imovel_bairro" /></div>
+            <div><label class="obr">Cidade</label><input name="imovel_cidade" required /></div>
+            <div style="max-width:90px"><label>UF</label><input name="imovel_uf" maxlength="2" /></div>
+            <div><label>CEP</label><input name="imovel_cep" inputmode="numeric" /></div>
+          </div>
+          <div class="linha">
+            <div><label>Matrícula (se souber)</label><input name="imovel_matricula" /></div>
+            <div><label>Área aproximada (m²)</label><input name="imovel_area" inputmode="decimal" /></div>
+            <div><label>Valor pretendido (R$)</label><input name="valor_referencia" inputmode="decimal" placeholder="450.000,00" /></div>
+          </div>
+          <div class="campo"><label>Observações sobre o imóvel</label>
+            <textarea name="imovel_descricao" rows="3" placeholder="Ex: terreno plano, murado, com escritura, dois acessos pela rua lateral."></textarea></div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-top:0">Termo de autorização</h2>
+          <p style="font-size:.86rem;color:var(--cinza);margin:0 0 10px">
+            Entre você (PROPRIETÁRIO) e <strong>{INTERMEDIARIO}</strong> (INTERMEDIÁRIO). Leia com atenção.
+          </p>
+          <div class="termo">
+            {blocos.map((c) => (
+              <div><h3>{c.titulo}</h3><p style="margin:0">{c.texto}</p></div>
+            ))}
+          </div>
+
+          <div class="aceite">
+            <input type="checkbox" id="aceite" name="aceite" required />
+            <label for="aceite">
+              Li e concordo com o Termo de Autorização de Venda, Divulgação de Imagens e Negociação de Valor.
+              Declaro ser o(a) proprietário(a) ou legítimo(a) possuidor(a) do imóvel informado.
+            </label>
+          </div>
+
+          <div class="campo" style="margin-top:14px">
+            <label class="obr">Assine digitando seu nome completo</label>
+            <input name="assinatura_nome" required placeholder="Seu nome completo, como no documento" />
+          </div>
+
+          <p class="lgpd">
+            Seus dados serão usados apenas para intermediar a venda deste imóvel (LGPD, Lei 13.709/2018).
+            Para acessar, corrigir ou excluir seus dados, fale conosco pelo telefone (11) 99143-1437.
+            Registramos data, hora e endereço de internet do aceite como comprovante.
+          </p>
+
+          <button type="submit" id="btn">Aceitar e enviar autorização</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="sucesso">
+      <h1>Autorização recebida!</h1>
+      <p class="sub">
+        Obrigado. Recebemos seu cadastro e o aceite do termo.<br>
+        Nossa equipe entra em contato pelo telefone informado.
+      </p>
+      <p style="font-size:.86rem;color:var(--cinza)">
+        Guarde este comprovante: <strong id="protocolo"></strong>
+      </p>
+    </div>
+
+    <p class="rodape">
+      <strong>{INTERMEDIARIO}</strong><br>
+      Contato e atendimento: (11) 99143-1437<br>
+      <span style="font-size:.72rem">Termo versão {TERMO_VERSAO}</span>
+    </p>
+  </div>
+
+  <script>
+    const f = document.getElementById("f");
+    const aviso = document.getElementById("aviso");
+    function mostrar(txt, tipo) {
+      aviso.className = "aviso " + tipo;
+      aviso.textContent = txt;
+      aviso.style.display = "block";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    // máscaras leves: ajudam sem atrapalhar quem digita colado
+    const soNum = (s) => s.replace(/\D/g, "");
+    f.cpf.addEventListener("input", (e) => {
+      const v = soNum(e.target.value).slice(0, 11);
+      e.target.value = v.replace(/^(\d{3})(\d)/, "$1.$2").replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d{1,2})$/, ".$1-$2");
+    });
+    f.telefone.addEventListener("input", (e) => {
+      const v = soNum(e.target.value).slice(0, 11);
+      e.target.value = v.length > 10
+        ? v.replace(/^(\d{2})(\d{5})(\d{0,4}).*/, "($1) $2-$3")
+        : v.replace(/^(\d{2})(\d{0,4})(\d{0,4}).*/, "($1) $2-$3").replace(/[-\s]+$/, "");
+    });
+
+    f.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btn");
+      const body = Object.fromEntries(new FormData(f).entries());
+      body.aceite = document.getElementById("aceite").checked;
+      btn.disabled = true; btn.textContent = "Enviando…";
+      try {
+        const r = await fetch("/api/publico/autorizacao-venda", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "Não deu para enviar. Confira os campos e tente de novo.");
+        document.getElementById("protocolo").textContent = String(d.id || "").slice(0, 8).toUpperCase();
+        document.getElementById("form-area").style.display = "none";
+        document.getElementById("sucesso").style.display = "block";
+        window.scrollTo({ top: 0 });
+      } catch (err) {
+        btn.disabled = false; btn.textContent = "Aceitar e enviar autorização";
+        mostrar(err.message, "erro");
+      }
+    });
+  </script>
+</body>
+</html>

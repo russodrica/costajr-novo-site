@@ -27,7 +27,8 @@ const { data: vinc } = await db.from("negocios_imoveis").select("proprietario_id
 const porProp: Record<string, number> = {};
 for (const v of vinc || []) porProp[(v as any).proprietario_id] = (porProp[(v as any).proprietario_id] || 0) + 1;
 
-const LINK = "https://www.costajr.com.br/autorizacao-venda";
+// link curto e com a marca CR — é o que vai para o proprietário
+const LINK = "https://www.costajr.com.br/cr";
 const BADGE: Record<string, string> = { novo: "badge-yellow", aprovado: "badge-green", arquivado: "badge-gray" };
 const ROTULO: Record<string, string> = { novo: "Novo", aprovado: "Aprovado", arquivado: "Arquivado" };
 function fmtCpf(c: string | null) {
@@ -50,7 +51,8 @@ function fmtQuando(iso: string | null) {
       <div style="flex:1;min-width:260px">
         <strong style="font-size:.92rem">Link para enviar ao proprietário</strong>
         <p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-mid)">
-          Mande por WhatsApp ou e-mail. A pessoa preenche os dados, lê o termo e aceita —
+          Mande por WhatsApp ou e-mail. A página abre com a marca <strong>CR</strong>, sem
+          menção à Costa Júnior. A pessoa preenche os dados, lê o termo e aceita —
           o cadastro cai aqui na hora, e você recebe aviso por e-mail e no Telegram.
           Intermediária no termo: <strong>{INTERMEDIARIO}</strong>.
         </p>
@@ -87,15 +89,23 @@ function fmtQuando(iso: string | null) {
                 <td style="white-space:nowrap">{moedaBr(p.valor_referencia)}</td>
                 <td style="font-size:12px;white-space:nowrap">{fmtQuando(p.aceito_em)}<div style="color:var(--ink-light)">v{p.termo_versao}</div></td>
                 <td>
-                  <select class="filter-select" data-requer-edicao style="font-size:12px;padding:3px 6px"
-                          onchange={`mudarStatus('${p.id}', this.value, this)`}>
+                  <select class="filter-select js-status" data-requer-edicao data-id={p.id} style="font-size:12px;padding:3px 6px">
                     {["novo", "aprovado", "arquivado"].map((s) => (
                       <option value={s} selected={p.status === s}>{ROTULO[s]}</option>
                     ))}
                   </select>
                 </td>
                 <td style="text-align:right;white-space:nowrap">
-                  <button class="btn btn-secondary btn-sm" onclick={`verTermo(${JSON.stringify(JSON.stringify({ nome: p.nome, texto: p.termo_texto, ip: p.aceite_ip, assinatura: p.assinatura_nome, quando: fmtQuando(p.aceito_em) })).replace(/"/g, "&quot;")})`}>Ver termo</button>
+                  {/* Os dados vão em data-* e o clique é capturado por delegação.
+                      A primeira versão usava onclick="verTermo({...json...})" e não
+                      funcionava: o Astro escapa o atributo de novo, então as aspas
+                      já escapadas viravam &amp;quot; e o JS quebrava calado. */}
+                  <button type="button" class="btn btn-secondary btn-sm js-ver-termo"
+                          data-nome={p.nome}
+                          data-texto={p.termo_texto || ""}
+                          data-ip={p.aceite_ip || ""}
+                          data-assinatura={p.assinatura_nome || ""}
+                          data-quando={fmtQuando(p.aceito_em)}>Ver termo</button>
                 </td>
               </tr>
             ))}
@@ -138,8 +148,7 @@ function fmtQuando(iso: string | null) {
         () => { document.execCommand("copy"); },
       );
     }
-    function verTermo(json: string) {
-      const d = JSON.parse(json);
+    function verTermo(d: { nome: string; texto: string; ip: string; assinatura: string; quando: string }) {
       document.getElementById("termoTitulo")!.textContent = `Termo aceito — ${d.nome}`;
       document.getElementById("termoMeta")!.innerHTML =
         `Assinado eletronicamente por <strong>${String(d.assinatura || "").replace(/</g, "&lt;")}</strong> em ${d.quando}` +
@@ -166,6 +175,27 @@ function fmtQuando(iso: string | null) {
         document.getElementById("msg")!.innerHTML = `<div class="alert alert-error">${(await r.json().catch(() => ({}))).error || "Não deu para mudar."}</div>`;
       } else { el.style.borderColor = "#16A34A"; setTimeout(() => { el.style.borderColor = ""; }, 1200); }
     }
-    Object.assign(window, { copiarLink, verTermo, fecharTermo, imprimirTermo, mudarStatus });
+    // delegação: pega o clique mesmo se a linha for redesenhada depois
+    document.addEventListener("click", (ev) => {
+      const b = (ev.target as HTMLElement)?.closest?.(".js-ver-termo") as HTMLElement | null;
+      if (!b) return;
+      verTermo({
+        nome: b.dataset.nome || "",
+        texto: b.dataset.texto || "",
+        ip: b.dataset.ip || "",
+        assinatura: b.dataset.assinatura || "",
+        quando: b.dataset.quando || "",
+      });
+    });
+    document.addEventListener("change", (ev) => {
+      const s = (ev.target as HTMLElement)?.closest?.(".js-status") as HTMLSelectElement | null;
+      if (!s) return;
+      mudarStatus(s.dataset.id || "", s.value, s);
+    });
+    document.getElementById("modalTermo")?.addEventListener("click", (ev) => {
+      if (ev.target === ev.currentTarget) fecharTermo();
+    });
+
+    Object.assign(window, { copiarLink, fecharTermo, imprimirTermo });
   </script>
 </Admin>
