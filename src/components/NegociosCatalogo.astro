@@ -14,11 +14,12 @@ export interface Props {
   anexos: any[];
   oportunidades: any[];
   conversas: any[];
+  proprietarios: any[];
   usuario: string;
   filtroStatus: string;
   busca: string;
 }
-const { tipo, itens, anexos, oportunidades, conversas, usuario, filtroStatus, busca } = Astro.props;
+const { tipo, itens, anexos, oportunidades, conversas, proprietarios, usuario, filtroStatus, busca } = Astro.props;
 
 const tela = TIPO_TELA[tipo];
 const statusLista = STATUS_ITEM[tipo];
@@ -238,8 +239,19 @@ function resumoLocal(it: any): string {
       {!ehBusca && (
         <>
           <div class="neg-sec">Captação</div>
+          <div class="form-group"><label>Proprietário com autorização assinada</label>
+            <select name="proprietario_id">
+              <option value="">— nenhum / preencher à mão abaixo —</option>
+              {proprietarios.map((p: any) => (
+                <option value={p.id}>{p.nome}{p.cpf ? ` — CPF ${String(p.cpf).replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4")}` : ""}</option>
+              ))}
+            </select>
+            <span style="font-size:11.5px;color:var(--ink-light)">
+              Aparecem aqui os proprietários que aceitaram o Termo de Autorização de Venda pelo link público.
+            </span>
+          </div>
           <div class="form-row">
-            <div class="form-group"><label>Proprietário</label><input name="proprietario_nome" /></div>
+            <div class="form-group"><label>Proprietário (nome livre)</label><input name="proprietario_nome" /></div>
             <div class="form-group"><label>Contato do proprietário</label><input name="proprietario_contato" /></div>
             <div class="form-group"><label>Origem</label><input name="origem" placeholder="Indicação, prospecção, site…" /></div>
           </div>
@@ -387,6 +399,7 @@ function resumoLocal(it: any): string {
 
 <script type="application/json" id="negDados" set:html={JSON.stringify({
   tipo, itens, anexos, oportunidades, conversas, usuario,
+  proprietarios: proprietarios.map((p: any) => ({ id: p.id, nome: p.nome, telefone: p.telefone, email: p.email })),
   statusLista, funil: FUNIL, tiposAnexo: TIPOS_ANEXO, ehBusca,
 })}></script>
 
@@ -470,7 +483,7 @@ function resumoLocal(it: any): string {
 </style>
 
 <script>
-  type Dados = { tipo: string; itens: any[]; anexos: any[]; oportunidades: any[]; conversas: any[]; usuario: string; statusLista: any[]; funil: any[]; tiposAnexo: any[]; ehBusca: boolean };
+  type Dados = { tipo: string; itens: any[]; anexos: any[]; oportunidades: any[]; conversas: any[]; usuario: string; proprietarios: any[]; statusLista: any[]; funil: any[]; tiposAnexo: any[]; ehBusca: boolean };
   const D: Dados = JSON.parse(document.getElementById("negDados")!.textContent || "{}");
   const esc = (s: any) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
   const moeda = (v: any) => (v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }));
@@ -609,7 +622,9 @@ function resumoLocal(it: any): string {
         + linha("Zoneamento", it.zoneamento) + linha("Topografia", it.topografia)
         + linha("Incorporadora", it.incorporadora) + linha("Previsão de entrega", it.previsao_entrega ? dataBr(it.previsao_entrega) : "")
         + linha("Unidades", it.unidades_total != null ? `${it.unidades_disponiveis ?? "—"} de ${it.unidades_total} disponíveis` : "")
-        + linha("Proprietário", it.proprietario_nome) + linha("Contato do proprietário", it.proprietario_contato);
+        + linha("Proprietário", (D.proprietarios.find((p: any) => p.id === it.proprietario_id)?.nome) || it.proprietario_nome)
+        + linha("Contato do proprietário", (D.proprietarios.find((p: any) => p.id === it.proprietario_id)?.telefone) || it.proprietario_contato)
+        + (it.proprietario_id ? linha("Autorização de venda", "assinada — ver em Novos Negócios › Proprietários") : "");
     }
     campos += linha("Origem", it.origem) + linha("Responsável", it.responsavel) + linha("Cadastrado em", dataBr(it.created_at));
 

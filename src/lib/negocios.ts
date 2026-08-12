@@ -120,7 +120,7 @@ export const CAMPOS_IMOVEL = [
   "matricula", "inscricao_municipal", "zoneamento", "topografia",
   "incorporadora", "previsao_entrega", "unidades_total", "unidades_disponiveis",
   "cliente_nome", "cliente_contato", "perfil_procurado", "faixa_valor_min", "faixa_valor_max",
-  "proprietario_nome", "proprietario_contato", "origem",
+  "proprietario_nome", "proprietario_contato", "origem", "proprietario_id",
   "responsavel", "observacoes", "ativo",
 ] as const;
 

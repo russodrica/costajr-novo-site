@@ -1,0 +1,171 @@
+---
+// Proprietários que aceitaram o Termo de Autorização de Venda pelo link público.
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+import { TERMO_VERSAO, INTERMEDIARIO, moedaBr, enderecoLinha } from "../../../lib/termoVenda";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const filtro = Astro.url.searchParams.get("status") || "todos";
+const db = supabaseAdmin();
+let q = db.from("negocios_proprietarios").select("*").order("created_at", { ascending: false }).limit(1000);
+if (filtro !== "todos") q = q.eq("status", filtro);
+const { data: props } = await q;
+const lista = props || [];
+
+const { data: todos } = await db.from("negocios_proprietarios").select("status");
+const cont: Record<string, number> = { novo: 0, aprovado: 0, arquivado: 0 };
+for (const p of todos || []) cont[p.status] = (cont[p.status] || 0) + 1;
+const total = (todos || []).length;
+
+// quantos imóveis já estão ligados a cada proprietário
+const { data: vinc } = await db.from("negocios_imoveis").select("proprietario_id").not("proprietario_id", "is", null);
+const porProp: Record<string, number> = {};
+for (const v of vinc || []) porProp[(v as any).proprietario_id] = (porProp[(v as any).proprietario_id] || 0) + 1;
+
+const LINK = "https://www.costajr.com.br/autorizacao-venda";
+const BADGE: Record<string, string> = { novo: "badge-yellow", aprovado: "badge-green", arquivado: "badge-gray" };
+const ROTULO: Record<string, string> = { novo: "Novo", aprovado: "Aprovado", arquivado: "Arquivado" };
+function fmtCpf(c: string | null) {
+  const d = String(c || "").replace(/\D/g, "");
+  return d.length === 11 ? d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4") : (c || "—");
+}
+function fmtQuando(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+}
+---
+<Admin title="Proprietários — Novos Negócios" current="negocios-proprietarios">
+  <div class="toolbar">
+    <span class="toolbar-title">Proprietários <span style="font-weight:500;color:var(--ink-light)">({total})</span></span>
+    <button class="btn btn-primary" onclick="copiarLink()">🔗 Copiar link do formulário</button>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;background:var(--gray-50)">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:260px">
+        <strong style="font-size:.92rem">Link para enviar ao proprietário</strong>
+        <p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-mid)">
+          Mande por WhatsApp ou e-mail. A pessoa preenche os dados, lê o termo e aceita —
+          o cadastro cai aqui na hora, e você recebe aviso por e-mail e no Telegram.
+          Intermediária no termo: <strong>{INTERMEDIARIO}</strong>.
+        </p>
+      </div>
+      <input id="linkPub" class="search-input" readonly value={LINK} style="min-width:320px;flex:1" onclick="this.select()" />
+      <a class="btn btn-secondary" href={LINK} target="_blank" rel="noopener">Abrir</a>
+    </div>
+  </div>
+
+  <div class="pills" style="margin-bottom:16px">
+    <a class={`pill ${filtro === "todos" ? "active" : ""}`} href="?status=todos">Todos <span class="count">{total}</span></a>
+    <a class={`pill ${filtro === "novo" ? "active" : ""}`} href="?status=novo">Novos <span class="count">{cont.novo || 0}</span></a>
+    <a class={`pill ${filtro === "aprovado" ? "active" : ""}`} href="?status=aprovado">Aprovados <span class="count">{cont.aprovado || 0}</span></a>
+    <a class={`pill ${filtro === "arquivado" ? "active" : ""}`} href="?status=arquivado">Arquivados <span class="count">{cont.arquivado || 0}</span></a>
+  </div>
+
+  <div id="msg"></div>
+
+  {lista.length ? (
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Proprietário</th><th>Contato</th><th>Imóvel</th><th>Valor</th><th>Aceite</th><th>Situação</th><th></th></tr></thead>
+          <tbody>
+            {lista.map((p: any) => (
+              <tr>
+                <td>
+                  <strong>{p.nome}</strong>
+                  <div style="font-size:11.5px;color:var(--ink-light)">CPF {fmtCpf(p.cpf)}{p.rg ? ` · RG ${p.rg}` : ""}</div>
+                  {porProp[p.id] ? <span class="badge badge-blue" style="margin-top:3px">{porProp[p.id]} imóvel(is) ligado(s)</span> : null}
+                </td>
+                <td style="font-size:12.5px">{p.telefone || "—"}{p.email ? <div style="color:var(--ink-light)">{p.email}</div> : null}</td>
+                <td style="font-size:12.5px;max-width:260px">{enderecoLinha(p, "imovel_") || "—"}</td>
+                <td style="white-space:nowrap">{moedaBr(p.valor_referencia)}</td>
+                <td style="font-size:12px;white-space:nowrap">{fmtQuando(p.aceito_em)}<div style="color:var(--ink-light)">v{p.termo_versao}</div></td>
+                <td>
+                  <select class="filter-select" data-requer-edicao style="font-size:12px;padding:3px 6px"
+                          onchange={`mudarStatus('${p.id}', this.value, this)`}>
+                    {["novo", "aprovado", "arquivado"].map((s) => (
+                      <option value={s} selected={p.status === s}>{ROTULO[s]}</option>
+                    ))}
+                  </select>
+                </td>
+                <td style="text-align:right;white-space:nowrap">
+                  <button class="btn btn-secondary btn-sm" onclick={`verTermo(${JSON.stringify(JSON.stringify({ nome: p.nome, texto: p.termo_texto, ip: p.aceite_ip, assinatura: p.assinatura_nome, quando: fmtQuando(p.aceito_em) })).replace(/"/g, "&quot;")})`}>Ver termo</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  ) : (
+    <div class="card">
+      <div class="empty-state">
+        <strong>Nenhum proprietário cadastrado ainda</strong>
+        <p>Copie o link acima e mande para o proprietário. Assim que ele aceitar o termo, aparece aqui.</p>
+      </div>
+    </div>
+  )}
+
+  <div class="modal-overlay" id="modalTermo">
+    <div class="modal-box" style="max-width:760px">
+      <div class="modal-header">
+        <h2 id="termoTitulo">Termo aceito</h2>
+        <button class="modal-close" type="button" onclick="fecharTermo()" aria-label="Fechar">✕</button>
+      </div>
+      <div style="padding:16px 24px 24px">
+        <div id="termoMeta" style="font-size:12.5px;color:var(--ink-mid);margin-bottom:12px"></div>
+        <pre id="termoTexto" style="white-space:pre-wrap;font-family:'Open Sans',sans-serif;font-size:13px;line-height:1.6;background:var(--gray-50);border:1px solid var(--border);border-radius:10px;padding:16px;max-height:52vh;overflow:auto"></pre>
+        <div class="modal-footer" style="padding:16px 0 0">
+          <button class="btn btn-secondary" type="button" onclick="imprimirTermo()">Imprimir / salvar PDF</button>
+          <button class="btn btn-primary" type="button" onclick="fecharTermo()">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function copiarLink() {
+      const el = document.getElementById("linkPub") as HTMLInputElement;
+      el.select();
+      navigator.clipboard?.writeText(el.value).then(
+        () => { document.getElementById("msg")!.innerHTML = `<div class="alert alert-success">Link copiado. É só colar no WhatsApp ou no e-mail.</div>`; },
+        () => { document.execCommand("copy"); },
+      );
+    }
+    function verTermo(json: string) {
+      const d = JSON.parse(json);
+      document.getElementById("termoTitulo")!.textContent = `Termo aceito — ${d.nome}`;
+      document.getElementById("termoMeta")!.innerHTML =
+        `Assinado eletronicamente por <strong>${String(d.assinatura || "").replace(/</g, "&lt;")}</strong> em ${d.quando}` +
+        (d.ip ? ` · IP ${String(d.ip).replace(/</g, "&lt;")}` : "");
+      document.getElementById("termoTexto")!.textContent = d.texto || "(sem texto registrado)";
+      document.getElementById("modalTermo")!.classList.add("open");
+    }
+    function fecharTermo() { document.getElementById("modalTermo")!.classList.remove("open"); }
+    function imprimirTermo() {
+      const t = document.getElementById("termoTexto")!.textContent || "";
+      const meta = document.getElementById("termoMeta")!.textContent || "";
+      const w = window.open("", "_blank");
+      if (!w) return;
+      w.document.write(`<pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;padding:24px">${t.replace(/</g, "&lt;")}\n\n${meta.replace(/</g, "&lt;")}</pre>`);
+      w.document.close(); w.focus(); w.print();
+    }
+    async function mudarStatus(id: string, status: string, el: HTMLSelectElement) {
+      el.disabled = true;
+      const r = await fetch(`/api/admin/negocios/proprietarios/${id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }),
+      });
+      el.disabled = false;
+      if (!r.ok) {
+        document.getElementById("msg")!.innerHTML = `<div class="alert alert-error">${(await r.json().catch(() => ({}))).error || "Não deu para mudar."}</div>`;
+      } else { el.style.borderColor = "#16A34A"; setTimeout(() => { el.style.borderColor = ""; }, 1200); }
+    }
+    Object.assign(window, { copiarLink, verTermo, fecharTermo, imprimirTermo, mudarStatus });
+  </script>
+</Admin>

@@ -3,6 +3,24 @@
 > **Memoria consolidada em 11/05/2026.** Esta e a fonte de verdade
 > do projeto. Atualize aqui quando algo importante mudar.
 
+## Convencao de arquivos .cmd na pasta local (pedido da Adriana, 12/08/2026)
+
+Todo atalho `.cmd` DESCARTAVEL - os que servem para publicar UMA correcao e
+depois nao valem mais - tem de comecar com **`TEMP-`**. Ex.: `TEMP-PUBLICAR.cmd`,
+`TEMP-ORGANIZAR-PASTA.cmd`.
+
+Assim a Adriana bate o olho e sabe o que pode apagar sem medo. Sem o prefixo,
+ela nao tem como distinguir o descartavel do que faz parte do projeto - e a
+pasta ja acumulou 24 `PUBLICAR-*.cmd` mortos por causa disso.
+
+**NUNCA** renomeie nem apague estes, que sao versionados e fazem parte do repo:
+`PUBLICAR.cmd`, `IMPORTAR-USUARIOS.cmd`, `RESETAR-MINHA-SENHA.cmd`,
+`COMERCIAL-PUXAR.cmd`. Tambem ficam (uso recorrente, nao versionados):
+`1-BAIXAR-DO-GITHUB.cmd`, `ATIVAR-PONTE-AUTOMATICA.cmd`,
+`DESATIVAR-PONTE-AUTOMATICA.cmd`.
+
+---
+
 ## Status do projeto
 
 - **Site oficial em producao:** `costajr.com.br`

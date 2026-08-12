@@ -26,6 +26,8 @@ const { data: oportunidades } = ids.length
 const { data: conversas } = ids.length
   ? await db.from("negocios_conversas").select("*").in("imovel_id", ids).order("data", { ascending: false })
   : { data: [] as any[] };
+const { data: proprietarios } = await db.from("negocios_proprietarios")
+  .select("id, nome, cpf, telefone, email").neq("status", "arquivado").order("nome");
 // nome de quem está logado — só para MOSTRAR no formulário; quem carimba o autor
 // de verdade é o servidor, ao gravar a anotação
 let usuario = claims.email || "";
@@ -35,5 +37,5 @@ try {
 } catch { /* fica o e-mail */ }
 ---
 <Admin title="Venda de Empreendimentos" current="negocios-empreendimentos">
-  <NegociosCatalogo tipo={TIPO} itens={itens || []} anexos={anexos || []} oportunidades={oportunidades || []} conversas={conversas || []} usuario={usuario} filtroStatus={filtroStatus} busca={busca} />
+  <NegociosCatalogo tipo={TIPO} itens={itens || []} anexos={anexos || []} oportunidades={oportunidades || []} conversas={conversas || []} proprietarios={proprietarios || []} usuario={usuario} filtroStatus={filtroStatus} busca={busca} />
 </Admin>
