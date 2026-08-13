@@ -68,17 +68,19 @@ const ANO = new Date().getFullYear();
     .centro { text-align:center; }
 
     /* ── cabeçalho ── */
-    .topo { position:sticky; top:0; z-index:20; background:rgba(251,249,247,.86);
-            backdrop-filter:blur(10px); border-bottom:1px solid var(--linha); }
-    .topo .wrap { display:flex; align-items:center; gap:16px; height:70px; }
-    .topo .marca { display:flex; align-items:center; gap:12px; text-decoration:none; }
-    .topo .marca img { width:42px; height:42px; }
-    .topo .marca b { font-family:var(--serif); font-size:1.16rem; font-weight:600; letter-spacing:.01em; }
-    .topo .marca span { display:block; font-size:.58rem; letter-spacing:.2em; text-transform:uppercase; color:var(--tinta-cl); }
+    .topo { position:sticky; top:0; z-index:30; background:rgba(255,254,252,.94);
+            backdrop-filter:blur(12px); border-bottom:1px solid var(--linha);
+            box-shadow:0 1px 0 rgba(168,132,42,.16), 0 6px 22px rgba(30,24,38,.05); }
+    .topo .wrap { display:flex; align-items:center; gap:16px; height:78px; }
+    .topo .marca { display:flex; align-items:center; gap:13px; text-decoration:none; }
+    .topo .marca img { width:52px; height:52px; }
+    .topo .marca b { font-family:var(--serif); font-size:1.3rem; font-weight:600; letter-spacing:.02em; line-height:1.1; }
+    .topo .marca span { display:block; font-size:.56rem; letter-spacing:.22em; text-transform:uppercase;
+                        color:var(--tinta-cl); font-family:var(--sans); font-weight:500; }
     .navlinks { margin-left:auto; display:flex; gap:26px; align-items:center; font-size:.88rem; }
     .navlinks a { text-decoration:none; color:var(--tinta-md); }
     .navlinks a:hover { color:var(--ouro); }
-    @media (max-width:820px) { .navlinks { display:none; } }
+    @media (max-width:900px) { .navlinks { display:none; } .topo .marca img { width:44px; height:44px; } }
 
     /* ── botões ── */
     .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px;
@@ -126,11 +128,10 @@ const ANO = new Date().getFullYear();
   </style>
 </head>
 <body>
-  {!capa && (
-    <header class="topo">
+  <header class="topo">
       <div class="wrap">
         <a class="marca" href="/">
-          <img src="/cr-monograma.svg" alt="" />
+          <img src="/logo-cr-transp.png" alt="" />
           <b>CR<span>Intermediações Imobiliárias</span></b>
         </a>
         <nav class="navlinks">
@@ -141,8 +142,7 @@ const ANO = new Date().getFullYear();
           <a class="btn btn-linha" style="padding:9px 18px" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">WhatsApp</a>
         </nav>
       </div>
-    </header>
-  )}
+  </header>
 
   <slot />
 
