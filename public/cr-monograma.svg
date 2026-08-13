@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="CR Intermediações Imobiliárias">
+  <defs>
+    <linearGradient id="ouro" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#E8CE84"/>
+      <stop offset="38%"  stop-color="#B8912F"/>
+      <stop offset="62%"  stop-color="#D9B95F"/>
+      <stop offset="100%" stop-color="#8F6F1F"/>
+    </linearGradient>
+  </defs>
+  <!-- anel duplo: fino por fora, capilar por dentro -->
+  <circle cx="100" cy="100" r="92" fill="none" stroke="url(#ouro)" stroke-width="2.4"/>
+  <circle cx="100" cy="100" r="84" fill="none" stroke="url(#ouro)" stroke-width=".7" opacity=".55"/>
+  <!-- marcas nos quatro pontos cardeais, herdadas do emblema original -->
+  <g fill="url(#ouro)">
+    <circle cx="100" cy="8"  r="2.6"/><circle cx="100" cy="192" r="2.6"/>
+    <circle cx="8" cy="100"  r="2.6"/><circle cx="192" cy="100" r="2.6"/>
+  </g>
+  <!-- monograma -->
+  <text x="100" y="100" text-anchor="middle" dominant-baseline="central"
+        font-family="'Cormorant Garamond',Georgia,'Times New Roman',serif"
+        font-size="96" font-weight="500" letter-spacing="2" fill="url(#ouro)">CR</text>
+</svg>

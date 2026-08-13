@@ -112,7 +112,7 @@ const FAQ = [
     </div>
 
     <div class="capa-conteudo">
-      <img class="medalha" src="/logo-cr-transp.png" alt="CR Intermediações Imobiliárias" />
+      <img class="medalha" src="/cr-monograma.svg" alt="CR Intermediações Imobiliárias" />
       <p class="rotulo capa-rotulo">Originação e estruturação de negócios imobiliários</p>
       <h1>Do terreno ao empreendimento,<br /><em>o negócio inteiro.</em></h1>
       <p class="lead capa-lead">
@@ -301,7 +301,11 @@ const FAQ = [
 
     .capa-conteudo { position:relative; z-index:1; max-width:880px; color:#fff; }
     .capa-foto.sem-foto ~ .capa-conteudo { color:var(--tinta); }
-    .medalha { width:132px; height:132px; filter:drop-shadow(0 16px 40px rgba(0,0,0,.45)); }
+    /* O emblema 3D é imagem de capa, não logotipo: em 130px ele vira um borrão
+       rosado. Quem trabalha em tamanho pequeno é o monograma vetorial. */
+    .medalha { width:124px; height:124px; }
+    /* a foto da capa JÁ traz o emblema composto — não repetir a marca em cima */
+    .capa-foto:not(.sem-foto) ~ .capa-conteudo .medalha { display:none; }
     .capa-rotulo { color:#E6C87C !important; margin-top:20px; }
     .capa h1 { font-size:clamp(2.3rem,5.4vw,3.9rem); text-shadow:0 2px 24px rgba(0,0,0,.35); }
     .capa h1 em { font-style:normal; color:#E6C87C; }
@@ -318,6 +322,13 @@ const FAQ = [
                        text-transform:uppercase; display:flex; align-items:center; gap:8px; }
     .capa-selos span::before { content:""; width:5px; height:5px; border-radius:50%; background:#E6C87C; }
     .capa-foto.sem-foto ~ .capa-selos span { color:var(--tinta-cl); }
+    /* sem foto o fundo fica claro: o botão de vidro ficava branco no branco */
+    .capa-foto.sem-foto ~ .capa-conteudo .btn-vidro { background:var(--papel); color:var(--tinta);
+      border-color:var(--linha); backdrop-filter:none; }
+    .capa-foto.sem-foto ~ .capa-conteudo .btn-vidro:hover { border-color:var(--ouro-cl); color:var(--ouro); }
+    .capa-foto.sem-foto ~ .capa-conteudo .capa-rotulo { color:var(--ouro) !important; }
+    .capa-foto.sem-foto ~ .capa-conteudo h1 { text-shadow:none; }
+    .capa-foto.sem-foto ~ .capa-conteudo h1 em { color:var(--ouro); }
 
     /* ── três portas (sobem por cima da capa) ── */
     .portas { padding:0; margin-top:-72px; position:relative; z-index:2; }
