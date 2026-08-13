@@ -1,13 +1,14 @@
 ---
-// Home da CR — servida em crintermediacao.com.br (o middleware reescreve "/").
+// Home da CR — crintermediacao.com.br (o middleware reescreve "/").
 //
-// Três portas de entrada, que é como o negócio funciona de verdade:
-//   1. quem TEM imóvel para vender      → /cr        (autorização de venda)
-//   2. quem QUER INVESTIR               → /investidor
-//   3. quem PROCURA imóvel              → /procuro
+// POSICIONAMENTO (definido com a Adriana em 13/08/2026): a CR não é uma
+// imobiliária de apartamento. Ela ORIGINA E ESTRUTURA NEGÓCIOS imobiliários —
+// terrenos, glebas, empreendimentos inteiros, incorporação, permuta e ativos de
+// renda — e conecta isso a proprietários, investidores e quem procura ativo.
+// O texto todo desta página trabalha esse recado.
 //
-// A faixa "Negócios realizados" é automática: puxa os imóveis marcados como
-// VENDIDO no módulo Novos Negócios. Sem nenhum vendido, a seção não aparece.
+// A capa usa /hero-cr.jpg (foto aérea com o logo). Se o arquivo não existir,
+// entra a arte geométrica em SVG — a página nunca fica quebrada.
 import CR from "../layouts/CR.astro";
 import { supabaseAdmin } from "../lib/supabase";
 import { BUCKET_NEGOCIOS, storageNegocios } from "../lib/negocios";
@@ -25,7 +26,6 @@ try {
     .in("tipo", ["terreno", "empreendimento"])
     .eq("status", "vendido").eq("ativo", true)
     .order("updated_at", { ascending: false }).limit(8);
-
   const capas = (itens || []).map((i: any) => i.capa_anexo_id).filter(Boolean);
   const caminho: Record<string, string> = {};
   if (capas.length) {
@@ -37,7 +37,7 @@ try {
     if (!path) continue;
     const { data: url } = await storageNegocios().storage.from(BUCKET_NEGOCIOS).createSignedUrl(path, 3600);
     if (!url?.signedUrl) continue;
-    // só bairro e cidade — endereço exato de imóvel vendido não vai para a rua
+    // só bairro e cidade — endereço exato de negócio fechado não vai para a rua
     vendidos.push({
       titulo: i.titulo,
       local: [i.bairro, [i.cidade, i.uf].filter(Boolean).join("/")].filter(Boolean).join(" — "),
@@ -47,100 +47,157 @@ try {
   }
 } catch { vendidos = []; }
 
-const LINHAS = [
-  {
-    n: "01", titulo: "Tenho um imóvel para vender",
-    texto: "Terreno, área ou empreendimento. Avaliamos, organizamos a documentação, anunciamos e conduzimos a negociação até a escritura. Sem prazo de fidelidade: a autorização vale até você pedir o cancelamento.",
-    cta: "Cadastrar meu imóvel", href: "/cr",
-  },
-  {
-    n: "02", titulo: "Quero investir em imóveis",
-    texto: "Diga seu perfil — tipo de operação, região, faixa de investimento e prazo — e passamos a te apresentar as oportunidades que batem com ele, muitas antes de irem ao mercado.",
-    cta: "Quero receber oportunidades", href: "/investidor",
-  },
-  {
-    n: "03", titulo: "Procuro um imóvel",
-    texto: "Você descreve o que precisa e nós procuramos, filtramos e apresentamos só o que faz sentido — inclusive imóveis que ainda não estão anunciados em lugar nenhum.",
-    cta: "Descrever o que procuro", href: "/procuro",
-  },
+// ── ícones (SVG inline: sem biblioteca, sem requisição extra) ──
+const IC: Record<string, string> = {
+  terreno: `<path d="M3 20h18M6 20V9l6-4 6 4v11M9 20v-5h6v5"/>`,
+  gleba: `<path d="M2 18l6-9 5 6 3-3 6 6M2 18h20"/><circle cx="7" cy="6" r="2"/>`,
+  torre: `<path d="M6 21V4a1 1 0 011-1h5a1 1 0 011 1v17M13 21V9h4a1 1 0 011 1v11M4 21h16"/><path d="M9 7h1M9 11h1M9 15h1M16 13h1M16 17h1"/>`,
+  parceria: `<path d="M12 20V9m0 0L8 5m4 4l4-4"/><circle cx="6" cy="20" r="2"/><circle cx="18" cy="20" r="2"/><path d="M8 20h8"/>`,
+  permuta: `<path d="M4 8h13l-3-3M20 16H7l3 3"/>`,
+  renda: `<path d="M4 19V7l8-4 8 4v12M4 19h16M9 19v-5h6v5"/><path d="M12 9v3m-1.5-1.5h3"/>`,
+  lupa: `<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.3-4.3"/>`,
+  doc: `<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>`,
+  alvo: `<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>`,
+  aperto: `<path d="M8 12l3 3 5-5"/><circle cx="12" cy="12" r="9"/>`,
+};
+
+const NEGOCIOS = [
+  { ic: "terreno", t: "Terrenos urbanos", d: "Lotes e esquinas com potencial construtivo aferido: zoneamento, coeficiente e recuos conferidos antes de qualquer proposta." },
+  { ic: "gleba", t: "Glebas e grandes áreas", d: "Áreas para loteamento, industrial ou logística, com leitura de acesso, topografia, licenciamento e vocação real do terreno." },
+  { ic: "torre", t: "Empreendimentos", d: "Empreendimentos inteiros ou remanescentes de estoque — residenciais, comerciais e galpões — com o dossiê completo para decidir." },
+  { ic: "parceria", t: "Incorporação e parcerias", d: "Estruturamos a operação entre quem tem a terra e quem tem capacidade de construir, incluindo parceria e sociedade em conta de participação." },
+  { ic: "permuta", t: "Permuta e dação", d: "Nem todo negócio se resolve com dinheiro. Montamos permuta física, financeira e dação em pagamento quando é isso que destrava." },
+  { ic: "renda", t: "Ativos de renda", d: "Imóveis locados e operações built to suit para quem busca previsibilidade de fluxo em vez de ganho de capital." },
 ];
 
-const PASSOS = [
-  ["Conversa inicial", "Entendemos o imóvel ou o objetivo. Sem compromisso e sem custo."],
-  ["Análise e documentação", "Matrícula, IPTU, certidões e zoneamento conferidos antes de qualquer anúncio."],
-  ["Apresentação ao mercado certo", "O imóvel vai para quem tem perfil de compra, não para uma vitrine genérica."],
-  ["Negociação e escritura", "Conduzimos as propostas. Nenhum valor é fechado sem a sua aprovação."],
+const METODO = [
+  { ic: "lupa", t: "Originação", d: "Boa parte do que passa por aqui nunca chega a ser anunciado. Trabalhamos a relação direta com proprietários e incorporadores." },
+  { ic: "doc", t: "Diligência antes do preço", d: "Matrícula, IPTU, certidões, zoneamento e passivos conferidos primeiro. Negócio que trava na documentação não vira negócio." },
+  { ic: "alvo", t: "Público certo", d: "O ativo é apresentado a quem tem perfil e capacidade para ele — não jogado numa vitrine para atrair curioso." },
+  { ic: "aperto", t: "Condução até a escritura", d: "Propostas, contraproposta, contrato e cartório. Nenhum valor é fechado sem a aprovação de quem é dono." },
+];
+
+const FAQ = [
+  ["Vocês só trabalham com imóvel grande?", "Não. O que define não é o tamanho, é a clareza do negócio. Atendemos desde um terreno urbano até um empreendimento inteiro — o que precisa estar claro é o objetivo de quem vende e a documentação do ativo."],
+  ["Quanto custa para o proprietário?", "Nada para cadastrar, avaliar ou anunciar. A remuneração é comissão sobre a venda, combinada por escrito antes de qualquer divulgação, e só existe se o negócio se concretizar."],
+  ["Preciso dar exclusividade?", "A autorização de venda não tem prazo de fidelidade: vale até você pedir o cancelamento, com aviso de cinco dias para tirarmos os anúncios do ar e encerrarmos tratativas em andamento."],
+  ["Sou investidor. O que recebo?", "Oportunidades filtradas pelo perfil que você cadastrar — tipo de operação, região, faixa de investimento e prazo. Sem disparo em massa: se não bate com o que você pediu, você não recebe."],
 ];
 ---
-<CR titulo="CR Intermediações Imobiliárias — terrenos, empreendimentos e investimento imobiliário" capa={true}>
+<CR titulo="CR Intermediações Imobiliárias — originação e estruturação de negócios imobiliários" capa={true}
+    descricao="Terrenos, glebas, empreendimentos, incorporação, permuta e ativos de renda. Originamos, conferimos a documentação e estruturamos o negócio até a escritura.">
 
   <!-- ── capa ───────────────────────────────────────────────────────────── -->
   <header class="capa">
-    <div class="capa-arte" aria-hidden="true">
-      <!-- desenho de lotes: geometria original em SVG, nada de foto de banco de
-           imagens. Fica leve, nítido em qualquer tela e é nosso. -->
-      <svg viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#F7EFE0" /><stop offset="100%" stop-color="#EFE9F2" />
-          </linearGradient>
-          <pattern id="grade" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M40 0H0V40" fill="none" stroke="#D9B95F" stroke-width=".5" opacity=".22" />
-          </pattern>
-        </defs>
-        <rect width="1200" height="700" fill="url(#g1)" />
-        <rect width="1200" height="700" fill="url(#grade)" />
-        <g fill="none" stroke="#A8842A" stroke-width="1.1" opacity=".3">
-          <path d="M120 620 L300 470 L560 520 L720 400 L980 440 L1120 330" />
-          <path d="M60 540 L260 400 L520 450 L700 320 L960 360 L1160 250" />
-          <path d="M300 470 L260 400 M560 520 L520 450 M720 400 L700 320 M980 440 L960 360" />
-        </g>
-        <g fill="none" stroke="#A8842A" opacity=".5">
-          <rect x="150" y="150" width="150" height="110" stroke-width=".9" />
-          <rect x="310" y="150" width="110" height="110" stroke-width=".9" />
-          <rect x="150" y="270" width="270" height="90" stroke-width=".9" />
-          <rect x="800" y="180" width="130" height="130" stroke-width=".9" />
-          <rect x="940" y="180" width="180" height="130" stroke-width=".9" />
-          <rect x="800" y="320" width="320" height="80" stroke-width=".9" />
-        </g>
-        <g fill="#A8842A" opacity=".55">
-          <circle cx="150" cy="150" r="3" /><circle cx="420" cy="360" r="3" />
-          <circle cx="1120" cy="180" r="3" /><circle cx="800" cy="400" r="3" />
-        </g>
-      </svg>
+    <div class="capa-foto" aria-hidden="true">
+      <img src="/hero-cr.jpg" alt="" fetchpriority="high"
+           onerror="this.closest('.capa-foto').classList.add('sem-foto')" />
+      <div class="capa-arte">
+        <svg viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#F7EFE0" /><stop offset="100%" stop-color="#EFE9F2" />
+            </linearGradient>
+            <pattern id="grade" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M40 0H0V40" fill="none" stroke="#D9B95F" stroke-width=".5" opacity=".22" />
+            </pattern>
+          </defs>
+          <rect width="1200" height="700" fill="url(#g1)" /><rect width="1200" height="700" fill="url(#grade)" />
+          <g fill="none" stroke="#A8842A" stroke-width="1.1" opacity=".3">
+            <path d="M120 620 L300 470 L560 520 L720 400 L980 440 L1120 330" />
+            <path d="M60 540 L260 400 L520 450 L700 320 L960 360 L1160 250" />
+          </g>
+        </svg>
+      </div>
     </div>
 
     <div class="capa-conteudo">
       <img class="medalha" src="/logo-cr-transp.png" alt="CR Intermediações Imobiliárias" />
-      <p class="rotulo" style="margin-top:22px">CR Intermediações Imobiliárias</p>
-      <h1>O imóvel certo<br />encontra quem sabe o que procura.</h1>
-      <p class="lead" style="max-width:620px;margin:18px auto 0">
-        Intermediação de terrenos e empreendimentos, busca sob medida e oportunidades
-        para investidores — com documentação conferida antes de qualquer conversa de preço.
+      <p class="rotulo capa-rotulo">Originação e estruturação de negócios imobiliários</p>
+      <h1>Do terreno ao empreendimento,<br /><em>o negócio inteiro.</em></h1>
+      <p class="lead capa-lead">
+        Não vendemos anúncio: montamos operação. Terrenos, glebas, empreendimentos,
+        incorporação, permuta e ativos de renda — com documentação conferida antes
+        de qualquer conversa de preço.
       </p>
       <div class="capa-botoes">
-        <a class="btn btn-ouro" href="#linhas">Como podemos ajudar</a>
-        <a class="btn btn-linha" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">Falar no WhatsApp</a>
+        <a class="btn btn-ouro" href="#negocios">O que fazemos</a>
+        <a class="btn btn-vidro" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">Falar agora no WhatsApp</a>
       </div>
     </div>
-    <a class="rolar" href="#linhas" aria-label="Ver mais">⌄</a>
+
+    <div class="capa-selos">
+      <span>Documentação conferida antes do anúncio</span>
+      <span>Sem prazo de fidelidade</span>
+      <span>Rede própria de investidores</span>
+    </div>
   </header>
 
-  <!-- ── três linhas ────────────────────────────────────────────────────── -->
-  <section id="linhas">
+  <!-- ── três portas ────────────────────────────────────────────────────── -->
+  <section id="portas" class="portas">
+    <div class="wrap">
+      <div class="grid3">
+        <a class="porta rev" href="/cr">
+          <span class="porta-tag">Proprietário</span>
+          <h3>Tenho um ativo para vender</h3>
+          <p>Terreno, área ou empreendimento. Avaliação, documentação e condução até a escritura.</p>
+          <span class="seta">Cadastrar meu imóvel <span>→</span></span>
+        </a>
+        <a class="porta destaque rev" href="/investidor">
+          <span class="porta-tag">Investidor</span>
+          <h3>Quero investir em imóveis</h3>
+          <p>Cadastre seu perfil e receba só as oportunidades que batem com ele — muitas antes de irem ao mercado.</p>
+          <span class="seta">Receber oportunidades <span>→</span></span>
+        </a>
+        <a class="porta rev" href="/procuro">
+          <span class="porta-tag">Comprador</span>
+          <h3>Procuro um imóvel específico</h3>
+          <p>Você descreve o que precisa e nós garimpamos, filtramos e apresentamos só o que faz sentido.</p>
+          <span class="seta">Descrever o que procuro <span>→</span></span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── o que intermediamos ───────────────────────────────────────────── -->
+  <section id="negocios">
     <div class="wrap">
       <div class="centro rev">
-        <p class="rotulo">Por onde você começa</p>
-        <h2>Três caminhos, um mesmo cuidado</h2>
+        <p class="rotulo">O que intermediamos</p>
+        <h2>Negócio imobiliário não é só imóvel</h2>
+        <div class="filete"></div>
+        <p class="lead" style="max-width:640px;margin:0 auto 40px">
+          Cada operação tem uma lógica própria. Ler essa lógica antes de anunciar é o que
+          separa um negócio que fecha de um imóvel que envelhece no mercado.
+        </p>
+      </div>
+      <div class="grid-neg">
+        {NEGOCIOS.map((n) => (
+          <article class="neg rev">
+            <span class="ic" set:html={`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${IC[n.ic]}</svg>`} />
+            <h3>{n.t}</h3>
+            <p>{n.d}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ── método ─────────────────────────────────────────────────────────── -->
+  <section class="metodo">
+    <div class="wrap">
+      <div class="centro rev">
+        <p class="rotulo" style="color:var(--ouro-cl)">Como trabalhamos</p>
+        <h2 style="color:#fff">Quatro etapas, nenhuma pulada</h2>
         <div class="filete"></div>
       </div>
-      <div class="grid3">
-        {LINHAS.map((l) => (
-          <article class="cartao linha rev">
-            <span class="num">{l.n}</span>
-            <h3>{l.titulo}</h3>
-            <p style="color:var(--tinta-md);font-size:.95rem">{l.texto}</p>
-            <a class="seta" href={l.href}>{l.cta} <span>→</span></a>
+      <div class="grid-met">
+        {METODO.map((m, i) => (
+          <article class="met rev">
+            <span class="ic ic-claro" set:html={`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${IC[m.ic]}</svg>`} />
+            <span class="met-n">{String(i + 1).padStart(2, "0")}</span>
+            <h3>{m.t}</h3>
+            <p>{m.d}</p>
           </article>
         ))}
       </div>
@@ -149,7 +206,7 @@ const PASSOS = [
 
   <!-- ── negócios realizados ────────────────────────────────────────────── -->
   {vendidos.length > 0 && (
-    <section style="background:var(--papel);border-top:1px solid var(--linha);border-bottom:1px solid var(--linha)">
+    <section style="background:var(--papel);border-bottom:1px solid var(--linha)">
       <div class="wrap">
         <div class="centro rev">
           <p class="rotulo">Portfólio</p>
@@ -172,34 +229,52 @@ const PASSOS = [
     </section>
   )}
 
-  <!-- ── como funciona ──────────────────────────────────────────────────── -->
+  <!-- ── faixa investidor ───────────────────────────────────────────────── -->
+  <section class="faixa-inv">
+    <div class="wrap faixa-grid">
+      <div class="rev">
+        <p class="rotulo">Para quem investe</p>
+        <h2>A oportunidade certa não fica esperando no portal</h2>
+        <p class="lead" style="margin-top:14px">
+          Quem chega primeiro em terreno bem localizado, remanescente de estoque ou área com
+          licenciamento encaminhado quase nunca chega por anúncio — chega por relação.
+          Cadastre seu perfil e passe a ser avisado quando algo bater com ele.
+        </p>
+        <a class="btn btn-ouro" href="/investidor" style="margin-top:8px">Cadastrar meu perfil de investimento</a>
+      </div>
+      <ul class="lista-check rev">
+        <li>Tipo de operação: revenda, incorporação, loteamento, renda ou permuta</li>
+        <li>Faixa de investimento e prazo definidos por você</li>
+        <li>Regiões de interesse, do bairro ao estado</li>
+        <li>Sem disparo em massa: fora do perfil, você não recebe</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── perguntas ──────────────────────────────────────────────────────── -->
   <section>
-    <div class="wrap">
+    <div class="estreito">
       <div class="centro rev">
-        <p class="rotulo">Método</p>
-        <h2>Como funciona</h2>
+        <p class="rotulo">Perguntas diretas</p>
+        <h2>O que costumam nos perguntar</h2>
         <div class="filete"></div>
       </div>
-      <ol class="passos">
-        {PASSOS.map(([t, d], i) => (
-          <li class="rev">
-            <span class="passo-n">{String(i + 1).padStart(2, "0")}</span>
-            <h3>{t}</h3>
-            <p style="color:var(--tinta-md);font-size:.93rem;margin:0">{d}</p>
-          </li>
-        ))}
-      </ol>
+      {FAQ.map(([p, r]) => (
+        <details class="faq rev">
+          <summary>{p}</summary>
+          <p>{r}</p>
+        </details>
+      ))}
     </div>
   </section>
 
   <!-- ── chamada final ──────────────────────────────────────────────────── -->
   <section class="final">
     <div class="estreito centro rev">
-      <p class="rotulo">Vamos conversar</p>
-      <h2>Uma avaliação sincera, sem compromisso</h2>
+      <h2>Traga o negócio. A gente diz se ele fecha.</h2>
       <p class="lead" style="margin:14px 0 26px">
-        Conte o que você tem em mãos ou o que procura. Se não for um bom negócio,
-        a gente diz isso também.
+        Uma conversa de quinze minutos costuma bastar para saber se faz sentido seguir.
+        Se não fizer, dizemos isso também — é mais barato para os dois.
       </p>
       <div class="capa-botoes" style="justify-content:center">
         <a class="btn btn-ouro" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">WhatsApp {CONTATO_TELEFONE}</a>
@@ -210,30 +285,78 @@ const PASSOS = [
 
   <style is:global>
     /* ── capa ── */
-    .capa { position:relative; min-height:92vh; display:flex; align-items:center; justify-content:center;
-            text-align:center; overflow:hidden; padding:70px 24px 90px; }
-    .capa-arte { position:absolute; inset:0; z-index:0; }
-    .capa-arte svg { width:100%; height:100%; display:block; }
-    .capa-arte::after { content:""; position:absolute; inset:0;
-      background:radial-gradient(ellipse at 50% 45%, rgba(251,249,247,.92) 0%, rgba(251,249,247,.7) 45%, rgba(251,249,247,.95) 100%); }
-    .capa-conteudo { position:relative; z-index:1; max-width:820px; }
-    .medalha { width:176px; height:176px; filter:drop-shadow(0 14px 34px rgba(111,98,128,.28)); }
-    .capa-botoes { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:30px; }
-    .rolar { position:absolute; bottom:26px; left:50%; transform:translateX(-50%); z-index:1;
-             font-size:1.5rem; color:var(--ouro); text-decoration:none; opacity:.7; }
+    .capa { position:relative; min-height:96vh; display:flex; flex-direction:column;
+            align-items:center; justify-content:center; text-align:center; overflow:hidden;
+            padding:90px 24px 120px; }
+    .capa-foto { position:absolute; inset:0; z-index:0; }
+    .capa-foto img { width:100%; height:100%; object-fit:cover; display:block; }
+    .capa-foto .capa-arte { display:none; position:absolute; inset:0; }
+    .capa-foto .capa-arte svg { width:100%; height:100%; }
+    /* sem a foto publicada, entra a arte geométrica e o texto volta a ser escuro */
+    .capa-foto.sem-foto img { display:none; }
+    .capa-foto.sem-foto .capa-arte { display:block; }
+    .capa-foto::after { content:""; position:absolute; inset:0;
+      background:linear-gradient(180deg, rgba(20,17,24,.62) 0%, rgba(20,17,24,.38) 42%, rgba(20,17,24,.78) 100%); }
+    .capa-foto.sem-foto::after { background:radial-gradient(ellipse at 50% 45%, rgba(251,249,247,.9) 0%, rgba(251,249,247,.72) 45%, rgba(251,249,247,.96) 100%); }
 
-    /* ── três linhas ── */
-    .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; }
-    .linha { display:flex; flex-direction:column; position:relative; padding-top:34px;
-             transition:border-color .2s ease, transform .2s ease, box-shadow .2s ease; }
-    .linha:hover { border-color:var(--ouro-cl); transform:translateY(-3px); box-shadow:0 14px 34px rgba(111,98,128,.09); }
-    .linha .num { position:absolute; top:22px; right:26px; font-family:var(--serif); font-size:2.2rem;
-                  color:var(--ouro-pale); line-height:1; }
-    .linha h3 { margin-bottom:10px; max-width:80%; }
-    .seta { margin-top:auto; padding-top:16px; text-decoration:none; color:var(--ouro);
-            font-size:.9rem; font-weight:500; }
-    .seta span { transition:margin .2s ease; display:inline-block; }
-    .linha:hover .seta span { margin-left:5px; }
+    .capa-conteudo { position:relative; z-index:1; max-width:880px; color:#fff; }
+    .capa-foto.sem-foto ~ .capa-conteudo { color:var(--tinta); }
+    .medalha { width:132px; height:132px; filter:drop-shadow(0 16px 40px rgba(0,0,0,.45)); }
+    .capa-rotulo { color:#E6C87C !important; margin-top:20px; }
+    .capa h1 { font-size:clamp(2.3rem,5.4vw,3.9rem); text-shadow:0 2px 24px rgba(0,0,0,.35); }
+    .capa h1 em { font-style:normal; color:#E6C87C; }
+    .capa-lead { color:rgba(255,255,255,.9) !important; max-width:660px; margin:20px auto 0;
+                 text-shadow:0 1px 12px rgba(0,0,0,.4); }
+    .capa-foto.sem-foto ~ .capa-conteudo .capa-lead { color:var(--tinta-md) !important; text-shadow:none; }
+    .capa-botoes { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:32px; }
+    .btn-vidro { background:rgba(255,255,255,.13); color:#fff; border-color:rgba(255,255,255,.4);
+                 backdrop-filter:blur(8px); }
+    .btn-vidro:hover { background:rgba(255,255,255,.22); }
+    .capa-selos { position:relative; z-index:1; display:flex; flex-wrap:wrap; gap:10px 30px;
+                  justify-content:center; margin-top:46px; }
+    .capa-selos span { color:rgba(255,255,255,.86); font-size:.78rem; letter-spacing:.08em;
+                       text-transform:uppercase; display:flex; align-items:center; gap:8px; }
+    .capa-selos span::before { content:""; width:5px; height:5px; border-radius:50%; background:#E6C87C; }
+    .capa-foto.sem-foto ~ .capa-selos span { color:var(--tinta-cl); }
+
+    /* ── três portas (sobem por cima da capa) ── */
+    .portas { padding:0; margin-top:-72px; position:relative; z-index:2; }
+    .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:18px; }
+    .porta { display:flex; flex-direction:column; background:var(--papel); border:1px solid var(--linha);
+             border-radius:var(--raio); padding:26px; text-decoration:none;
+             box-shadow:0 18px 44px rgba(30,24,38,.10);
+             transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+    .porta:hover { transform:translateY(-4px); border-color:var(--ouro-cl); box-shadow:0 24px 54px rgba(30,24,38,.16); }
+    .porta-tag { font-size:.66rem; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
+                 color:var(--ouro); margin-bottom:12px; }
+    .porta h3 { margin-bottom:8px; }
+    .porta p { color:var(--tinta-md); font-size:.93rem; }
+    .porta.destaque { background:linear-gradient(180deg,#FFFDF8,#FBF4E6); border-color:#E7D6A6; }
+    .seta { margin-top:auto; padding-top:14px; color:var(--ouro); font-size:.88rem; font-weight:500; }
+    .seta span { display:inline-block; transition:margin .2s ease; }
+    .porta:hover .seta span { margin-left:5px; }
+
+    /* ── ícones ── */
+    .ic { display:inline-flex; align-items:center; justify-content:center; width:46px; height:46px;
+          border-radius:12px; background:var(--ouro-pale); color:var(--ouro); margin-bottom:16px; }
+    .ic svg { width:23px; height:23px; }
+    .ic-claro { background:rgba(230,200,124,.13); color:#E6C87C; }
+
+    /* ── o que intermediamos ── */
+    .grid-neg { display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:20px; }
+    .neg { background:var(--papel); border:1px solid var(--linha); border-radius:var(--raio); padding:28px;
+           transition:border-color .2s ease, transform .2s ease; }
+    .neg:hover { border-color:var(--ouro-cl); transform:translateY(-3px); }
+    .neg h3 { margin-bottom:8px; }
+    .neg p { color:var(--tinta-md); font-size:.93rem; margin:0; }
+
+    /* ── método (faixa escura, para dar respiro e contraste) ── */
+    .metodo { background:linear-gradient(160deg,#282232,#1C1822); color:rgba(255,255,255,.82); }
+    .grid-met { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:26px; }
+    .met { position:relative; padding-top:6px; }
+    .met-n { position:absolute; top:0; right:0; font-family:var(--serif); font-size:1.7rem; color:rgba(230,200,124,.28); }
+    .met h3 { color:#fff; margin-bottom:8px; font-size:1.1rem; }
+    .met p { font-size:.92rem; margin:0; color:rgba(255,255,255,.7); }
 
     /* ── vitrine ── */
     .vitrine { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:18px; }
@@ -243,17 +366,32 @@ const PASSOS = [
     .imovel figcaption { padding:14px 16px 16px; }
     .imovel figcaption strong { display:block; font-size:.95rem; }
     .imovel figcaption span { font-size:.82rem; color:var(--tinta-cl); }
-    .tarja { position:absolute; top:14px; left:14px; background:rgba(38,34,43,.86); color:#F0DFAE;
+    .tarja { position:absolute; top:14px; left:14px; background:rgba(38,34,43,.88); color:#F0DFAE;
              font-size:.66rem; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
              padding:6px 12px; border-radius:999px; backdrop-filter:blur(4px); }
 
-    /* ── passos ── */
-    .passos { list-style:none; margin:0; padding:0; display:grid;
-              grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:28px; }
-    .passos li { border-top:1px solid var(--linha); padding-top:18px; }
-    .passo-n { font-family:var(--serif); font-size:1.5rem; color:var(--ouro-cl); display:block; margin-bottom:6px; }
-    .passos h3 { font-size:1.05rem; margin-bottom:6px; }
+    /* ── faixa investidor ── */
+    .faixa-inv { background:linear-gradient(180deg,#FFFDF8,#F7F0E2); border-top:1px solid var(--linha);
+                 border-bottom:1px solid var(--linha); }
+    .faixa-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:46px; align-items:center; }
+    @media (max-width:860px) { .faixa-grid { grid-template-columns:1fr; gap:26px; } }
+    .lista-check { list-style:none; margin:0; padding:0; }
+    .lista-check li { position:relative; padding:12px 0 12px 32px; border-bottom:1px solid rgba(168,132,42,.16);
+                      font-size:.93rem; color:var(--tinta-md); }
+    .lista-check li:last-child { border-bottom:0; }
+    .lista-check li::before { content:""; position:absolute; left:4px; top:19px; width:11px; height:6px;
+      border-left:1.6px solid var(--ouro); border-bottom:1.6px solid var(--ouro); transform:rotate(-45deg); }
 
-    .final { background:linear-gradient(180deg,var(--areia),#F4EFE6); border-top:1px solid var(--linha); }
+    /* ── FAQ ── */
+    .faq { border-bottom:1px solid var(--linha); padding:6px 0; }
+    .faq summary { cursor:pointer; list-style:none; padding:18px 34px 18px 0; position:relative;
+                   font-family:var(--serif); font-size:1.14rem; color:var(--tinta); }
+    .faq summary::-webkit-details-marker { display:none; }
+    .faq summary::after { content:"+"; position:absolute; right:4px; top:16px; font-size:1.4rem;
+                          color:var(--ouro); font-family:var(--sans); font-weight:300; transition:transform .2s ease; }
+    .faq[open] summary::after { transform:rotate(45deg); }
+    .faq p { color:var(--tinta-md); font-size:.94rem; margin:0 0 18px; padding-right:34px; }
+
+    .final { background:linear-gradient(180deg,var(--areia),#F1EBE0); }
   </style>
 </CR>
