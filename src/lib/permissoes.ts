@@ -203,6 +203,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     { key: "negocios-empreendimentos", label: "Venda de Empreendimentos", icon: "🏢", href: "/admin/negocios/empreendimentos" },
     { key: "negocios-buscas", label: "Busca de Imóveis", icon: "🔎", href: "/admin/negocios/buscas" },
     { key: "negocios-proprietarios", label: "Proprietários", icon: "🧾", href: "/admin/negocios/proprietarios" },
+    { key: "negocios-investidores", label: "Investidores", icon: "💼", href: "/admin/negocios/investidores" },
   ] },
   { id: "vendas", label: "Vendas TrazPraCa", itens: [
     { key: "vendas", label: "Catálogo & Preços", icon: "🛒", href: "/admin/vendas" },

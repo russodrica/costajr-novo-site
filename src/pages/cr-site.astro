@@ -1,31 +1,30 @@
 ---
-// Home da CR INTERMEDIAÇÕES IMOBILIÁRIAS — servida em crintermediacao.com.br.
+// Home da CR — servida em crintermediacao.com.br (o middleware reescreve "/").
 //
-// Fica no mesmo projeto do portal de propósito: um deploy só, um lugar só para
-// mexer. Quem manda o visitante para cá é o middleware, que reescreve "/" deste
-// domínio para esta página. A marca aqui é SÓ a CR — nada de Costa Júnior.
+// Três portas de entrada, que é como o negócio funciona de verdade:
+//   1. quem TEM imóvel para vender      → /cr        (autorização de venda)
+//   2. quem QUER INVESTIR               → /investidor
+//   3. quem PROCURA imóvel              → /procuro
 //
 // A faixa "Negócios realizados" é automática: puxa os imóveis marcados como
-// VENDIDO no módulo Novos Negócios e usa a foto de capa de cada um. Se não
-// houver nenhum vendido ainda, a seção simplesmente não aparece.
+// VENDIDO no módulo Novos Negócios. Sem nenhum vendido, a seção não aparece.
+import CR from "../layouts/CR.astro";
 import { supabaseAdmin } from "../lib/supabase";
 import { BUCKET_NEGOCIOS, storageNegocios } from "../lib/negocios";
-import { INTERMEDIARIO, CONTATO_TELEFONE } from "../lib/termoVenda";
+import { CONTATO_TELEFONE } from "../lib/termoVenda";
 
 export const prerender = false;
+const WHATS = CONTATO_TELEFONE.replace(/\D/g, "");
 
-const WHATS = CONTATO_TELEFONE.replace(/\D/g, "");   // 5511917323082
-const LINK_FORM = "/autorizacao";
-
-type Vendido = { titulo: string; local: string; area: string; foto: string | null };
+type Vendido = { titulo: string; local: string; area: string; foto: string };
 let vendidos: Vendido[] = [];
 try {
   const db = supabaseAdmin();
   const { data: itens } = await db.from("negocios_imoveis")
-    .select("id, titulo, bairro, cidade, uf, area_total, capa_anexo_id, tipo")
+    .select("id, titulo, bairro, cidade, uf, area_total, capa_anexo_id")
     .in("tipo", ["terreno", "empreendimento"])
     .eq("status", "vendido").eq("ativo", true)
-    .order("updated_at", { ascending: false }).limit(12);
+    .order("updated_at", { ascending: false }).limit(8);
 
   const capas = (itens || []).map((i: any) => i.capa_anexo_id).filter(Boolean);
   const caminho: Record<string, string> = {};
@@ -33,193 +32,228 @@ try {
     const { data: anexos } = await db.from("negocios_anexos").select("id, storage_path").in("id", capas);
     for (const a of anexos || []) caminho[(a as any).id] = (a as any).storage_path;
   }
-
-  // bucket é privado: assina cada capa por 1 hora, na hora de desenhar a página
   for (const i of itens || []) {
-    let foto: string | null = null;
     const path = i.capa_anexo_id ? caminho[i.capa_anexo_id] : null;
-    if (path) {
-      const { data: url } = await storageNegocios().storage.from(BUCKET_NEGOCIOS).createSignedUrl(path, 3600);
-      foto = url?.signedUrl || null;
-    }
+    if (!path) continue;
+    const { data: url } = await storageNegocios().storage.from(BUCKET_NEGOCIOS).createSignedUrl(path, 3600);
+    if (!url?.signedUrl) continue;
     // só bairro e cidade — endereço exato de imóvel vendido não vai para a rua
-    const local = [i.bairro, [i.cidade, i.uf].filter(Boolean).join("/")].filter(Boolean).join(" — ");
     vendidos.push({
       titulo: i.titulo,
-      local: local || "",
+      local: [i.bairro, [i.cidade, i.uf].filter(Boolean).join("/")].filter(Boolean).join(" — "),
       area: i.area_total ? `${Number(i.area_total).toLocaleString("pt-BR")} m²` : "",
-      foto,
+      foto: url.signedUrl,
     });
   }
-  vendidos = vendidos.filter((v) => v.foto);   // sem foto não entra na vitrine
 } catch { vendidos = []; }
+
+const LINHAS = [
+  {
+    n: "01", titulo: "Tenho um imóvel para vender",
+    texto: "Terreno, área ou empreendimento. Avaliamos, organizamos a documentação, anunciamos e conduzimos a negociação até a escritura. Sem prazo de fidelidade: a autorização vale até você pedir o cancelamento.",
+    cta: "Cadastrar meu imóvel", href: "/cr",
+  },
+  {
+    n: "02", titulo: "Quero investir em imóveis",
+    texto: "Diga seu perfil — tipo de operação, região, faixa de investimento e prazo — e passamos a te apresentar as oportunidades que batem com ele, muitas antes de irem ao mercado.",
+    cta: "Quero receber oportunidades", href: "/investidor",
+  },
+  {
+    n: "03", titulo: "Procuro um imóvel",
+    texto: "Você descreve o que precisa e nós procuramos, filtramos e apresentamos só o que faz sentido — inclusive imóveis que ainda não estão anunciados em lugar nenhum.",
+    cta: "Descrever o que procuro", href: "/procuro",
+  },
+];
+
+const PASSOS = [
+  ["Conversa inicial", "Entendemos o imóvel ou o objetivo. Sem compromisso e sem custo."],
+  ["Análise e documentação", "Matrícula, IPTU, certidões e zoneamento conferidos antes de qualquer anúncio."],
+  ["Apresentação ao mercado certo", "O imóvel vai para quem tem perfil de compra, não para uma vitrine genérica."],
+  ["Negociação e escritura", "Conduzimos as propostas. Nenhum valor é fechado sem a sua aprovação."],
+];
 ---
-<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CR Intermediações Imobiliárias — terrenos, empreendimentos e busca de imóveis</title>
-  <meta name="description" content="Intermediação de venda de terrenos e empreendimentos e busca de imóveis sob medida. Avaliação sem compromisso e acompanhamento até a escritura." />
-  <link rel="canonical" href="https://crintermediacao.com.br/" />
-  <link rel="icon" href="/logo-cr.png" />
-  <meta property="og:title" content="CR Intermediações Imobiliárias" />
-  <meta property="og:description" content="Venda de terrenos e empreendimentos. Busca de imóveis sob medida." />
-  <meta property="og:image" content="https://crintermediacao.com.br/logo-cr.png" />
-  <meta property="og:type" content="website" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@600;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
-  <style>
-    :root { --ouro:#B8912F; --ouro-esc:#8F6F1F; --ouro-cl:#E0BE63; --lilas:#6F6280; --claro:#F7F5F9; --borda:#E4DEEA; }
-    * { box-sizing:border-box; }
-    body { margin:0; background:#fff; color:#3B3542; font-family:'Open Sans',Arial,sans-serif; line-height:1.6; }
-    a { color:inherit; }
-    .wrap { max-width:1040px; margin:0 auto; padding:0 20px; }
+<CR titulo="CR Intermediações Imobiliárias — terrenos, empreendimentos e investimento imobiliário" capa={true}>
 
-    /* ── topo ── */
-    .topo { background:linear-gradient(135deg,#8A7C9A 0%,#9C8DAC 45%,#6F6280 100%); color:#fff; text-align:center;
-            padding:44px 20px 52px; border-bottom:3px solid var(--ouro); }
-    .topo img { height:132px; border-radius:14px; filter:drop-shadow(0 10px 26px rgba(0,0,0,.28)); }
-    .topo h1 { font-family:'Cormorant Garamond',Georgia,serif; font-size:2.1rem; margin:16px 0 4px; font-weight:700; letter-spacing:.5px; }
-    .topo .tag { font-family:'Montserrat',sans-serif; font-size:.72rem; letter-spacing:3px; text-transform:uppercase; color:#EDE6F3; margin:0; }
-    .topo p.lead { max-width:620px; margin:18px auto 0; color:#F4F0F8; font-size:1.02rem; }
-    .cta { display:inline-block; margin-top:24px; padding:14px 30px; border-radius:999px; text-decoration:none; font-weight:700;
-           font-family:'Montserrat',sans-serif; font-size:.94rem; background:linear-gradient(135deg,#E2C169,#B8912F); color:#3A2E08;
-           box-shadow:0 6px 18px rgba(0,0,0,.22); }
-    .cta.secundario { background:transparent; color:#fff; border:1.5px solid rgba(255,255,255,.7); box-shadow:none; margin-left:10px; }
-
-    /* ── seções ── */
-    section { padding:52px 0; }
-    section.cinza { background:var(--claro); }
-    h2 { font-family:'Cormorant Garamond',Georgia,serif; font-size:1.8rem; color:var(--ouro-esc); margin:0 0 6px; text-align:center; }
-    .sub { text-align:center; color:var(--lilas); margin:0 auto 30px; max-width:620px; }
-    .tres { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:20px; }
-    .box { background:#fff; border:1px solid var(--borda); border-radius:14px; padding:24px; }
-    .box h3 { font-family:'Montserrat',sans-serif; font-size:1rem; color:var(--ouro-esc); margin:0 0 8px; }
-    .box p { margin:0; font-size:.93rem; color:#5A5265; }
-
-    /* ── vitrine de vendidos ── */
-    .vitrine { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:18px; }
-    .imovel { position:relative; border-radius:14px; overflow:hidden; border:1px solid var(--borda); background:#fff; }
-    .imovel img { width:100%; height:190px; object-fit:cover; display:block; }
-    .imovel .info { padding:14px 16px 16px; }
-    .imovel .info strong { display:block; font-size:.95rem; }
-    .imovel .info span { font-size:.84rem; color:var(--lilas); }
-    /* a tarja: faixa diagonal no canto, como carimbo */
-    .tarja { position:absolute; top:16px; right:-42px; transform:rotate(38deg); width:170px; text-align:center;
-             background:linear-gradient(135deg,#C9302C,#8E1B18); color:#fff; font-family:'Montserrat',sans-serif;
-             font-size:.74rem; font-weight:700; letter-spacing:2.4px; padding:6px 0; box-shadow:0 3px 10px rgba(0,0,0,.3); }
-
-    /* ── passos ── */
-    .passos { counter-reset:p; display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:22px; }
-    .passo { position:relative; padding-left:52px; }
-    .passo::before { counter-increment:p; content:counter(p); position:absolute; left:0; top:0; width:38px; height:38px;
-                     border-radius:50%; background:linear-gradient(135deg,#E2C169,#B8912F); color:#3A2E08;
-                     font-family:'Montserrat',sans-serif; font-weight:700; display:flex; align-items:center; justify-content:center; }
-    .passo h3 { font-family:'Montserrat',sans-serif; font-size:.95rem; margin:6px 0 4px; }
-    .passo p { margin:0; font-size:.9rem; color:#5A5265; }
-
-    /* ── contato ── */
-    .contato { background:linear-gradient(135deg,#8A7C9A,#6F6280); color:#fff; text-align:center; }
-    .contato h2 { color:#F0DFAE; }
-    .contato .sub { color:#EDE6F3; }
-    .rodape { text-align:center; font-size:.78rem; color:var(--lilas); padding:26px 20px 40px; }
-
-    @media (max-width:640px) { .topo h1 { font-size:1.7rem; } .cta.secundario { margin:10px 0 0; } }
-  </style>
-</head>
-<body>
-  <header class="topo">
-    <img src="/logo-cr.png" alt="CR Intermediações Imobiliárias" />
-    <h1>CR Intermediações Imobiliárias</h1>
-    <p class="tag">Terrenos · Empreendimentos · Busca de imóveis</p>
-    <p class="lead">
-      Intermediamos a venda do seu terreno ou empreendimento e procuramos o imóvel certo
-      para quem quer comprar. Avaliação sem compromisso e acompanhamento até a escritura.
-    </p>
-    <div>
-      <a class="cta" href={LINK_FORM}>Quero anunciar meu imóvel</a>
-      <a class="cta secundario" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">Falar no WhatsApp</a>
+  <!-- ── capa ───────────────────────────────────────────────────────────── -->
+  <header class="capa">
+    <div class="capa-arte" aria-hidden="true">
+      <!-- desenho de lotes: geometria original em SVG, nada de foto de banco de
+           imagens. Fica leve, nítido em qualquer tela e é nosso. -->
+      <svg viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#F7EFE0" /><stop offset="100%" stop-color="#EFE9F2" />
+          </linearGradient>
+          <pattern id="grade" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0H0V40" fill="none" stroke="#D9B95F" stroke-width=".5" opacity=".22" />
+          </pattern>
+        </defs>
+        <rect width="1200" height="700" fill="url(#g1)" />
+        <rect width="1200" height="700" fill="url(#grade)" />
+        <g fill="none" stroke="#A8842A" stroke-width="1.1" opacity=".3">
+          <path d="M120 620 L300 470 L560 520 L720 400 L980 440 L1120 330" />
+          <path d="M60 540 L260 400 L520 450 L700 320 L960 360 L1160 250" />
+          <path d="M300 470 L260 400 M560 520 L520 450 M720 400 L700 320 M980 440 L960 360" />
+        </g>
+        <g fill="none" stroke="#A8842A" opacity=".5">
+          <rect x="150" y="150" width="150" height="110" stroke-width=".9" />
+          <rect x="310" y="150" width="110" height="110" stroke-width=".9" />
+          <rect x="150" y="270" width="270" height="90" stroke-width=".9" />
+          <rect x="800" y="180" width="130" height="130" stroke-width=".9" />
+          <rect x="940" y="180" width="180" height="130" stroke-width=".9" />
+          <rect x="800" y="320" width="320" height="80" stroke-width=".9" />
+        </g>
+        <g fill="#A8842A" opacity=".55">
+          <circle cx="150" cy="150" r="3" /><circle cx="420" cy="360" r="3" />
+          <circle cx="1120" cy="180" r="3" /><circle cx="800" cy="400" r="3" />
+        </g>
+      </svg>
     </div>
+
+    <div class="capa-conteudo">
+      <img class="medalha" src="/logo-cr-transp.png" alt="CR Intermediações Imobiliárias" />
+      <p class="rotulo" style="margin-top:22px">CR Intermediações Imobiliárias</p>
+      <h1>O imóvel certo<br />encontra quem sabe o que procura.</h1>
+      <p class="lead" style="max-width:620px;margin:18px auto 0">
+        Intermediação de terrenos e empreendimentos, busca sob medida e oportunidades
+        para investidores — com documentação conferida antes de qualquer conversa de preço.
+      </p>
+      <div class="capa-botoes">
+        <a class="btn btn-ouro" href="#linhas">Como podemos ajudar</a>
+        <a class="btn btn-linha" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">Falar no WhatsApp</a>
+      </div>
+    </div>
+    <a class="rolar" href="#linhas" aria-label="Ver mais">⌄</a>
   </header>
 
-  <section>
+  <!-- ── três linhas ────────────────────────────────────────────────────── -->
+  <section id="linhas">
     <div class="wrap">
-      <h2>O que fazemos</h2>
-      <p class="sub">Três frentes, um mesmo cuidado: entender o imóvel, achar o comprador certo e fechar com segurança jurídica.</p>
-      <div class="tres">
-        <div class="box">
-          <h3>Venda de terrenos</h3>
-          <p>Avaliação, documentação, anúncio e negociação. Cuidamos da matrícula, do IPTU e das certidões antes de o terreno ir ao mercado — comprador informado decide mais rápido.</p>
-        </div>
-        <div class="box">
-          <h3>Venda de empreendimentos</h3>
-          <p>Unidades e empreendimentos inteiros, com material de apresentação, controle do que já foi vendido e acompanhamento de cada proposta até a assinatura.</p>
-        </div>
-        <div class="box">
-          <h3>Busca de imóveis</h3>
-          <p>Você diz o perfil, a região e a faixa de valor; nós procuramos, filtramos e apresentamos só o que faz sentido — inclusive imóveis que ainda não estão anunciados.</p>
-        </div>
+      <div class="centro rev">
+        <p class="rotulo">Por onde você começa</p>
+        <h2>Três caminhos, um mesmo cuidado</h2>
+        <div class="filete"></div>
+      </div>
+      <div class="grid3">
+        {LINHAS.map((l) => (
+          <article class="cartao linha rev">
+            <span class="num">{l.n}</span>
+            <h3>{l.titulo}</h3>
+            <p style="color:var(--tinta-md);font-size:.95rem">{l.texto}</p>
+            <a class="seta" href={l.href}>{l.cta} <span>→</span></a>
+          </article>
+        ))}
       </div>
     </div>
   </section>
 
+  <!-- ── negócios realizados ────────────────────────────────────────────── -->
   {vendidos.length > 0 && (
-    <section class="cinza">
+    <section style="background:var(--papel);border-top:1px solid var(--linha);border-bottom:1px solid var(--linha)">
       <div class="wrap">
-        <h2>Negócios realizados</h2>
-        <p class="sub">Alguns imóveis que passaram por nós, da captação à escritura.</p>
+        <div class="centro rev">
+          <p class="rotulo">Portfólio</p>
+          <h2>Negócios realizados</h2>
+          <div class="filete"></div>
+        </div>
         <div class="vitrine">
           {vendidos.map((v) => (
-            <div class="imovel">
-              <span class="tarja">VENDIDO</span>
+            <figure class="imovel rev">
+              <span class="tarja">Vendido</span>
               <img src={v.foto} alt={v.titulo} loading="lazy" />
-              <div class="info">
+              <figcaption>
                 <strong>{v.titulo}</strong>
                 <span>{[v.local, v.area].filter(Boolean).join(" · ")}</span>
-              </div>
-            </div>
+              </figcaption>
+            </figure>
           ))}
         </div>
       </div>
     </section>
   )}
 
+  <!-- ── como funciona ──────────────────────────────────────────────────── -->
   <section>
     <div class="wrap">
-      <h2>Como funciona</h2>
-      <p class="sub">Do primeiro contato até a venda, sem burocracia da sua parte.</p>
-      <div class="passos">
-        <div class="passo">
-          <h3>Você preenche a autorização</h3>
-          <p>Um formulário de três minutos com seus dados e os do imóvel. Sem prazo de fidelidade: vale até você pedir o cancelamento.</p>
-        </div>
-        <div class="passo">
-          <h3>Avaliamos e anunciamos</h3>
-          <p>Visitamos, tiramos fotos, organizamos a documentação e colocamos o imóvel nos canais certos.</p>
-        </div>
-        <div class="passo">
-          <h3>Levamos as propostas a você</h3>
-          <p>Fazemos a triagem dos interessados e conduzimos as tratativas. Nenhum valor é fechado sem a sua aprovação.</p>
-        </div>
-        <div class="passo">
-          <h3>Acompanhamos até o fim</h3>
-          <p>Contrato, certidões, financiamento e escritura, com você informado em cada etapa.</p>
-        </div>
+      <div class="centro rev">
+        <p class="rotulo">Método</p>
+        <h2>Como funciona</h2>
+        <div class="filete"></div>
+      </div>
+      <ol class="passos">
+        {PASSOS.map(([t, d], i) => (
+          <li class="rev">
+            <span class="passo-n">{String(i + 1).padStart(2, "0")}</span>
+            <h3>{t}</h3>
+            <p style="color:var(--tinta-md);font-size:.93rem;margin:0">{d}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <!-- ── chamada final ──────────────────────────────────────────────────── -->
+  <section class="final">
+    <div class="estreito centro rev">
+      <p class="rotulo">Vamos conversar</p>
+      <h2>Uma avaliação sincera, sem compromisso</h2>
+      <p class="lead" style="margin:14px 0 26px">
+        Conte o que você tem em mãos ou o que procura. Se não for um bom negócio,
+        a gente diz isso também.
+      </p>
+      <div class="capa-botoes" style="justify-content:center">
+        <a class="btn btn-ouro" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">WhatsApp {CONTATO_TELEFONE}</a>
+        <a class="btn btn-linha" href="/cr">Cadastrar meu imóvel</a>
       </div>
     </div>
   </section>
 
-  <section class="contato">
-    <div class="wrap">
-      <h2>Vamos conversar sobre o seu imóvel</h2>
-      <p class="sub">Avaliação sem compromisso. Responda em minutos pelo WhatsApp ou preencha a autorização de venda.</p>
-      <a class="cta" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">WhatsApp {CONTATO_TELEFONE}</a>
-      <a class="cta secundario" href={LINK_FORM}>Autorização de venda</a>
-    </div>
-  </section>
+  <style is:global>
+    /* ── capa ── */
+    .capa { position:relative; min-height:92vh; display:flex; align-items:center; justify-content:center;
+            text-align:center; overflow:hidden; padding:70px 24px 90px; }
+    .capa-arte { position:absolute; inset:0; z-index:0; }
+    .capa-arte svg { width:100%; height:100%; display:block; }
+    .capa-arte::after { content:""; position:absolute; inset:0;
+      background:radial-gradient(ellipse at 50% 45%, rgba(251,249,247,.92) 0%, rgba(251,249,247,.7) 45%, rgba(251,249,247,.95) 100%); }
+    .capa-conteudo { position:relative; z-index:1; max-width:820px; }
+    .medalha { width:176px; height:176px; filter:drop-shadow(0 14px 34px rgba(111,98,128,.28)); }
+    .capa-botoes { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:30px; }
+    .rolar { position:absolute; bottom:26px; left:50%; transform:translateX(-50%); z-index:1;
+             font-size:1.5rem; color:var(--ouro); text-decoration:none; opacity:.7; }
 
-  <p class="rodape">{INTERMEDIARIO} · {CONTATO_TELEFONE}</p>
-</body>
-</html>
+    /* ── três linhas ── */
+    .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; }
+    .linha { display:flex; flex-direction:column; position:relative; padding-top:34px;
+             transition:border-color .2s ease, transform .2s ease, box-shadow .2s ease; }
+    .linha:hover { border-color:var(--ouro-cl); transform:translateY(-3px); box-shadow:0 14px 34px rgba(111,98,128,.09); }
+    .linha .num { position:absolute; top:22px; right:26px; font-family:var(--serif); font-size:2.2rem;
+                  color:var(--ouro-pale); line-height:1; }
+    .linha h3 { margin-bottom:10px; max-width:80%; }
+    .seta { margin-top:auto; padding-top:16px; text-decoration:none; color:var(--ouro);
+            font-size:.9rem; font-weight:500; }
+    .seta span { transition:margin .2s ease; display:inline-block; }
+    .linha:hover .seta span { margin-left:5px; }
+
+    /* ── vitrine ── */
+    .vitrine { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:18px; }
+    .imovel { position:relative; margin:0; border:1px solid var(--linha); border-radius:var(--raio);
+              overflow:hidden; background:var(--papel); }
+    .imovel img { width:100%; height:180px; object-fit:cover; display:block; }
+    .imovel figcaption { padding:14px 16px 16px; }
+    .imovel figcaption strong { display:block; font-size:.95rem; }
+    .imovel figcaption span { font-size:.82rem; color:var(--tinta-cl); }
+    .tarja { position:absolute; top:14px; left:14px; background:rgba(38,34,43,.86); color:#F0DFAE;
+             font-size:.66rem; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
+             padding:6px 12px; border-radius:999px; backdrop-filter:blur(4px); }
+
+    /* ── passos ── */
+    .passos { list-style:none; margin:0; padding:0; display:grid;
+              grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:28px; }
+    .passos li { border-top:1px solid var(--linha); padding-top:18px; }
+    .passo-n { font-family:var(--serif); font-size:1.5rem; color:var(--ouro-cl); display:block; margin-bottom:6px; }
+    .passos h3 { font-size:1.05rem; margin-bottom:6px; }
+
+    .final { background:linear-gradient(180deg,var(--areia),#F4EFE6); border-top:1px solid var(--linha); }
+  </style>
+</CR>

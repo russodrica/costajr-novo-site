@@ -1,0 +1,142 @@
+---
+// Quem PROCURA imóvel — crintermediacao.com.br/procuro
+// O pedido vira um card na aba "Busca de Imóveis" do portal, com interessados,
+// anexos e histórico, em vez de virar uma caixa de entrada paralela.
+import CR from "../layouts/CR.astro";
+import { CONTATO_EMAIL, CONTATO_TELEFONE } from "../lib/termoVenda";
+
+export const prerender = false;
+---
+<CR titulo="Procuro um imóvel — CR Intermediações Imobiliárias"
+    descricao="Descreva o imóvel que você procura e nós buscamos, filtramos e apresentamos só o que faz sentido.">
+
+  <section style="padding-bottom:30px">
+    <div class="estreito">
+      <p class="rotulo">Busca de imóveis</p>
+      <h1 style="font-size:clamp(1.9rem,4vw,2.7rem)">Conte o que você procura</h1>
+      <p class="lead" style="margin-top:14px">
+        Em vez de você garimpar anúncio, nós procuramos. Descreva o imóvel que precisa
+        e a região; apresentamos apenas o que atende de verdade — inclusive imóveis que
+        ainda não estão anunciados.
+      </p>
+
+      <div id="aviso" class="aviso"></div>
+
+      <form id="f" style="margin-top:30px">
+        <div class="cartao" style="margin-bottom:18px">
+          <h3 style="margin-bottom:16px">Seus dados</h3>
+          <div class="campo"><label class="obr">Nome completo</label><input name="nome" required autocomplete="name" /></div>
+          <div class="linha-campos">
+            <div><label class="obr">Telefone / WhatsApp</label><input name="telefone" required inputmode="tel" placeholder="(11) 90000-0000" /></div>
+            <div><label>E-mail</label><input name="email" type="email" autocomplete="email" /></div>
+          </div>
+        </div>
+
+        <div class="cartao" style="margin-bottom:18px">
+          <h3 style="margin-bottom:16px">O imóvel que você procura</h3>
+          <div class="campo">
+            <label class="obr">Descreva o que precisa</label>
+            <textarea name="procuro" rows="4" required
+              placeholder="Ex.: terreno de 1.000 a 2.000 m² com frente para avenida, para construir um galpão de logística. Precisa aceitar caminhão."></textarea>
+          </div>
+          <div class="linha-campos">
+            <div><label class="obr">Cidade ou região</label><input name="cidade" required placeholder="Ex.: Barueri e região" /></div>
+            <div><label>UF</label><input name="uf" maxlength="2" placeholder="SP" style="text-transform:uppercase" /></div>
+          </div>
+          <div class="linha-campos">
+            <div><label>Valor a partir de (R$)</label><input name="valor_min" inputmode="numeric" placeholder="300.000" /></div>
+            <div><label>Até (R$)</label><input name="valor_max" inputmode="numeric" placeholder="900.000" /></div>
+          </div>
+          <div class="campo" style="margin-bottom:0">
+            <label>Prazo, forma de pagamento ou qualquer outro detalhe</label>
+            <textarea name="observacoes" rows="2" placeholder="Opcional"></textarea>
+          </div>
+        </div>
+
+        <div class="cartao">
+          <label class="aceite">
+            <input type="checkbox" id="aceite" required />
+            <span>Concordo que a CR Intermediações Imobiliárias use meus dados para procurar
+            o imóvel e entrar em contato comigo.</span>
+          </label>
+          <p class="lgpd" style="margin:12px 0 0">
+            Seus dados são usados só para isso, nos termos da LGPD (Lei 13.709/2018). Você pode pedir
+            acesso, correção ou exclusão a qualquer momento por {CONTATO_EMAIL} ou {CONTATO_TELEFONE}.
+          </p>
+          <button class="btn btn-ouro" id="enviar" type="submit" style="width:100%;margin-top:20px">Enviar meu pedido</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section id="pronto" style="display:none;padding-top:40px">
+    <div class="estreito centro">
+      <img src="/logo-cr-transp.png" alt="" style="width:110px" />
+      <h1 style="margin-top:18px">Pedido registrado</h1>
+      <div class="filete"></div>
+      <p class="lead">
+        Já estamos com o seu pedido. Vamos procurar e entrar em contato pelo telefone
+        informado assim que tivermos opções que valham o seu tempo.
+      </p>
+      <a class="btn btn-linha" href="/" style="margin-top:18px">Voltar ao início</a>
+    </div>
+  </section>
+
+  <style is:global>
+    .aceite { display:flex; gap:11px; align-items:flex-start; margin:0; font-weight:400;
+              color:var(--tinta); font-size:.92rem; }
+    .aceite input { width:19px; height:19px; margin-top:2px; flex:none; accent-color:#A8842A; }
+  </style>
+
+  <script>
+    const f = document.getElementById("f") as HTMLFormElement;
+    const aviso = document.getElementById("aviso") as HTMLElement;
+    const btn = document.getElementById("enviar") as HTMLButtonElement;
+
+    const tel = f.elements.namedItem("telefone") as HTMLInputElement;
+    tel.addEventListener("input", () => {
+      const d = tel.value.replace(/\D/g, "").slice(0, 11);
+      tel.value = d.length <= 10
+        ? d.replace(/^(\d{0,2})(\d{0,4})(\d{0,4}).*/, (_m, a, b, c) => [a && `(${a}`, a.length === 2 ? ") " : "", b, c && `-${c}`].join(""))
+        : d.replace(/^(\d{2})(\d{5})(\d{0,4}).*/, "($1) $2-$3");
+    });
+    for (const nome of ["valor_min", "valor_max"]) {
+      const el = f.elements.namedItem(nome) as HTMLInputElement;
+      el.addEventListener("input", () => {
+        const d = el.value.replace(/\D/g, "");
+        el.value = d ? Number(d).toLocaleString("pt-BR") : "";
+      });
+    }
+
+    function mostrar(texto: string, tipo: "erro" | "ok") {
+      aviso.className = `aviso ${tipo}`;
+      aviso.textContent = texto;
+      aviso.style.display = "block";
+      aviso.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    f.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      if (!(document.getElementById("aceite") as HTMLInputElement).checked) {
+        return mostrar("Marque a autorização de uso dos dados para continuar.", "erro");
+      }
+      const corpo: Record<string, unknown> = { aceite_lgpd: true };
+      for (const [k, v] of new FormData(f).entries()) corpo[k] = v;
+
+      btn.disabled = true; btn.textContent = "Enviando…";
+      try {
+        const r = await fetch("/api/publico/procuro-imovel", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Não deu para enviar agora.");
+        document.querySelector("section")!.style.display = "none";
+        (document.getElementById("pronto") as HTMLElement).style.display = "block";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (e: any) {
+        mostrar(e.message || "Não deu para enviar agora. Tente novamente.", "erro");
+        btn.disabled = false; btn.textContent = "Enviar meu pedido";
+      }
+    });
+  </script>
+</CR>

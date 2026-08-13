@@ -1,0 +1,210 @@
+---
+// Cadastro público de INVESTIDOR — crintermediacao.com.br/investidor
+// Sem login. O perfil informado aqui é o que permite avisar a pessoa quando
+// aparece uma oportunidade que combina com ela.
+import CR from "../layouts/CR.astro";
+import { OPERACOES, TIPOS_IMOVEL, PRAZOS, RECURSOS, EXPERIENCIAS } from "../lib/investidores";
+import { CONTATO_EMAIL, CONTATO_TELEFONE } from "../lib/termoVenda";
+
+export const prerender = false;
+---
+<CR titulo="Quero investir em imóveis — CR Intermediações Imobiliárias"
+    descricao="Cadastre seu perfil de investimento e receba oportunidades de terrenos, áreas e empreendimentos que combinam com o que você procura.">
+
+  <section style="padding-bottom:30px">
+    <div class="estreito">
+      <p class="rotulo">Investidores</p>
+      <h1 style="font-size:clamp(1.9rem,4vw,2.7rem)">Receba as oportunidades certas, antes do mercado</h1>
+      <p class="lead" style="margin-top:14px">
+        Preencha seu perfil de investimento em cerca de dois minutos. A partir daí, quando
+        entrar um terreno, uma área ou um empreendimento que bata com o que você procura,
+        você é avisado — inclusive nos casos em que o imóvel nem chega a ser anunciado.
+      </p>
+
+      <div id="aviso" class="aviso"></div>
+
+      <form id="f" style="margin-top:30px">
+        <div class="cartao" style="margin-bottom:18px">
+          <h3 style="margin-bottom:16px">Seus dados</h3>
+          <div class="campo"><label class="obr">Nome completo</label><input name="nome" required autocomplete="name" /></div>
+          <div class="linha-campos">
+            <div><label class="obr">Telefone / WhatsApp</label><input name="telefone" required inputmode="tel" placeholder="(11) 90000-0000" /></div>
+            <div><label class="obr">E-mail</label><input name="email" type="email" required autocomplete="email" /></div>
+          </div>
+          <div class="linha-campos">
+            <div><label>Cidade</label><input name="cidade" /></div>
+            <div><label>UF</label><input name="uf" maxlength="2" placeholder="SP" style="text-transform:uppercase" /></div>
+            <div>
+              <label>Investe como</label>
+              <select name="tipo_pessoa" id="tipoPessoa">
+                <option value="fisica">Pessoa física</option>
+                <option value="juridica">Empresa</option>
+              </select>
+            </div>
+          </div>
+          <div class="campo" id="campoEmpresa" style="display:none">
+            <label>Nome da empresa</label><input name="empresa" />
+          </div>
+        </div>
+
+        <div class="cartao" style="margin-bottom:18px">
+          <h3 style="margin-bottom:6px">O que você procura</h3>
+          <p style="font-size:.86rem;color:var(--tinta-cl);margin-bottom:16px">
+            Pode marcar mais de uma opção. Quanto mais específico, menos coisa fora do alvo você recebe.
+          </p>
+
+          <label class="obr" style="margin-bottom:10px">Tipo de operação</label>
+          <div class="marcas" style="margin-bottom:20px">
+            {OPERACOES.map((o) => (
+              <label class="opcao"><input type="checkbox" name="operacoes" value={o.v} /><span>{o.label}</span></label>
+            ))}
+          </div>
+
+          <label style="margin-bottom:10px">Tipo de imóvel</label>
+          <div class="marcas" style="margin-bottom:20px">
+            {TIPOS_IMOVEL.map((t) => (
+              <label class="opcao"><input type="checkbox" name="tipos_imovel" value={t.v} /><span>{t.label}</span></label>
+            ))}
+          </div>
+
+          <div class="campo">
+            <label>Regiões de interesse</label>
+            <input name="regioes" placeholder="Ex.: zona sul de São Paulo, ABC, litoral norte" />
+          </div>
+
+          <div class="linha-campos">
+            <div><label>Investimento a partir de (R$)</label><input name="ticket_min" inputmode="numeric" placeholder="500.000" /></div>
+            <div><label>Até (R$)</label><input name="ticket_max" inputmode="numeric" placeholder="2.000.000" /></div>
+          </div>
+
+          <div class="linha-campos">
+            <div>
+              <label>Prazo para investir</label>
+              <select name="prazo"><option value="">Selecione…</option>{PRAZOS.map((p) => <option value={p.v}>{p.label}</option>)}</select>
+            </div>
+            <div>
+              <label>Recursos</label>
+              <select name="recursos"><option value="">Selecione…</option>{RECURSOS.map((r) => <option value={r.v}>{r.label}</option>)}</select>
+            </div>
+          </div>
+
+          <div class="campo">
+            <label>Experiência com investimento imobiliário</label>
+            <select name="experiencia"><option value="">Selecione…</option>{EXPERIENCIAS.map((e) => <option value={e.v}>{e.label}</option>)}</select>
+          </div>
+
+          <div class="campo" style="margin-bottom:0">
+            <label>Quer contar mais alguma coisa?</label>
+            <textarea name="observacoes" rows="3" placeholder="Opcional"></textarea>
+          </div>
+        </div>
+
+        <div class="cartao">
+          <label class="aceite">
+            <input type="checkbox" id="aceite" required />
+            <span>Concordo que a CR Intermediações Imobiliárias use meus dados para me apresentar
+            oportunidades de investimento.</span>
+          </label>
+          <p class="lgpd" style="margin:12px 0 0">
+            Seus dados são usados só para isso, nos termos da LGPD (Lei 13.709/2018). Você pode pedir
+            acesso, correção ou exclusão a qualquer momento por {CONTATO_EMAIL} ou {CONTATO_TELEFONE}.
+          </p>
+          <button class="btn btn-ouro" id="enviar" type="submit" style="width:100%;margin-top:20px">Quero receber oportunidades</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section id="pronto" style="display:none;padding-top:40px">
+    <div class="estreito centro">
+      <img src="/logo-cr-transp.png" alt="" style="width:110px" />
+      <h1 style="margin-top:18px">Perfil cadastrado</h1>
+      <div class="filete"></div>
+      <p class="lead">
+        Recebemos seu perfil. A partir de agora, quando entrar uma oportunidade que
+        combine com o que você procura, entramos em contato pelo telefone informado.
+      </p>
+      <a class="btn btn-linha" href="/" style="margin-top:18px">Voltar ao início</a>
+    </div>
+  </section>
+
+  <style is:global>
+    .marcas { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; }
+    .opcao { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--linha);
+             border-radius:10px; cursor:pointer; font-size:.9rem; color:var(--tinta); font-weight:400;
+             margin:0; transition:border-color .15s ease, background .15s ease; }
+    .opcao:hover { border-color:var(--ouro-cl); }
+    .opcao input { width:17px; height:17px; margin:2px 0 0; flex:none; accent-color:#A8842A; }
+    .opcao:has(input:checked) { border-color:var(--ouro); background:#FCF8EF; }
+    .aceite { display:flex; gap:11px; align-items:flex-start; margin:0; font-weight:400;
+              color:var(--tinta); font-size:.92rem; }
+    .aceite input { width:19px; height:19px; margin-top:2px; flex:none; accent-color:#A8842A; }
+  </style>
+
+  <script>
+    const f = document.getElementById("f") as HTMLFormElement;
+    const aviso = document.getElementById("aviso") as HTMLElement;
+    const btn = document.getElementById("enviar") as HTMLButtonElement;
+
+    // máscara simples de telefone — não valida nada, só deixa legível
+    const tel = f.elements.namedItem("telefone") as HTMLInputElement;
+    tel.addEventListener("input", () => {
+      const d = tel.value.replace(/\D/g, "").slice(0, 11);
+      tel.value = d.length <= 10
+        ? d.replace(/^(\d{0,2})(\d{0,4})(\d{0,4}).*/, (_m, a, b, c) => [a && `(${a}`, a.length === 2 ? ") " : "", b, c && `-${c}`].join(""))
+        : d.replace(/^(\d{2})(\d{5})(\d{0,4}).*/, "($1) $2-$3");
+    });
+    // milhar nos campos de valor
+    for (const nome of ["ticket_min", "ticket_max"]) {
+      const el = f.elements.namedItem(nome) as HTMLInputElement;
+      el.addEventListener("input", () => {
+        const d = el.value.replace(/\D/g, "");
+        el.value = d ? Number(d).toLocaleString("pt-BR") : "";
+      });
+    }
+    // campo de empresa só aparece para pessoa jurídica
+    const tp = document.getElementById("tipoPessoa") as HTMLSelectElement;
+    tp.addEventListener("change", () => {
+      (document.getElementById("campoEmpresa") as HTMLElement).style.display = tp.value === "juridica" ? "" : "none";
+    });
+
+    function mostrar(texto: string, tipo: "erro" | "ok") {
+      aviso.className = `aviso ${tipo}`;
+      aviso.textContent = texto;
+      aviso.style.display = "block";
+      aviso.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    f.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      if (!(document.getElementById("aceite") as HTMLInputElement).checked) {
+        return mostrar("Marque a autorização de uso dos dados para continuar.", "erro");
+      }
+      const fd = new FormData(f);
+      const corpo: Record<string, unknown> = {
+        operacoes: fd.getAll("operacoes"),
+        tipos_imovel: fd.getAll("tipos_imovel"),
+        aceite_lgpd: true,
+      };
+      for (const [k, v] of fd.entries()) {
+        if (k === "operacoes" || k === "tipos_imovel") continue;
+        corpo[k] = v;
+      }
+
+      btn.disabled = true; btn.textContent = "Enviando…";
+      try {
+        const r = await fetch("/api/publico/investidor", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Não deu para enviar agora.");
+        document.querySelector("section")!.style.display = "none";
+        (document.getElementById("pronto") as HTMLElement).style.display = "block";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (e: any) {
+        mostrar(e.message || "Não deu para enviar agora. Tente novamente.", "erro");
+        btn.disabled = false; btn.textContent = "Quero receber oportunidades";
+      }
+    });
+  </script>
+</CR>

@@ -1,0 +1,183 @@
+---
+// Investidores captados pelo site da CR.
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+import {
+  STATUS_INVESTIDOR, LABEL_OPERACAO, LABEL_TIPO, LABEL_PRAZO, LABEL_RECURSO,
+  LABEL_EXPERIENCIA, faixaTexto,
+} from "../../../lib/investidores";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const filtro = Astro.url.searchParams.get("status") || "todos";
+const db = supabaseAdmin();
+let q = db.from("negocios_investidores").select("*").order("created_at", { ascending: false }).limit(1000);
+if (filtro !== "todos") q = q.eq("status", filtro);
+const { data } = await q;
+const lista = data || [];
+
+const { data: todos } = await db.from("negocios_investidores").select("status");
+const cont: Record<string, number> = {};
+for (const t of todos || []) cont[t.status] = (cont[t.status] || 0) + 1;
+const total = (todos || []).length;
+
+const LINK = "https://crintermediacao.com.br/investidor";
+function fmtQuando(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso!).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+}
+const badge = (v: string) => STATUS_INVESTIDOR.find((s) => s.v === v)?.badge || "badge-gray";
+---
+<Admin title="Investidores — Novos Negócios" current="negocios-investidores">
+  <div class="toolbar">
+    <span class="toolbar-title">Investidores <span style="font-weight:500;color:var(--ink-light)">({total})</span></span>
+    <button class="btn btn-primary" onclick="copiarLink()">🔗 Copiar link do formulário</button>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;background:var(--gray-50)">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:260px">
+        <strong style="font-size:.92rem">Link para captar investidores</strong>
+        <p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-mid)">
+          Abre no site da <strong>CR</strong>, sem menção à Costa Júnior. A pessoa informa o
+          perfil de investimento e cai aqui na hora — com aviso por e-mail e no Telegram de Ativos.
+        </p>
+      </div>
+      <input id="linkPub" class="search-input" readonly value={LINK} style="min-width:320px;flex:1" onclick="this.select()" />
+      <a class="btn btn-secondary" href={LINK} target="_blank" rel="noopener">Abrir</a>
+    </div>
+  </div>
+
+  <div class="pills" style="margin-bottom:16px">
+    <a class={`pill ${filtro === "todos" ? "active" : ""}`} href="?status=todos">Todos <span class="count">{total}</span></a>
+    {STATUS_INVESTIDOR.map((s) => (
+      <a class={`pill ${filtro === s.v ? "active" : ""}`} href={`?status=${s.v}`}>{s.label} <span class="count">{cont[s.v] || 0}</span></a>
+    ))}
+  </div>
+
+  <div id="msg"></div>
+
+  {lista.length ? (
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Investidor</th><th>Contato</th><th>Procura</th><th>Faixa</th><th>Prazo</th><th>Entrou</th><th>Situação</th><th></th></tr></thead>
+          <tbody>
+            {lista.map((p: any) => (
+              <tr>
+                <td>
+                  <strong>{p.nome}</strong>
+                  <div style="font-size:11.5px;color:var(--ink-light)">
+                    {p.tipo_pessoa === "juridica" ? (p.empresa || "Empresa") : "Pessoa física"}
+                    {p.cidade ? ` · ${p.cidade}${p.uf ? "/" + p.uf : ""}` : ""}
+                  </div>
+                </td>
+                <td style="font-size:12.5px">{p.telefone || "—"}{p.email ? <div style="color:var(--ink-light)">{p.email}</div> : null}</td>
+                <td style="font-size:12px;max-width:280px">
+                  {(p.operacoes || []).map((o: string) => <span class="badge badge-blue" style="margin:0 3px 3px 0">{LABEL_OPERACAO[o] || o}</span>)}
+                  {(p.tipos_imovel || []).length ? (
+                    <div style="color:var(--ink-light);margin-top:3px">{(p.tipos_imovel || []).map((t: string) => LABEL_TIPO[t] || t).join(", ")}</div>
+                  ) : null}
+                  {p.regioes ? <div style="color:var(--ink-mid);margin-top:2px">📍 {p.regioes}</div> : null}
+                </td>
+                <td style="white-space:nowrap;font-size:12.5px">{faixaTexto(p.ticket_min, p.ticket_max)}</td>
+                <td style="font-size:12px">{p.prazo ? (LABEL_PRAZO[p.prazo] || p.prazo).split(" — ")[0] : "—"}</td>
+                <td style="font-size:12px;white-space:nowrap">{fmtQuando(p.created_at)}</td>
+                <td>
+                  <select class="filter-select js-status" data-requer-edicao data-id={p.id} style="font-size:12px;padding:3px 6px">
+                    {STATUS_INVESTIDOR.map((s) => <option value={s.v} selected={p.status === s.v}>{s.label}</option>)}
+                  </select>
+                </td>
+                <td style="text-align:right;white-space:nowrap">
+                  {/* dados em data-* + delegação: onclick com JSON no atributo é
+                      reescapado pelo Astro e quebra calado (já nos custou caro) */}
+                  <button type="button" class="btn btn-secondary btn-sm js-ver"
+                          data-nome={p.nome}
+                          data-linhas={[
+                            `Contato: ${[p.telefone, p.email].filter(Boolean).join(" · ") || "—"}`,
+                            `Onde mora: ${[p.cidade, p.uf].filter(Boolean).join("/") || "—"}`,
+                            `Operações: ${(p.operacoes || []).map((o: string) => LABEL_OPERACAO[o] || o).join(", ") || "—"}`,
+                            `Tipos de imóvel: ${(p.tipos_imovel || []).map((t: string) => LABEL_TIPO[t] || t).join(", ") || "—"}`,
+                            `Regiões: ${p.regioes || "—"}`,
+                            `Faixa: ${faixaTexto(p.ticket_min, p.ticket_max)}`,
+                            `Prazo: ${p.prazo ? LABEL_PRAZO[p.prazo] : "—"}`,
+                            `Recursos: ${p.recursos ? LABEL_RECURSO[p.recursos] : "—"}`,
+                            `Experiência: ${p.experiencia ? LABEL_EXPERIENCIA[p.experiencia] : "—"}`,
+                            `Observações: ${p.observacoes || "—"}`,
+                            `Cadastro: ${fmtQuando(p.created_at)}${p.aceite_ip ? " · IP " + p.aceite_ip : ""}`,
+                          ].join("\n")}>Ver perfil</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  ) : (
+    <div class="card">
+      <div class="empty-state">
+        <strong>Nenhum investidor cadastrado ainda</strong>
+        <p>Divulgue o link acima. Assim que alguém preencher o perfil, aparece aqui.</p>
+      </div>
+    </div>
+  )}
+
+  <div class="modal-overlay" id="modalPerfil">
+    <div class="modal-box" style="max-width:620px">
+      <div class="modal-header">
+        <h2 id="perfilTitulo">Perfil do investidor</h2>
+        <button class="modal-close" type="button" onclick="fecharPerfil()" aria-label="Fechar">✕</button>
+      </div>
+      <div style="padding:16px 24px 24px">
+        <pre id="perfilTexto" style="white-space:pre-wrap;font-family:'Open Sans',sans-serif;font-size:13px;line-height:1.75;background:var(--gray-50);border:1px solid var(--border);border-radius:10px;padding:16px;max-height:56vh;overflow:auto"></pre>
+        <div class="modal-footer" style="padding:16px 0 0">
+          <button class="btn btn-primary" type="button" onclick="fecharPerfil()">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function copiarLink() {
+      const el = document.getElementById("linkPub") as HTMLInputElement;
+      el.select();
+      navigator.clipboard?.writeText(el.value).then(
+        () => { document.getElementById("msg")!.innerHTML = `<div class="alert alert-success">Link copiado.</div>`; },
+        () => { document.execCommand("copy"); },
+      );
+    }
+    function fecharPerfil() { document.getElementById("modalPerfil")!.classList.remove("open"); }
+    async function mudarStatus(id: string, status: string, el: HTMLSelectElement) {
+      el.disabled = true;
+      const r = await fetch(`/api/admin/negocios/investidores/${id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }),
+      });
+      el.disabled = false;
+      if (!r.ok) {
+        document.getElementById("msg")!.innerHTML =
+          `<div class="alert alert-error">${(await r.json().catch(() => ({}))).error || "Não deu para mudar."}</div>`;
+      } else { el.style.borderColor = "#16A34A"; setTimeout(() => { el.style.borderColor = ""; }, 1200); }
+    }
+
+    document.addEventListener("click", (ev) => {
+      const b = (ev.target as HTMLElement)?.closest?.(".js-ver") as HTMLElement | null;
+      if (!b) return;
+      document.getElementById("perfilTitulo")!.textContent = `Perfil — ${b.dataset.nome || ""}`;
+      document.getElementById("perfilTexto")!.textContent = b.dataset.linhas || "";
+      document.getElementById("modalPerfil")!.classList.add("open");
+    });
+    document.addEventListener("change", (ev) => {
+      const s = (ev.target as HTMLElement)?.closest?.(".js-status") as HTMLSelectElement | null;
+      if (s) mudarStatus(s.dataset.id || "", s.value, s);
+    });
+    document.getElementById("modalPerfil")?.addEventListener("click", (ev) => {
+      if (ev.target === ev.currentTarget) fecharPerfil();
+    });
+
+    Object.assign(window, { copiarLink, fecharPerfil });
+  </script>
+</Admin>
