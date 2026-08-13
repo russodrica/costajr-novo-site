@@ -6,7 +6,7 @@
 import Admin from "../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { supabaseAdmin } from "../../lib/supabase";
-import { nivelEfetivo, perfisFrescos, carregarOverridesUsuario, rotuloPerfil } from "../../lib/permissoes";
+import { nivelEfetivo, perfisFrescos, carregarOverridesUsuario, rotuloPerfil, GRUPOS_ADMIN } from "../../lib/permissoes";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -28,6 +28,7 @@ if (perfis.includes("fornecedor")) {
 const overrides = await carregarOverridesUsuario(claims.sub);
 const pode = (key: string) => nivelEfetivo(key, perfis, overrides) !== "nenhum";
 const hoje = new Date().toISOString().slice(0, 10);
+const em30dias = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 
 // Helper de contagem (Supabase não lança em erro de query — retorna count null).
 const cnt = (q: any) => q.select("*", { count: "exact", head: true });
@@ -41,6 +42,8 @@ const [
   membrosPendentes, perguntasPendentes,
   colaboradoresAtivos, colaboradoresFerias, docsVencidos,
   obrasTotal, tarefasAbertas, ativosTotal,
+  negDisponiveis, negNegociando, negProprietariosNovos, negInvestidoresNovos,
+  docsEmpresaVencidos, docsEmpresaVencendo, docsEmpresaTotal,
   finResumo,
 ] = await Promise.all([
   db.from("portal_profiles").select("display_name, full_name").eq("id", claims.sub).maybeSingle(),
@@ -63,6 +66,15 @@ const [
   cnt(db.from("obras")),
   cnt(db.from("obras_tarefas")).eq("status", "pendente"),
   cnt(db.from("ativos")),
+  // Novos Negócios — se a tabela ainda não existir, o count volta null (não quebra a tela)
+  cnt(db.from("negocios_imoveis")).in("tipo", ["terreno", "empreendimento"]).eq("status", "disponivel").eq("ativo", true),
+  cnt(db.from("negocios_oportunidades")).in("status", ["contatado", "em_negociacao"]),
+  cnt(db.from("negocios_proprietarios")).eq("status", "novo"),
+  cnt(db.from("negocios_investidores")).eq("status", "novo"),
+  // Documentos da Empresa — vencidos e vencendo nos próximos 30 dias
+  cnt(db.from("doc_empresa")).eq("arquivado", false).not("validade", "is", null).lt("validade", hoje),
+  cnt(db.from("doc_empresa")).eq("arquivado", false).gte("validade", hoje).lte("validade", em30dias),
+  cnt(db.from("doc_empresa")).eq("arquivado", false),
   db.rpc("fin_resumo_caixa", { p_meses: 1 }),
 ]);
 
@@ -128,6 +140,23 @@ const areas: Area[] = ([
       { v: fmtNum(ativosTotal.count), l: "Ativos" },
     ],
   },
+  (pode("negocios") || pode("negocios-terrenos")) && {
+    nome: "Novos Negócios", cor: "#059669", ic: "map-2", href: "/admin/negocios", ver: "Abrir resumo",
+    metrics: [
+      { v: fmtNum(negDisponiveis.count), l: "À venda" },
+      { v: fmtNum(negNegociando.count), l: "Em negociação" },
+      { v: fmtNum(negProprietariosNovos.count), l: "Proprietários novos" },
+      { v: fmtNum(negInvestidoresNovos.count), l: "Investidores novos" },
+    ],
+  },
+  pode("doc-empresa") && {
+    nome: "Jurídico & Documentos", cor: "#7E22CE", ic: "file-certificate", href: "/admin/doc-empresa", ver: "Abrir documentos",
+    metrics: [
+      { v: fmtNum(docsEmpresaVencidos.count), l: "Vencidos" },
+      { v: fmtNum(docsEmpresaVencendo.count), l: "Vencem em 30 dias" },
+      { v: fmtNum(docsEmpresaTotal.count), l: "Documentos ativos" },
+    ],
+  },
   pode("financeiro") && {
     nome: "Financeiro", cor: "#16A34A", ic: "building-bank", href: "/admin/financeiro", ver: "Abrir financeiro", wide: true,
     metrics: [
@@ -137,6 +166,16 @@ const areas: Area[] = ([
     ],
   },
 ] as (Area | false)[]).filter((a): a is Area => !!a);
+// Atalhos de TODAS as áreas que o usuário acessa — inclusive as que não têm card
+// de indicadores. Vem de GRUPOS_ADMIN (a mesma fonte do menu lateral), então um
+// grupo novo passa a aparecer aqui sem ninguém lembrar de mexer nesta tela.
+const atalhos = GRUPOS_ADMIN
+  .filter((g) => g.label)
+  .map((g) => {
+    const item = g.itens.find((i) => pode(i.key));
+    return item ? { label: g.label as string, icon: item.icon, href: item.href } : null;
+  })
+  .filter((a): a is { label: string; icon: string; href: string } => !!a);
 ---
 <Admin title="Visão geral" current="home">
   <div class="hero">
