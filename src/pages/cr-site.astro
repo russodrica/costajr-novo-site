@@ -1,14 +1,14 @@
 ---
 // Home da CR — crintermediacao.com.br (o middleware reescreve "/").
 //
-// POSICIONAMENTO (definido com a Adriana em 13/08/2026): a CR não é uma
-// imobiliária de apartamento. Ela ORIGINA E ESTRUTURA NEGÓCIOS imobiliários —
-// terrenos, glebas, empreendimentos inteiros, incorporação, permuta e ativos de
-// renda — e conecta isso a proprietários, investidores e quem procura ativo.
-// O texto todo desta página trabalha esse recado.
+// POSICIONAMENTO: a CR não é imobiliária de apartamento. Ela ORIGINA E
+// ESTRUTURA NEGÓCIOS imobiliários — terrenos, glebas, empreendimentos,
+// incorporação, permuta e ativos de renda.
 //
-// A capa usa /hero-cr.jpg (foto aérea com o logo). Se o arquivo não existir,
-// entra a arte geométrica em SVG — a página nunca fica quebrada.
+// SOBRE AS FOTOS: cada bloco aponta para um arquivo em /img/. Se o arquivo não
+// existir, entra um painel em degradê com o ícone — a página nunca fica com
+// buraco nem com imagem quebrada. Basta soltar os arquivos com esses nomes em
+// public/img/ para as fotos aparecerem, sem mexer em código.
 import CR from "../layouts/CR.astro";
 import { supabaseAdmin } from "../lib/supabase";
 import { BUCKET_NEGOCIOS, storageNegocios } from "../lib/negocios";
@@ -47,7 +47,6 @@ try {
   }
 } catch { vendidos = []; }
 
-// ── ícones (SVG inline: sem biblioteca, sem requisição extra) ──
 const IC: Record<string, string> = {
   terreno: `<path d="M3 20h18M6 20V9l6-4 6 4v11M9 20v-5h6v5"/>`,
   gleba: `<path d="M2 18l6-9 5 6 3-3 6 6M2 18h20"/><circle cx="7" cy="6" r="2"/>`,
@@ -60,14 +59,16 @@ const IC: Record<string, string> = {
   alvo: `<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>`,
   aperto: `<path d="M8 12l3 3 5-5"/><circle cx="12" cy="12" r="9"/>`,
 };
+const svg = (k: string) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${IC[k]}</svg>`;
 
 const NEGOCIOS = [
-  { ic: "terreno", t: "Terrenos urbanos", d: "Lotes e esquinas com potencial construtivo aferido: zoneamento, coeficiente e recuos conferidos antes de qualquer proposta." },
-  { ic: "gleba", t: "Glebas e grandes áreas", d: "Áreas para loteamento, industrial ou logística, com leitura de acesso, topografia, licenciamento e vocação real do terreno." },
-  { ic: "torre", t: "Empreendimentos", d: "Empreendimentos inteiros ou remanescentes de estoque — residenciais, comerciais e galpões — com o dossiê completo para decidir." },
-  { ic: "parceria", t: "Incorporação e parcerias", d: "Estruturamos a operação entre quem tem a terra e quem tem capacidade de construir, incluindo parceria e sociedade em conta de participação." },
-  { ic: "permuta", t: "Permuta e dação", d: "Nem todo negócio se resolve com dinheiro. Montamos permuta física, financeira e dação em pagamento quando é isso que destrava." },
-  { ic: "renda", t: "Ativos de renda", d: "Imóveis locados e operações built to suit para quem busca previsibilidade de fluxo em vez de ganho de capital." },
+  { ic: "terreno", img: "terreno", t: "Terrenos urbanos", d: "Lotes e esquinas com potencial construtivo aferido: zoneamento, coeficiente e recuos conferidos antes de qualquer proposta." },
+  { ic: "gleba", img: "gleba", t: "Glebas e grandes áreas", d: "Áreas para loteamento, indústria ou logística, com leitura de acesso, topografia, licenciamento e vocação real do terreno." },
+  { ic: "torre", img: "empreendimento", t: "Empreendimentos", d: "Empreendimentos inteiros ou remanescentes de estoque — residenciais, comerciais e galpões — com o dossiê completo para decidir." },
+  { ic: "parceria", img: "incorporacao", t: "Incorporação e parcerias", d: "Estruturamos a operação entre quem tem a terra e quem tem capacidade de construir, incluindo parceria e sociedade em conta de participação." },
+  { ic: "permuta", img: "permuta", t: "Permuta e dação", d: "Nem todo negócio se resolve com dinheiro. Montamos permuta física, financeira e dação em pagamento quando é isso que destrava." },
+  { ic: "renda", img: "renda", t: "Ativos de renda", d: "Imóveis locados e operações built to suit para quem busca previsibilidade de fluxo em vez de ganho de capital." },
 ];
 
 const METODO = [
@@ -83,6 +84,8 @@ const FAQ = [
   ["Preciso dar exclusividade?", "A autorização de venda não tem prazo de fidelidade: vale até você pedir o cancelamento, com aviso de cinco dias para tirarmos os anúncios do ar e encerrarmos tratativas em andamento."],
   ["Sou investidor. O que recebo?", "Oportunidades filtradas pelo perfil que você cadastrar — tipo de operação, região, faixa de investimento e prazo. Sem disparo em massa: se não bate com o que você pediu, você não recebe."],
 ];
+
+const TIRAS = ["Terrenos urbanos", "Glebas e áreas", "Loteamento", "Incorporação", "Permuta", "Built to suit", "Galpões e logística", "Remanescente de estoque", "Ativos de renda"];
 ---
 <CR titulo="CR Intermediações Imobiliárias — originação e estruturação de negócios imobiliários" capa={true}
     descricao="Terrenos, glebas, empreendimentos, incorporação, permuta e ativos de renda. Originamos, conferimos a documentação e estruturamos o negócio até a escritura.">
@@ -91,19 +94,16 @@ const FAQ = [
   <header class="capa">
     <div class="capa-foto" aria-hidden="true">
       <img src="/hero-cr.jpg" alt="" fetchpriority="high"
-           onerror="this.closest('.capa-foto').classList.add('sem-foto')" />
+           onerror="this.closest('.capa').classList.add('sem-foto')" />
       <div class="capa-arte">
         <svg viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice">
           <defs>
             <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stop-color="#F7EFE0" /><stop offset="100%" stop-color="#EFE9F2" />
             </linearGradient>
-            <pattern id="grade" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M40 0H0V40" fill="none" stroke="#D9B95F" stroke-width=".5" opacity=".22" />
-            </pattern>
           </defs>
-          <rect width="1200" height="700" fill="url(#g1)" /><rect width="1200" height="700" fill="url(#grade)" />
-          <g fill="none" stroke="#A8842A" stroke-width="1.1" opacity=".3">
+          <rect width="1200" height="700" fill="url(#g1)" />
+          <g fill="none" stroke="#A8842A" stroke-width="1.1" opacity=".28">
             <path d="M120 620 L300 470 L560 520 L720 400 L980 440 L1120 330" />
             <path d="M60 540 L260 400 L520 450 L700 320 L960 360 L1160 250" />
           </g>
@@ -112,7 +112,7 @@ const FAQ = [
     </div>
 
     <div class="capa-conteudo">
-      <img class="medalha" src="/cr-monograma.svg" alt="CR Intermediações Imobiliárias" />
+      <img class="medalha" src="/logo-cr-transp.png" alt="CR Intermediações Imobiliárias" />
       <p class="rotulo capa-rotulo">Originação e estruturação de negócios imobiliários</p>
       <h1>Do terreno ao empreendimento,<br /><em>o negócio inteiro.</em></h1>
       <p class="lead capa-lead">
@@ -125,61 +125,83 @@ const FAQ = [
         <a class="btn btn-vidro" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener">Falar agora no WhatsApp</a>
       </div>
     </div>
-
-    <div class="capa-selos">
-      <span>Documentação conferida antes do anúncio</span>
-      <span>Sem prazo de fidelidade</span>
-      <span>Rede própria de investidores</span>
-    </div>
   </header>
 
+  <!-- ── tira em movimento: mostra a amplitude em 3 segundos ─────────────── -->
+  <div class="tira" aria-hidden="true">
+    <div class="tira-mov">
+      {[0, 1].map(() => (
+        <div class="tira-grupo">{TIRAS.map((t) => (<span>{t}</span>))}</div>
+      ))}
+    </div>
+  </div>
+
   <!-- ── três portas ────────────────────────────────────────────────────── -->
-  <section id="portas" class="portas">
+  <section class="portas">
+    <div class="wrap grid3">
+      <a class="porta rev" href="/cr">
+        <span class="porta-tag">Proprietário</span>
+        <h3>Tenho um ativo para vender</h3>
+        <p>Terreno, área ou empreendimento. Avaliação, documentação e condução até a escritura.</p>
+        <span class="seta">Cadastrar meu imóvel <span>→</span></span>
+      </a>
+      <a class="porta destaque rev" href="/investidor">
+        <span class="porta-tag">Investidor</span>
+        <h3>Quero investir em imóveis</h3>
+        <p>Cadastre seu perfil e receba só as oportunidades que batem com ele — muitas antes de irem ao mercado.</p>
+        <span class="seta">Receber oportunidades <span>→</span></span>
+      </a>
+      <a class="porta rev" href="/procuro">
+        <span class="porta-tag">Comprador</span>
+        <h3>Procuro um imóvel específico</h3>
+        <p>Você descreve o que precisa e nós garimpamos, filtramos e apresentamos só o que faz sentido.</p>
+        <span class="seta">Descrever o que procuro <span>→</span></span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ── o que intermediamos ────────────────────────────────────────────── -->
+  <section id="negocios">
     <div class="wrap">
-      <div class="grid3">
-        <a class="porta rev" href="/cr">
-          <span class="porta-tag">Proprietário</span>
-          <h3>Tenho um ativo para vender</h3>
-          <p>Terreno, área ou empreendimento. Avaliação, documentação e condução até a escritura.</p>
-          <span class="seta">Cadastrar meu imóvel <span>→</span></span>
-        </a>
-        <a class="porta destaque rev" href="/investidor">
-          <span class="porta-tag">Investidor</span>
-          <h3>Quero investir em imóveis</h3>
-          <p>Cadastre seu perfil e receba só as oportunidades que batem com ele — muitas antes de irem ao mercado.</p>
-          <span class="seta">Receber oportunidades <span>→</span></span>
-        </a>
-        <a class="porta rev" href="/procuro">
-          <span class="porta-tag">Comprador</span>
-          <h3>Procuro um imóvel específico</h3>
-          <p>Você descreve o que precisa e nós garimpamos, filtramos e apresentamos só o que faz sentido.</p>
-          <span class="seta">Descrever o que procuro <span>→</span></span>
-        </a>
+      <div class="cabeca rev">
+        <div>
+          <p class="rotulo">O que intermediamos</p>
+          <h2>Negócio imobiliário<br />não é só imóvel</h2>
+        </div>
+        <p class="lead" style="margin:0;max-width:420px">
+          Cada operação tem uma lógica própria. Ler essa lógica antes de anunciar é o que
+          separa um negócio que fecha de um ativo que envelhece no mercado.
+        </p>
+      </div>
+
+      <div class="grid-neg">
+        {NEGOCIOS.map((n) => (
+          <article class="neg rev">
+            <div class="neg-foto">
+              <img src={`/img/${n.img}.jpg`} alt="" loading="lazy"
+                   onerror="this.closest('.neg-foto').classList.add('sem-img')" />
+              <span class="neg-ic" set:html={svg(n.ic)} />
+            </div>
+            <div class="neg-txt">
+              <h3>{n.t}</h3>
+              <p>{n.d}</p>
+            </div>
+          </article>
+        ))}
       </div>
     </div>
   </section>
 
-  <!-- ── o que intermediamos ───────────────────────────────────────────── -->
-  <section id="negocios">
-    <div class="wrap">
-      <div class="centro rev">
-        <p class="rotulo">O que intermediamos</p>
-        <h2>Negócio imobiliário não é só imóvel</h2>
-        <div class="filete"></div>
-        <p class="lead" style="max-width:640px;margin:0 auto 40px">
-          Cada operação tem uma lógica própria. Ler essa lógica antes de anunciar é o que
-          separa um negócio que fecha de um imóvel que envelhece no mercado.
-        </p>
-      </div>
-      <div class="grid-neg">
-        {NEGOCIOS.map((n) => (
-          <article class="neg rev">
-            <span class="ic" set:html={`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${IC[n.ic]}</svg>`} />
-            <h3>{n.t}</h3>
-            <p>{n.d}</p>
-          </article>
-        ))}
-      </div>
+  <!-- ── faixa larga de imagem ──────────────────────────────────────────── -->
+  <section class="faixa-foto">
+    <img src="/img/faixa.jpg" alt="" loading="lazy"
+         onerror="this.closest('.faixa-foto').classList.add('sem-img')" />
+    <div class="faixa-txt rev">
+      <h2>Terra boa não falta.<br />Falta quem leia o negócio.</h2>
+      <p class="lead">
+        Potencial construtivo, acesso, licenciamento, passivo e liquidez. É essa leitura
+        que transforma um terreno num negócio — e é ela que entregamos antes de falar de preço.
+      </p>
     </div>
   </section>
 
@@ -194,8 +216,8 @@ const FAQ = [
       <div class="grid-met">
         {METODO.map((m, i) => (
           <article class="met rev">
-            <span class="ic ic-claro" set:html={`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${IC[m.ic]}</svg>`} />
             <span class="met-n">{String(i + 1).padStart(2, "0")}</span>
+            <span class="ic ic-claro" set:html={svg(m.ic)} />
             <h3>{m.t}</h3>
             <p>{m.d}</p>
           </article>
@@ -229,7 +251,7 @@ const FAQ = [
     </section>
   )}
 
-  <!-- ── faixa investidor ───────────────────────────────────────────────── -->
+  <!-- ── investidores ───────────────────────────────────────────────────── -->
   <section class="faixa-inv">
     <div class="wrap faixa-grid">
       <div class="rev">
@@ -243,7 +265,7 @@ const FAQ = [
         <a class="btn btn-ouro" href="/investidor" style="margin-top:8px">Cadastrar meu perfil de investimento</a>
       </div>
       <ul class="lista-check rev">
-        <li>Tipo de operação: revenda, incorporação, loteamento, renda ou permuta</li>
+        <li>Revenda, incorporação, loteamento, renda ou permuta</li>
         <li>Faixa de investimento e prazo definidos por você</li>
         <li>Regiões de interesse, do bairro ao estado</li>
         <li>Sem disparo em massa: fora do perfil, você não recebe</li>
@@ -260,10 +282,7 @@ const FAQ = [
         <div class="filete"></div>
       </div>
       {FAQ.map(([p, r]) => (
-        <details class="faq rev">
-          <summary>{p}</summary>
-          <p>{r}</p>
-        </details>
+        <details class="faq rev"><summary>{p}</summary><p>{r}</p></details>
       ))}
     </div>
   </section>
@@ -283,96 +302,132 @@ const FAQ = [
     </div>
   </section>
 
+  <!-- botão fixo: no celular é o caminho mais curto para o contato -->
+  <a class="zap" href={`https://wa.me/${WHATS}`} target="_blank" rel="noopener" aria-label="Falar no WhatsApp">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-8.7 15l-1.2 4.3 4.4-1.2A10 10 0 1012 2zm5.6 14.1c-.2.7-1.4 1.3-2 1.4-.5.1-1.1.1-1.8-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.6-.4.8-.4h.6c.2 0 .4 0 .7.5l1 2.3c.1.2.1.4 0 .6l-.4.6-.3.3c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.1 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.2.4-.2.6-.1l2.2 1c.3.1.5.2.5.4.1.1.1.6-.1 1.3z"/></svg>
+  </a>
+
   <style is:global>
     /* ── capa ── */
-    .capa { position:relative; min-height:96vh; display:flex; flex-direction:column;
-            align-items:center; justify-content:center; text-align:center; overflow:hidden;
-            padding:90px 24px 120px; }
-    .capa-foto { position:absolute; inset:0; z-index:0; }
-    .capa-foto img { width:100%; height:100%; object-fit:cover; display:block; }
-    .capa-foto .capa-arte { display:none; position:absolute; inset:0; }
-    .capa-foto .capa-arte svg { width:100%; height:100%; }
-    /* sem a foto publicada, entra a arte geométrica e o texto volta a ser escuro */
-    .capa-foto.sem-foto img { display:none; }
-    .capa-foto.sem-foto .capa-arte { display:block; }
-    .capa-foto::after { content:""; position:absolute; inset:0;
-      background:linear-gradient(180deg, rgba(20,17,24,.62) 0%, rgba(20,17,24,.38) 42%, rgba(20,17,24,.78) 100%); }
-    .capa-foto.sem-foto::after { background:radial-gradient(ellipse at 50% 45%, rgba(251,249,247,.9) 0%, rgba(251,249,247,.72) 45%, rgba(251,249,247,.96) 100%); }
+    .capa { position:relative; min-height:98vh; display:flex; flex-direction:column;
+            align-items:center; justify-content:flex-end; text-align:center; overflow:hidden;
+            padding:100px 24px 130px; }
+    .capa.sem-foto { justify-content:center; }
+    .capa-foto { position:absolute; inset:0; z-index:0; overflow:hidden; }
+    .capa-foto img { width:100%; height:100%; object-fit:cover; display:block;
+                     animation:respira 26s ease-in-out infinite alternate; }
+    @keyframes respira { from { transform:scale(1); } to { transform:scale(1.09); } }
+    .capa-arte { display:none; position:absolute; inset:0; }
+    .capa-arte svg { width:100%; height:100%; }
+    .capa.sem-foto .capa-foto img { display:none; }
+    .capa.sem-foto .capa-arte { display:block; }
+    .capa-foto::after { content:""; position:absolute; inset:0; z-index:1;
+      background:linear-gradient(180deg, rgba(16,13,20,.42) 0%, rgba(16,13,20,.12) 26%, rgba(16,13,20,.58) 54%, rgba(16,13,20,.9) 82%, rgba(16,13,20,.97) 100%); }
+    .capa.sem-foto .capa-foto::after {
+      background:radial-gradient(ellipse at 50% 45%, rgba(251,249,247,.9) 0%, rgba(251,249,247,.72) 45%, rgba(251,249,247,.96) 100%); }
+    .capa-conteudo { position:relative; z-index:2; max-width:900px; color:#fff; }
+    .capa.sem-foto .capa-conteudo { color:var(--tinta); }
+    .medalha { width:150px; height:150px; display:none; }
+    .capa.sem-foto .medalha { display:inline-block; }
+    .capa-rotulo { color:#E8CE84 !important; margin-top:0; }
+    .capa.sem-foto .capa-rotulo { color:var(--ouro) !important; margin-top:20px; }
+    .capa h1 { font-size:clamp(2.3rem,5.6vw,4.1rem); text-shadow:0 2px 30px rgba(0,0,0,.6); }
+    .capa h1 em { font-style:normal; color:#E8CE84; }
+    .capa.sem-foto h1 { text-shadow:none; }
+    .capa.sem-foto h1 em { color:var(--ouro); }
+    .capa-lead { color:rgba(255,255,255,.94) !important; max-width:660px; margin:18px auto 0;
+                 text-shadow:0 1px 16px rgba(0,0,0,.7); }
+    .capa.sem-foto .capa-lead { color:var(--tinta-md) !important; text-shadow:none; }
+    .capa-botoes { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:30px; }
+    .btn-vidro { background:rgba(255,255,255,.14); color:#fff; border-color:rgba(255,255,255,.45); backdrop-filter:blur(8px); }
+    .btn-vidro:hover { background:rgba(255,255,255,.25); }
+    .capa.sem-foto .btn-vidro { background:var(--papel); color:var(--tinta); border-color:var(--linha); backdrop-filter:none; }
 
-    .capa-conteudo { position:relative; z-index:1; max-width:880px; color:#fff; }
-    .capa-foto.sem-foto ~ .capa-conteudo { color:var(--tinta); }
-    /* O emblema 3D é imagem de capa, não logotipo: em 130px ele vira um borrão
-       rosado. Quem trabalha em tamanho pequeno é o monograma vetorial. */
-    .medalha { width:124px; height:124px; }
-    /* a foto da capa JÁ traz o emblema composto — não repetir a marca em cima */
-    .capa-foto:not(.sem-foto) ~ .capa-conteudo .medalha { display:none; }
-    .capa-rotulo { color:#E6C87C !important; margin-top:20px; }
-    .capa h1 { font-size:clamp(2.3rem,5.4vw,3.9rem); text-shadow:0 2px 24px rgba(0,0,0,.35); }
-    .capa h1 em { font-style:normal; color:#E6C87C; }
-    .capa-lead { color:rgba(255,255,255,.9) !important; max-width:660px; margin:20px auto 0;
-                 text-shadow:0 1px 12px rgba(0,0,0,.4); }
-    .capa-foto.sem-foto ~ .capa-conteudo .capa-lead { color:var(--tinta-md) !important; text-shadow:none; }
-    .capa-botoes { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:32px; }
-    .btn-vidro { background:rgba(255,255,255,.13); color:#fff; border-color:rgba(255,255,255,.4);
-                 backdrop-filter:blur(8px); }
-    .btn-vidro:hover { background:rgba(255,255,255,.22); }
-    .capa-selos { position:relative; z-index:1; display:flex; flex-wrap:wrap; gap:10px 30px;
-                  justify-content:center; margin-top:46px; }
-    .capa-selos span { color:rgba(255,255,255,.86); font-size:.78rem; letter-spacing:.08em;
-                       text-transform:uppercase; display:flex; align-items:center; gap:8px; }
-    .capa-selos span::before { content:""; width:5px; height:5px; border-radius:50%; background:#E6C87C; }
-    .capa-foto.sem-foto ~ .capa-selos span { color:var(--tinta-cl); }
-    /* sem foto o fundo fica claro: o botão de vidro ficava branco no branco */
-    .capa-foto.sem-foto ~ .capa-conteudo .btn-vidro { background:var(--papel); color:var(--tinta);
-      border-color:var(--linha); backdrop-filter:none; }
-    .capa-foto.sem-foto ~ .capa-conteudo .btn-vidro:hover { border-color:var(--ouro-cl); color:var(--ouro); }
-    .capa-foto.sem-foto ~ .capa-conteudo .capa-rotulo { color:var(--ouro) !important; }
-    .capa-foto.sem-foto ~ .capa-conteudo h1 { text-shadow:none; }
-    .capa-foto.sem-foto ~ .capa-conteudo h1 em { color:var(--ouro); }
+    /* ── tira em movimento ── */
+    .tira { background:#1C1822; overflow:hidden; padding:15px 0; }
+    .tira-mov { display:flex; width:max-content; animation:desliza 40s linear infinite; }
+    .tira-grupo { display:flex; }
+    .tira span { color:rgba(232,206,132,.82); font-size:.75rem; letter-spacing:.2em;
+                 text-transform:uppercase; padding:0 32px; white-space:nowrap; position:relative; }
+    .tira span::after { content:"◆"; position:absolute; right:-5px; top:1px; font-size:.5rem; color:rgba(232,206,132,.38); }
+    @keyframes desliza { from { transform:translateX(0); } to { transform:translateX(-50%); } }
 
-    /* ── três portas (sobem por cima da capa) ── */
-    .portas { padding:0; margin-top:-72px; position:relative; z-index:2; }
+    @media (prefers-reduced-motion:reduce) {
+      .capa-foto img, .tira-mov { animation:none; }
+    }
+
+    /* ── portas ── */
+    .portas { padding:56px 0 76px; }
     .grid3 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:18px; }
     .porta { display:flex; flex-direction:column; background:var(--papel); border:1px solid var(--linha);
-             border-radius:var(--raio); padding:26px; text-decoration:none;
-             box-shadow:0 18px 44px rgba(30,24,38,.10);
-             transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
-    .porta:hover { transform:translateY(-4px); border-color:var(--ouro-cl); box-shadow:0 24px 54px rgba(30,24,38,.16); }
-    .porta-tag { font-size:.66rem; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
-                 color:var(--ouro); margin-bottom:12px; }
+             border-radius:var(--raio); padding:28px; text-decoration:none; position:relative; overflow:hidden;
+             box-shadow:0 10px 30px rgba(30,24,38,.06);
+             transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .porta::before { content:""; position:absolute; top:0; left:0; right:0; height:3px;
+      background:linear-gradient(90deg,#E8CE84,#A8842A); transform:scaleX(0); transform-origin:left;
+      transition:transform .35s ease; }
+    .porta:hover { transform:translateY(-6px); border-color:var(--ouro-cl); box-shadow:0 26px 58px rgba(30,24,38,.16); }
+    .porta:hover::before { transform:scaleX(1); }
+    .porta-tag { font-size:.66rem; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:var(--ouro); margin-bottom:12px; }
     .porta h3 { margin-bottom:8px; }
     .porta p { color:var(--tinta-md); font-size:.93rem; }
     .porta.destaque { background:linear-gradient(180deg,#FFFDF8,#FBF4E6); border-color:#E7D6A6; }
     .seta { margin-top:auto; padding-top:14px; color:var(--ouro); font-size:.88rem; font-weight:500; }
     .seta span { display:inline-block; transition:margin .2s ease; }
-    .porta:hover .seta span { margin-left:5px; }
+    .porta:hover .seta span { margin-left:6px; }
 
-    /* ── ícones ── */
-    .ic { display:inline-flex; align-items:center; justify-content:center; width:46px; height:46px;
-          border-radius:12px; background:var(--ouro-pale); color:var(--ouro); margin-bottom:16px; }
-    .ic svg { width:23px; height:23px; }
-    .ic-claro { background:rgba(230,200,124,.13); color:#E6C87C; }
+    /* ── cabeça editorial ── */
+    .cabeca { display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:end; margin-bottom:44px; }
+    @media (max-width:820px) { .cabeca { grid-template-columns:1fr; gap:18px; } }
 
-    /* ── o que intermediamos ── */
-    .grid-neg { display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:20px; }
-    .neg { background:var(--papel); border:1px solid var(--linha); border-radius:var(--raio); padding:28px;
-           transition:border-color .2s ease, transform .2s ease; }
-    .neg:hover { border-color:var(--ouro-cl); transform:translateY(-3px); }
-    .neg h3 { margin-bottom:8px; }
-    .neg p { color:var(--tinta-md); font-size:.93rem; margin:0; }
+    /* ── frentes de negócio ── */
+    .grid-neg { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; }
+    .neg { border-radius:var(--raio); overflow:hidden; background:var(--papel);
+           border:1px solid var(--linha); display:flex; flex-direction:column;
+           transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .neg:hover { transform:translateY(-5px); border-color:var(--ouro-cl); box-shadow:0 22px 50px rgba(30,24,38,.13); }
+    .neg-foto { position:relative; height:180px; overflow:hidden;
+                background:linear-gradient(135deg,#F3EBD8 0%,#E9E2EE 60%,#F7F1E4 100%); }
+    .neg-foto img { width:100%; height:100%; object-fit:cover; display:block; transition:transform .6s ease; }
+    .neg:hover .neg-foto img { transform:scale(1.06); }
+    .neg-foto.sem-img img { display:none; }
+    .neg-ic { position:absolute; left:18px; bottom:16px; width:46px; height:46px; border-radius:12px;
+              display:flex; align-items:center; justify-content:center; color:#fff;
+              background:rgba(28,24,34,.62); backdrop-filter:blur(6px); }
+    .neg-foto.sem-img .neg-ic { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+              width:60px; height:60px; background:rgba(168,132,42,.13); color:var(--ouro); backdrop-filter:none; }
+    .neg-ic svg { width:23px; height:23px; }
+    .neg-txt { padding:22px 24px 26px; }
+    .neg-txt h3 { margin-bottom:8px; }
+    .neg-txt p { color:var(--tinta-md); font-size:.92rem; margin:0; }
 
-    /* ── método (faixa escura, para dar respiro e contraste) ── */
-    .metodo { background:linear-gradient(160deg,#282232,#1C1822); color:rgba(255,255,255,.82); }
+    /* ── faixa de imagem larga ── */
+    .faixa-foto { position:relative; padding:0; min-height:420px; display:flex; align-items:center;
+                  overflow:hidden; background:linear-gradient(135deg,#2A2333,#463C55); }
+    .faixa-foto > img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+    .faixa-foto.sem-img > img { display:none; }
+    .faixa-foto::after { content:""; position:absolute; inset:0;
+      background:linear-gradient(90deg, rgba(16,13,20,.92) 0%, rgba(16,13,20,.74) 45%, rgba(16,13,20,.34) 100%); }
+    .faixa-txt { position:relative; z-index:1; max-width:600px;
+                 margin-left:max(24px,calc((100vw - 1080px)/2 + 24px)); padding:70px 24px 70px 0; color:#fff; }
+    .faixa-txt h2 { color:#fff; font-size:clamp(1.8rem,3.6vw,2.7rem); }
+    .faixa-txt .lead { color:rgba(255,255,255,.82) !important; margin-top:16px; }
+
+    /* ── método ── */
+    .metodo { background:linear-gradient(160deg,#282232,#17141D); color:rgba(255,255,255,.8); }
     .grid-met { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:26px; }
-    .met { position:relative; padding-top:6px; }
-    .met-n { position:absolute; top:0; right:0; font-family:var(--serif); font-size:1.7rem; color:rgba(230,200,124,.28); }
-    .met h3 { color:#fff; margin-bottom:8px; font-size:1.1rem; }
-    .met p { font-size:.92rem; margin:0; color:rgba(255,255,255,.7); }
+    .met { position:relative; }
+    .met-n { font-family:var(--serif); font-size:2.4rem; color:rgba(232,206,132,.3); display:block; line-height:1; margin-bottom:12px; }
+    .ic { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px;
+          border-radius:12px; background:var(--ouro-pale); color:var(--ouro); margin-bottom:14px; }
+    .ic svg { width:22px; height:22px; }
+    .ic-claro { background:rgba(232,206,132,.12); color:#E8CE84; }
+    .met h3 { color:#fff; margin-bottom:8px; font-size:1.08rem; }
+    .met p { font-size:.91rem; margin:0; color:rgba(255,255,255,.68); }
 
     /* ── vitrine ── */
     .vitrine { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:18px; }
-    .imovel { position:relative; margin:0; border:1px solid var(--linha); border-radius:var(--raio);
-              overflow:hidden; background:var(--papel); }
+    .imovel { position:relative; margin:0; border:1px solid var(--linha); border-radius:var(--raio); overflow:hidden; background:var(--papel); }
     .imovel img { width:100%; height:180px; object-fit:cover; display:block; }
     .imovel figcaption { padding:14px 16px 16px; }
     .imovel figcaption strong { display:block; font-size:.95rem; }
@@ -381,28 +436,33 @@ const FAQ = [
              font-size:.66rem; font-weight:600; letter-spacing:.18em; text-transform:uppercase;
              padding:6px 12px; border-radius:999px; backdrop-filter:blur(4px); }
 
-    /* ── faixa investidor ── */
-    .faixa-inv { background:linear-gradient(180deg,#FFFDF8,#F7F0E2); border-top:1px solid var(--linha);
-                 border-bottom:1px solid var(--linha); }
+    /* ── investidores ── */
+    .faixa-inv { background:linear-gradient(180deg,#FFFDF8,#F6EFE1); border-top:1px solid var(--linha); border-bottom:1px solid var(--linha); }
     .faixa-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:46px; align-items:center; }
     @media (max-width:860px) { .faixa-grid { grid-template-columns:1fr; gap:26px; } }
     .lista-check { list-style:none; margin:0; padding:0; }
-    .lista-check li { position:relative; padding:12px 0 12px 32px; border-bottom:1px solid rgba(168,132,42,.16);
-                      font-size:.93rem; color:var(--tinta-md); }
+    .lista-check li { position:relative; padding:13px 0 13px 32px; border-bottom:1px solid rgba(168,132,42,.16); font-size:.93rem; color:var(--tinta-md); }
     .lista-check li:last-child { border-bottom:0; }
-    .lista-check li::before { content:""; position:absolute; left:4px; top:19px; width:11px; height:6px;
+    .lista-check li::before { content:""; position:absolute; left:4px; top:20px; width:11px; height:6px;
       border-left:1.6px solid var(--ouro); border-bottom:1.6px solid var(--ouro); transform:rotate(-45deg); }
 
     /* ── FAQ ── */
     .faq { border-bottom:1px solid var(--linha); padding:6px 0; }
     .faq summary { cursor:pointer; list-style:none; padding:18px 34px 18px 0; position:relative;
-                   font-family:var(--serif); font-size:1.14rem; color:var(--tinta); }
+                   font-family:var(--serif); font-size:1.16rem; color:var(--tinta); }
     .faq summary::-webkit-details-marker { display:none; }
     .faq summary::after { content:"+"; position:absolute; right:4px; top:16px; font-size:1.4rem;
-                          color:var(--ouro); font-family:var(--sans); font-weight:300; transition:transform .2s ease; }
+                          color:var(--ouro); font-family:var(--sans); font-weight:300; transition:transform .25s ease; }
     .faq[open] summary::after { transform:rotate(45deg); }
     .faq p { color:var(--tinta-md); font-size:.94rem; margin:0 0 18px; padding-right:34px; }
 
-    .final { background:linear-gradient(180deg,var(--areia),#F1EBE0); }
+    .final { background:linear-gradient(180deg,var(--areia),#F1EADD); }
+
+    /* ── WhatsApp fixo ── */
+    .zap { position:fixed; right:20px; bottom:20px; z-index:40; width:54px; height:54px; border-radius:50%;
+           background:#25D366; color:#fff; display:flex; align-items:center; justify-content:center;
+           box-shadow:0 10px 26px rgba(0,0,0,.24); transition:transform .2s ease; }
+    .zap:hover { transform:scale(1.07); }
+    .zap svg { width:29px; height:29px; }
   </style>
 </CR>
