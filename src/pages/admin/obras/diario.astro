@@ -27,7 +27,9 @@ const filtroStatus = Astro.url.searchParams.get("status") || "todos";
 
 let q = db.from("obras_rdo")
   .select("id, area, obra_id, fundacao_id, data, status, condicao, clima_manha, clima_tarde, atividades, responsavel, empresa")
-  .order("data", { ascending: false }).limit(400);
+  .order("data", { ascending: false })
+  .order("created_at", { ascending: false })   // dois no mesmo dia: o mais novo primeiro
+  .limit(400);
 if (filtroArea !== "todas") q = q.eq("area", filtroArea);
 if (filtroObra) q = q.or(`obra_id.eq.${filtroObra},fundacao_id.eq.${filtroObra}`);
 if (filtroStatus !== "todos") q = q.eq("status", filtroStatus);

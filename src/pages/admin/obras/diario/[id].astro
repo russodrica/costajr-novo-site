@@ -411,8 +411,10 @@ const emp = empresaDe(rdo.empresa);
                    height: auto !important; overflow: visible !important; }
 
       /* cabeçalho */
-      #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: flex-start;
-                             gap: 16px; padding-bottom: 10px; margin-bottom: 4px; }
+      #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: center;
+                             gap: 16px; min-height: 88px; padding-bottom: 12px; margin-bottom: 4px; }
+      #folhaPrint .pf-marca { display: flex; align-items: center; gap: 30px; flex: 1; }
+      #folhaPrint .pf-marca > div { display: flex; flex-direction: column; justify-content: center; }
       #folhaPrint .pf-logo { height: 82px; width: auto; object-fit: contain; }
       #folhaPrint .pf-titulo { font-size: 18pt; font-weight: 800; letter-spacing: .05em;
                                line-height: 1.1; margin: 0; }
@@ -885,7 +887,7 @@ const emp = empresaDe(rdo.empresa);
 
       document.getElementById("folhaPrint")!.innerHTML = `
         <div class="pf-topo" style="border-bottom:2px solid ${cor}">
-          <div style="display:flex;align-items:center;gap:30px">
+          <div class="pf-marca">
             ${empSel.logo ? `<img class="pf-logo" src="${empSel.logo}" onerror="this.style.display='none'">` : ""}
             <div>
               <h1 class="pf-titulo" style="color:${cor}">RELATÓRIO DE VISITA</h1>

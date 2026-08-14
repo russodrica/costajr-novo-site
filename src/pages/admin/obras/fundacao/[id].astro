@@ -8,8 +8,7 @@ import Admin from "../../../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import {
-  statusObraLabel, statusObraBadge, statusLabel, statusBadge,
-  climaIcone, condicaoLabel, empresaDe, fmtDataBr,
+  statusObraLabel, statusObraBadge, statusLabel, statusBadge, empresaDe, fmtDataBr,
 } from "../../../../lib/rdo";
 
 const token = Astro.cookies.get("admin_token")?.value;
@@ -22,7 +21,10 @@ const id = Astro.params.id!;
 
 const [{ data: obra }, { data: rels }] = await Promise.all([
   db.from("obras_fundacao").select("*").eq("id", id).maybeSingle(),
-  db.from("obras_rdo").select("*").eq("fundacao_id", id).order("data", { ascending: false }).limit(500),
+  db.from("obras_rdo").select("*").eq("fundacao_id", id)
+    .order("data", { ascending: false })
+    .order("created_at", { ascending: false })   // vários no mesmo dia: o mais novo primeiro
+    .limit(500),
 ]);
 if (!obra) return Astro.redirect("/admin/obras/fundacao");
 
@@ -73,7 +75,7 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
   <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Data</th><th>Responsável</th><th>Emitido por</th><th>Clima</th><th>Verificado</th><th>Fotos</th><th>Situação</th><th></th></tr></thead>
+        <thead><tr><th>Data</th><th>Responsável</th><th>Emitido por</th><th>Fotos</th><th>Situação</th><th></th></tr></thead>
         <tbody>
           {lista.length ? lista.map((r: any) => (
             <tr>
@@ -83,20 +85,16 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
               </td>
               <td style="font-size:12.5px">{r.responsavel || "—"}</td>
               <td style="font-size:12px;white-space:nowrap;color:#6B7280">{empresaDe(r.empresa).curto}</td>
-              <td style="white-space:nowrap;font-size:13px">
-                {climaIcone(r.clima_manha)} {climaIcone(r.clima_tarde)}
-                {r.condicao && r.condicao !== "praticavel"
-                  ? <div style="font-size:11px;color:#9CA3AF">{condicaoLabel(r.condicao)}</div> : null}
-              </td>
-              <td style="font-size:12.5px;max-width:320px;color:#6B7280">
-                {r.atividades ? String(r.atividades).slice(0, 110) + (String(r.atividades).length > 110 ? "…" : "") : <em style="color:#9CA3AF">em branco</em>}
-              </td>
               <td style="white-space:nowrap">{qtdFotos[r.id] ? `📷 ${qtdFotos[r.id]}` : "—"}</td>
               <td><span class={`badge ${statusBadge(r.status)}`}>{statusLabel(r.status)}</span></td>
-              <td style="text-align:right"><a class="btn btn-secondary btn-sm" href={`/admin/obras/diario/${r.id}`}>Abrir</a></td>
+              <td style="text-align:right;white-space:nowrap">
+                <a class="btn btn-secondary btn-sm" href={`/admin/obras/diario/${r.id}`}>Abrir</a>
+                <button class="btn btn-danger btn-sm" data-requer-edicao data-excluir={r.id}
+                        data-data={fmtDataBr(r.data)} title="Excluir relatório">🗑</button>
+              </td>
             </tr>
           )) : (
-            <tr><td colspan="8"><div class="empty-state">
+            <tr><td colspan="6"><div class="empty-state">
               <strong>Nenhum relatório de visita nesta obra</strong>
               <p>Clique em “+ Novo relatório de visita” para registrar a visita de hoje.</p>
             </div></td></tr>
@@ -164,6 +162,24 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
         document.getElementById("msgRel")!.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
         btn.disabled = false; btn.textContent = "Criar e abrir";
       }
+    });
+
+    // Excluir relatório. Publicado é registro do que foi visto em campo: a API
+    // recusa e explica que é preciso voltar para rascunho antes.
+    document.addEventListener("click", async (ev) => {
+      const b = (ev.target as HTMLElement)?.closest?.("[data-excluir]") as HTMLElement | null;
+      if (!b) return;
+      if (!confirm(`Excluir o relatório de ${b.dataset.data}? Isso não tem volta.`)) return;
+      b.setAttribute("disabled", "true");
+      const r = await fetch(`/api/admin/obras/diario/${b.dataset.excluir}`, {
+        method: "DELETE", headers: { "content-type": "application/json" },
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) { window.location.reload(); return; }
+      b.removeAttribute("disabled");
+      document.getElementById("msg")!.innerHTML =
+        `<div class="alert alert-error">${j?.error || "Não deu para excluir."}</div>`;
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
 
     document.getElementById("modalRel")!.addEventListener("click", (ev) => {
