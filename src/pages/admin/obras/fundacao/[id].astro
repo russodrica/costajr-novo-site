@@ -1,0 +1,175 @@
+---
+// Ficha da obra de FUNDAÇÃO — dados da obra e os relatórios de visita dela.
+//
+// A carteira de fundação não tem financeiro nem ativos amarrados (isso é da
+// tabela `obras`), então a ficha é enxuta de propósito: o que importa aqui é
+// abrir a obra e ver o histórico de visitas.
+import Admin from "../../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../../lib/auth";
+import { supabaseAdmin } from "../../../../lib/supabase";
+import {
+  statusObraLabel, statusObraBadge, statusLabel, statusBadge,
+  climaIcone, condicaoLabel, empresaDe, fmtDataBr,
+} from "../../../../lib/rdo";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const id = Astro.params.id!;
+
+const [{ data: obra }, { data: rels }] = await Promise.all([
+  db.from("obras_fundacao").select("*").eq("id", id).maybeSingle(),
+  db.from("obras_rdo").select("*").eq("fundacao_id", id).order("data", { ascending: false }).limit(500),
+]);
+if (!obra) return Astro.redirect("/admin/obras/fundacao");
+
+const lista = rels || [];
+const ids = lista.map((r: any) => r.id);
+const { data: fotos } = ids.length
+  ? await db.from("obras_rdo_fotos").select("rdo_id").in("rdo_id", ids)
+  : { data: [] as any[] };
+const qtdFotos: Record<string, number> = {};
+for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).rdo_id] || 0) + 1;
+
+const publicados = lista.filter((r: any) => r.status === "publicado").length;
+const ultima = lista[0]?.data || null;
+const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+---
+<Admin title={`Obra de fundação — ${obra.nome}`} current="obras-fundacao">
+  <div class="toolbar">
+    <a href="/admin/obras/fundacao" class="btn btn-secondary btn-sm">← Voltar</a>
+    <span class="toolbar-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:8px">
+      🧱 {obra.nome}
+      {obra.codigo && <span style="font-size:.8rem;color:#9CA3AF;font-weight:600">{obra.codigo}</span>}
+      <span class={`badge ${statusObraBadge(obra.status)}`}>{statusObraLabel(obra.status)}</span>
+    </span>
+    <button class="btn btn-primary" data-requer-edicao onclick="abrirRel()" style="margin-left:auto">+ Novo relatório de visita</button>
+  </div>
+
+  <div id="msg"></div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="dl-inline">
+      <div><dt>Cliente</dt><dd>{obra.cliente || "—"}</dd></div>
+      <div><dt>Local</dt><dd>{[obra.cidade, obra.uf].filter(Boolean).join("/") || "—"}</dd></div>
+      <div><dt>Endereço</dt><dd>{obra.endereco || "—"}</dd></div>
+      <div><dt>Responsável</dt><dd>{obra.responsavel_nome || "—"}</dd></div>
+      <div><dt>Início</dt><dd>{fmtDataBr(obra.data_inicio)}</dd></div>
+      <div><dt>Previsão de fim</dt><dd>{fmtDataBr(obra.data_fim_prevista)}</dd></div>
+    </div>
+    {obra.observacoes && <p style="font-size:.82rem;color:#6B7280;margin:12px 0 0">{obra.observacoes}</p>}
+  </div>
+
+  <div class="card-grid" style="margin-bottom:16px">
+    <div class="stat-card"><div class="stat-value">{lista.length}</div><div class="stat-label">Relatórios de visita</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:#16A34A">{publicados}</div><div class="stat-label">Publicados</div></div>
+    <div class="stat-card"><div class="stat-value" style="font-size:1.5rem">{ultima ? fmtDataBr(ultima) : "—"}</div><div class="stat-label">Última visita</div></div>
+  </div>
+
+  <div class="section-title" style="margin-bottom:12px">📋 Relatórios de visita ({lista.length})</div>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Responsável</th><th>Emitido por</th><th>Clima</th><th>Verificado</th><th>Fotos</th><th>Situação</th><th></th></tr></thead>
+        <tbody>
+          {lista.length ? lista.map((r: any) => (
+            <tr>
+              <td style="white-space:nowrap">
+                <strong>{fmtDataBr(r.data)}</strong>
+                {r.data === hoje ? <span class="badge badge-blue" style="margin-left:5px">hoje</span> : null}
+              </td>
+              <td style="font-size:12.5px">{r.responsavel || "—"}</td>
+              <td style="font-size:12px;white-space:nowrap;color:#6B7280">{empresaDe(r.empresa).curto}</td>
+              <td style="white-space:nowrap;font-size:13px">
+                {climaIcone(r.clima_manha)} {climaIcone(r.clima_tarde)}
+                {r.condicao && r.condicao !== "praticavel"
+                  ? <div style="font-size:11px;color:#9CA3AF">{condicaoLabel(r.condicao)}</div> : null}
+              </td>
+              <td style="font-size:12.5px;max-width:320px;color:#6B7280">
+                {r.atividades ? String(r.atividades).slice(0, 110) + (String(r.atividades).length > 110 ? "…" : "") : <em style="color:#9CA3AF">em branco</em>}
+              </td>
+              <td style="white-space:nowrap">{qtdFotos[r.id] ? `📷 ${qtdFotos[r.id]}` : "—"}</td>
+              <td><span class={`badge ${statusBadge(r.status)}`}>{statusLabel(r.status)}</span></td>
+              <td style="text-align:right"><a class="btn btn-secondary btn-sm" href={`/admin/obras/diario/${r.id}`}>Abrir</a></td>
+            </tr>
+          )) : (
+            <tr><td colspan="8"><div class="empty-state">
+              <strong>Nenhum relatório de visita nesta obra</strong>
+              <p>Clique em “+ Novo relatório de visita” para registrar a visita de hoje.</p>
+            </div></td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal: novo relatório -->
+  <div class="modal-overlay" id="modalRel">
+    <div class="modal-box" style="max-width:520px">
+      <div class="modal-header">
+        <h2>Novo relatório de visita</h2>
+        <button class="modal-close" type="button" onclick="fecharRel()" aria-label="Fechar">✕</button>
+      </div>
+      <form id="formRel" style="padding:16px 24px 24px">
+        <input type="hidden" name="area" value="fundacao" />
+        <input type="hidden" name="fundacao_id" value={obra.id} />
+        <div id="msgRel"></div>
+        <p style="margin:0 0 12px;font-size:13px;color:#6B7280">Obra: <strong>{obra.nome}</strong></p>
+        <div class="form-row">
+          <div class="form-group"><label>Data da visita *</label><input type="date" name="data" required value={hoje} /></div>
+          <div class="form-group"><label>Emitido por *</label>
+            <select name="empresa">
+              <option value="consultoria" selected>Costa Júnior Consultoria e Geotecnia</option>
+              <option value="engenharia">Costa Júnior Engenharia e Construções</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:8px 0 0">
+          <button class="btn btn-secondary" type="button" onclick="fecharRel()">Cancelar</button>
+          <button class="btn btn-primary" type="submit" id="btnCriarRel">Criar e abrir</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <style>
+    .dl-inline { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px 18px; }
+    .dl-inline dt { font-size:.72rem; color:var(--ink-light); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+    .dl-inline dd { margin:2px 0 0; font-size:.86rem; color:var(--ink); font-weight:600; }
+  </style>
+
+  <script>
+    function abrirRel() {
+      document.getElementById("msgRel")!.innerHTML = "";
+      document.getElementById("modalRel")!.classList.add("open");
+    }
+    function fecharRel() { document.getElementById("modalRel")!.classList.remove("open"); }
+
+    document.getElementById("formRel")!.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = document.getElementById("btnCriarRel") as HTMLButtonElement;
+      const corpo = Object.fromEntries(new FormData(ev.target as HTMLFormElement).entries());
+      btn.disabled = true; btn.textContent = "Criando…";
+      try {
+        const r = await fetch("/api/admin/obras/diario", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Não deu para criar o relatório.");
+        window.location.href = `/admin/obras/diario/${j.id}`;
+      } catch (e: any) {
+        document.getElementById("msgRel")!.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+        btn.disabled = false; btn.textContent = "Criar e abrir";
+      }
+    });
+
+    document.getElementById("modalRel")!.addEventListener("click", (ev) => {
+      if (ev.target === ev.currentTarget) fecharRel();
+    });
+
+    Object.assign(window, { abrirRel, fecharRel });
+  </script>
+</Admin>

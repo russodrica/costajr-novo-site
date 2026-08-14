@@ -35,11 +35,12 @@ export const POST: APIRoute = async ({ request }) => {
       .select("id, nome").eq("id", vinculoId).maybeSingle();
     if (!obra) return jsonErr(404, "Obra não encontrada.");
 
-    // um relatório por obra por dia: em vez de estourar erro de banco,
-    // devolvemos o que já existe
-    const { data: ja } = await db.from("obras_rdo").select("id")
-      .eq(daFundacao ? "fundacao_id" : "obra_id", vinculoId).eq("data", data).maybeSingle();
-    if (ja) return jsonOk({ id: ja.id, jaExistia: true });
+    // Cada visita gera SEU relatório, mesmo que duas caiam no mesmo dia.
+    // (Antes o sistema devolvia o relatório existente daquela data, e a tela
+    // abria "preenchida sozinha" quando a pessoa pedia um novo.)
+    const { count: noDia } = await db.from("obras_rdo")
+      .select("*", { count: "exact", head: true })
+      .eq(daFundacao ? "fundacao_id" : "obra_id", vinculoId).eq("data", data);
 
     const { data: novo, error } = await db.from("obras_rdo").insert({
       area,
@@ -72,7 +73,7 @@ export const POST: APIRoute = async ({ request }) => {
       acao: "criar", entidade: "obras_rdo", registro_id: novo.id,
       descricao: `Relatório de visita ${data} — ${areaDe(area).label}: "${obra.nome}"`,
     });
-    return jsonOk({ id: novo.id }, 201);
+    return jsonOk({ id: novo.id, outrosNoDia: Number(noDia) || 0 }, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }

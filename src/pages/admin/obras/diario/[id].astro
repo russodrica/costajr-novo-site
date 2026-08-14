@@ -34,9 +34,9 @@ const area = areaDe(rdo.area);
 const { data: obra } = await db.from(area.tabela)
   .select("id, nome, codigo, cliente, endereco, cidade, uf, responsavel_nome")
   .eq("id", area.v === "fundacao" ? rdo.fundacao_id : rdo.obra_id).maybeSingle();
-const voltarPara = area.v === "fundacao"
-  ? "/admin/obras/fundacao"
-  : (obra ? `/admin/obras/${obra.id}` : "/admin/obras");
+const voltarPara = obra
+  ? (area.v === "fundacao" ? `/admin/obras/fundacao/${obra.id}` : `/admin/obras/${obra.id}`)
+  : (area.v === "fundacao" ? "/admin/obras/fundacao" : "/admin/obras");
 const { data: checklist } = await db.from("obras_rdo_checklist").select("*").eq("rdo_id", id).order("ordem");
 const { data: fotos } = await db.from("obras_rdo_fotos").select("*").eq("rdo_id", id).order("ordem").order("created_at");
 const { data: tiposOcor } = await db.from("obras_cat_ocorrencias").select("nome").eq("ativo", true).order("nome");
@@ -46,6 +46,15 @@ const { data: responsaveis } = await db.from("obras_cat_responsaveis")
 // Fundação não usa checklist — a visita da consultoria é laudo, não conferência
 // item a item. Em Obras o bloco continua.
 const usaChecklist = area.v === "obras";
+
+// Outros relatórios da MESMA obra na MESMA data: não é erro (pode haver duas
+// visitas no dia), mas a pessoa precisa saber que existe outro, para não
+// preencher em duplicidade sem perceber.
+const { data: mesmoDia } = await db.from("obras_rdo")
+  .select("id")
+  .eq(area.v === "fundacao" ? "fundacao_id" : "obra_id", area.v === "fundacao" ? rdo.fundacao_id : rdo.obra_id)
+  .eq("data", rdo.data).neq("id", id);
+const outrosNoDia = (mesmoDia || []).length;
 const respPadrao = (responsaveis || []).find((r: any) => r.padrao)?.nome || "";
 
 const dados = {
@@ -94,6 +103,13 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
   </div>
 
   <div id="msg" class="nao-imprimir"></div>
+
+  {outrosNoDia > 0 && (
+    <div class="alert alert-info nao-imprimir" style="margin-bottom:14px">
+      Existe{outrosNoDia > 1 ? "m" : ""} mais {outrosNoDia} relatório{outrosNoDia > 1 ? "s" : ""} desta obra
+      na mesma data. <a href={`/admin/obras/diario?obra=${obra?.id || ""}`}>Ver todos desta obra</a>.
+    </div>
+  )}
 
   <!-- Tudo o que sai no PDF fica dentro de #folha. A impressão apaga o resto da
        tela pelo id, e não por classe do layout: assim nenhuma barra lateral

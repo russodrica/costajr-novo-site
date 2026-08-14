@@ -47,7 +47,7 @@ for (const o of obrasLista) nomeObra[o.id] = o.nome;
 for (const o of fundLista) nomeObra[o.id] = o.nome;
 const vinculoDe = (r: any) => (r.area === "fundacao" ? r.fundacao_id : r.obra_id);
 const linkDaObra = (r: any) =>
-  r.area === "fundacao" ? "/admin/obras/fundacao" : `/admin/obras/${r.obra_id}`;
+  r.area === "fundacao" ? `/admin/obras/fundacao/${r.fundacao_id}` : `/admin/obras/${r.obra_id}`;
 
 const { data: todos } = await db.from("obras_rdo").select("status, area");
 const cont: Record<string, number> = { rascunho: 0, publicado: 0, obras: 0, fundacao: 0 };

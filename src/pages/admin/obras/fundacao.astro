@@ -77,14 +77,17 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
           <tbody>
             {lista.map((o: any) => (
               <tr data-obra={JSON.stringify(o)}>
-                <td><strong>{o.nome}</strong>{o.codigo ? <span style="display:block;font-size:11.5px;color:var(--ink-light)">{o.codigo}</span> : null}</td>
+                <td><a href={`/admin/obras/fundacao/${o.id}`}><strong>{o.nome}</strong></a>{o.codigo ? <span style="display:block;font-size:11.5px;color:var(--ink-light)">{o.codigo}</span> : null}</td>
                 <td style="font-size:12.5px">{o.cliente || "—"}</td>
                 <td style="font-size:12.5px">{[o.cidade, o.uf].filter(Boolean).join("/") || "—"}</td>
                 <td style="font-size:12.5px">{o.responsavel_nome || "—"}</td>
                 <td style="white-space:nowrap;font-size:12.5px">{fmtDataBr(o.data_inicio)}</td>
                 <td><span class={`badge ${statusObraBadge(o.status)}`}>{statusObraLabel(o.status)}</span></td>
-                <td style="white-space:nowrap;font-size:12.5px">{qtdRel[o.id] ? `📋 ${qtdRel[o.id]}` : "—"}</td>
+                <td style="white-space:nowrap;font-size:12.5px">
+                  {qtdRel[o.id] ? <a href={`/admin/obras/fundacao/${o.id}`}>📋 {qtdRel[o.id]}</a> : "—"}
+                </td>
                 <td style="text-align:right;white-space:nowrap">
+                  <a class="btn btn-secondary btn-sm" href={`/admin/obras/fundacao/${o.id}`}>Abrir</a>
                   <button class="btn btn-primary btn-sm" data-requer-edicao data-novo-rel={o.id} data-nome={o.nome}>+ Relatório</button>
                   <button class="btn btn-secondary btn-sm" data-editar={o.id}>✏️</button>
                 </td>
