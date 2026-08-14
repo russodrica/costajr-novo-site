@@ -19,12 +19,14 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 const db = supabaseAdmin();
 const id = Astro.params.id!;
 
-const [{ data: obra }, { data: rels }] = await Promise.all([
+const [{ data: obra }, { data: rels }, { data: anexos }] = await Promise.all([
   db.from("obras_fundacao").select("*").eq("id", id).maybeSingle(),
   db.from("obras_rdo").select("*").eq("fundacao_id", id)
     .order("data", { ascending: false })
     .order("created_at", { ascending: false })   // vários no mesmo dia: o mais novo primeiro
     .limit(500),
+  db.from("obras_fundacao_anexos").select("*").eq("fundacao_id", id)
+    .order("data", { ascending: false }).order("created_at", { ascending: false }).limit(500),
 ]);
 if (!obra) return Astro.redirect("/admin/obras/fundacao");
 
@@ -36,8 +38,10 @@ const { data: fotos } = ids.length
 const qtdFotos: Record<string, number> = {};
 for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).rdo_id] || 0) + 1;
 
+const historico = anexos || [];
+const kb = (n: number | null) => (n ? (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`) : "—");
 const publicados = lista.filter((r: any) => r.status === "publicado").length;
-const ultima = lista[0]?.data || null;
+const ultima = [lista[0]?.data, (anexos || [])[0]?.data].filter(Boolean).sort().reverse()[0] || null;
 const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
 ---
 <Admin title={`Obra de fundação — ${obra.nome}`} current="obras-fundacao">
@@ -107,6 +111,42 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
         </tbody>
       </table>
     </div>
+  </div>
+
+  <!-- ── histórico: PDFs emitidos no sistema anterior ── -->
+  <div class="section-title" style="margin-bottom:12px">
+    📎 Histórico — relatórios emitidos antes do portal ({historico.length})
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
+    {historico.length ? (
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Nº</th><th>Responsável</th><th>Arquivo</th><th>Tamanho</th><th></th></tr></thead>
+          <tbody>
+            {historico.map((a: any) => (
+              <tr>
+                <td style="white-space:nowrap"><strong>{fmtDataBr(a.data)}</strong></td>
+                <td style="white-space:nowrap">{a.numero || "—"}</td>
+                <td style="font-size:12.5px">{a.responsavel || "—"}</td>
+                <td style="font-size:12.5px;color:#6B7280">📄 {a.nome_arquivo || "relatorio.pdf"}</td>
+                <td style="white-space:nowrap;font-size:12.5px">{kb(a.tamanho)}</td>
+                <td style="text-align:right;white-space:nowrap">
+                  <a class="btn btn-secondary btn-sm" href={`/api/admin/obras/fundacao/anexos/${a.id}`} target="_blank">Abrir</a>
+                  <a class="btn btn-secondary btn-sm" href={`/api/admin/obras/fundacao/anexos/${a.id}?baixar=1`}>Baixar</a>
+                  <button class="btn btn-danger btn-sm" data-requer-edicao data-excluir-anexo={a.id}
+                          data-nome={a.nome_arquivo || "arquivo"} title="Remover do histórico">🗑</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <div class="empty-state">
+        <strong>Nenhum relatório antigo anexado</strong>
+        <p>Aqui ficam os PDFs já emitidos no sistema anterior. São arquivos: o portal guarda e entrega, sem reabrir para edição.</p>
+      </div>
+    )}
   </div>
 
   <!-- Modal: novo relatório -->
@@ -185,6 +225,19 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
       document.getElementById("msg")!.innerHTML =
         `<div class="alert alert-error">${j?.error || "Não deu para excluir."}</div>`;
       window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    // remover um PDF do histórico
+    document.addEventListener("click", async (ev) => {
+      const b = (ev.target as HTMLElement)?.closest?.("[data-excluir-anexo]") as HTMLElement | null;
+      if (!b) return;
+      if (!confirm(`Remover "${b.dataset.nome}" do histórico? Isso apaga o arquivo.`)) return;
+      const r = await fetch(`/api/admin/obras/fundacao/anexos/${b.dataset.excluirAnexo}`, {
+        method: "DELETE", headers: { "content-type": "application/json" },
+      });
+      if (r.ok) { window.location.reload(); return; }
+      const j = await r.json().catch(() => ({}));
+      document.getElementById("msg")!.innerHTML = `<div class="alert alert-error">${j?.error || "Não deu para remover."}</div>`;
     });
 
     document.getElementById("modalRel")!.addEventListener("click", (ev) => {
