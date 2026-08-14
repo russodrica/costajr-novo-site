@@ -24,13 +24,21 @@ if (filtroStatus !== "todas") q = q.eq("status", filtroStatus);
 const { data: obras } = await q;
 const lista = obras || [];
 
-// quantos relatórios cada obra já tem (para a lista não mentir sobre o que dá para excluir)
+// Quantos relatórios cada obra tem — as DUAS fontes:
+//   * obras_rdo → relatórios feitos no portal
+//   * obras_fundacao_anexos → PDFs emitidos no sistema anterior (histórico)
+// Sem somar o histórico, obra cheia de relatório antigo aparecia vazia na lista.
 const ids = lista.map((o: any) => o.id);
-const { data: rels } = ids.length
-  ? await db.from("obras_rdo").select("fundacao_id").in("fundacao_id", ids)
-  : { data: [] as any[] };
+const [{ data: rels }, { data: anexos }] = ids.length
+  ? await Promise.all([
+      db.from("obras_rdo").select("fundacao_id").in("fundacao_id", ids),
+      db.from("obras_fundacao_anexos").select("fundacao_id").in("fundacao_id", ids),
+    ])
+  : [{ data: [] as any[] }, { data: [] as any[] }];
 const qtdRel: Record<string, number> = {};
 for (const r of rels || []) qtdRel[(r as any).fundacao_id] = (qtdRel[(r as any).fundacao_id] || 0) + 1;
+const qtdHist: Record<string, number> = {};
+for (const a of anexos || []) qtdHist[(a as any).fundacao_id] = (qtdHist[(a as any).fundacao_id] || 0) + 1;
 
 const { data: todas } = await db.from("obras_fundacao").select("status");
 const cont: Record<string, number> = {};
@@ -73,7 +81,7 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
     <div class="card" style="padding:0;overflow:hidden">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Obra</th><th>Cliente</th><th>Início</th><th>Situação</th><th>Relatórios</th><th></th></tr></thead>
+          <thead><tr><th>Obra</th><th>Cliente</th><th>Início</th><th>Situação</th><th>Relatórios</th><th>Histórico</th><th></th></tr></thead>
           <tbody>
             {lista.map((o: any) => (
               <tr data-obra={JSON.stringify(o)}>
@@ -83,6 +91,11 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
                 <td><span class={`badge ${statusObraBadge(o.status)}`}>{statusObraLabel(o.status)}</span></td>
                 <td style="white-space:nowrap">
                   {qtdRel[o.id] ? <a href={`/admin/obras/fundacao/${o.id}`}>📋 {qtdRel[o.id]}</a> : "—"}
+                </td>
+                <td style="white-space:nowrap">
+                  {qtdHist[o.id]
+                    ? <a href={`/admin/obras/fundacao/${o.id}`} title="Relatórios emitidos antes do portal">📎 {qtdHist[o.id]}</a>
+                    : "—"}
                 </td>
                 <td style="text-align:right;white-space:nowrap">
                   <a class="btn btn-secondary btn-sm" href={`/admin/obras/fundacao/${o.id}`}>Abrir</a>
