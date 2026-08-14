@@ -58,27 +58,50 @@ export async function tokenGraph(): Promise<string> {
 }
 
 /** Cria a pasta se não existir e devolve o id. Aceita caminho com barras
- *  ("Portal CJR/Fundação/OBRA X") — cria nível por nível. */
+ *  ("Portal CJR/Fundação/OBRA X") — cria nível por nível.
+ *
+ *  Primeiro procura, só cria se não achou. Criar com "replace" quebra em
+ *  biblioteca do SharePoint ("General exception while processing"): lá o
+ *  Graph não aceita substituir uma pasta que já existe. */
 export async function garantirPasta(caminho: string): Promise<string> {
   const token = await tokenGraph();
   const drive = process.env.MS_DRIVE_ID!;
   const partes = caminho.split("/").map((p) => p.trim()).filter(Boolean);
+  const cab = { authorization: `Bearer ${token}` };
 
   let paiId = "root";
+  let percorrido = "";
   for (const nome of partes) {
+    percorrido = percorrido ? `${percorrido}/${nome}` : nome;
+
+    // já existe?
+    const rota = percorrido.split("/").map(encodeURIComponent).join("/");
+    const busca = await fetch(`${GRAPH}/drives/${drive}/root:/${rota}`, { headers: cab });
+    if (busca.ok) {
+      const achado = await busca.json().catch(() => ({}));
+      if (achado?.id) { paiId = achado.id; continue; }
+    }
+
     const r = await fetch(`${GRAPH}/drives/${drive}/items/${paiId}/children`, {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: { ...cab, "content-type": "application/json" },
       body: JSON.stringify({
         name: nome,
         folder: {},
-        // já existe? o Graph devolve a pasta existente em vez de erro
-        "@microsoft.graph.conflictBehavior": "replace",
+        // corrida entre dois envios ao mesmo tempo: fica com a que já está lá
+        "@microsoft.graph.conflictBehavior": "fail",
       }),
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.id) throw new Error(`Não deu para preparar a pasta "${nome}": ${j.error?.message || r.status}`);
-    paiId = j.id;
+    if (r.ok && j.id) { paiId = j.id; continue; }
+
+    // alguém criou no meio do caminho — procura de novo
+    if (r.status === 409) {
+      const denovo = await fetch(`${GRAPH}/drives/${drive}/root:/${rota}`, { headers: cab });
+      const achado = await denovo.json().catch(() => ({}));
+      if (denovo.ok && achado?.id) { paiId = achado.id; continue; }
+    }
+    throw new Error(`Não deu para preparar a pasta "${nome}": ${j.error?.message || r.status}`);
   }
   return paiId;
 }
@@ -149,10 +172,20 @@ export async function diagnosticoOneDrive(): Promise<{ ok: boolean; mensagem: st
     return { ok: false, mensagem: `Faltam as credenciais: ${faltando.join(", ")}.` };
   }
   try {
-    await tokenGraph();
+    const token = await tokenGraph();
+    // a biblioteca responde? diz qual é, para conferir se é a certa
+    const rd = await fetch(`${GRAPH}/drives/${process.env.MS_DRIVE_ID}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const drive = await rd.json().catch(() => ({}));
+    if (!rd.ok) {
+      return { ok: false, mensagem: `A biblioteca não respondeu: ${drive?.error?.message || rd.status}` };
+    }
     const raiz = process.env.MS_PASTA_RAIZ || "Portal CJR";
     const id = await garantirPasta(raiz);
-    return { ok: true, mensagem: "OneDrive conectado.", pasta: id };
+    const onde = [drive?.owner?.user?.displayName || drive?.owner?.group?.displayName, drive?.name]
+      .filter(Boolean).join(" / ");
+    return { ok: true, mensagem: `OneDrive conectado — ${onde || "biblioteca"} › ${raiz}.`, pasta: id };
   } catch (e: any) {
     return { ok: false, mensagem: e?.message || "Falha ao conectar." };
   }
