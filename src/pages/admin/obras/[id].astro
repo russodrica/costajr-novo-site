@@ -11,11 +11,12 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 const id = Astro.params.id!;
 const db = supabaseAdmin();
 
-const [{ data: obra }, { data: lancamentos }, { data: ativos }, { data: rdos }] = await Promise.all([
+const [{ data: obra }, { data: lancamentos }, { data: ativos }, { data: rdos }, { data: modelosCheck }] = await Promise.all([
   db.from("obras").select("*").eq("id", id).maybeSingle(),
   db.from("fin_lancamentos").select("*, categoria:fin_categorias(nome, cor)").eq("obra_id", id).neq("status", "cancelado").order("data_vencimento", { ascending: false }).limit(1000),
   db.from("ativos").select("id, descricao, categoria, status, numero_patrimonial, alocado_para_nome").eq("alocado_para_tipo", "obra").eq("alocado_para_id", id).order("descricao"),
   db.from("obras_rdo").select("*").eq("obra_id", id).order("data", { ascending: false }).limit(500),
+  db.from("obras_checklist_modelos").select("id, nome").eq("ativo", true).order("nome"),
 ]);
 
 if (!obra) return Astro.redirect("/admin/obras");
@@ -25,14 +26,12 @@ const statusBadge: Record<string, string> = { planejada: "badge-blue", ativa: "b
 const lancStatusLabels: Record<string, string> = { previsto: "Previsto", pago: "Pago", atrasado: "Atrasado", cancelado: "Cancelado" };
 const lancStatusBadge: Record<string, string> = { previsto: "badge-blue", pago: "badge-green", atrasado: "badge-red", cancelado: "badge-gray" };
 const ativoCategorias: Record<string, string> = { telefonia: "Telefonia", informatica: "Informática", equipamento_obra: "Equip. de Obra", epi: "EPI", veiculo: "Veículo", mobiliario: "Mobiliário", outros: "Outros" };
+const empresaCurta: Record<string, string> = { engenharia: "Costa Júnior Engenharia", consultoria: "Costa Júnior Consultoria" };
 const climaEmoji: Record<string, string> = { sol: "☀️", nublado: "☁️", chuva: "🌧️", impraticavel: "⛔" };
 const climaLabels: Record<string, string> = { sol: "Sol", nublado: "Nublado", chuva: "Chuva", impraticavel: "Impraticável" };
 
 function fmtMoney(v: number | null | undefined) { if (v == null) return "—"; return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function fmtDate(d: string | null) { if (!d) return "—"; return new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR"); }
-function fmtDateLonga(d: string) {
-  return new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
-}
 
 // ───── Custo por obra (#5): orçado x realizado ─────
 const lancs = lancamentos || [];
@@ -221,80 +220,65 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
     <div id="lista-anotacoes"><p style="color:#999;font-size:13px;text-align:center;padding:8px">Carregando...</p></div>
   </div>
 
-  <!-- ───── #7 RDO — Diário de obra ───── -->
+  <!-- ───── Relatórios de Visita ───── -->
   <div class="toolbar" style="margin-bottom:12px">
-    <span class="section-title" style="flex:1">📋 RDO — Diário de Obra ({rdos?.length ?? 0})</span>
-    <button class="btn btn-primary" onclick="abrirModalRdo()">+ RDO de hoje</button>
+    <span class="section-title" style="flex:1">📋 Relatórios de Visita ({rdos?.length ?? 0})</span>
+    <a href="/admin/obras/diario" class="btn btn-secondary btn-sm">Ver todos →</a>
+    <button class="btn btn-primary" onclick="abrirModalRel()">+ Novo relatório de visita</button>
   </div>
 
   <div id="msgRdo"></div>
 
-  <div class="rdo-lista">
-    {rdos?.length ? rdos.map((r: any) => (
-      <div class="card rdo-card">
-        <div class="rdo-head">
-          <div>
-            <strong class="rdo-data">{fmtDateLonga(r.data)}</strong>
-            <div class="rdo-meta">
-              {r.clima_manha && <span title={`Manhã: ${climaLabels[r.clima_manha]}`}>Manhã {climaEmoji[r.clima_manha]}</span>}
-              {r.clima_tarde && <span title={`Tarde: ${climaLabels[r.clima_tarde]}`}>Tarde {climaEmoji[r.clima_tarde]}</span>}
-              {r.efetivo != null && <span>👷 {r.efetivo} {r.efetivo === 1 ? "pessoa" : "pessoas"}</span>}
-            </div>
-          </div>
-          <button class="btn btn-secondary btn-sm" onclick={`editarRdo('${r.id}')`}>✏️ Editar</button>
-        </div>
-        <div class="rdo-bloco"><span class="rdo-rotulo">Atividades</span><p>{r.atividades}</p></div>
-        {r.ocorrencias && <div class="rdo-bloco rdo-ocorrencia"><span class="rdo-rotulo">⚠️ Ocorrências</span><p>{r.ocorrencias}</p></div>}
-        {r.equipamentos && <div class="rdo-bloco"><span class="rdo-rotulo">Equipamentos</span><p>{r.equipamentos}</p></div>}
-        {r.fotos?.length > 0 && (
-          <div class="rdo-bloco"><span class="rdo-rotulo">Fotos</span>
-            <p>{r.fotos.map((f: string, i: number) => <a href={f} target="_blank" style="margin-right:10px">📷 Foto {i + 1}</a>)}</p>
-          </div>
-        )}
-        <div class="rdo-rodape">Registrado por {r.criado_por || "—"}</div>
-      </div>
-    )) : (
-      <div class="card"><div class="empty-state"><strong>Nenhum RDO registrado</strong><p>Clique em "+ RDO de hoje" para registrar o primeiro diário de obra.</p></div></div>
-    )}
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Emitido por</th><th>Clima</th><th>Verificado</th><th>Situação</th><th></th></tr></thead>
+        <tbody>
+          {rdos?.length ? rdos.map((r: any) => (
+            <tr>
+              <td style="white-space:nowrap"><strong>{fmtDate(r.data)}</strong></td>
+              <td style="font-size:.78rem;color:#6B7280;white-space:nowrap">{empresaCurta[r.empresa || "engenharia"] || "Costa Júnior Engenharia"}</td>
+              <td style="white-space:nowrap">
+                {r.clima_manha && <span title={`Manhã: ${climaLabels[r.clima_manha]}`}>{climaEmoji[r.clima_manha]}</span>}
+                {r.clima_tarde && <span title={`Tarde: ${climaLabels[r.clima_tarde]}`}> {climaEmoji[r.clima_tarde]}</span>}
+              </td>
+              <td style="font-size:.8rem;max-width:340px;color:#6B7280">
+                {r.atividades ? String(r.atividades).slice(0, 120) + (String(r.atividades).length > 120 ? "…" : "") : "—"}
+              </td>
+              <td><span class={`badge ${r.status === "publicado" ? "badge-green" : "badge-yellow"}`}>{r.status === "publicado" ? "Publicado" : "Rascunho"}</span></td>
+              <td style="text-align:right"><a class="btn btn-secondary btn-sm" href={`/admin/obras/diario/${r.id}`}>Abrir</a></td>
+            </tr>
+          )) : <tr><td colspan="6"><div class="empty-state"><strong>Nenhum relatório de visita nesta obra</strong><p>Clique em "+ Novo relatório de visita" para registrar a visita de hoje: fotos, checklist e ocorrências.</p></div></td></tr>}
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <!-- Modal RDO -->
-  <div class="modal-overlay" id="modalRdo">
-    <div class="modal" style="max-width:560px">
-      <div class="modal-title" id="tituloModalRdo">RDO — Diário de Obra</div>
-      <div id="msgModalRdo"></div>
-      <form id="formRdo">
-        <input type="hidden" name="rdo_id" />
+  <!-- Modal: novo relatório de visita -->
+  <div class="modal-overlay" id="modalRel">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-title">Novo relatório de visita</div>
+      <div id="msgModalRel"></div>
+      <form id="formRel">
         <div class="form-row">
-          <div class="form-group"><label>Data *</label><input name="data" type="date" required value={hoje} /></div>
-          <div class="form-group"><label>Efetivo (nº de pessoas)</label><input name="efetivo" type="number" min="0" step="1" /></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>Clima — manhã</label>
-            <select name="clima_manha">
-              <option value="">—</option>
-              <option value="sol">☀️ Sol</option>
-              <option value="nublado">☁️ Nublado</option>
-              <option value="chuva">🌧️ Chuva</option>
-              <option value="impraticavel">⛔ Impraticável</option>
-            </select>
-          </div>
-          <div class="form-group"><label>Clima — tarde</label>
-            <select name="clima_tarde">
-              <option value="">—</option>
-              <option value="sol">☀️ Sol</option>
-              <option value="nublado">☁️ Nublado</option>
-              <option value="chuva">🌧️ Chuva</option>
-              <option value="impraticavel">⛔ Impraticável</option>
+          <div class="form-group"><label>Data da visita *</label><input name="data" type="date" required value={hoje} /></div>
+          <div class="form-group"><label>Emitido por *</label>
+            <select name="empresa">
+              <option value="engenharia">Costa Júnior Engenharia e Construções</option>
+              <option value="consultoria">Costa Júnior Consultoria e Geotecnia</option>
             </select>
           </div>
         </div>
-        <div class="form-group"><label>Atividades executadas *</label><textarea name="atividades" rows="4" required placeholder="O que foi feito hoje na obra..."></textarea></div>
-        <div class="form-group"><label>Ocorrências (acidentes, paralisações, visitas, problemas)</label><textarea name="ocorrencias" rows="2"></textarea></div>
-        <div class="form-group"><label>Equipamentos em uso</label><textarea name="equipamentos" rows="2" placeholder="Ex: betoneira, andaime fachadeiro, martelete..."></textarea></div>
+        <div class="form-group"><label>Checklist (opcional)</label>
+          <select name="modelo_checklist_id">
+            <option value="">Sem checklist</option>
+            {(modelosCheck || []).map((m: any) => (<option value={m.id}>{m.nome}</option>))}
+          </select>
+          <small style="color:#9CA3AF">Copia os itens do modelo para este relatório. Dá para editar depois.</small>
+        </div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalRdo')">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="btnSalvarRdo">Salvar RDO</button>
+          <button type="button" class="btn btn-secondary" onclick="fecharModal('modalRel')">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btnCriarRel">Criar e abrir</button>
         </div>
       </form>
     </div>
@@ -307,17 +291,6 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
     .progress-track { height: 14px; background: #F3F4F6; border-radius: 999px; overflow: hidden; border: 1px solid var(--border-light, #E5E7EB); }
     .progress-fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
     .cat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
-    .rdo-lista { display: flex; flex-direction: column; gap: 12px; }
-    .rdo-card { padding: 16px 20px; }
-    .rdo-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
-    .rdo-data { font-size: .9rem; text-transform: capitalize; }
-    .rdo-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: .78rem; color: var(--ink-mid, #6B7280); margin-top: 4px; }
-    .rdo-bloco { margin-bottom: 8px; }
-    .rdo-bloco p { margin: 2px 0 0; font-size: .84rem; white-space: pre-wrap; }
-    .rdo-rotulo { font-size: .7rem; font-weight: 700; color: var(--ink-light); text-transform: uppercase; letter-spacing: .04em; }
-    .rdo-ocorrencia { background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 8px 12px; }
-    .rdo-ocorrencia .rdo-rotulo, .rdo-ocorrencia p { color: #991B1B; }
-    .rdo-rodape { font-size: .7rem; color: #9CA3AF; margin-top: 6px; border-top: 1px solid var(--border-light, #F3F4F6); padding-top: 6px; }
   </style>
 
   <script define:vars={{ rdos: rdos || [], obraId: id, hoje }}>
@@ -329,70 +302,37 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
   <script>
     function fecharModal(id: string) { document.getElementById(id)?.classList.remove("open"); }
 
-    function preencherFormRdo(r: any | null, dataPadrao: string) {
-      const f = document.getElementById("formRdo") as HTMLFormElement;
-      f.reset();
-      const set = (n: string, v: any) => { const el = f.querySelector(`[name="${n}"]`) as HTMLInputElement | null; if (el) el.value = v == null ? "" : String(v); };
-      if (r) {
-        set("rdo_id", r.id); set("data", r.data); set("efetivo", r.efetivo);
-        set("clima_manha", r.clima_manha || ""); set("clima_tarde", r.clima_tarde || "");
-        set("atividades", r.atividades); set("ocorrencias", r.ocorrencias || ""); set("equipamentos", r.equipamentos || "");
-        document.getElementById("tituloModalRdo")!.textContent = "Editar RDO";
-        document.getElementById("btnSalvarRdo")!.textContent = "Salvar alterações";
-      } else {
-        set("rdo_id", ""); set("data", dataPadrao);
-        document.getElementById("tituloModalRdo")!.textContent = "Novo RDO";
-        document.getElementById("btnSalvarRdo")!.textContent = "Salvar RDO";
-      }
-      document.getElementById("msgModalRdo")!.innerHTML = "";
-      document.getElementById("modalRdo")!.classList.add("open");
+    // ── Relatório de Visita: cria pela API e já abre o editor ──
+    function abrirModalRel() {
+      const f = document.getElementById("formRel") as HTMLFormElement;
+      const dt = f.querySelector('[name="data"]') as HTMLInputElement;
+      if (!dt.value) dt.value = (window as any).__hoje;
+      document.getElementById("msgModalRel")!.innerHTML = "";
+      document.getElementById("modalRel")!.classList.add("open");
     }
 
-    function abrirModalRdo() {
-      const hoje = (window as any).__hoje;
-      const existente = (window as any).__rdos.find((r: any) => r.data === hoje);
-      preencherFormRdo(existente || null, hoje);
-    }
-
-    function editarRdo(id: string) {
-      const r = (window as any).__rdos.find((x: any) => x.id === id);
-      if (r) preencherFormRdo(r, r.data);
-    }
-
-    // Se a data escolhida já tem RDO, vira edição automaticamente (evita erro de duplicidade)
-    document.querySelector("#formRdo [name=data]")?.addEventListener("change", (e) => {
-      const data = (e.target as HTMLInputElement).value;
-      const f = document.getElementById("formRdo") as HTMLFormElement;
-      const idAtual = (f.querySelector("[name=rdo_id]") as HTMLInputElement).value;
-      const existente = (window as any).__rdos.find((r: any) => r.data === data);
-      if (existente && existente.id !== idAtual) {
-        if (confirm(`Já existe RDO de ${data.split("-").reverse().join("/")}. Abrir para edição?`)) preencherFormRdo(existente, data);
-        else (e.target as HTMLInputElement).value = "";
-      }
-    });
-
-    document.getElementById("formRdo")?.addEventListener("submit", async (e) => {
+    document.getElementById("formRel")?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const f = e.target as HTMLFormElement;
-      const fd = new FormData(f);
-      const body: Record<string, any> = Object.fromEntries(fd.entries());
-      const rdoId = body.rdo_id; delete body.rdo_id;
-      if (body.efetivo === "") delete body.efetivo; else body.efetivo = Number(body.efetivo);
-
-      const url = `/api/admin/obras/${(window as any).__obraId}/rdo`;
-      const res = await fetch(url, {
-        method: rdoId ? "PATCH" : "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(rdoId ? { id: rdoId, ...body } : body),
-      });
-      const d = await res.json();
-      if (res.ok) window.location.reload();
-      else document.getElementById("msgModalRdo")!.innerHTML = `<div class="alert alert-error">${d.error || "Erro ao salvar RDO"}</div>`;
+      const btn = document.getElementById("btnCriarRel") as HTMLButtonElement;
+      const corpo: Record<string, any> = Object.fromEntries(new FormData(e.target as HTMLFormElement).entries());
+      corpo.obra_id = (window as any).__obraId;
+      btn.disabled = true; btn.textContent = "Criando…";
+      try {
+        const res = await fetch("/api/admin/obras/diario", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || "Não deu para criar o relatório.");
+        // já existia relatório daquela data: abre o que existe em vez de duplicar
+        window.location.href = `/admin/obras/diario/${d.id}`;
+      } catch (err: any) {
+        document.getElementById("msgModalRel")!.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+        btn.disabled = false; btn.textContent = "Criar e abrir";
+      }
     });
 
     (window as any).fecharModal = fecharModal;
-    (window as any).abrirModalRdo = abrirModalRdo;
-    (window as any).editarRdo = editarRdo;
+    (window as any).abrirModalRel = abrirModalRel;
 
     // ───── Tarefas / Cronograma ─────
     const obraId = (window as any).__obraId;

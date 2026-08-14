@@ -3,13 +3,15 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../lib/permissoes";
+import { empresaValida } from "../../../../lib/rdo";
 
 export const prerender = false;
 const MODULO = "obras";
 
-// POST /api/admin/obras/diario  { obra_id, data, modelo_checklist_id? }
-// Cria o relatório do dia. A obra vem do cadastro que já existe no portal —
-// não há um segundo cadastro de obras para alguém manter em dia.
+// POST /api/admin/obras/diario  { obra_id, data, empresa?, modelo_checklist_id? }
+// Cria o Relatório de Visita. O caminho começa pela OBRA: ela é cadastrada uma
+// vez em /admin/obras e o relatório nasce de dentro dela — não há um segundo
+// cadastro de obras para alguém manter em dia.
 export const POST: APIRoute = async ({ request }) => {
   try {
     const admin = await requireAdminCookie(request);
@@ -19,7 +21,7 @@ export const POST: APIRoute = async ({ request }) => {
     const body = await request.json().catch(() => null);
     if (!body?.obra_id) return jsonErr(400, "Escolha a obra.");
     const data = String(body.data || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return jsonErr(400, "Informe a data do relatório.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return jsonErr(400, "Informe a data da visita.");
 
     const { data: obra } = await db.from("obras").select("id, nome").eq("id", body.obra_id).maybeSingle();
     if (!obra) return jsonErr(404, "Obra não encontrada.");
@@ -34,6 +36,7 @@ export const POST: APIRoute = async ({ request }) => {
       obra_id: body.obra_id,
       data,
       status: "rascunho",
+      empresa: empresaValida(body.empresa),
       responsavel: String(body.responsavel || "").trim() || null,
       criado_por: admin.email || null,
     }).select("id").single();
@@ -56,7 +59,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     await registrarAcao(db, { req: request, admin }, {
       acao: "criar", entidade: "obras_rdo", registro_id: novo.id,
-      descricao: `RDO ${data} — obra "${obra.nome}"`,
+      descricao: `Relatório de visita ${data} — obra "${obra.nome}"`,
     });
     return jsonOk({ id: novo.id }, 201);
   } catch (e: any) {

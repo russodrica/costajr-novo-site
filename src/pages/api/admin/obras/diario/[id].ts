@@ -5,14 +5,14 @@ import { registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import {
   climaValido, condicaoValida, statusValido, situacaoValida,
-  limparEfetivo, limparEquipamentos, limparOcorrencias,
+  empresaValida, limparOcorrencias,
 } from "../../../../../lib/rdo";
 
 export const prerender = false;
 const MODULO = "obras";
 
 // PATCH /api/admin/obras/diario/[id]
-// Salva o relatório inteiro de uma vez (campos + checklist). A tela manda tudo
+// Salva o Relatório de Visita inteiro de uma vez (campos + checklist). A tela manda tudo
 // junto: é um formulário só, e salvar por partes deixaria o relatório meio
 // gravado se a conexão caísse no meio.
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -28,7 +28,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const b = await request.json().catch(() => null);
     if (!b) return jsonErr(400, "Envie os dados do relatório.");
 
+    // Mão de obra e equipamentos saíram do Relatório de Visita: a visita
+    // registra o que foi visto, não a folha de efetivo do dia. As colunas
+    // continuam no banco pelo histórico já gravado, mas não são mais tocadas.
     const patch: Record<string, unknown> = {
+      empresa: empresaValida(b.empresa),
       clima_manha: climaValido(b.clima_manha),
       clima_tarde: climaValido(b.clima_tarde),
       condicao: condicaoValida(b.condicao),
@@ -37,22 +41,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       fim_jornada: String(b.fim_jornada ?? "").trim() || null,
       atividades: String(b.atividades ?? "").trim() || null,
       observacoes: String(b.observacoes ?? "").trim() || null,
-      efetivo_itens: limparEfetivo(b.efetivo_itens),
-      equipamentos_itens: limparEquipamentos(b.equipamentos_itens),
       ocorrencias_itens: limparOcorrencias(b.ocorrencias_itens),
       updated_at: new Date().toISOString(),
     };
-
-    // `efetivo` (número) é da versão antiga da tabela e continua alimentando a
-    // tela antiga da obra — mantemos em dia a partir da soma das funções.
-    patch.efetivo = (patch.efetivo_itens as any[]).reduce((s, i) => s + (i.qtd || 0), 0) || null;
 
     const status = statusValido(b.status);
     if (status) {
       patch.status = status;
       if (status === "publicado" && atual.status !== "publicado") {
         // publicar exige o mínimo: relatório vazio não vai para o cliente
-        if (!patch.atividades) return jsonErr(400, "Descreva as atividades antes de publicar o relatório.");
+        if (!patch.atividades) return jsonErr(400, "Descreva o que foi verificado na visita antes de publicar o relatório.");
         patch.publicado_em = new Date().toISOString();
       }
       if (status === "rascunho") patch.publicado_em = null;
@@ -82,7 +80,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
     await registrarAcao(db, { req: request, admin }, {
       acao: "editar", entidade: "obras_rdo", registro_id: id,
-      descricao: `RDO ${atual.data}${status === "publicado" ? " (publicado)" : ""}`,
+      descricao: `Relatório de visita ${atual.data}${status === "publicado" ? " (publicado)" : ""}`,
     });
     return jsonOk({ ok: true, status: patch.status ?? atual.status });
   } catch (e: any) {
@@ -111,7 +109,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
 
     await registrarAcao(db, { req: request, admin }, {
       acao: "excluir", entidade: "obras_rdo", registro_id: id,
-      descricao: `RDO ${atual.data} (rascunho)`,
+      descricao: `Relatório de visita ${atual.data} (rascunho)`,
     });
     return jsonOk({ ok: true });
   } catch (e: any) {

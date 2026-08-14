@@ -1,9 +1,12 @@
 ---
-// Relatório Diário de Obra (RDO) — edição e impressão.
+// Relatório de Visita — edição e impressão.
 //
-// A tela é um formulário só: efetivo, equipamentos, ocorrências e checklist são
-// listas que a pessoa monta na hora, e tudo vai para o servidor num salvamento
-// único. Salvar por partes deixaria o relatório meio gravado se a conexão caísse.
+// O relatório pertence a uma OBRA já cadastrada: quem cria é a ficha da obra
+// (/admin/obras/<id>), esta tela só preenche e publica.
+//
+// A tela é um formulário só: ocorrências e checklist são listas que a pessoa
+// monta na hora, e tudo vai para o servidor num salvamento único. Salvar por
+// partes deixaria o relatório meio gravado se a conexão caísse no meio.
 //
 // O PDF sai pela impressão do navegador com folha de estilo própria (@media
 // print): no celular e no computador, "Imprimir → Salvar como PDF". Sem
@@ -12,8 +15,8 @@ import Admin from "../../../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import {
-  CLIMA, CONDICAO, SITUACAO_CHECK, statusLabel, statusBadge,
-  totalEfetivo, fmtDataExtenso, fmtDataBr,
+  CLIMA, CONDICAO, EMPRESAS, empresaDe, statusLabel, statusBadge,
+  fmtDataExtenso, fmtDataBr,
 } from "../../../../lib/rdo";
 
 const token = Astro.cookies.get("admin_token")?.value;
@@ -30,27 +33,24 @@ const { data: obra } = await db.from("obras")
   .select("id, nome, codigo, cliente, endereco, cidade, uf, responsavel_nome").eq("id", rdo.obra_id).maybeSingle();
 const { data: checklist } = await db.from("obras_rdo_checklist").select("*").eq("rdo_id", id).order("ordem");
 const { data: fotos } = await db.from("obras_rdo_fotos").select("*").eq("rdo_id", id).order("ordem").order("created_at");
-const { data: funcoes } = await db.from("obras_cat_funcoes").select("nome").eq("ativo", true).order("nome");
-const { data: equipamentos } = await db.from("obras_cat_equipamentos").select("nome").eq("ativo", true).order("nome");
 const { data: tiposOcor } = await db.from("obras_cat_ocorrencias").select("nome").eq("ativo", true).order("nome");
 
 const dados = {
   id,
-  efetivo: Array.isArray(rdo.efetivo_itens) ? rdo.efetivo_itens : [],
-  equipamentos: Array.isArray(rdo.equipamentos_itens) ? rdo.equipamentos_itens : [],
   ocorrencias: Array.isArray(rdo.ocorrencias_itens) ? rdo.ocorrencias_itens : [],
   checklist: (checklist || []).map((c: any) => ({ item: c.item, situacao: c.situacao, observacao: c.observacao || "" })),
 };
 const listas = {
-  funcoes: (funcoes || []).map((f: any) => f.nome),
-  equipamentos: (equipamentos || []).map((e: any) => e.nome),
   tipos: (tiposOcor || []).map((t: any) => t.nome),
+  // logo/nome/CNPJ de cada empresa, para o cabeçalho impresso trocar sem recarregar
+  empresas: EMPRESAS.map((e) => ({ v: e.v, nome: e.nome, cnpj: e.cnpj, logo: e.logo, cor: e.cor })),
 };
+const emp = empresaDe(rdo.empresa);
 const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join("/")].filter(Boolean).join(" — ");
 ---
-<Admin title={`RDO ${fmtDataBr(rdo.data)} — ${obra?.nome || "Obra"}`} current="obras-diario">
+<Admin title={`Relatório de visita ${fmtDataBr(rdo.data)} — ${obra?.nome || "Obra"}`} current="obras-diario">
   <div class="toolbar nao-imprimir">
-    <a class="btn btn-secondary btn-sm" href="/admin/obras/diario">‹ Voltar</a>
+    <a class="btn btn-secondary btn-sm" href={obra ? `/admin/obras/${obra.id}` : "/admin/obras/diario"}>‹ Voltar para a obra</a>
     <span class="toolbar-title" style="margin-left:8px">
       {fmtDataBr(rdo.data)} · {obra?.nome || "Obra"}
       <span class={`badge ${statusBadge(rdo.status)}`} id="badgeStatus" style="margin-left:8px">{statusLabel(rdo.status)}</span>
@@ -64,23 +64,52 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
 
   <div id="msg" class="nao-imprimir"></div>
 
-  <!-- ── cabeçalho que aparece no papel ── -->
-  <div class="folha-topo so-imprimir">
-    <div>
-      <strong style="font-size:15px">RELATÓRIO DIÁRIO DE OBRA</strong>
-      <div style="font-size:12px">{obra?.nome}{obra?.codigo ? ` (${obra.codigo})` : ""}</div>
-      <div style="font-size:11px;color:#555">{obra?.cliente ? `Cliente: ${obra.cliente}` : ""}{endereco ? ` · ${endereco}` : ""}</div>
+  <!-- ── cabeçalho que aparece no papel (a empresa emissora manda no logo) ── -->
+  <div class="folha-topo so-imprimir" id="folhaTopo" style={`border-color:${emp.cor}`}>
+    <div class="folha-marca">
+      <!-- se o arquivo do logo ainda não estiver em /public, some em vez de virar
+           ícone quebrado no meio do papel -->
+      <img id="folhaLogo" src={emp.logo} alt="" onerror="this.style.display='none'" />
+      <div>
+        <strong style="font-size:15px">RELATÓRIO DE VISITA</strong>
+        <div id="folhaEmpresa" style="font-size:11px;color:#555">{emp.nome}{emp.cnpj ? ` · CNPJ ${emp.cnpj}` : ""}</div>
+      </div>
     </div>
     <div style="text-align:right;font-size:12px">
-      <div><strong>{fmtDataBr(rdo.data)}</strong></div>
-      <div style="font-size:11px;color:#555;text-transform:capitalize">{fmtDataExtenso(rdo.data)}</div>
+      <div><strong>{obra?.nome}{obra?.codigo ? ` (${obra.codigo})` : ""}</strong></div>
+      <div style="font-size:11px;color:#555">{obra?.cliente ? `Cliente: ${obra.cliente}` : ""}{endereco ? ` · ${endereco}` : ""}</div>
+      <div style="margin-top:3px"><strong>{fmtDataBr(rdo.data)}</strong>
+        <span style="font-size:11px;color:#555;text-transform:capitalize"> — {fmtDataExtenso(rdo.data)}</span></div>
     </div>
   </div>
 
   <form id="f">
+    <!-- ── emissão ── -->
+    <div class="card nao-imprimir" style="margin-bottom:14px">
+      <h3 style="margin:0 0 12px">Emissão</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Relatório emitido por *</label>
+          <select name="empresa" id="selEmpresa">
+            {EMPRESAS.map((e) => (
+              <option value={e.v} selected={(rdo.empresa || "engenharia") === e.v}>{e.nome}</option>
+            ))}
+          </select>
+          <small style="color:var(--ink-light)">Define o logo e o CNPJ do cabeçalho quando o relatório for impresso ou salvo em PDF.</small>
+        </div>
+        <div class="form-group">
+          <label>Obra</label>
+          <input value={obra?.nome || ""} readonly style="background:var(--gray-50)" />
+          <small style="color:var(--ink-light)">
+            A obra vem do cadastro. <a href={obra ? `/admin/obras/${obra.id}` : "/admin/obras"}>Abrir a ficha da obra</a>
+          </small>
+        </div>
+      </div>
+    </div>
+
     <!-- ── condições do dia ── -->
     <div class="card" style="margin-bottom:14px">
-      <h3 style="margin:0 0 14px">Condições do dia</h3>
+      <h3 style="margin:0 0 14px">Condições da visita</h3>
       <div class="form-row">
         <div class="form-group">
           <label>Clima pela manhã</label>
@@ -105,36 +134,16 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Início da jornada</label><input type="time" name="inicio_jornada" value={rdo.inicio_jornada || ""} /></div>
-        <div class="form-group"><label>Fim da jornada</label><input type="time" name="fim_jornada" value={rdo.fim_jornada || ""} /></div>
-        <div class="form-group"><label>Responsável pelo relatório</label><input name="responsavel" value={rdo.responsavel || obra?.responsavel_nome || ""} /></div>
+        <div class="form-group"><label>Início da visita</label><input type="time" name="inicio_jornada" value={rdo.inicio_jornada || ""} /></div>
+        <div class="form-group"><label>Fim da visita</label><input type="time" name="fim_jornada" value={rdo.fim_jornada || ""} /></div>
+        <div class="form-group"><label>Responsável pela visita</label><input name="responsavel" value={rdo.responsavel || obra?.responsavel_nome || ""} /></div>
       </div>
     </div>
 
-    <!-- ── mão de obra ── -->
+    <!-- ── atividades verificadas ── -->
     <div class="card" style="margin-bottom:14px">
-      <div class="bloco-cab">
-        <h3>Mão de obra <span id="totalEfetivo" class="badge badge-blue"></span></h3>
-        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" onclick="addLinha('efetivo')">+ Adicionar</button>
-      </div>
-      <table class="tabela-itens"><thead><tr><th style="width:45%">Função</th><th style="width:15%">Qtd</th><th>Empresa</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
-        <tbody id="tbEfetivo"></tbody></table>
-    </div>
-
-    <!-- ── equipamentos ── -->
-    <div class="card" style="margin-bottom:14px">
-      <div class="bloco-cab">
-        <h3>Equipamentos</h3>
-        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" onclick="addLinha('equip')">+ Adicionar</button>
-      </div>
-      <table class="tabela-itens"><thead><tr><th style="width:45%">Equipamento</th><th style="width:15%">Qtd</th><th>Horas de uso</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
-        <tbody id="tbEquip"></tbody></table>
-    </div>
-
-    <!-- ── atividades ── -->
-    <div class="card" style="margin-bottom:14px">
-      <h3 style="margin:0 0 12px">Atividades executadas</h3>
-      <textarea name="atividades" rows="5" placeholder="O que foi feito hoje, em qual frente e por quem.">{rdo.atividades || ""}</textarea>
+      <h3 style="margin:0 0 12px">Serviços verificados</h3>
+      <textarea name="atividades" rows="6" placeholder="O que estava em execução, em qual frente e o que foi constatado.">{rdo.atividades || ""}</textarea>
     </div>
 
     <!-- ── ocorrências ── -->
@@ -160,14 +169,14 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     <!-- ── observações ── -->
     <div class="card" style="margin-bottom:14px">
       <h3 style="margin:0 0 12px">Observações gerais</h3>
-      <textarea name="observacoes" rows="3" placeholder="Visitas, decisões, pendências para o dia seguinte.">{rdo.observacoes || ""}</textarea>
+      <textarea name="observacoes" rows="3" placeholder="Recomendações, decisões e pendências para a próxima visita.">{rdo.observacoes || ""}</textarea>
     </div>
   </form>
 
   <!-- ── fotos ── -->
   <div class="card">
     <div class="bloco-cab">
-      <h3>Fotos do dia <span class="badge badge-gray" id="qtdFotos">{(fotos || []).length}</span></h3>
+      <h3>Fotos da visita <span class="badge badge-gray" id="qtdFotos">{(fotos || []).length}</span></h3>
       <label class="btn btn-secondary btn-sm nao-imprimir" style="cursor:pointer;margin:0">
         + Adicionar fotos
         <input type="file" id="inpFotos" accept="image/*" multiple style="display:none" />
@@ -191,8 +200,8 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
   </div>
 
   <div class="assinatura so-imprimir">
-    <div><span></span><small>Responsável pela obra</small></div>
-    <div><span></span><small>Fiscalização / Cliente</small></div>
+    <div><span></span><small>Responsável pela visita</small></div>
+    <div><span></span><small>Responsável pela obra / Cliente</small></div>
   </div>
 
   <script type="application/json" id="dadosRDO" set:html={JSON.stringify(dados)}></script>
@@ -207,7 +216,6 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     .tabela-itens td { padding:5px 6px; vertical-align:middle; }
     .tabela-itens input, .tabela-itens select { width:100%; padding:7px 9px; font-size:.9rem; }
     .lixo { background:none; border:0; color:var(--danger-fg,#B91C1C); cursor:pointer; font-size:15px; padding:4px 6px; }
-    .vazio-linha td { color:var(--ink-light); font-size:13px; padding:10px 8px; }
 
     .galeria { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; }
     .foto { margin:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface); }
@@ -217,6 +225,8 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     .btn-remover { background:none; border:0; color:#B91C1C; cursor:pointer; font-size:13px; padding:4px 6px; }
 
     .folha-topo, .assinatura, .so-imprimir { display:none; }
+    .folha-marca { display:flex; align-items:center; gap:12px; }
+    .folha-marca img { height:34px; width:auto; object-fit:contain; }
 
     @media print {
       .nao-imprimir, .sidebar, .topbar, header, nav, .toolbar { display:none !important; }
@@ -250,23 +260,6 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     const opcoes = (lista: string[], atual: string) =>
       `<option value=""></option>` + lista.map((n) => `<option${n === atual ? " selected" : ""}>${esc(n)}</option>`).join("");
 
-    // Os selects são "livres": além do catálogo, aceitam digitar. Por isso o
-    // <input list=...> em vez de <select> — na obra sempre aparece uma função
-    // ou equipamento que ninguém cadastrou antes.
-    function linhaEfetivo(i: any = {}) {
-      return `<tr>
-        <td><input name="funcao" list="listaFuncoes" value="${esc(i.funcao)}" placeholder="Ex.: Pedreiro"></td>
-        <td><input name="qtd" type="number" min="0" step="1" value="${esc(i.qtd ?? "")}"></td>
-        <td><input name="empresa" value="${esc(i.empresa)}" placeholder="Própria / terceiro"></td>
-        <td class="nao-imprimir"><button type="button" class="lixo" onclick="this.closest('tr').remove();recalcular()">🗑</button></td></tr>`;
-    }
-    function linhaEquip(i: any = {}) {
-      return `<tr>
-        <td><input name="nome" list="listaEquip" value="${esc(i.nome)}" placeholder="Ex.: Betoneira"></td>
-        <td><input name="qtd" type="number" min="0" step="1" value="${esc(i.qtd ?? 1)}"></td>
-        <td><input name="horas" type="number" min="0" step="0.5" value="${esc(i.horas ?? "")}"></td>
-        <td class="nao-imprimir"><button type="button" class="lixo" onclick="this.closest('tr').remove()">🗑</button></td></tr>`;
-    }
     function linhaOcor(i: any = {}) {
       return `<tr>
         <td><select name="tipo">${opcoes(LISTAS.tipos || [], i.tipo || "")}</select></td>
@@ -285,24 +278,13 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     }
 
     const CORPOS: Record<string, { el: string; fn: (i?: any) => string; dados: any[] }> = {
-      efetivo: { el: "tbEfetivo", fn: linhaEfetivo, dados: RDO.efetivo || [] },
-      equip:   { el: "tbEquip",   fn: linhaEquip,   dados: RDO.equipamentos || [] },
-      ocor:    { el: "tbOcor",    fn: linhaOcor,    dados: RDO.ocorrencias || [] },
-      check:   { el: "tbCheck",   fn: linhaCheck,   dados: RDO.checklist || [] },
+      ocor:  { el: "tbOcor",  fn: linhaOcor,  dados: RDO.ocorrencias || [] },
+      check: { el: "tbCheck", fn: linhaCheck, dados: RDO.checklist || [] },
     };
 
     function addLinha(qual: string) {
       const c = CORPOS[qual];
       document.getElementById(c.el)!.insertAdjacentHTML("beforeend", c.fn());
-      recalcular();
-    }
-
-    function recalcular() {
-      let total = 0;
-      document.querySelectorAll('#tbEfetivo input[name="qtd"]').forEach((el) => {
-        total += Number((el as HTMLInputElement).value) || 0;
-      });
-      document.getElementById("totalEfetivo")!.textContent = total ? `${total} pessoa${total > 1 ? "s" : ""}` : "—";
     }
 
     function ler(corpoId: string, campos: string[]) {
@@ -316,12 +298,21 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       });
     }
 
+    // trocar a empresa emissora já troca o cabeçalho de impressão, sem recarregar
+    const selEmpresa = document.getElementById("selEmpresa") as HTMLSelectElement;
+    function pintarCabecalho() {
+      const e = (LISTAS.empresas || []).find((x: any) => x.v === selEmpresa.value);
+      if (!e) return;
+      (document.getElementById("folhaLogo") as HTMLImageElement).src = e.logo;
+      document.getElementById("folhaEmpresa")!.textContent = e.cnpj ? `${e.nome} · CNPJ ${e.cnpj}` : e.nome;
+      (document.getElementById("folhaTopo") as HTMLElement).style.borderColor = e.cor;
+    }
+    selEmpresa?.addEventListener("change", pintarCabecalho);
+
     async function salvar(status: string) {
       const f = document.getElementById("f") as HTMLFormElement;
       const corpo: Record<string, unknown> = { status };
       for (const [k, v] of new FormData(f).entries()) corpo[k] = v;
-      corpo.efetivo_itens = ler("tbEfetivo", ["funcao", "qtd", "empresa"]);
-      corpo.equipamentos_itens = ler("tbEquip", ["nome", "qtd", "horas"]);
       corpo.ocorrencias_itens = ler("tbOcor", ["tipo", "descricao", "horas"]);
       corpo.checklist = ler("tbCheck", ["item", "situacao", "observacao"]);
 
@@ -417,20 +408,13 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       }
     });
 
-    document.addEventListener("input", (ev) => {
-      if ((ev.target as HTMLElement)?.closest?.("#tbEfetivo")) recalcular();
-    });
-
     // desenha as listas ao abrir; começa com uma linha em branco quando vazio
-    for (const [qual, c] of Object.entries(CORPOS)) {
+    for (const [, c] of Object.entries(CORPOS)) {
       const corpo = document.getElementById(c.el)!;
       corpo.innerHTML = (c.dados.length ? c.dados : [{}]).map((i: any) => c.fn(i)).join("");
     }
-    document.body.insertAdjacentHTML("beforeend", `
-      <datalist id="listaFuncoes">${(LISTAS.funcoes || []).map((n: string) => `<option value="${esc(n)}">`).join("")}</datalist>
-      <datalist id="listaEquip">${(LISTAS.equipamentos || []).map((n: string) => `<option value="${esc(n)}">`).join("")}</datalist>`);
-    recalcular();
+    pintarCabecalho();
 
-    Object.assign(window, { addLinha, salvar, recalcular });
+    Object.assign(window, { addLinha, salvar });
   </script>
 </Admin>

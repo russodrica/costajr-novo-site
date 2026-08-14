@@ -1,10 +1,13 @@
 ---
-// Diário de Obra — lista dos relatórios diários (RDO).
-// Os relatórios se penduram nas OBRAS que já existem no portal.
+// Relatório de Visita — lista geral (todas as obras).
+//
+// O caminho oficial começa na OBRA: cadastra-se a obra em /admin/obras e o
+// relatório nasce de dentro da ficha dela. Esta tela é a visão de cima — serve
+// para achar um relatório antigo sem lembrar de qual obra era.
 import Admin from "../../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../../lib/auth";
 import { supabaseAdmin } from "../../../lib/supabase";
-import { statusLabel, statusBadge, condicaoLabel, climaIcone, totalEfetivo, fmtDataBr } from "../../../lib/rdo";
+import { statusLabel, statusBadge, condicaoLabel, climaIcone, empresaDe, fmtDataBr } from "../../../lib/rdo";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -16,7 +19,7 @@ const filtroObra = Astro.url.searchParams.get("obra") || "";
 const filtroStatus = Astro.url.searchParams.get("status") || "todos";
 
 let q = db.from("obras_rdo")
-  .select("id, obra_id, data, status, condicao, clima_manha, clima_tarde, atividades, efetivo_itens, responsavel")
+  .select("id, obra_id, data, status, condicao, clima_manha, clima_tarde, atividades, responsavel, empresa")
   .order("data", { ascending: false }).limit(400);
 if (filtroObra) q = q.eq("obra_id", filtroObra);
 if (filtroStatus !== "todos") q = q.eq("status", filtroStatus);
@@ -28,8 +31,6 @@ const { data: obras } = await db.from("obras")
 const obrasLista = obras || [];
 const nomeObra: Record<string, string> = {};
 for (const o of obrasLista) nomeObra[o.id] = o.nome;
-
-const { data: modelos } = await db.from("obras_checklist_modelos").select("id, nome").eq("ativo", true).order("nome");
 
 const { data: todos } = await db.from("obras_rdo").select("status");
 const cont: Record<string, number> = { rascunho: 0, publicado: 0 };
@@ -45,10 +46,18 @@ const { data: fotos } = ids.length
 const qtdFotos: Record<string, number> = {};
 for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).rdo_id] || 0) + 1;
 ---
-<Admin title="Diário de Obra" current="obras-diario">
+<Admin title="Relatório de Visita" current="obras-diario">
   <div class="toolbar">
-    <span class="toolbar-title">Diário de Obra <span style="font-weight:500;color:var(--ink-light)">({total})</span></span>
-    <button class="btn btn-primary" data-requer-edicao onclick="abrirNovo()">+ Novo relatório</button>
+    <span class="toolbar-title">Relatórios de Visita <span style="font-weight:500;color:var(--ink-light)">({total})</span></span>
+    <a class="btn btn-primary" data-requer-edicao href="/admin/obras">Escolher a obra →</a>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;background:#EFF6FF;border:1px solid #BFDBFE">
+    <p style="margin:0;font-size:13px;color:#1E3A8A">
+      <strong>Como funciona:</strong> primeiro a obra é cadastrada em <a href="/admin/obras">Obras</a>.
+      Depois, dentro da ficha da obra, o botão <em>“+ Novo relatório de visita”</em> cria o relatório
+      daquele dia — com fotos, checklist, ocorrências e a empresa que emite o documento.
+    </p>
   </div>
 
   <div class="card" style="margin-bottom:16px;background:var(--gray-50)">
@@ -75,13 +84,11 @@ for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).
     </form>
   </div>
 
-  <div id="msg"></div>
-
   {lista.length ? (
     <div class="card" style="padding:0;overflow:hidden">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Data</th><th>Obra</th><th>Clima</th><th>Efetivo</th><th>Atividades</th><th>Fotos</th><th>Situação</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Obra</th><th>Emitido por</th><th>Clima</th><th>Verificado</th><th>Fotos</th><th>Situação</th><th></th></tr></thead>
           <tbody>
             {lista.map((r: any) => (
               <tr>
@@ -89,13 +96,15 @@ for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).
                   <strong>{fmtDataBr(r.data)}</strong>
                   {r.data === hoje ? <span class="badge badge-blue" style="margin-left:5px">hoje</span> : null}
                 </td>
-                <td style="font-size:12.5px;max-width:220px">{nomeObra[r.obra_id] || "—"}</td>
+                <td style="font-size:12.5px;max-width:220px">
+                  <a href={`/admin/obras/${r.obra_id}`}>{nomeObra[r.obra_id] || "—"}</a>
+                </td>
+                <td style="font-size:12px;white-space:nowrap;color:var(--ink-mid)">{empresaDe(r.empresa).curto}</td>
                 <td style="white-space:nowrap;font-size:13px">
                   {climaIcone(r.clima_manha)} {climaIcone(r.clima_tarde)}
                   {r.condicao && r.condicao !== "praticavel"
                     ? <div style="font-size:11px;color:var(--ink-light)">{condicaoLabel(r.condicao)}</div> : null}
                 </td>
-                <td style="white-space:nowrap">{totalEfetivo(r.efetivo_itens) || "—"}</td>
                 <td style="font-size:12.5px;max-width:320px;color:var(--ink-mid)">
                   {r.atividades ? String(r.atividades).slice(0, 110) + (String(r.atividades).length > 110 ? "…" : "") : <em style="color:var(--ink-light)">em branco</em>}
                 </td>
@@ -114,79 +123,8 @@ for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).
     <div class="card">
       <div class="empty-state">
         <strong>Nenhum relatório ainda</strong>
-        <p>Clique em "Novo relatório", escolha a obra e a data. O relatório nasce como rascunho e você publica quando terminar.</p>
+        <p>Abra a obra em <a href="/admin/obras">Obras</a> e clique em “+ Novo relatório de visita”. Se a obra ainda não existe, cadastre-a primeiro.</p>
       </div>
     </div>
   )}
-
-  <div class="modal-overlay" id="modalNovo">
-    <div class="modal-box" style="max-width:520px">
-      <div class="modal-header">
-        <h2>Novo relatório diário</h2>
-        <button class="modal-close" type="button" onclick="fecharNovo()" aria-label="Fechar">✕</button>
-      </div>
-      <form id="formNovo" style="padding:16px 24px 24px">
-        <div class="form-group">
-          <label>Obra *</label>
-          <select name="obra_id" required>
-            <option value="">Selecione…</option>
-            {obrasLista.filter((o: any) => o.status === "ativa" || o.status === "planejada").map((o: any) => (
-              <option value={o.id}>{o.nome}{o.cliente ? ` — ${o.cliente}` : ""}</option>
-            ))}
-            <optgroup label="Outras (pausadas, concluídas)">
-              {obrasLista.filter((o: any) => !["ativa", "planejada"].includes(o.status)).map((o: any) => (
-                <option value={o.id}>{o.nome}</option>
-              ))}
-            </optgroup>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Data *</label>
-          <input type="date" name="data" required value={hoje} />
-        </div>
-        <div class="form-group">
-          <label>Checklist (opcional)</label>
-          <select name="modelo_checklist_id">
-            <option value="">Sem checklist</option>
-            {(modelos || []).map((m: any) => (<option value={m.id}>{m.nome}</option>))}
-          </select>
-          <small style="color:var(--ink-light)">Copia os itens do modelo para este relatório. Dá para editar depois.</small>
-        </div>
-        <div class="modal-footer" style="padding:8px 0 0">
-          <button class="btn btn-secondary" type="button" onclick="fecharNovo()">Cancelar</button>
-          <button class="btn btn-primary" type="submit" id="btnCriar">Criar relatório</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <script>
-    function abrirNovo() { document.getElementById("modalNovo")!.classList.add("open"); }
-    function fecharNovo() { document.getElementById("modalNovo")!.classList.remove("open"); }
-
-    document.getElementById("formNovo")!.addEventListener("submit", async (ev) => {
-      ev.preventDefault();
-      const btn = document.getElementById("btnCriar") as HTMLButtonElement;
-      const corpo = Object.fromEntries(new FormData(ev.target as HTMLFormElement).entries());
-      btn.disabled = true; btn.textContent = "Criando…";
-      try {
-        const r = await fetch("/api/admin/obras/diario", {
-          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo),
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j?.error || "Não deu para criar.");
-        // já existia relatório daquele dia: abre o que existe em vez de duplicar
-        window.location.href = `/admin/obras/diario/${j.id}`;
-      } catch (e: any) {
-        document.getElementById("msg")!.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
-        fecharNovo();
-        btn.disabled = false; btn.textContent = "Criar relatório";
-      }
-    });
-
-    document.getElementById("modalNovo")!.addEventListener("click", (ev) => {
-      if (ev.target === ev.currentTarget) fecharNovo();
-    });
-    Object.assign(window, { abrirNovo, fecharNovo });
-  </script>
 </Admin>
