@@ -413,13 +413,19 @@ const emp = empresaDe(rdo.empresa);
 
       /* cabeçalho */
       #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: center;
-                             gap: 16px; min-height: 88px; padding-bottom: 12px; margin-bottom: 4px; }
+                             gap: 16px; min-height: 92px; padding-bottom: 14px; margin-bottom: 4px; }
       #folhaPrint .pf-marca { display: flex; align-items: center; gap: 30px; flex: 1; }
-      #folhaPrint .pf-marca > div { display: flex; flex-direction: column; justify-content: center; }
+      /* O TÍTULO fica no centro exato da faixa, na mesma linha do meio do logo.
+         O nome da empresa sai do fluxo (absoluto) para não empurrar o título
+         para cima — era isso que deixava o conjunto parecendo desalinhado. */
+      #folhaPrint .pf-marca > div { position: relative; display: flex; align-items: center;
+                                    align-self: center; }
+      #folhaPrint .pf-emp { position: absolute; top: calc(100% + 3px); left: 0;
+                            white-space: nowrap; margin: 0; }
       #folhaPrint .pf-logo { height: 82px; width: auto; object-fit: contain; }
       #folhaPrint .pf-titulo { font-size: 18pt; font-weight: 800; letter-spacing: .05em;
                                line-height: 1.1; margin: 0; }
-      #folhaPrint .pf-emp { font-size: 9.5pt; color: #555; margin-top: 2px; }
+      #folhaPrint .pf-emp { font-size: 9.5pt; color: #555; }
       #folhaPrint .pf-ident { text-align: right; font-size: 10pt; line-height: 1.45;
                               max-width: 46%; word-break: break-word; }
       #folhaPrint .pf-ident strong { font-size: 12pt; }
@@ -800,12 +806,10 @@ const emp = empresaDe(rdo.empresa);
     }
 
     function nomeDoArquivo() {
-      const partes = [
-        P.dataIso || P.data,
-        "Relatorio de Visita",
-        limpo(P.cliente),
-        limpo(P.obra),
-      ].filter(Boolean);
+      // AAMMDD: nome curto e que ordena sozinho por data na pasta
+      const iso = String(P.dataIso || "");
+      const data = iso.length === 10 ? iso.slice(2).replace(/-/g, "") : iso;
+      const partes = [data, "RV", limpo(P.cliente), limpo(P.obra)].filter(Boolean);
       return partes.join("_");
     }
 
