@@ -24,7 +24,7 @@ export const EMPRESAS = [
     curto: "Costa Júnior Consultoria",
     cnpj: "",
     logo: "/LOGO_CONSULTORIA.png",
-    cor: "#2A3E92",
+    cor: "#1F388C",   // azul do logo da consultoria (amostrado do arquivo)
   },
 ] as const;
 

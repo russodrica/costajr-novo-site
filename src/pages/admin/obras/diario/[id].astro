@@ -414,7 +414,7 @@ const emp = empresaDe(rdo.empresa);
       #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: flex-start;
                              gap: 16px; padding-bottom: 10px; margin-bottom: 4px; }
       #folhaPrint .pf-logo { height: 82px; width: auto; object-fit: contain; }
-      #folhaPrint .pf-titulo { font-size: 18pt; font-weight: 800; letter-spacing: .04em;
+      #folhaPrint .pf-titulo { font-size: 18pt; font-weight: 800; letter-spacing: .05em;
                                line-height: 1.1; margin: 0; }
       #folhaPrint .pf-emp { font-size: 9.5pt; color: #555; margin-top: 2px; }
       #folhaPrint .pf-ident { text-align: right; font-size: 10pt; line-height: 1.45;
@@ -676,6 +676,44 @@ const emp = empresaDe(rdo.empresa);
       return d3;
     }
 
+    // O cartão da foto nasce com as medidas NO PRÓPRIO ELEMENTO.
+    // Só CSS não bastava: a folha de estilo da página é escopada pelo Astro e
+    // não alcança o que o JavaScript cria, e a foto entrava do tamanho original
+    // — ocupando a tela inteira até recarregar a página.
+    function cartaoFoto(id: string, legenda = "") {
+      const fig = document.createElement("figure");
+      fig.className = "foto";
+      fig.dataset.id = id;
+      fig.style.cssText = "margin:0;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;background:#fff;min-width:0";
+
+      const img = document.createElement("img");
+      img.src = `/api/admin/obras/diario/fotos/${id}`;
+      img.alt = legenda;
+      img.style.cssText = "width:100%;height:150px;object-fit:cover;display:block";
+
+      const cap = document.createElement("figcaption");
+      cap.style.cssText = "display:flex;gap:6px;align-items:center;padding:8px";
+
+      const inp = document.createElement("input");
+      inp.className = "legenda";
+      inp.value = legenda;
+      inp.placeholder = "Legenda da foto";
+      inp.dataset.id = id;
+      inp.style.cssText = "flex:1;min-width:0;font-size:12.5px;padding:6px 8px";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-remover nao-imprimir";
+      btn.dataset.id = id;
+      btn.title = "Remover";
+      btn.textContent = "✕";
+      btn.style.cssText = "background:none;border:0;color:#B91C1C;cursor:pointer;font-size:13px;padding:4px 6px";
+
+      cap.append(inp, btn);
+      fig.append(img, cap);
+      return fig;
+    }
+
     // Enquanto um envio está em andamento, o próximo é ignorado: dois toques
     // seguidos no botão registravam a MESMA foto duas vezes no relatório.
     let enviando = false;
@@ -692,14 +730,7 @@ const emp = empresaDe(rdo.empresa);
         try {
           const nova = await subirFoto(a);
           if (document.querySelector(`#galeria .foto[data-id="${nova.id}"]`)) continue;
-          document.getElementById("galeria")!.insertAdjacentHTML("beforeend", `
-            <figure class="foto" data-id="${nova.id}">
-              <img src="/api/admin/obras/diario/fotos/${nova.id}" alt="">
-              <figcaption>
-                <input class="legenda" value="" placeholder="Legenda da foto" data-id="${nova.id}">
-                <button type="button" class="btn-remover nao-imprimir" data-id="${nova.id}" title="Remover">✕</button>
-              </figcaption>
-            </figure>`);
+          document.getElementById("galeria")!.appendChild(cartaoFoto(nova.id));
         } catch (e: any) {
           // a mensagem real aparece na tela: sem isso um envio que falha vira
           // "não subiu" e ninguém sabe o motivo
@@ -854,10 +885,10 @@ const emp = empresaDe(rdo.empresa);
 
       document.getElementById("folhaPrint")!.innerHTML = `
         <div class="pf-topo" style="border-bottom:2px solid ${cor}">
-          <div style="display:flex;align-items:center;gap:14px">
+          <div style="display:flex;align-items:center;gap:30px">
             ${empSel.logo ? `<img class="pf-logo" src="${empSel.logo}" onerror="this.style.display='none'">` : ""}
             <div>
-              <h1 class="pf-titulo">RELATÓRIO DE VISITA</h1>
+              <h1 class="pf-titulo" style="color:${cor}">RELATÓRIO DE VISITA</h1>
               <div class="pf-emp">${esc(empSel.nome || "")}${empSel.cnpj ? ` · CNPJ ${esc(empSel.cnpj)}` : ""}</div>
             </div>
           </div>
