@@ -414,7 +414,7 @@ const emp = empresaDe(rdo.empresa);
       /* cabeçalho */
       #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: center;
                              gap: 16px; min-height: 92px; padding-bottom: 14px; margin-bottom: 4px; }
-      #folhaPrint .pf-marca { display: flex; align-items: center; gap: 30px; flex: 1; }
+      #folhaPrint .pf-marca { display: flex; align-items: center; gap: 64px; flex: 1; }
       /* O TÍTULO fica no centro exato da faixa, na mesma linha do meio do logo.
          O nome da empresa sai do fluxo (absoluto) para não empurrar o título
          para cima — era isso que deixava o conjunto parecendo desalinhado. */
@@ -916,7 +916,7 @@ const emp = empresaDe(rdo.empresa);
 
       document.getElementById("folhaPrint")!.innerHTML = `
         <div class="pf-topo" style="border-bottom:2px solid ${cor}">
-          <div class="pf-marca">
+          <div class="pf-marca" style="display:flex;align-items:center;gap:64px">
             ${empSel.logo ? `<img class="pf-logo" src="${empSel.logo}" onerror="this.style.display='none'">` : ""}
             <div>
               <h1 class="pf-titulo" style="color:${cor}">RELATÓRIO DE VISITA</h1>
