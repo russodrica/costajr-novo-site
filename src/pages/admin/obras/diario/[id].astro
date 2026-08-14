@@ -1,0 +1,436 @@
+---
+// Relatório Diário de Obra (RDO) — edição e impressão.
+//
+// A tela é um formulário só: efetivo, equipamentos, ocorrências e checklist são
+// listas que a pessoa monta na hora, e tudo vai para o servidor num salvamento
+// único. Salvar por partes deixaria o relatório meio gravado se a conexão caísse.
+//
+// O PDF sai pela impressão do navegador com folha de estilo própria (@media
+// print): no celular e no computador, "Imprimir → Salvar como PDF". Sem
+// depender de biblioteca de PDF, que é onde esse tipo de tela costuma quebrar.
+import Admin from "../../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../../lib/auth";
+import { supabaseAdmin } from "../../../../lib/supabase";
+import {
+  CLIMA, CONDICAO, SITUACAO_CHECK, statusLabel, statusBadge,
+  totalEfetivo, fmtDataExtenso, fmtDataBr,
+} from "../../../../lib/rdo";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const id = Astro.params.id!;
+const { data: rdo } = await db.from("obras_rdo").select("*").eq("id", id).maybeSingle();
+if (!rdo) return Astro.redirect("/admin/obras/diario");
+
+const { data: obra } = await db.from("obras")
+  .select("id, nome, codigo, cliente, endereco, cidade, uf, responsavel_nome").eq("id", rdo.obra_id).maybeSingle();
+const { data: checklist } = await db.from("obras_rdo_checklist").select("*").eq("rdo_id", id).order("ordem");
+const { data: fotos } = await db.from("obras_rdo_fotos").select("*").eq("rdo_id", id).order("ordem").order("created_at");
+const { data: funcoes } = await db.from("obras_cat_funcoes").select("nome").eq("ativo", true).order("nome");
+const { data: equipamentos } = await db.from("obras_cat_equipamentos").select("nome").eq("ativo", true).order("nome");
+const { data: tiposOcor } = await db.from("obras_cat_ocorrencias").select("nome").eq("ativo", true).order("nome");
+
+const dados = {
+  id,
+  efetivo: Array.isArray(rdo.efetivo_itens) ? rdo.efetivo_itens : [],
+  equipamentos: Array.isArray(rdo.equipamentos_itens) ? rdo.equipamentos_itens : [],
+  ocorrencias: Array.isArray(rdo.ocorrencias_itens) ? rdo.ocorrencias_itens : [],
+  checklist: (checklist || []).map((c: any) => ({ item: c.item, situacao: c.situacao, observacao: c.observacao || "" })),
+};
+const listas = {
+  funcoes: (funcoes || []).map((f: any) => f.nome),
+  equipamentos: (equipamentos || []).map((e: any) => e.nome),
+  tipos: (tiposOcor || []).map((t: any) => t.nome),
+};
+const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join("/")].filter(Boolean).join(" — ");
+---
+<Admin title={`RDO ${fmtDataBr(rdo.data)} — ${obra?.nome || "Obra"}`} current="obras-diario">
+  <div class="toolbar nao-imprimir">
+    <a class="btn btn-secondary btn-sm" href="/admin/obras/diario">‹ Voltar</a>
+    <span class="toolbar-title" style="margin-left:8px">
+      {fmtDataBr(rdo.data)} · {obra?.nome || "Obra"}
+      <span class={`badge ${statusBadge(rdo.status)}`} id="badgeStatus" style="margin-left:8px">{statusLabel(rdo.status)}</span>
+    </span>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-secondary" onclick="window.print()">🖨️ Imprimir / PDF</button>
+      <button class="btn btn-secondary" data-requer-edicao id="btnSalvar" onclick="salvar('rascunho')">Salvar rascunho</button>
+      <button class="btn btn-primary" data-requer-edicao id="btnPublicar" onclick="salvar('publicado')">Publicar</button>
+    </div>
+  </div>
+
+  <div id="msg" class="nao-imprimir"></div>
+
+  <!-- ── cabeçalho que aparece no papel ── -->
+  <div class="folha-topo so-imprimir">
+    <div>
+      <strong style="font-size:15px">RELATÓRIO DIÁRIO DE OBRA</strong>
+      <div style="font-size:12px">{obra?.nome}{obra?.codigo ? ` (${obra.codigo})` : ""}</div>
+      <div style="font-size:11px;color:#555">{obra?.cliente ? `Cliente: ${obra.cliente}` : ""}{endereco ? ` · ${endereco}` : ""}</div>
+    </div>
+    <div style="text-align:right;font-size:12px">
+      <div><strong>{fmtDataBr(rdo.data)}</strong></div>
+      <div style="font-size:11px;color:#555;text-transform:capitalize">{fmtDataExtenso(rdo.data)}</div>
+    </div>
+  </div>
+
+  <form id="f">
+    <!-- ── condições do dia ── -->
+    <div class="card" style="margin-bottom:14px">
+      <h3 style="margin:0 0 14px">Condições do dia</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Clima pela manhã</label>
+          <select name="clima_manha">
+            <option value="">—</option>
+            {CLIMA.map((c) => (<option value={c.v} selected={rdo.clima_manha === c.v}>{c.icone} {c.label}</option>))}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Clima à tarde</label>
+          <select name="clima_tarde">
+            <option value="">—</option>
+            {CLIMA.map((c) => (<option value={c.v} selected={rdo.clima_tarde === c.v}>{c.icone} {c.label}</option>))}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Condição de trabalho</label>
+          <select name="condicao">
+            <option value="">—</option>
+            {CONDICAO.map((c) => (<option value={c.v} selected={rdo.condicao === c.v}>{c.label}</option>))}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Início da jornada</label><input type="time" name="inicio_jornada" value={rdo.inicio_jornada || ""} /></div>
+        <div class="form-group"><label>Fim da jornada</label><input type="time" name="fim_jornada" value={rdo.fim_jornada || ""} /></div>
+        <div class="form-group"><label>Responsável pelo relatório</label><input name="responsavel" value={rdo.responsavel || obra?.responsavel_nome || ""} /></div>
+      </div>
+    </div>
+
+    <!-- ── mão de obra ── -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="bloco-cab">
+        <h3>Mão de obra <span id="totalEfetivo" class="badge badge-blue"></span></h3>
+        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" onclick="addLinha('efetivo')">+ Adicionar</button>
+      </div>
+      <table class="tabela-itens"><thead><tr><th style="width:45%">Função</th><th style="width:15%">Qtd</th><th>Empresa</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
+        <tbody id="tbEfetivo"></tbody></table>
+    </div>
+
+    <!-- ── equipamentos ── -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="bloco-cab">
+        <h3>Equipamentos</h3>
+        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" onclick="addLinha('equip')">+ Adicionar</button>
+      </div>
+      <table class="tabela-itens"><thead><tr><th style="width:45%">Equipamento</th><th style="width:15%">Qtd</th><th>Horas de uso</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
+        <tbody id="tbEquip"></tbody></table>
+    </div>
+
+    <!-- ── atividades ── -->
+    <div class="card" style="margin-bottom:14px">
+      <h3 style="margin:0 0 12px">Atividades executadas</h3>
+      <textarea name="atividades" rows="5" placeholder="O que foi feito hoje, em qual frente e por quem.">{rdo.atividades || ""}</textarea>
+    </div>
+
+    <!-- ── ocorrências ── -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="bloco-cab">
+        <h3>Ocorrências</h3>
+        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" onclick="addLinha('ocor')">+ Adicionar</button>
+      </div>
+      <table class="tabela-itens"><thead><tr><th style="width:28%">Tipo</th><th>Descrição</th><th style="width:14%">Horas paradas</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
+        <tbody id="tbOcor"></tbody></table>
+    </div>
+
+    <!-- ── checklist ── -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="bloco-cab">
+        <h3>Checklist</h3>
+        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" onclick="addLinha('check')">+ Item</button>
+      </div>
+      <table class="tabela-itens"><thead><tr><th style="width:45%">Item</th><th style="width:20%">Situação</th><th>Observação</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
+        <tbody id="tbCheck"></tbody></table>
+    </div>
+
+    <!-- ── observações ── -->
+    <div class="card" style="margin-bottom:14px">
+      <h3 style="margin:0 0 12px">Observações gerais</h3>
+      <textarea name="observacoes" rows="3" placeholder="Visitas, decisões, pendências para o dia seguinte.">{rdo.observacoes || ""}</textarea>
+    </div>
+  </form>
+
+  <!-- ── fotos ── -->
+  <div class="card">
+    <div class="bloco-cab">
+      <h3>Fotos do dia <span class="badge badge-gray" id="qtdFotos">{(fotos || []).length}</span></h3>
+      <label class="btn btn-secondary btn-sm nao-imprimir" style="cursor:pointer;margin:0">
+        + Adicionar fotos
+        <input type="file" id="inpFotos" accept="image/*" multiple style="display:none" />
+      </label>
+    </div>
+    <p class="nao-imprimir" style="font-size:12.5px;color:var(--ink-mid);margin:0 0 12px">
+      Pelo celular, o botão abre a câmera. A legenda salva sozinha ao sair do campo.
+    </p>
+    <div id="galeria" class="galeria">
+      {(fotos || []).map((f: any) => (
+        <figure class="foto" data-id={f.id}>
+          <img src={`/api/admin/obras/diario/fotos/${f.id}`} alt={f.legenda || ""} loading="lazy" />
+          <figcaption>
+            <input class="legenda" value={f.legenda || ""} placeholder="Legenda da foto" data-id={f.id} />
+            <button type="button" class="btn-remover nao-imprimir" data-id={f.id} title="Remover">✕</button>
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+    <p id="semFotos" class="nao-imprimir" style="display:none;color:var(--ink-light);font-size:13px;margin:8px 0 0">Nenhuma foto ainda.</p>
+  </div>
+
+  <div class="assinatura so-imprimir">
+    <div><span></span><small>Responsável pela obra</small></div>
+    <div><span></span><small>Fiscalização / Cliente</small></div>
+  </div>
+
+  <script type="application/json" id="dadosRDO" set:html={JSON.stringify(dados)}></script>
+  <script type="application/json" id="listasRDO" set:html={JSON.stringify(listas)}></script>
+
+  <style>
+    .bloco-cab { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+    .bloco-cab h3 { margin:0; font-size:1rem; }
+    .tabela-itens { width:100%; border-collapse:collapse; }
+    .tabela-itens th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em;
+                       color:var(--ink-light); padding:6px 8px; border-bottom:1px solid var(--border); }
+    .tabela-itens td { padding:5px 6px; vertical-align:middle; }
+    .tabela-itens input, .tabela-itens select { width:100%; padding:7px 9px; font-size:.9rem; }
+    .lixo { background:none; border:0; color:var(--danger-fg,#B91C1C); cursor:pointer; font-size:15px; padding:4px 6px; }
+    .vazio-linha td { color:var(--ink-light); font-size:13px; padding:10px 8px; }
+
+    .galeria { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; }
+    .foto { margin:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface); }
+    .foto img { width:100%; height:150px; object-fit:cover; display:block; }
+    .foto figcaption { display:flex; gap:6px; align-items:center; padding:8px; }
+    .foto .legenda { flex:1; font-size:12.5px; padding:6px 8px; }
+    .btn-remover { background:none; border:0; color:#B91C1C; cursor:pointer; font-size:13px; padding:4px 6px; }
+
+    .folha-topo, .assinatura, .so-imprimir { display:none; }
+
+    @media print {
+      .nao-imprimir, .sidebar, .topbar, header, nav, .toolbar { display:none !important; }
+      .so-imprimir { display:flex !important; }
+      body { background:#fff; }
+      .card { border:1px solid #ccc !important; box-shadow:none !important; break-inside:avoid;
+              margin-bottom:10px !important; padding:12px !important; }
+      .folha-topo { display:flex !important; justify-content:space-between; align-items:flex-start;
+                    border-bottom:2px solid #C41E3A; padding-bottom:8px; margin-bottom:12px; }
+      .tabela-itens input, .tabela-itens select, textarea {
+        border:0 !important; padding:2px 0 !important; background:transparent !important;
+        font-size:12px !important; resize:none; }
+      textarea { height:auto !important; min-height:0; }
+      .galeria { grid-template-columns:repeat(3,1fr) !important; }
+      .foto img { height:120px !important; }
+      .foto .legenda { border:0 !important; }
+      .assinatura { display:flex !important; gap:40px; margin-top:34px; }
+      .assinatura div { flex:1; text-align:center; }
+      .assinatura span { display:block; border-top:1px solid #333; margin-bottom:4px; }
+      .assinatura small { font-size:10px; color:#555; }
+      @page { margin:14mm; }
+    }
+  </style>
+
+  <script>
+    const RDO = JSON.parse((document.getElementById("dadosRDO") as HTMLElement).textContent || "{}");
+    const LISTAS = JSON.parse((document.getElementById("listasRDO") as HTMLElement).textContent || "{}");
+    const msg = document.getElementById("msg") as HTMLElement;
+
+    const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    const opcoes = (lista: string[], atual: string) =>
+      `<option value=""></option>` + lista.map((n) => `<option${n === atual ? " selected" : ""}>${esc(n)}</option>`).join("");
+
+    // Os selects são "livres": além do catálogo, aceitam digitar. Por isso o
+    // <input list=...> em vez de <select> — na obra sempre aparece uma função
+    // ou equipamento que ninguém cadastrou antes.
+    function linhaEfetivo(i: any = {}) {
+      return `<tr>
+        <td><input name="funcao" list="listaFuncoes" value="${esc(i.funcao)}" placeholder="Ex.: Pedreiro"></td>
+        <td><input name="qtd" type="number" min="0" step="1" value="${esc(i.qtd ?? "")}"></td>
+        <td><input name="empresa" value="${esc(i.empresa)}" placeholder="Própria / terceiro"></td>
+        <td class="nao-imprimir"><button type="button" class="lixo" onclick="this.closest('tr').remove();recalcular()">🗑</button></td></tr>`;
+    }
+    function linhaEquip(i: any = {}) {
+      return `<tr>
+        <td><input name="nome" list="listaEquip" value="${esc(i.nome)}" placeholder="Ex.: Betoneira"></td>
+        <td><input name="qtd" type="number" min="0" step="1" value="${esc(i.qtd ?? 1)}"></td>
+        <td><input name="horas" type="number" min="0" step="0.5" value="${esc(i.horas ?? "")}"></td>
+        <td class="nao-imprimir"><button type="button" class="lixo" onclick="this.closest('tr').remove()">🗑</button></td></tr>`;
+    }
+    function linhaOcor(i: any = {}) {
+      return `<tr>
+        <td><select name="tipo">${opcoes(LISTAS.tipos || [], i.tipo || "")}</select></td>
+        <td><input name="descricao" value="${esc(i.descricao)}" placeholder="O que aconteceu"></td>
+        <td><input name="horas" type="number" min="0" step="0.5" value="${esc(i.horas ?? "")}"></td>
+        <td class="nao-imprimir"><button type="button" class="lixo" onclick="this.closest('tr').remove()">🗑</button></td></tr>`;
+    }
+    function linhaCheck(i: any = {}) {
+      const sits = ["ok", "nao", "na", "pendente"];
+      const rot: Record<string, string> = { ok: "Conforme", nao: "Não conforme", na: "Não se aplica", pendente: "Pendente" };
+      return `<tr>
+        <td><input name="item" value="${esc(i.item)}" placeholder="Item verificado"></td>
+        <td><select name="situacao">${sits.map((s) => `<option value="${s}"${(i.situacao || "pendente") === s ? " selected" : ""}>${rot[s]}</option>`).join("")}</select></td>
+        <td><input name="observacao" value="${esc(i.observacao)}"></td>
+        <td class="nao-imprimir"><button type="button" class="lixo" onclick="this.closest('tr').remove()">🗑</button></td></tr>`;
+    }
+
+    const CORPOS: Record<string, { el: string; fn: (i?: any) => string; dados: any[] }> = {
+      efetivo: { el: "tbEfetivo", fn: linhaEfetivo, dados: RDO.efetivo || [] },
+      equip:   { el: "tbEquip",   fn: linhaEquip,   dados: RDO.equipamentos || [] },
+      ocor:    { el: "tbOcor",    fn: linhaOcor,    dados: RDO.ocorrencias || [] },
+      check:   { el: "tbCheck",   fn: linhaCheck,   dados: RDO.checklist || [] },
+    };
+
+    function addLinha(qual: string) {
+      const c = CORPOS[qual];
+      document.getElementById(c.el)!.insertAdjacentHTML("beforeend", c.fn());
+      recalcular();
+    }
+
+    function recalcular() {
+      let total = 0;
+      document.querySelectorAll('#tbEfetivo input[name="qtd"]').forEach((el) => {
+        total += Number((el as HTMLInputElement).value) || 0;
+      });
+      document.getElementById("totalEfetivo")!.textContent = total ? `${total} pessoa${total > 1 ? "s" : ""}` : "—";
+    }
+
+    function ler(corpoId: string, campos: string[]) {
+      return [...document.querySelectorAll(`#${corpoId} tr`)].map((tr) => {
+        const o: Record<string, string> = {};
+        for (const c of campos) {
+          const el = tr.querySelector(`[name="${c}"]`) as HTMLInputElement | null;
+          o[c] = el ? el.value : "";
+        }
+        return o;
+      });
+    }
+
+    async function salvar(status: string) {
+      const f = document.getElementById("f") as HTMLFormElement;
+      const corpo: Record<string, unknown> = { status };
+      for (const [k, v] of new FormData(f).entries()) corpo[k] = v;
+      corpo.efetivo_itens = ler("tbEfetivo", ["funcao", "qtd", "empresa"]);
+      corpo.equipamentos_itens = ler("tbEquip", ["nome", "qtd", "horas"]);
+      corpo.ocorrencias_itens = ler("tbOcor", ["tipo", "descricao", "horas"]);
+      corpo.checklist = ler("tbCheck", ["item", "situacao", "observacao"]);
+
+      const btns = [document.getElementById("btnSalvar"), document.getElementById("btnPublicar")] as HTMLButtonElement[];
+      btns.forEach((b) => b && (b.disabled = true));
+      try {
+        const r = await fetch(`/api/admin/obras/diario/${RDO.id}`, {
+          method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Não deu para salvar.");
+        const b = document.getElementById("badgeStatus")!;
+        b.textContent = status === "publicado" ? "Publicado" : "Rascunho";
+        b.className = `badge ${status === "publicado" ? "badge-green" : "badge-yellow"}`;
+        msg.innerHTML = `<div class="alert alert-success">Relatório salvo${status === "publicado" ? " e publicado" : ""}.</div>`;
+        setTimeout(() => { msg.innerHTML = ""; }, 4000);
+      } catch (e: any) {
+        msg.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+      } finally {
+        btns.forEach((b) => b && (b.disabled = false));
+      }
+    }
+
+    // ── fotos: URL assinada → PUT direto no bucket → registra no banco ──
+    async function subirFoto(arq: File) {
+      const r1 = await fetch("/api/admin/obras/diario/fotos/upload-url", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rdo_id: RDO.id, nome: arq.name }),
+      });
+      const d1 = await r1.json();
+      if (!r1.ok) throw new Error(d1?.error || "Não deu para preparar o envio.");
+      const r2 = await fetch(d1.signed_url, { method: "PUT", headers: { "content-type": arq.type || "image/jpeg" }, body: arq });
+      if (!r2.ok) throw new Error("Falha ao enviar a foto.");
+      const r3 = await fetch("/api/admin/obras/diario/fotos", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rdo_id: RDO.id, storage_path: d1.path, nome_arquivo: d1.nome_original, content_type: arq.type, tamanho: arq.size }),
+      });
+      const d3 = await r3.json();
+      if (!r3.ok) throw new Error(d3?.error || "Não deu para registrar a foto.");
+      return d3;
+    }
+
+    (document.getElementById("inpFotos") as HTMLInputElement).addEventListener("change", async (ev) => {
+      const alvo = ev.target as HTMLInputElement;
+      const arqs = [...(alvo.files || [])];
+      if (!arqs.length) return;
+      msg.innerHTML = `<div class="alert alert-info">Enviando ${arqs.length} foto(s)…</div>`;
+      let erros = 0;
+      for (const a of arqs) {
+        try {
+          const nova = await subirFoto(a);
+          document.getElementById("galeria")!.insertAdjacentHTML("beforeend", `
+            <figure class="foto" data-id="${nova.id}">
+              <img src="/api/admin/obras/diario/fotos/${nova.id}" alt="">
+              <figcaption>
+                <input class="legenda" value="" placeholder="Legenda da foto" data-id="${nova.id}">
+                <button type="button" class="btn-remover nao-imprimir" data-id="${nova.id}" title="Remover">✕</button>
+              </figcaption>
+            </figure>`);
+        } catch { erros++; }
+      }
+      alvo.value = "";
+      const q = document.querySelectorAll("#galeria .foto").length;
+      document.getElementById("qtdFotos")!.textContent = String(q);
+      msg.innerHTML = erros
+        ? `<div class="alert alert-error">${erros} foto(s) não subiram. Tente de novo.</div>`
+        : `<div class="alert alert-success">Foto(s) enviada(s).</div>`;
+      setTimeout(() => { msg.innerHTML = ""; }, 4000);
+    });
+
+    // legenda salva ao sair do campo; remover pede confirmação
+    document.addEventListener("change", async (ev) => {
+      const el = (ev.target as HTMLElement)?.closest?.(".legenda") as HTMLInputElement | null;
+      if (!el) return;
+      await fetch(`/api/admin/obras/diario/fotos/${el.dataset.id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ legenda: el.value }),
+      });
+      el.style.borderColor = "#16A34A";
+      setTimeout(() => { el.style.borderColor = ""; }, 1200);
+    });
+
+    document.addEventListener("click", async (ev) => {
+      const b = (ev.target as HTMLElement)?.closest?.(".btn-remover") as HTMLElement | null;
+      if (!b) return;
+      if (!confirm("Remover esta foto do relatório?")) return;
+      const r = await fetch(`/api/admin/obras/diario/fotos/${b.dataset.id}`, {
+        method: "DELETE", headers: { "content-type": "application/json" },
+      });
+      if (r.ok) {
+        b.closest(".foto")!.remove();
+        document.getElementById("qtdFotos")!.textContent = String(document.querySelectorAll("#galeria .foto").length);
+      }
+    });
+
+    document.addEventListener("input", (ev) => {
+      if ((ev.target as HTMLElement)?.closest?.("#tbEfetivo")) recalcular();
+    });
+
+    // desenha as listas ao abrir; começa com uma linha em branco quando vazio
+    for (const [qual, c] of Object.entries(CORPOS)) {
+      const corpo = document.getElementById(c.el)!;
+      corpo.innerHTML = (c.dados.length ? c.dados : [{}]).map((i: any) => c.fn(i)).join("");
+    }
+    document.body.insertAdjacentHTML("beforeend", `
+      <datalist id="listaFuncoes">${(LISTAS.funcoes || []).map((n: string) => `<option value="${esc(n)}">`).join("")}</datalist>
+      <datalist id="listaEquip">${(LISTAS.equipamentos || []).map((n: string) => `<option value="${esc(n)}">`).join("")}</datalist>`);
+    recalcular();
+
+    Object.assign(window, { addLinha, salvar, recalcular });
+  </script>
+</Admin>
