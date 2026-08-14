@@ -18,8 +18,13 @@ export const GET: APIRoute = async ({ request, params, url }) => {
     const db = supabaseAdmin();
 
     const { data: anexo } = await db.from("obras_fundacao_anexos")
-      .select("storage_path, nome_arquivo, content_type").eq("id", params.id!).maybeSingle();
+      .select("storage_path, nome_arquivo, content_type, armazenamento, web_url").eq("id", params.id!).maybeSingle();
     if (!anexo) return jsonErr(404, "Arquivo não encontrado.");
+    // no OneDrive o arquivo abre direto no endereço da Microsoft
+    if (anexo.armazenamento === "onedrive" && anexo.web_url) {
+      return new Response(null, { status: 302, headers: { location: anexo.web_url } });
+    }
+    if (!anexo.storage_path) return jsonErr(404, "Arquivo sem conteúdo guardado.");
 
     const { data: assinada, error } = await storageObras().storage
       .from(BUCKET_OBRAS).createSignedUrl(anexo.storage_path, 600);
@@ -49,12 +54,16 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     const db = supabaseAdmin();
 
     const { data: anexo } = await db.from("obras_fundacao_anexos")
-      .select("id, storage_path, nome_arquivo").eq("id", params.id!).maybeSingle();
+      .select("id, storage_path, nome_arquivo, armazenamento").eq("id", params.id!).maybeSingle();
     if (!anexo) return jsonErr(404, "Arquivo não encontrado.");
 
     const { error } = await db.from("obras_fundacao_anexos").delete().eq("id", params.id!);
     if (error) return jsonErr(400, error.message);
-    try { await storageObras().storage.from(BUCKET_OBRAS).remove([anexo.storage_path]); } catch { /* o registro já saiu */ }
+    // Arquivo no OneDrive NÃO é apagado daqui: o portal é índice, e apagar
+    // documento do acervo da empresa por um clique de tela é risco desnecessário.
+    if (anexo.armazenamento !== "onedrive" && anexo.storage_path) {
+      try { await storageObras().storage.from(BUCKET_OBRAS).remove([anexo.storage_path]); } catch { /* o registro já saiu */ }
+    }
 
     await registrarAcao(db, { req: request, admin }, {
       acao: "excluir", entidade: "obras_fundacao_anexos", registro_id: params.id!,
