@@ -78,6 +78,7 @@ const dados = {
     cliente: obra?.cliente || "",
     endereco,
     data: fmtDataBr(rdo.data),
+    dataIso: String(rdo.data || "").slice(0, 10),   // AAAA-MM-DD para o nome do arquivo
     dataExtenso: fmtDataExtenso(rdo.data),
     numero: String(rdo.id).slice(0, 8).toUpperCase(),
   },
@@ -787,6 +788,30 @@ const emp = empresaDe(rdo.empresa);
     pintarCabecalho();
     contar();
 
+    // ── nome do arquivo do PDF ─────────────────────────────────────────────
+    // O Chrome (e o Edge) sugerem o TÍTULO DA PÁGINA como nome do arquivo em
+    // "Salvar como PDF". Trocamos o título antes de imprimir e devolvemos
+    // depois, para a aba não ficar com nome de arquivo.
+    function limpo(t: string) {
+      return String(t || "")
+        .replace(/[\\/:*?"<>|]/g, "-")   // proibidos em nome de arquivo
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function nomeDoArquivo() {
+      const partes = [
+        P.dataIso || P.data,
+        "Relatorio de Visita",
+        limpo(P.cliente),
+        limpo(P.obra),
+      ].filter(Boolean);
+      return partes.join("_");
+    }
+
+    const tituloDaAba = document.title;
+    window.addEventListener("afterprint", () => { document.title = tituloDaAba; });
+
     // ── folha do PDF montada na hora ───────────────────────────────────────
     // Cada valor da tela vira texto na folha. Campo vazio não entra: é isso que
     // tira as páginas em branco e a caixa de formulário do documento que vai
@@ -928,6 +953,7 @@ const emp = empresaDe(rdo.empresa);
       try {
         await embutirFotos();
         montarFolha();
+        document.title = nomeDoArquivo();
         // um respiro para o navegador desenhar antes de abrir a caixa
         await new Promise((r) => setTimeout(r, 150));
         window.print();
@@ -936,7 +962,10 @@ const emp = empresaDe(rdo.empresa);
       }
     });
     // Ctrl+P: monta com o que já estiver em cache (sem esperar rede)
-    window.addEventListener("beforeprint", montarFolha);
+    window.addEventListener("beforeprint", () => {
+      montarFolha();
+      document.title = nomeDoArquivo();
+    });
 
     Object.assign(window, { addLinha, salvar, montarFolha });
   </script>
