@@ -335,16 +335,7 @@ const emp = empresaDe(rdo.empresa);
     .tabela-itens { width:100%; border-collapse:collapse; }
     .tabela-itens th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em;
                        color:var(--ink-light); padding:6px 8px; border-bottom:1px solid var(--border); }
-    .tabela-itens td { padding:5px 6px; vertical-align:middle; }
-    .tabela-itens input, .tabela-itens select { width:100%; padding:7px 9px; font-size:.9rem; }
-    .lixo { background:none; border:0; color:var(--danger-fg,#B91C1C); cursor:pointer; font-size:15px; padding:4px 6px; }
 
-    .galeria { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; }
-    .foto { margin:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface); }
-    .foto img { width:100%; height:150px; object-fit:cover; display:block; }
-    .foto figcaption { display:flex; gap:6px; align-items:center; padding:8px; }
-    .foto .legenda { flex:1; font-size:12.5px; padding:6px 8px; }
-    .btn-remover { background:none; border:0; color:#B91C1C; cursor:pointer; font-size:13px; padding:4px 6px; }
 
     .folha-topo, .so-imprimir { display:none; }
     .folha-marca { display:flex; align-items:center; gap:12px; }
@@ -380,8 +371,31 @@ const emp = empresaDe(rdo.empresa);
     alcança a barra lateral nem o cabeçalho do portal — era por isso que o menu
     saía no PDF.
   -->
+  <!--
+    ATENÇÃO: o <style> comum do Astro é ESCOPADO — ele carimba cada seletor com
+    um atributo que só existe no HTML gerado no servidor. A foto recém-anexada é
+    criada por JavaScript, sem esse carimbo: as regras não a alcançavam e ela
+    aparecia em tamanho original, ocupando a tela inteira. Por isso as regras da
+    galeria e das linhas de tabela ficam aqui, num bloco global preso ao id do
+    contêiner (que existe no HTML) — assim valem para o que o JS criar e não
+    vazam para as outras telas do portal.
+  -->
   <style is:global>
     #folhaPrint { display: none; }
+
+    #galeria { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; }
+    #galeria .foto { margin:0; border:1px solid var(--border); border-radius:10px;
+                     overflow:hidden; background:var(--surface); }
+    #galeria .foto img { width:100%; height:150px; object-fit:cover; display:block; }
+    #galeria .foto figcaption { display:flex; gap:6px; align-items:center; padding:8px; }
+    #galeria .foto .legenda { flex:1; font-size:12.5px; padding:6px 8px; min-width:0; }
+    #galeria .btn-remover { background:none; border:0; color:#B91C1C; cursor:pointer;
+                            font-size:13px; padding:4px 6px; }
+
+    #f .tabela-itens td { padding:5px 6px; vertical-align:middle; }
+    #f .tabela-itens input, #f .tabela-itens select { width:100%; padding:7px 9px; font-size:.9rem; }
+    #f .tabela-itens .lixo { background:none; border:0; color:#B91C1C; cursor:pointer;
+                             font-size:15px; padding:4px 6px; }
 
     @media print {
       /* A folha é movida para filha direta do <body> antes de imprimir, e todo
@@ -389,7 +403,8 @@ const emp = empresaDe(rdo.empresa);
          fluxo ignora a margem da página e o texto sai cortado na borda. */
       body > *:not(#folhaPrint) { display: none !important; }
       #folhaPrint {
-        display: block !important;
+        display: flex !important; flex-direction: column;
+        min-height: 100vh;   /* uma página inteira: joga a assinatura para o pé */
         font-family: "Open Sans", Arial, sans-serif; color: #1A1D24; font-size: 12pt;
       }
       html, body { background: #fff !important; margin: 0 !important; padding: 0 !important;
@@ -412,8 +427,10 @@ const emp = empresaDe(rdo.empresa);
       #folhaPrint .pf-sec > h2 { font-size: 10pt; text-transform: uppercase; letter-spacing: .08em;
                                  color: #fff; background: #4B5563; padding: 4px 9px; margin: 0 0 8px;
                                  border-radius: 3px; }
-      #folhaPrint .pf-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 18px; }
-      #folhaPrint .pf-campo { font-size: 11.5pt; }
+      #folhaPrint .pf-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 18px;
+                              padding-bottom: 12px; border-bottom: 1.5px solid #9CA3AF; }
+      #folhaPrint .pf-campo { font-size: 11.5pt;
+        font-family: "Open Sans", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
       #folhaPrint .pf-campo span { display: block; font-size: 8.5pt; text-transform: uppercase;
                                    letter-spacing: .05em; color: #6B7280; }
       #folhaPrint .pf-texto { white-space: pre-wrap; font-size: 11.5pt; line-height: 1.6;
@@ -433,23 +450,23 @@ const emp = empresaDe(rdo.empresa);
 
       /* assinaturas */
       #folhaPrint .pf-assin { display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
-                              margin-top: 26px; break-inside: avoid; }
+                              margin-top: auto; padding-top: 26px; break-inside: avoid; }
       #folhaPrint .pf-assin div { text-align: center; }
       #folhaPrint .pf-assin img { height: 68px; object-fit: contain; display: block; margin: 0 auto 2px; }
       #folhaPrint .pf-assin .linha { border-top: 1px solid #333; padding-top: 4px; }
       #folhaPrint .pf-assin .nome { font-size: 11pt; font-weight: 700; }
       #folhaPrint .pf-assin .rot { font-size: 9pt; color: #6B7280; }
 
-      #folhaPrint .pf-rodape { margin-top: 20px; padding-top: 7px; border-top: 1px solid #D1D5DB;
+      #folhaPrint .pf-rodape { margin-top: 14px; padding-top: 7px; border-top: 1px solid #D1D5DB;
                                font-size: 8.5pt; color: #6B7280; display: flex;
                                justify-content: space-between; gap: 12px; }
       #folhaPrint .pf-rodape span { max-width: 48%; }
 
       /* margem de segurança: se a caixa de impressão vier com "sem margens",
          o texto ainda não encosta na borda do papel */
-      #folhaPrint { padding: 2mm !important; box-sizing: border-box; }
+      #folhaPrint { padding: 14mm 12mm !important; box-sizing: border-box; }
 
-      @page { margin: 20mm 17mm; }
+      @page { margin: 16mm 14mm; }
     }
   </style>
 
@@ -793,8 +810,9 @@ const emp = empresaDe(rdo.empresa);
       const cor = empSel.cor || "#C41E3A";
 
       const cond = [
-        campo("Clima pela manhã", valDe("clima_manha").replace(/[^\p{L}\s]/gu, "").trim()),
-        campo("Clima à tarde", valDe("clima_tarde").replace(/[^\p{L}\s]/gu, "").trim()),
+        // o ícone vem junto ("☀️ Sol"): dá leitura imediata no papel
+        campo("Clima pela manhã", valDe("clima_manha")),
+        campo("Clima à tarde", valDe("clima_tarde")),
         campo("Condição de trabalho", valDe("condicao")),
         campo("Início da visita", valDe("inicio_jornada")),
         campo("Fim da visita", valDe("fim_jornada")),
