@@ -57,6 +57,10 @@ const { data: mesmoDia } = await db.from("obras_rdo")
 const outrosNoDia = (mesmoDia || []).length;
 const respPadrao = (responsaveis || []).find((r: any) => r.padrao)?.nome || "";
 
+// declarado ANTES de `dados`, que usa este valor no cabeçalho da folha impressa
+const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join("/")]
+  .filter(Boolean).join(" — ");
+
 const dados = {
   id,
   ocorrencias: Array.isArray(rdo.ocorrencias_itens) ? rdo.ocorrencias_itens : [],
@@ -85,7 +89,6 @@ const listas = {
   empresas: EMPRESAS.map((e) => ({ v: e.v, nome: e.nome, cnpj: e.cnpj, logo: e.logo, cor: e.cor })),
 };
 const emp = empresaDe(rdo.empresa);
-const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join("/")].filter(Boolean).join(" — ");
 ---
 <Admin title={`Relatório de visita ${fmtDataBr(rdo.data)} — ${obra?.nome || "Obra"}`} current="obras-diario">
   <div class="toolbar nao-imprimir">
