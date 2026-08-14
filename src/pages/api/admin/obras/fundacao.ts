@@ -10,10 +10,15 @@ export const prerender = false;
 // aqui é "obras", a mesma equipe que cuida da carteira de fundação.
 const MODULO = "obras";
 
+/** Nome de obra e de cliente entram sempre em MAIÚSCULO: é o padrão da
+ *  carteira e evita a mesma obra cadastrada de três jeitos diferentes. */
+const maiusculo = (t: unknown, max: number) =>
+  String(t ?? "").trim().slice(0, max).toLocaleUpperCase("pt-BR");
+
 const camposDaObra = (b: any) => ({
-  nome: String(b?.nome ?? "").trim().slice(0, 200),
+  nome: maiusculo(b?.nome, 200),
   codigo: String(b?.codigo ?? "").trim().slice(0, 60) || null,
-  cliente: String(b?.cliente ?? "").trim().slice(0, 200) || null,
+  cliente: maiusculo(b?.cliente, 200) || null,
   endereco: String(b?.endereco ?? "").trim().slice(0, 300) || null,
   cidade: String(b?.cidade ?? "").trim().slice(0, 120) || null,
   uf: String(b?.uf ?? "").trim().toUpperCase().slice(0, 2) || null,

@@ -27,12 +27,17 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       if (b[k] === undefined) return;
       patch[k] = String(b[k] ?? "").trim().slice(0, max) || null;
     };
+    // nome e cliente sempre em maiúsculo — mesmo padrão do cadastro
+    const maiusculo = (t: unknown, max: number) =>
+      String(t ?? "").trim().slice(0, max).toLocaleUpperCase("pt-BR");
+
     if (b.nome !== undefined) {
-      const nome = String(b.nome ?? "").trim().slice(0, 200);
+      const nome = maiusculo(b.nome, 200);
       if (!nome) return jsonErr(400, "O nome da obra não pode ficar em branco.");
       patch.nome = nome;
     }
-    texto("codigo", 60); texto("cliente", 200); texto("endereco", 300);
+    if (b.cliente !== undefined) patch.cliente = maiusculo(b.cliente, 200) || null;
+    texto("codigo", 60); texto("endereco", 300);
     texto("cidade", 120); texto("responsavel_nome", 200); texto("observacoes", 2000);
     if (b.uf !== undefined) patch.uf = String(b.uf ?? "").trim().toUpperCase().slice(0, 2) || null;
     if (b.status !== undefined) patch.status = statusObraValido(b.status);
