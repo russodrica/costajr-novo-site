@@ -384,17 +384,16 @@ const emp = empresaDe(rdo.empresa);
     #folhaPrint { display: none; }
 
     @media print {
-      body * { visibility: hidden !important; }
-      #folhaPrint, #folhaPrint * { visibility: visible !important; }
+      /* A folha é movida para filha direta do <body> antes de imprimir, e todo
+         o resto do body some. Nada de position:absolute aqui: elemento fora do
+         fluxo ignora a margem da página e o texto sai cortado na borda. */
+      body > *:not(#folhaPrint) { display: none !important; }
       #folhaPrint {
         display: block !important;
-        position: absolute !important; left: 0; top: 0; width: 100%;
-        margin: 0 !important; padding: 0 !important;
         font-family: "Open Sans", Arial, sans-serif; color: #1A1D24; font-size: 11pt;
       }
-      html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-      .sidebar, .topbar, .toolbar, .main-content > header { display: none !important; }
-      .main-content, main { margin: 0 !important; padding: 0 !important; }
+      html, body { background: #fff !important; margin: 0 !important; padding: 0 !important;
+                   height: auto !important; overflow: visible !important; }
 
       /* cabeçalho */
       #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: flex-end;
@@ -738,6 +737,30 @@ const emp = empresaDe(rdo.empresa);
     // para o cliente.
     const P = RDO.papel || {};
 
+    // As fotos ficam num depósito privado e chegam por link assinado. Numa folha
+    // nova o navegador precisaria buscar cada uma de novo — e a caixa de
+    // impressão abre antes de elas chegarem, que é o motivo de saírem em branco.
+    // Aqui elas são baixadas UMA vez e embutidas na própria folha.
+    const CACHE_FOTO: Record<string, string> = {};
+
+    async function embutirFotos() {
+      const imgs = [...document.querySelectorAll("#galeria .foto img")] as HTMLImageElement[];
+      await Promise.all(imgs.map(async (img) => {
+        if (CACHE_FOTO[img.src]) return;
+        try {
+          const r = await fetch(img.src, { credentials: "include" });
+          if (!r.ok) return;
+          const blob = await r.blob();
+          CACHE_FOTO[img.src] = await new Promise<string>((ok, falhou) => {
+            const fr = new FileReader();
+            fr.onload = () => ok(String(fr.result));
+            fr.onerror = falhou;
+            fr.readAsDataURL(blob);
+          });
+        } catch { /* segue com o link normal — melhor foto tardia que nenhuma */ }
+      }));
+    }
+
     const valDe = (n: string) => {
       const el = document.querySelector(`[name="${n}"]`) as HTMLInputElement | HTMLSelectElement | null;
       if (!el) return "";
@@ -752,6 +775,11 @@ const emp = empresaDe(rdo.empresa);
       corpo ? `<section class="pf-sec"><h2>${esc(titulo)}</h2>${corpo}</section>` : "";
 
     function montarFolha() {
+      // filha direta do body: é o que permite esconder todo o resto sem
+      // depender das classes do layout
+      const folha = document.getElementById("folhaPrint")!;
+      if (folha.parentElement !== document.body) document.body.appendChild(folha);
+
       const empSel = (LISTAS.empresas || []).find((e: any) => e.v === selEmpresa.value) || {};
       const cor = empSel.cor || "#C41E3A";
 
@@ -781,7 +809,8 @@ const emp = empresaDe(rdo.empresa);
       const fotos = [...document.querySelectorAll("#galeria .foto")].map((f) => {
         const img = f.querySelector("img") as HTMLImageElement;
         const leg = (f.querySelector(".legenda") as HTMLInputElement)?.value || "";
-        return `<figure class="pf-foto"><img src="${img.src}" loading="eager">${leg ? `<figcaption>${esc(leg)}</figcaption>` : ""}</figure>`;
+        const src = CACHE_FOTO[img.src] || img.src;
+        return `<figure class="pf-foto"><img src="${src}" loading="eager">${leg ? `<figcaption>${esc(leg)}</figcaption>` : ""}</figure>`;
       });
 
       const assinatura = (chave: string, rot: string, nomeCampo: string) => {
@@ -789,7 +818,7 @@ const emp = empresaDe(rdo.empresa);
         const nome = valDe(nomeCampo);
         return `<div>
           ${dados ? `<img src="${dados}">` : `<div style="height:60px"></div>`}
-          <div class="linha"><div class="nome">${esc(nome || "&nbsp;")}</div><div class="rot">${esc(rot)}</div></div>
+          <div class="linha"><div class="nome">${nome ? esc(nome) : "&nbsp;"}</div><div class="rot">${esc(rot)}</div></div>
         </div>`;
       };
 
@@ -832,12 +861,21 @@ const emp = empresaDe(rdo.empresa);
         </div>`;
     }
 
-    document.getElementById("btnImprimir")!.addEventListener("click", () => {
-      montarFolha();
-      // um respiro para o navegador desenhar as imagens antes de abrir a caixa
-      setTimeout(() => window.print(), 120);
+    document.getElementById("btnImprimir")!.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget as HTMLButtonElement;
+      const rotulo = btn.textContent;
+      btn.disabled = true; btn.textContent = "Preparando…";
+      try {
+        await embutirFotos();
+        montarFolha();
+        // um respiro para o navegador desenhar antes de abrir a caixa
+        await new Promise((r) => setTimeout(r, 150));
+        window.print();
+      } finally {
+        btn.disabled = false; btn.textContent = rotulo;
+      }
     });
-    // Ctrl+P também precisa da folha montada
+    // Ctrl+P: monta com o que já estiver em cache (sem esperar rede)
     window.addEventListener("beforeprint", montarFolha);
 
     Object.assign(window, { addLinha, salvar, montarFolha });
