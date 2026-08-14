@@ -396,13 +396,14 @@ const emp = empresaDe(rdo.empresa);
                    height: auto !important; overflow: visible !important; }
 
       /* cabeçalho */
-      #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: flex-end;
-                             gap: 20px; padding-bottom: 10px; margin-bottom: 4px; }
+      #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: flex-start;
+                             gap: 16px; padding-bottom: 10px; margin-bottom: 4px; }
       #folhaPrint .pf-logo { height: 74px; width: auto; object-fit: contain; }
       #folhaPrint .pf-titulo { font-size: 16pt; font-weight: 800; letter-spacing: .04em;
                                line-height: 1.1; margin: 0; }
       #folhaPrint .pf-emp { font-size: 8.5pt; color: #555; margin-top: 2px; }
-      #folhaPrint .pf-ident { text-align: right; font-size: 9pt; line-height: 1.5; }
+      #folhaPrint .pf-ident { text-align: right; font-size: 9pt; line-height: 1.45;
+                              max-width: 46%; word-break: break-word; }
       #folhaPrint .pf-ident strong { font-size: 11pt; }
       #folhaPrint .pf-regua { height: 4px; margin-bottom: 14px; }
 
@@ -441,7 +442,12 @@ const emp = empresaDe(rdo.empresa);
 
       #folhaPrint .pf-rodape { margin-top: 20px; padding-top: 7px; border-top: 1px solid #D1D5DB;
                                font-size: 7.5pt; color: #6B7280; display: flex;
-                               justify-content: space-between; }
+                               justify-content: space-between; gap: 12px; }
+      #folhaPrint .pf-rodape span { max-width: 48%; }
+
+      /* margem de segurança: se a caixa de impressão vier com "sem margens",
+         o texto ainda não encosta na borda do papel */
+      #folhaPrint { padding: 2mm !important; box-sizing: border-box; }
 
       @page { margin: 14mm 13mm; }
     }
@@ -748,7 +754,10 @@ const emp = empresaDe(rdo.empresa);
       await Promise.all(imgs.map(async (img) => {
         if (CACHE_FOTO[img.src]) return;
         try {
-          const r = await fetch(img.src, { credentials: "include" });
+          // ?bytes=1: a imagem vem do próprio portal (mesma origem). Buscar o
+          // link do depósito direto é bloqueado pelo navegador.
+          const url = img.src + (img.src.includes("?") ? "&" : "?") + "bytes=1";
+          const r = await fetch(url, { credentials: "same-origin" });
           if (!r.ok) return;
           const blob = await r.blob();
           CACHE_FOTO[img.src] = await new Promise<string>((ok, falhou) => {

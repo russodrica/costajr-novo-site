@@ -26,6 +26,21 @@ export const GET: APIRoute = async ({ request, params }) => {
       .from(BUCKET_OBRAS).createSignedUrl(foto.storage_path, 3600);
     if (error || !assinada?.signedUrl) return jsonErr(500, error?.message || "Falha ao abrir a foto.");
 
+    // ?bytes=1 — o próprio portal entrega a imagem, em vez de mandar o navegador
+    // ao depósito. É o que a impressão precisa: buscar a foto no outro domínio
+    // esbarra na política de origem do navegador ("Failed to fetch") e o PDF sai
+    // com os quadros em branco.
+    if (new URL(request.url).searchParams.get("bytes")) {
+      const arquivo = await fetch(assinada.signedUrl);
+      if (!arquivo.ok) return jsonErr(502, "Não deu para ler a foto no depósito.");
+      return new Response(arquivo.body, {
+        headers: {
+          "content-type": arquivo.headers.get("content-type") || "image/jpeg",
+          "cache-control": "private, max-age=1800",
+        },
+      });
+    }
+
     return new Response(null, {
       status: 302,
       headers: { location: assinada.signedUrl, "cache-control": "private, max-age=1800" },
