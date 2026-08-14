@@ -80,26 +80,29 @@ const obrasPorArea = {
 
   <div id="msg"></div>
 
-  <div class="card" style="margin-bottom:16px;background:#EFF6FF;border:1px solid #BFDBFE">
-    <p style="margin:0;font-size:13px;color:#1E3A8A">
-      <strong>Como funciona:</strong> escolha a área — <em>Obras e Projetos</em> usa o cadastro de
-      <a href="/admin/obras">Obras &amp; Projetos</a>; <em>Fundação</em> usa a carteira própria em
-      <a href="/admin/obras/fundacao">Obras de Fundação</a>. Depois é só escolher a obra (ou cadastrar
-      uma nova, no caso da fundação) e o relatório daquele dia é criado.
-    </p>
+  <!-- abas por área: o filtro mais usado sai do formulário e vira um clique -->
+  <div class="abas">
+    <a class={`aba ${filtroArea === "todas" ? "on" : ""}`} href="/admin/obras/diario">
+      Todas <span class="qtd">{total}</span>
+    </a>
+    {AREAS.map((a) => (
+      <a class={`aba ${filtroArea === a.v ? "on" : ""}`} href={`/admin/obras/diario?area=${a.v}`}>
+        {a.icone} {a.label} <span class="qtd">{cont[a.v] || 0}</span>
+      </a>
+    ))}
   </div>
+
+  <p class="ajuda-area">
+    {filtroArea === "fundacao"
+      ? <span>Carteira própria da fundação — cadastro em <a href="/admin/obras/fundacao">Obras de Fundação</a>.</span>
+      : filtroArea === "obras"
+        ? <span>Usa o cadastro de <a href="/admin/obras">Obras &amp; Projetos</a>.</span>
+        : <span>Duas carteiras: <a href="/admin/obras">Obras &amp; Projetos</a> e <a href="/admin/obras/fundacao">Obras de Fundação</a>. O botão de novo relatório pergunta a área antes da obra.</span>}
+  </p>
 
   <div class="card" style="margin-bottom:16px;background:var(--gray-50)">
     <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
-      <div>
-        <label style="font-size:12px;color:var(--ink-mid)">Área</label>
-        <select name="area" class="filter-select">
-          <option value="todas" selected={filtroArea === "todas"}>Todas as áreas</option>
-          {AREAS.map((a) => (
-            <option value={a.v} selected={filtroArea === a.v}>{a.icone} {a.label} ({cont[a.v] || 0})</option>
-          ))}
-        </select>
-      </div>
+      <input type="hidden" name="area" value={filtroArea} />
       <div style="flex:1;min-width:220px">
         <label style="font-size:12px;color:var(--ink-mid)">Obra</label>
         <select name="obra" class="filter-select" style="width:100%">
@@ -234,12 +237,13 @@ const obrasPorArea = {
             </select>
           </div>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="grupoChecklist">
           <label>Checklist (opcional)</label>
           <select name="modelo_checklist_id">
             <option value="">Sem checklist</option>
             {(modelos || []).map((m: any) => (<option value={m.id}>{m.nome}</option>))}
           </select>
+          <small style="color:var(--ink-light)">Só na área de Obras — a visita de fundação é laudo, não conferência item a item.</small>
         </div>
 
         <div class="modal-footer" style="padding:8px 0 0">
@@ -253,6 +257,16 @@ const obrasPorArea = {
   <script type="application/json" id="obrasPorArea" set:html={JSON.stringify(obrasPorArea)}></script>
 
   <style>
+    .abas { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+    .aba { display:inline-flex; align-items:center; gap:7px; padding:9px 16px; border-radius:999px;
+           border:1.5px solid var(--border); background:var(--surface); color:var(--ink-mid);
+           font-size:13.5px; font-weight:600; text-decoration:none; }
+    .aba:hover { border-color:#93C5FD; color:var(--ink); }
+    .aba.on { background:#C41E3A; border-color:#C41E3A; color:#fff; }
+    .aba .qtd { font-size:11.5px; font-weight:700; padding:1px 7px; border-radius:999px;
+                background:rgba(0,0,0,.07); }
+    .aba.on .qtd { background:rgba(255,255,255,.22); }
+    .ajuda-area { font-size:12.5px; color:var(--ink-mid); margin:0 0 14px; }
     .areas { display:grid; gap:8px; }
     .area-op { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1.5px solid var(--border);
                border-radius:10px; cursor:pointer; background:var(--surface); }
@@ -293,10 +307,20 @@ const obrasPorArea = {
             ? "Nenhuma obra de fundação cadastrada ainda — cadastre abaixo."
             : 'Nenhuma obra cadastrada em <a href="/admin/obras">Obras &amp; Projetos</a>.');
       selEmpresa.value = EMPRESA_PADRAO[area] || "engenharia";
+      // fundação não usa checklist
+      const gc = document.getElementById("grupoChecklist") as HTMLElement;
+      gc.style.display = area === "obras" ? "" : "none";
+      if (area !== "obras") (gc.querySelector("select") as HTMLSelectElement).value = "";
     }
 
     function abrirNovo() {
       document.getElementById("msgNovo")!.innerHTML = "";
+      // se a pessoa está numa aba de área, o modal já abre naquela área
+      const daAba = new URLSearchParams(location.search).get("area");
+      if (daAba) {
+        const r = f.querySelector(`input[name="area"][value="${daAba}"]`) as HTMLInputElement | null;
+        if (r) r.checked = true;
+      }
       pintarObras();
       document.getElementById("modalNovo")!.classList.add("open");
     }

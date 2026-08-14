@@ -36,8 +36,9 @@ const { data: todas } = await db.from("obras_fundacao").select("status");
 const cont: Record<string, number> = {};
 for (const t of todas || []) cont[t.status] = (cont[t.status] || 0) + 1;
 
+// A visita de fundação não usa checklist: é laudo técnico, não conferência
+// item a item. Por isso aqui não há escolha de modelo.
 const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
-const { data: modelos } = await db.from("obras_checklist_modelos").select("id, nome").eq("ativo", true).order("nome");
 ---
 <Admin title="Obras de Fundação" current="obras-fundacao">
   <div class="toolbar">
@@ -165,12 +166,6 @@ const { data: modelos } = await db.from("obras_checklist_modelos").select("id, n
               <option value="engenharia">Costa Júnior Engenharia e Construções</option>
             </select>
           </div>
-        </div>
-        <div class="form-group"><label>Checklist (opcional)</label>
-          <select name="modelo_checklist_id">
-            <option value="">Sem checklist</option>
-            {(modelos || []).map((m: any) => (<option value={m.id}>{m.nome}</option>))}
-          </select>
         </div>
         <div class="modal-footer" style="padding:8px 0 0">
           <button class="btn btn-secondary" type="button" onclick="fecharRel()">Cancelar</button>

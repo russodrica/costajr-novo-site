@@ -62,6 +62,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       return jsonErr(400, "Não deu para salvar agora.");
     }
 
+    // Nome novo de responsável entra no catálogo sozinho: quem está em campo
+    // digita uma vez e nas próximas visitas o nome já aparece na lista.
+    const resp = patch.responsavel as string | null;
+    if (resp) {
+      await db.from("obras_cat_responsaveis")
+        .upsert({ nome: resp }, { onConflict: "nome", ignoreDuplicates: true });
+    }
+
     // checklist: a tela manda a lista inteira, então troca por completo
     if (Array.isArray(b.checklist)) {
       await db.from("obras_rdo_checklist").delete().eq("rdo_id", id);

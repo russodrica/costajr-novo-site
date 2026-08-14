@@ -26,7 +26,7 @@ export const POST: APIRoute = async ({ request }) => {
     const rdo_id = String(body?.rdo_id || "").trim();
     if (!rdo_id) return jsonErr(400, "Relatório não informado.");
 
-    const { data: rdo } = await db.from("obras_rdo").select("id, obra_id").eq("id", rdo_id).maybeSingle();
+    const { data: rdo } = await db.from("obras_rdo").select("id, obra_id, fundacao_id").eq("id", rdo_id).maybeSingle();
     if (!rdo) return jsonErr(404, "Relatório não encontrado.");
 
     const nomeOriginal = String(body?.nome || "foto.jpg").slice(0, 150);
@@ -36,11 +36,27 @@ export const POST: APIRoute = async ({ request }) => {
       return jsonErr(400, "Envie uma imagem (JPG, PNG, WEBP ou HEIC).");
     }
 
-    await garantirBucketObras();
     const slug = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const path = `rdo/${rdo.obra_id}/${rdo_id}/${slug}.${ext}`;
-    const { data, error } = await storageObras().storage.from(BUCKET_OBRAS).createSignedUploadUrl(path);
-    if (error) return jsonErr(500, `Não deu para preparar o envio: ${error.message}`);
+    const pasta = rdo.fundacao_id || rdo.obra_id || "sem-obra";
+    const path = `rdo/${pasta}/${rdo_id}/${slug}.${ext}`;
+
+    // O bucket é criado na primeira foto. Se ele não existir e a criação falhar,
+    // o erro precisa CHEGAR à tela: "não deu para enviar" sem motivo é o que
+    // torna esse tipo de problema impossível de resolver à distância.
+    let assinada = await storageObras().storage.from(BUCKET_OBRAS).createSignedUploadUrl(path);
+    if (assinada.error) {
+      const erroCriacao = await garantirBucketObras();
+      if (erroCriacao) {
+        console.error("[rdo-foto] bucket:", erroCriacao);
+        return jsonErr(500, `Depósito de fotos indisponível: ${erroCriacao}`);
+      }
+      assinada = await storageObras().storage.from(BUCKET_OBRAS).createSignedUploadUrl(path);
+    }
+    const { data, error } = assinada;
+    if (error || !data?.signedUrl) {
+      console.error("[rdo-foto] signed url:", error?.message);
+      return jsonErr(500, `Não deu para preparar o envio: ${error?.message || "sem URL"}`);
+    }
 
     return jsonOk({ signed_url: data.signedUrl, path, nome_original: nomeOriginal });
   } catch (e: any) {

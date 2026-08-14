@@ -71,14 +71,22 @@ export function storageObras() {
   return supabaseAdmin2();
 }
 
-/** Cria o bucket na primeira foto. Best-effort: "já existe" é ignorado. */
-export async function garantirBucketObras(): Promise<void> {
+/** Cria o bucket na primeira foto.
+ *  Devolve `null` quando está tudo certo (criado agora ou já existia) e a
+ *  MENSAGEM do erro quando não dá para criar — quem chama decide o que mostrar.
+ *  Engolir esse erro é o que faz o envio de foto falhar sem explicação. */
+export async function garantirBucketObras(): Promise<string | null> {
   try {
-    await storageObras().storage.createBucket(BUCKET_OBRAS, {
+    const { error } = await storageObras().storage.createBucket(BUCKET_OBRAS, {
       public: false,
       fileSizeLimit: 26214400, // 25 MB
     });
-  } catch { /* já existe (ou sem permissão) — o upload dirá se for problema real */ }
+    if (!error) return null;
+    const m = String(error.message || "").toLowerCase();
+    return m.includes("already exists") || m.includes("duplicate") ? null : error.message;
+  } catch (e: any) {
+    return e?.message || "falha ao preparar o depósito de fotos";
+  }
 }
 
 export const CLIMA = [

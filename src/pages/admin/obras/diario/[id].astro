@@ -40,14 +40,23 @@ const voltarPara = area.v === "fundacao"
 const { data: checklist } = await db.from("obras_rdo_checklist").select("*").eq("rdo_id", id).order("ordem");
 const { data: fotos } = await db.from("obras_rdo_fotos").select("*").eq("rdo_id", id).order("ordem").order("created_at");
 const { data: tiposOcor } = await db.from("obras_cat_ocorrencias").select("nome").eq("ativo", true).order("nome");
+const { data: responsaveis } = await db.from("obras_cat_responsaveis")
+  .select("nome, padrao").eq("ativo", true).order("padrao", { ascending: false }).order("nome");
+
+// Fundação não usa checklist — a visita da consultoria é laudo, não conferência
+// item a item. Em Obras o bloco continua.
+const usaChecklist = area.v === "obras";
+const respPadrao = (responsaveis || []).find((r: any) => r.padrao)?.nome || "";
 
 const dados = {
   id,
   ocorrencias: Array.isArray(rdo.ocorrencias_itens) ? rdo.ocorrencias_itens : [],
   checklist: (checklist || []).map((c: any) => ({ item: c.item, situacao: c.situacao, observacao: c.observacao || "" })),
+  usaChecklist,
 };
 const listas = {
   tipos: (tiposOcor || []).map((t: any) => t.nome),
+  responsaveis: (responsaveis || []).map((r: any) => r.nome),
   // logo/nome/CNPJ de cada empresa, para o cabeçalho impresso trocar sem recarregar
   empresas: EMPRESAS.map((e) => ({ v: e.v, nome: e.nome, cnpj: e.cnpj, logo: e.logo, cor: e.cor })),
 };
@@ -143,27 +152,52 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       <div class="form-row">
         <div class="form-group"><label>Início da visita</label><input type="time" name="inicio_jornada" value={rdo.inicio_jornada || ""} /></div>
         <div class="form-group"><label>Fim da visita</label><input type="time" name="fim_jornada" value={rdo.fim_jornada || ""} /></div>
-        <div class="form-group"><label>Responsável pela visita</label><input name="responsavel" value={rdo.responsavel || obra?.responsavel_nome || ""} /></div>
+        <div class="form-group">
+          <label>Responsável pela visita</label>
+          <input name="responsavel" list="listaResp" autocomplete="off"
+                 value={rdo.responsavel || respPadrao || obra?.responsavel_nome || ""} />
+          <datalist id="listaResp">
+            {(responsaveis || []).map((r: any) => (<option value={r.nome}></option>))}
+          </datalist>
+          <small style="color:var(--ink-light)">Clique para escolher da lista ou digite um nome novo — ele é guardado para as próximas visitas.</small>
+        </div>
       </div>
     </div>
 
-    <!-- ── atividades verificadas ── -->
+    <!-- ── serviços verificados ── -->
     <div class="card" style="margin-bottom:14px">
-      <h3 style="margin:0 0 12px">Serviços verificados</h3>
-      <textarea name="atividades" rows="6" placeholder="O que estava em execução, em qual frente e o que foi constatado.">{rdo.atividades || ""}</textarea>
+      <div class="bloco-cab">
+        <h3>Serviços verificados <span style="color:#B91C1C">*</span></h3>
+        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" id="btnModelo">Usar modelo de texto</button>
+      </div>
+      <p class="nao-imprimir dica">
+        É o corpo do relatório: o que estava em execução, em qual frente, e o que foi constatado.
+        Sem isso o relatório não publica.
+      </p>
+      <textarea name="atividades" id="taAtividades" rows="10" class="campo-grande"
+        placeholder="Ex.: Frente 1 — execução de estacas hélice contínua no eixo A; concretagem conforme projeto, cota de arrase conferida.">{rdo.atividades || ""}</textarea>
+      <div class="nao-imprimir contador"><span id="contAtiv"></span></div>
     </div>
 
     <!-- ── ocorrências ── -->
     <div class="card" style="margin-bottom:14px">
       <div class="bloco-cab">
         <h3>Ocorrências</h3>
-        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" onclick="addLinha('ocor')">+ Adicionar</button>
+        <span style="display:flex;gap:8px" class="nao-imprimir">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnSemOcor">Nenhuma ocorrência</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addLinha('ocor')">+ Adicionar</button>
+        </span>
       </div>
-      <table class="tabela-itens"><thead><tr><th style="width:28%">Tipo</th><th>Descrição</th><th style="width:14%">Horas paradas</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
+      <p class="nao-imprimir dica">
+        Chuva, acidente, falta de material, área não liberada, visita técnica. Se o dia correu sem nada
+        a registrar, clique em <strong>Nenhuma ocorrência</strong> — o relatório sai dizendo isso.
+      </p>
+      <table class="tabela-itens"><thead><tr><th style="width:30%">Tipo</th><th>Descrição</th><th style="width:120px">Horas paradas</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
         <tbody id="tbOcor"></tbody></table>
     </div>
 
-    <!-- ── checklist ── -->
+    <!-- ── checklist (só na área de Obras) ── -->
+    {usaChecklist && (
     <div class="card" style="margin-bottom:14px">
       <div class="bloco-cab">
         <h3>Checklist</h3>
@@ -172,11 +206,16 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       <table class="tabela-itens"><thead><tr><th style="width:45%">Item</th><th style="width:20%">Situação</th><th>Observação</th><th class="nao-imprimir" style="width:40px"></th></tr></thead>
         <tbody id="tbCheck"></tbody></table>
     </div>
+    )}
 
     <!-- ── observações ── -->
     <div class="card" style="margin-bottom:14px">
-      <h3 style="margin:0 0 12px">Observações gerais</h3>
-      <textarea name="observacoes" rows="3" placeholder="Recomendações, decisões e pendências para a próxima visita.">{rdo.observacoes || ""}</textarea>
+      <h3 style="margin:0 0 6px">Observações e recomendações</h3>
+      <p class="nao-imprimir dica">
+        O que a obra precisa fazer até a próxima visita: recomendações técnicas, decisões tomadas e pendências.
+      </p>
+      <textarea name="observacoes" rows="6" class="campo-grande"
+        placeholder="Ex.: Recomenda-se refazer o nivelamento do eixo B antes da próxima concretagem.">{rdo.observacoes || ""}</textarea>
     </div>
   </form>
 
@@ -215,6 +254,14 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
   <script type="application/json" id="listasRDO" set:html={JSON.stringify(listas)}></script>
 
   <style>
+    /* textarea fora de .form-group não herda a largura do portal — sem isto o
+       campo nasce do tamanho padrão do navegador (aquele quadradinho) */
+    .campo-grande { width:100%; display:block; font-family:inherit; font-size:.92rem; line-height:1.5;
+                    padding:12px 14px; border:1.5px solid var(--border); border-radius:10px;
+                    background:var(--surface); color:var(--ink); resize:vertical; min-height:120px; }
+    .campo-grande:focus { outline:none; border-color:#2563EB; box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+    .dica { font-size:12.5px; color:var(--ink-mid); margin:0 0 10px; }
+    .contador { font-size:11.5px; color:var(--ink-light); text-align:right; margin-top:5px; }
     .bloco-cab { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
     .bloco-cab h3 { margin:0; font-size:1rem; }
     .tabela-itens { width:100%; border-collapse:collapse; }
@@ -270,8 +317,8 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     function linhaOcor(i: any = {}) {
       return `<tr>
         <td><select name="tipo">${opcoes(LISTAS.tipos || [], i.tipo || "")}</select></td>
-        <td><input name="descricao" value="${esc(i.descricao)}" placeholder="O que aconteceu"></td>
-        <td><input name="horas" type="number" min="0" step="0.5" value="${esc(i.horas ?? "")}"></td>
+        <td><input name="descricao" value="${esc(i.descricao)}" placeholder="O que aconteceu e o efeito na obra"></td>
+        <td><input name="horas" type="number" min="0" step="0.5" placeholder="—" value="${esc(i.horas ?? "")}"></td>
         <td class="nao-imprimir"><button type="button" class="lixo" onclick="this.closest('tr').remove()">🗑</button></td></tr>`;
     }
     function linhaCheck(i: any = {}) {
@@ -288,6 +335,39 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       ocor:  { el: "tbOcor",  fn: linhaOcor,  dados: RDO.ocorrencias || [] },
       check: { el: "tbCheck", fn: linhaCheck, dados: RDO.checklist || [] },
     };
+
+    // "Nenhuma ocorrência": troca a lista por uma linha só, já preenchida —
+    // dia tranquilo também é informação no relatório que vai ao cliente.
+    document.getElementById("btnSemOcor")?.addEventListener("click", () => {
+      document.getElementById("tbOcor")!.innerHTML = linhaOcor({ tipo: "Sem ocorrência", descricao: "Nada a registrar." });
+    });
+
+    // contador do campo principal, para quem escreve pelo celular saber que cabe texto
+    const taAtiv = document.getElementById("taAtividades") as HTMLTextAreaElement | null;
+    function contar() {
+      const n = (taAtiv?.value || "").trim().length;
+      document.getElementById("contAtiv")!.textContent = n ? `${n} caractere${n > 1 ? "s" : ""}` : "campo obrigatório para publicar";
+    }
+    taAtiv?.addEventListener("input", contar);
+
+    // modelo de texto: ajuda quem trava na folha em branco
+    const MODELO = [
+      "Frentes em execução:",
+      "- ",
+      "",
+      "Constatações:",
+      "- ",
+      "",
+      "Providências solicitadas:",
+      "- ",
+    ].join("\n");
+    document.getElementById("btnModelo")?.addEventListener("click", () => {
+      if (!taAtiv) return;
+      if (taAtiv.value.trim() && !confirm("Substituir o texto que já está escrito pelo modelo?")) return;
+      taAtiv.value = MODELO;
+      taAtiv.focus();
+      contar();
+    });
 
     function addLinha(qual: string) {
       const c = CORPOS[qual];
@@ -321,7 +401,7 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       const corpo: Record<string, unknown> = { status };
       for (const [k, v] of new FormData(f).entries()) corpo[k] = v;
       corpo.ocorrencias_itens = ler("tbOcor", ["tipo", "descricao", "horas"]);
-      corpo.checklist = ler("tbCheck", ["item", "situacao", "observacao"]);
+      if (document.getElementById("tbCheck")) corpo.checklist = ler("tbCheck", ["item", "situacao", "observacao"]);
 
       const btns = [document.getElementById("btnSalvar"), document.getElementById("btnPublicar")] as HTMLButtonElement[];
       btns.forEach((b) => b && (b.disabled = true));
@@ -367,7 +447,7 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       const arqs = [...(alvo.files || [])];
       if (!arqs.length) return;
       msg.innerHTML = `<div class="alert alert-info">Enviando ${arqs.length} foto(s)…</div>`;
-      let erros = 0;
+      const falhas: string[] = [];
       for (const a of arqs) {
         try {
           const nova = await subirFoto(a);
@@ -379,15 +459,23 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
                 <button type="button" class="btn-remover nao-imprimir" data-id="${nova.id}" title="Remover">✕</button>
               </figcaption>
             </figure>`);
-        } catch { erros++; }
+        } catch (e: any) {
+          // a mensagem real aparece na tela: sem isso um envio que falha vira
+          // "não subiu" e ninguém sabe o motivo
+          falhas.push(`${a.name}: ${e?.message || e}`);
+          console.error("[foto]", a.name, e);
+        }
       }
       alvo.value = "";
       const q = document.querySelectorAll("#galeria .foto").length;
       document.getElementById("qtdFotos")!.textContent = String(q);
-      msg.innerHTML = erros
-        ? `<div class="alert alert-error">${erros} foto(s) não subiram. Tente de novo.</div>`
-        : `<div class="alert alert-success">Foto(s) enviada(s).</div>`;
-      setTimeout(() => { msg.innerHTML = ""; }, 4000);
+      if (falhas.length) {
+        msg.innerHTML = `<div class="alert alert-error"><strong>${falhas.length} foto(s) não subiram.</strong>` +
+          `<div style="font-size:12px;margin-top:6px">${falhas.map((t) => esc(t)).join("<br>")}</div></div>`;
+      } else {
+        msg.innerHTML = `<div class="alert alert-success">Foto(s) enviada(s).</div>`;
+        setTimeout(() => { msg.innerHTML = ""; }, 4000);
+      }
     });
 
     // legenda salva ao sair do campo; remover pede confirmação
@@ -417,10 +505,12 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
 
     // desenha as listas ao abrir; começa com uma linha em branco quando vazio
     for (const [, c] of Object.entries(CORPOS)) {
-      const corpo = document.getElementById(c.el)!;
+      const corpo = document.getElementById(c.el);
+      if (!corpo) continue;   // checklist não existe na área de Fundação
       corpo.innerHTML = (c.dados.length ? c.dados : [{}]).map((i: any) => c.fn(i)).join("");
     }
     pintarCabecalho();
+    contar();
 
     Object.assign(window, { addLinha, salvar });
   </script>
