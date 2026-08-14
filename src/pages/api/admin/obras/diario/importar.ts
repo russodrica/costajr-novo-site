@@ -46,12 +46,18 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Já importado? Devolve o que existe — a importação pode ser repetida sem
     // medo de duplicar o histórico.
-    const { data: ja } = await db.from("obras_rdo").select("id")
+    const { data: ja } = await db.from("obras_rdo").select("id, pdf_path")
       .eq("fundacao_id", fundacao_id).eq("data", data).eq("origem", "importado")
       .eq("numero_origem", numero_origem ?? "").maybeSingle();
-    if (ja) return jsonOk({ id: ja.id, jaExistia: true, fotos: 0 });
 
-    const { data: novo, error } = await db.from("obras_rdo").insert({
+    // Já importado: não duplica o relatório, mas COMPLETA as fotos que faltaram
+    // (a primeira tentativa pode ter falhado só na parte das imagens).
+    let idAlvo = ja?.id || "";
+    if (idAlvo && (ja as any)?.pdf_path) {
+      return jsonOk({ id: idAlvo, jaExistia: true, pdf: "já anexado" });
+    }
+
+    const { data: novo, error } = idAlvo ? { data: { id: idAlvo }, error: null } : await db.from("obras_rdo").insert({
       area: "fundacao",
       fundacao_id,
       obra_id: null,
@@ -76,12 +82,58 @@ export const POST: APIRoute = async ({ request }) => {
       return jsonErr(400, `Não deu para importar: ${error.message}`);
     }
 
-    // ── fotos ────────────────────────────────────────────────────────────────
     const fotos: { url: string; legenda?: string }[] = Array.isArray(b.fotos) ? b.fotos.slice(0, MAX_FOTOS) : [];
     let salvas = 0;
     const problemas: string[] = [];
+    const problemasPdf: string[] = [];
 
-    if (fotos.length) {
+    // ── PDF original ─────────────────────────────────────────────────────────
+    // É o documento que já foi emitido e enviado ao cliente. Guardamos o arquivo
+    // como está; o portal não o reescreve.
+    const pdf_url = String(b.pdf_url || "").trim();
+    let pdfInfo: { path: string; nome: string; tamanho: number } | null = null;
+    if (pdf_url && !(ja as any)?.pdf_path) {
+      const erroBucket = await garantirBucketObras();
+      if (erroBucket) problemasPdf.push(`depósito: ${erroBucket}`);
+      else {
+        try {
+          const r = await fetch(pdf_url, {
+            headers: { "user-agent": "Mozilla/5.0 (compatible; PortalCJR/1.0)", accept: "application/pdf,*/*" },
+          });
+          if (!r.ok) problemasPdf.push(`PDF: HTTP ${r.status}`);
+          else {
+            const buf = new Uint8Array(await r.arrayBuffer());
+            // "%PDF" no começo do arquivo: sem isso é página de erro ou login
+            const ehPdf = buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
+            if (!ehPdf) {
+              problemasPdf.push(`PDF: conteúdo não é PDF (${buf.byteLength} bytes, tipo "${r.headers.get("content-type") || "?"}")`);
+            } else if (buf.byteLength > 25 * 1024 * 1024) {
+              problemasPdf.push(`PDF: ${Math.round(buf.byteLength / 1048576)} MB — grande demais`);
+            } else {
+              const path = `rdo-pdf/${fundacao_id}/${novo.id}.pdf`;
+              const { error: eUp } = await storageObras().storage
+                .from(BUCKET_OBRAS).upload(path, buf, { contentType: "application/pdf", upsert: true });
+              if (eUp) problemasPdf.push(`PDF: ${eUp.message}`);
+              else pdfInfo = {
+                path,
+                nome: `${data}_RV_${obra.nome}${numero_origem ? `_n${numero_origem}` : ""}.pdf`.replace(/[\\/:*?"<>|]/g, "-"),
+                tamanho: buf.byteLength,
+              };
+            }
+          }
+        } catch (e: any) {
+          problemasPdf.push(`PDF: ${e?.message || "falhou"}`);
+        }
+      }
+    }
+    if (pdfInfo) {
+      await db.from("obras_rdo").update({
+        pdf_path: pdfInfo.path, pdf_nome: pdfInfo.nome, pdf_tamanho: pdfInfo.tamanho,
+      }).eq("id", novo.id);
+    }
+
+    // ── fotos (só quando não veio PDF) ───────────────────────────────────────
+    if (fotos.length && !pdfInfo) {
       const erroBucket = await garantirBucketObras();
       if (erroBucket) problemas.push(`depósito: ${erroBucket}`);
       else {
@@ -89,11 +141,27 @@ export const POST: APIRoute = async ({ request }) => {
           const url = String(f?.url || "").trim();
           if (!/^https?:\/\//i.test(url)) continue;
           try {
-            const r = await fetch(url);
+            const r = await fetch(url, {
+              // alguns CDNs devolvem erro (ou tipo genérico) para requisição sem
+              // navegador declarado — daí o cabeçalho abaixo
+              headers: { "user-agent": "Mozilla/5.0 (compatible; PortalCJR/1.0)", accept: "image/*,*/*" },
+            });
             if (!r.ok) { problemas.push(`foto ${i + 1}: HTTP ${r.status}`); continue; }
-            const tipo = r.headers.get("content-type") || "image/jpeg";
-            if (!tipo.startsWith("image/")) { problemas.push(`foto ${i + 1}: não é imagem`); continue; }
             const buf = new Uint8Array(await r.arrayBuffer());
+
+            // O tipo vem da ASSINATURA dos bytes: cabeçalho de CDN mente com
+            // frequência (octet-stream, vazio) e a foto boa seria descartada.
+            const assinatura =
+              buf[0] === 0xFF && buf[1] === 0xD8 ? "image/jpeg" :
+              buf[0] === 0x89 && buf[1] === 0x50 ? "image/png" :
+              buf[0] === 0x47 && buf[1] === 0x49 ? "image/gif" :
+              (buf[8] === 0x57 && buf[9] === 0x45) ? "image/webp" : "";
+            const cab = r.headers.get("content-type") || "";
+            const tipo = assinatura || (cab.startsWith("image/") ? cab : "");
+            if (!tipo) {
+              problemas.push(`foto ${i + 1}: não é imagem (tipo "${cab || "?"}", ${buf.byteLength} bytes)`);
+              continue;
+            }
             if (buf.byteLength > MAX_FOTO_BYTES) { problemas.push(`foto ${i + 1}: ${Math.round(buf.byteLength / 1048576)} MB — grande demais`); continue; }
 
             const ext = (tipo.split("/")[1] || "jpg").replace(/[^a-z0-9]/g, "").slice(0, 5) || "jpg";
@@ -125,7 +193,12 @@ export const POST: APIRoute = async ({ request }) => {
       descricao: `Importado do Diário de Obra — ${obra.nome} ${data}${numero_origem ? ` (nº ${numero_origem})` : ""}`,
     });
 
-    return jsonOk({ id: novo.id, fotos: salvas, problemas }, 201);
+    return jsonOk({
+      id: novo.id,
+      pdf: pdfInfo ? Math.round(pdfInfo.tamanho / 1024) + " KB" : null,
+      fotos: salvas,
+      problemas: [...problemasPdf, ...problemas],
+    }, 201);
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }

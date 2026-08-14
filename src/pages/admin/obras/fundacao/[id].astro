@@ -86,9 +86,14 @@ const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Pau
               <td style="font-size:12.5px">{r.responsavel || "—"}</td>
               <td style="font-size:12px;white-space:nowrap;color:#6B7280">{empresaDe(r.empresa).curto}</td>
               <td style="white-space:nowrap">{qtdFotos[r.id] ? `📷 ${qtdFotos[r.id]}` : "—"}</td>
-              <td><span class={`badge ${statusBadge(r.status)}`}>{statusLabel(r.status)}</span></td>
+              <td>
+                <span class={`badge ${statusBadge(r.status)}`}>{statusLabel(r.status)}</span>
+                {r.origem === "importado" ? <span class="badge badge-gray" style="margin-left:4px" title="Relatório emitido no sistema anterior">histórico</span> : null}
+              </td>
               <td style="text-align:right;white-space:nowrap">
-                <a class="btn btn-secondary btn-sm" href={`/admin/obras/diario/${r.id}`}>Abrir</a>
+                {r.pdf_path
+                  ? <a class="btn btn-secondary btn-sm" href={`/api/admin/obras/diario/pdf/${r.id}`} target="_blank">📄 PDF</a>
+                  : <a class="btn btn-secondary btn-sm" href={`/admin/obras/diario/${r.id}`}>Abrir</a>}
                 <button class="btn btn-danger btn-sm" data-requer-edicao data-excluir={r.id}
                         data-data={fmtDataBr(r.data)} title="Excluir relatório">🗑</button>
               </td>

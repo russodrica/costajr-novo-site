@@ -50,6 +50,9 @@ const usaChecklist = area.v === "obras";
 // Relatório trazido do app antigo: é histórico do que foi registrado em campo.
 // Abre em SOMENTE LEITURA — dá para ver e imprimir, não para reescrever.
 const importado = rdo.origem === "importado";
+// Relatório antigo com o PDF que já foi emitido: a tela não remonta o
+// documento, entrega o arquivo original.
+const temPdfOriginal = !!rdo.pdf_path;
 
 // Outros relatórios da MESMA obra na MESMA data: não é erro (pode haver duas
 // visitas no dia), mas a pessoa precisa saber que existe outro, para não
@@ -71,6 +74,7 @@ const dados = {
   checklist: (checklist || []).map((c: any) => ({ item: c.item, situacao: c.situacao, observacao: c.observacao || "" })),
   usaChecklist,
   importado,
+  temPdfOriginal,
   assinaturas: {
     visita: rdo.assinatura_visita || "",
     cliente: rdo.assinatura_cliente || "",
@@ -105,7 +109,9 @@ const emp = empresaDe(rdo.empresa);
       <span class={`badge ${statusBadge(rdo.status)}`} id="badgeStatus" style="margin-left:8px">{statusLabel(rdo.status)}</span>
     </span>
     <div style="margin-left:auto;display:flex;gap:8px">
-      <button class="btn btn-secondary" id="btnImprimir">🖨️ Imprimir / PDF</button>
+      {temPdfOriginal
+        ? <a class="btn btn-primary" href={`/api/admin/obras/diario/pdf/${id}`} target="_blank">📄 Abrir PDF original</a>
+        : <button class="btn btn-secondary" id="btnImprimir">🖨️ Imprimir / PDF</button>}
       {!importado && (
         <>
           <button class="btn btn-secondary" data-requer-edicao id="btnSalvar" onclick="salvar('rascunho')">Salvar rascunho</button>
@@ -119,9 +125,12 @@ const emp = empresaDe(rdo.empresa);
 
   {importado && (
     <div class="alert alert-info nao-imprimir" style="margin-bottom:14px">
-      <strong>Relatório importado do Diário de Obra</strong> — histórico do que foi registrado em campo,
-      aberto em somente leitura. Dá para ver e gerar o PDF.
-      {rdo.numero_origem ? ` Nº de origem: ${rdo.numero_origem}.` : ""}
+      <strong>Relatório emitido no sistema anterior</strong>{rdo.numero_origem ? ` (nº ${rdo.numero_origem})` : ""} —
+      histórico, aberto em somente leitura.
+      {temPdfOriginal
+        ? <span> O documento oficial é o <a href={`/api/admin/obras/diario/pdf/${id}`} target="_blank">PDF original</a>,
+          do jeito que foi enviado ao cliente. Os campos abaixo são só o resumo para busca.</span>
+        : <span> Dá para ver e gerar o PDF.</span>}
     </div>
   )}
 
