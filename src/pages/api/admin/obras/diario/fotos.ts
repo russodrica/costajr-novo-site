@@ -22,6 +22,12 @@ export const POST: APIRoute = async ({ request }) => {
     const { data: rdo } = await db.from("obras_rdo").select("id").eq("id", rdo_id).maybeSingle();
     if (!rdo) return jsonErr(404, "Relatório não encontrado.");
 
+    // Mesmo arquivo registrado de novo (duplo toque no botão, reenvio da rede):
+    // devolve o registro que já existe em vez de repetir a foto no relatório.
+    const { data: ja } = await db.from("obras_rdo_fotos")
+      .select("id, legenda, ordem").eq("storage_path", storage_path).maybeSingle();
+    if (ja) return jsonOk(ja);
+
     // a foto nova entra no fim da galeria
     const { count } = await db.from("obras_rdo_fotos")
       .select("*", { count: "exact", head: true }).eq("rdo_id", rdo_id);

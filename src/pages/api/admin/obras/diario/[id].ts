@@ -45,6 +45,22 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       updated_at: new Date().toISOString(),
     };
 
+    // Assinaturas: PNG em data URL, traçado na tela. O teto de 400 KB evita que
+    // alguém mande uma foto disfarçada de assinatura e inche o registro.
+    const assinatura = (v: unknown) => {
+      const s = String(v ?? "");
+      if (!s) return null;
+      if (!s.startsWith("data:image/png;base64,") || s.length > 400_000) return null;
+      return s;
+    };
+    if (b.assinatura_visita !== undefined) patch.assinatura_visita = assinatura(b.assinatura_visita);
+    if (b.assinatura_cliente !== undefined) patch.assinatura_cliente = assinatura(b.assinatura_cliente);
+    if (b.assinatura_visita_nome !== undefined)
+      patch.assinatura_visita_nome = String(b.assinatura_visita_nome ?? "").trim().slice(0, 200) || null;
+    if (b.assinatura_cliente_nome !== undefined)
+      patch.assinatura_cliente_nome = String(b.assinatura_cliente_nome ?? "").trim().slice(0, 200) || null;
+    if (patch.assinatura_visita || patch.assinatura_cliente) patch.assinado_em = new Date().toISOString();
+
     const status = statusValido(b.status);
     if (status) {
       patch.status = status;

@@ -53,6 +53,10 @@ const dados = {
   ocorrencias: Array.isArray(rdo.ocorrencias_itens) ? rdo.ocorrencias_itens : [],
   checklist: (checklist || []).map((c: any) => ({ item: c.item, situacao: c.situacao, observacao: c.observacao || "" })),
   usaChecklist,
+  assinaturas: {
+    visita: rdo.assinatura_visita || "",
+    cliente: rdo.assinatura_cliente || "",
+  },
 };
 const listas = {
   tipos: (tiposOcor || []).map((t: any) => t.nome),
@@ -79,6 +83,11 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
   </div>
 
   <div id="msg" class="nao-imprimir"></div>
+
+  <!-- Tudo o que sai no PDF fica dentro de #folha. A impressão apaga o resto da
+       tela pelo id, e não por classe do layout: assim nenhuma barra lateral
+       nova quebra o relatório mais adiante. -->
+  <div id="folha">
 
   <!-- ── cabeçalho que aparece no papel (a empresa emissora manda no logo) ── -->
   <div class="folha-topo so-imprimir" id="folhaTopo" style={`border-color:${emp.cor}`}>
@@ -245,10 +254,36 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     <p id="semFotos" class="nao-imprimir" style="display:none;color:var(--ink-light);font-size:13px;margin:8px 0 0">Nenhuma foto ainda.</p>
   </div>
 
-  <div class="assinatura so-imprimir">
-    <div><span></span><small>Responsável pela visita</small></div>
-    <div><span></span><small>Responsável pela obra / Cliente</small></div>
+  <!-- ── assinaturas: traçadas com o dedo, ainda na obra ── -->
+  <div class="card assinaturas">
+    <div class="bloco-cab">
+      <h3>Assinaturas</h3>
+      <span class="nao-imprimir" style="font-size:12px;color:var(--ink-light)" id="statusAssin"></span>
+    </div>
+    <p class="nao-imprimir dica">
+      Assine com o dedo pelo celular ou com o mouse pelo computador. A assinatura entra no PDF.
+    </p>
+    <div class="assin-grade">
+      <div class="assin">
+        <canvas id="assinVisita" width="900" height="260" data-campo="visita"></canvas>
+        <img id="imgAssinVisita" class="assin-img" alt="" />
+        <input class="assin-nome" name="assinatura_visita_nome" placeholder="Nome de quem assina"
+               value={rdo.assinatura_visita_nome || rdo.responsavel || ""} />
+        <div class="assin-rot">Responsável pela visita</div>
+        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" data-limpar="visita">Limpar</button>
+      </div>
+      <div class="assin">
+        <canvas id="assinCliente" width="900" height="260" data-campo="cliente"></canvas>
+        <img id="imgAssinCliente" class="assin-img" alt="" />
+        <input class="assin-nome" name="assinatura_cliente_nome" placeholder="Nome de quem assina"
+               value={rdo.assinatura_cliente_nome || ""} />
+        <div class="assin-rot">Responsável pela obra / Cliente</div>
+        <button type="button" class="btn btn-secondary btn-sm nao-imprimir" data-limpar="cliente">Limpar</button>
+      </div>
+    </div>
   </div>
+
+  </div><!-- /#folha -->
 
   <script type="application/json" id="dadosRDO" set:html={JSON.stringify(dados)}></script>
   <script type="application/json" id="listasRDO" set:html={JSON.stringify(listas)}></script>
@@ -278,30 +313,67 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     .foto .legenda { flex:1; font-size:12.5px; padding:6px 8px; }
     .btn-remover { background:none; border:0; color:#B91C1C; cursor:pointer; font-size:13px; padding:4px 6px; }
 
-    .folha-topo, .assinatura, .so-imprimir { display:none; }
+    .folha-topo, .so-imprimir { display:none; }
     .folha-marca { display:flex; align-items:center; gap:12px; }
-    .folha-marca img { height:34px; width:auto; object-fit:contain; }
+    .folha-marca img { height:38px; width:auto; object-fit:contain; }
 
+    .assin-grade { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    .assin { display:flex; flex-direction:column; gap:7px; align-items:stretch; }
+    .assin canvas { width:100%; height:130px; border:1.5px dashed var(--border); border-radius:10px;
+                    background:#fff; touch-action:none; cursor:crosshair; }
+    .assin-img { display:none; width:100%; height:130px; object-fit:contain; }
+    .assin-nome { font-size:.88rem; }
+    .assin-rot { font-size:11px; color:var(--ink-light); text-align:center;
+                 border-top:1px solid var(--border); padding-top:5px; }
+    @media (max-width:640px) { .assin-grade { grid-template-columns:1fr; } }
+
+  </style>
+
+  <!--
+    Impressão em folha de estilo GLOBAL de propósito.
+    O <style> comum do Astro é escopado: ele reescreve `.sidebar` para
+    `.sidebar[data-astro-cid-...]`, que NÃO casa com a barra lateral do layout —
+    era por isso que o menu e o cabeçalho saíam no PDF. Aqui a regra apaga tudo
+    e reacende só o que está dentro de #folha, independente das classes do
+    layout.
+  -->
+  <style is:global>
     @media print {
-      .nao-imprimir, .sidebar, .topbar, header, nav, .toolbar { display:none !important; }
-      .so-imprimir { display:flex !important; }
-      body { background:#fff; }
-      .card { border:1px solid #ccc !important; box-shadow:none !important; break-inside:avoid;
-              margin-bottom:10px !important; padding:12px !important; }
-      .folha-topo { display:flex !important; justify-content:space-between; align-items:flex-start;
-                    border-bottom:2px solid #C41E3A; padding-bottom:8px; margin-bottom:12px; }
-      .tabela-itens input, .tabela-itens select, textarea {
-        border:0 !important; padding:2px 0 !important; background:transparent !important;
-        font-size:12px !important; resize:none; }
-      textarea { height:auto !important; min-height:0; }
-      .galeria { grid-template-columns:repeat(3,1fr) !important; }
-      .foto img { height:120px !important; }
-      .foto .legenda { border:0 !important; }
-      .assinatura { display:flex !important; gap:40px; margin-top:34px; }
-      .assinatura div { flex:1; text-align:center; }
-      .assinatura span { display:block; border-top:1px solid #333; margin-bottom:4px; }
-      .assinatura small { font-size:10px; color:#555; }
-      @page { margin:14mm; }
+      body * { visibility: hidden !important; }
+      #folha, #folha * { visibility: visible !important; }
+      #folha {
+        position: absolute !important; left: 0; top: 0; width: 100%;
+        margin: 0 !important; padding: 0 !important;
+      }
+      .nao-imprimir, .nao-imprimir * { display: none !important; visibility: hidden !important; }
+      .so-imprimir { display: flex !important; }
+
+      html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+      .sidebar, .topbar, .main-content > header { display: none !important; }
+      .main-content, main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+
+      #folha .card { border: 1px solid #ccc !important; box-shadow: none !important;
+                     break-inside: avoid; margin-bottom: 10px !important; padding: 12px !important;
+                     background: #fff !important; }
+      #folha .folha-topo { display: flex !important; justify-content: space-between;
+                           align-items: flex-start; border-bottom: 2px solid #C41E3A;
+                           padding-bottom: 8px; margin-bottom: 12px; }
+      #folha h3 { font-size: 13px !important; margin: 0 0 6px !important; }
+      #folha input, #folha select, #folha textarea {
+        border: 0 !important; padding: 2px 0 !important; background: transparent !important;
+        font-size: 12px !important; resize: none; box-shadow: none !important; color: #111 !important; }
+      #folha textarea { height: auto !important; min-height: 0 !important; overflow: visible !important; }
+      #folha .galeria { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
+      #folha .foto img { height: 120px !important; }
+      #folha .foto .legenda { border: 0 !important; text-align: center; }
+
+      /* assinatura: no papel vale a imagem traçada, não a área de rabiscar */
+      #folha .assin canvas { display: none !important; }
+      #folha .assin-img { display: block !important; height: 70px !important; }
+      #folha .assin-nome { text-align: center; font-weight: 600; }
+      #folha .assinaturas { break-inside: avoid; margin-top: 18px !important; }
+
+      @page { margin: 12mm; }
     }
   </style>
 
@@ -396,11 +468,80 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     }
     selEmpresa?.addEventListener("change", pintarCabecalho);
 
+    // ── assinatura no dedo ────────────────────────────────────────────────
+    // Um canvas por assinatura. O traço é guardado como PNG (data URL) e sai
+    // no PDF como imagem; na tela, o canvas continua editável.
+    const ASSIN: Record<string, { canvas: HTMLCanvasElement; img: HTMLImageElement; dados: string }> = {};
+
+    function prepararAssinatura(campo: string, canvasId: string, imgId: string, inicial: string) {
+      const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
+      const img = document.getElementById(imgId) as HTMLImageElement | null;
+      if (!canvas || !img) return;
+      const ctx = canvas.getContext("2d")!;
+      ctx.lineWidth = 3.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#111827";
+      ASSIN[campo] = { canvas, img, dados: inicial || "" };
+
+      if (inicial) {
+        const antiga = new Image();
+        antiga.onload = () => ctx.drawImage(antiga, 0, 0, canvas.width, canvas.height);
+        antiga.src = inicial;
+        img.src = inicial;
+      }
+
+      let desenhando = false;
+      const ponto = (ev: PointerEvent) => {
+        const r = canvas.getBoundingClientRect();
+        return { x: (ev.clientX - r.left) * (canvas.width / r.width),
+                 y: (ev.clientY - r.top) * (canvas.height / r.height) };
+      };
+      canvas.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        desenhando = true; canvas.setPointerCapture(ev.pointerId);
+        const p = ponto(ev); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+      });
+      canvas.addEventListener("pointermove", (ev) => {
+        if (!desenhando) return;
+        ev.preventDefault();
+        const p = ponto(ev); ctx.lineTo(p.x, p.y); ctx.stroke();
+      });
+      const soltar = () => {
+        if (!desenhando) return;
+        desenhando = false;
+        ASSIN[campo].dados = canvas.toDataURL("image/png");
+        img.src = ASSIN[campo].dados;
+        marcarAssinaturas();
+      };
+      canvas.addEventListener("pointerup", soltar);
+      canvas.addEventListener("pointerleave", soltar);
+      canvas.addEventListener("pointercancel", soltar);
+    }
+
+    function marcarAssinaturas() {
+      const n = Object.values(ASSIN).filter((a) => a.dados).length;
+      const el = document.getElementById("statusAssin");
+      if (el) el.textContent = n ? `${n} de 2 assinada(s) — lembre de salvar` : "";
+    }
+
+    document.querySelectorAll("[data-limpar]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const campo = (b as HTMLElement).dataset.limpar!;
+        const a = ASSIN[campo]; if (!a) return;
+        a.canvas.getContext("2d")!.clearRect(0, 0, a.canvas.width, a.canvas.height);
+        a.dados = ""; a.img.removeAttribute("src");
+        marcarAssinaturas();
+      }));
+
+    prepararAssinatura("visita", "assinVisita", "imgAssinVisita", RDO.assinaturas?.visita || "");
+    prepararAssinatura("cliente", "assinCliente", "imgAssinCliente", RDO.assinaturas?.cliente || "");
+    marcarAssinaturas();
+
     async function salvar(status: string) {
       const f = document.getElementById("f") as HTMLFormElement;
       const corpo: Record<string, unknown> = { status };
       for (const [k, v] of new FormData(f).entries()) corpo[k] = v;
       corpo.ocorrencias_itens = ler("tbOcor", ["tipo", "descricao", "horas"]);
+      corpo.assinatura_visita = ASSIN.visita?.dados || "";
+      corpo.assinatura_cliente = ASSIN.cliente?.dados || "";
       if (document.getElementById("tbCheck")) corpo.checklist = ler("tbCheck", ["item", "situacao", "observacao"]);
 
       const btns = [document.getElementById("btnSalvar"), document.getElementById("btnPublicar")] as HTMLButtonElement[];
@@ -442,15 +583,22 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       return d3;
     }
 
+    // Enquanto um envio está em andamento, o próximo é ignorado: dois toques
+    // seguidos no botão registravam a MESMA foto duas vezes no relatório.
+    let enviando = false;
+
     (document.getElementById("inpFotos") as HTMLInputElement).addEventListener("change", async (ev) => {
       const alvo = ev.target as HTMLInputElement;
       const arqs = [...(alvo.files || [])];
       if (!arqs.length) return;
+      if (enviando) { alvo.value = ""; return; }
+      enviando = true;
       msg.innerHTML = `<div class="alert alert-info">Enviando ${arqs.length} foto(s)…</div>`;
       const falhas: string[] = [];
       for (const a of arqs) {
         try {
           const nova = await subirFoto(a);
+          if (document.querySelector(`#galeria .foto[data-id="${nova.id}"]`)) continue;
           document.getElementById("galeria")!.insertAdjacentHTML("beforeend", `
             <figure class="foto" data-id="${nova.id}">
               <img src="/api/admin/obras/diario/fotos/${nova.id}" alt="">
@@ -476,6 +624,7 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
         msg.innerHTML = `<div class="alert alert-success">Foto(s) enviada(s).</div>`;
         setTimeout(() => { msg.innerHTML = ""; }, 4000);
       }
+      enviando = false;
     });
 
     // legenda salva ao sair do campo; remover pede confirmação
