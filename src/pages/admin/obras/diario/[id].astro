@@ -47,6 +47,10 @@ const { data: responsaveis } = await db.from("obras_cat_responsaveis")
 // item a item. Em Obras o bloco continua.
 const usaChecklist = area.v === "obras";
 
+// Relatório trazido do app antigo: é histórico do que foi registrado em campo.
+// Abre em SOMENTE LEITURA — dá para ver e imprimir, não para reescrever.
+const importado = rdo.origem === "importado";
+
 // Outros relatórios da MESMA obra na MESMA data: não é erro (pode haver duas
 // visitas no dia), mas a pessoa precisa saber que existe outro, para não
 // preencher em duplicidade sem perceber.
@@ -66,6 +70,7 @@ const dados = {
   ocorrencias: Array.isArray(rdo.ocorrencias_itens) ? rdo.ocorrencias_itens : [],
   checklist: (checklist || []).map((c: any) => ({ item: c.item, situacao: c.situacao, observacao: c.observacao || "" })),
   usaChecklist,
+  importado,
   assinaturas: {
     visita: rdo.assinatura_visita || "",
     cliente: rdo.assinatura_cliente || "",
@@ -101,12 +106,24 @@ const emp = empresaDe(rdo.empresa);
     </span>
     <div style="margin-left:auto;display:flex;gap:8px">
       <button class="btn btn-secondary" id="btnImprimir">🖨️ Imprimir / PDF</button>
-      <button class="btn btn-secondary" data-requer-edicao id="btnSalvar" onclick="salvar('rascunho')">Salvar rascunho</button>
-      <button class="btn btn-primary" data-requer-edicao id="btnPublicar" onclick="salvar('publicado')">Publicar</button>
+      {!importado && (
+        <>
+          <button class="btn btn-secondary" data-requer-edicao id="btnSalvar" onclick="salvar('rascunho')">Salvar rascunho</button>
+          <button class="btn btn-primary" data-requer-edicao id="btnPublicar" onclick="salvar('publicado')">Publicar</button>
+        </>
+      )}
     </div>
   </div>
 
   <div id="msg" class="nao-imprimir"></div>
+
+  {importado && (
+    <div class="alert alert-info nao-imprimir" style="margin-bottom:14px">
+      <strong>Relatório importado do Diário de Obra</strong> — histórico do que foi registrado em campo,
+      aberto em somente leitura. Dá para ver e gerar o PDF.
+      {rdo.numero_origem ? ` Nº de origem: ${rdo.numero_origem}.` : ""}
+    </div>
+  )}
 
   {outrosNoDia > 0 && (
     <div class="alert alert-info nao-imprimir" style="margin-bottom:14px">
@@ -793,6 +810,19 @@ const emp = empresaDe(rdo.empresa);
     }
     pintarCabecalho();
     contar();
+
+    // somente leitura: trava tudo o que é campo, some o que é ação de edição
+    if (RDO.importado) {
+      document.querySelectorAll("#folha input, #folha select, #folha textarea").forEach((el) => {
+        (el as HTMLInputElement).readOnly = true;
+        (el as HTMLInputElement).disabled = el instanceof HTMLSelectElement;
+        (el as HTMLElement).style.pointerEvents = "none";
+        (el as HTMLElement).style.background = "transparent";
+      });
+      document.querySelectorAll(".lixo, .btn-remover, #btnModelo, #btnSemOcor, [onclick*='addLinha'], #inpFotos")
+        .forEach((el) => ((el as HTMLElement).closest("label, button") || el as HTMLElement).remove?.());
+      document.querySelectorAll(".assin canvas, [data-limpar]").forEach((el) => (el as HTMLElement).remove());
+    }
 
     // ── nome do arquivo do PDF ─────────────────────────────────────────────
     // O Chrome (e o Edge) sugerem o TÍTULO DA PÁGINA como nome do arquivo em
