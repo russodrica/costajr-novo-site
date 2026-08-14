@@ -3,7 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../lib/permissoes";
-import { empresaValida } from "../../../../lib/rdo";
+import { empresaValida, areaValida, areaDe } from "../../../../lib/rdo";
 
 export const prerender = false;
 const MODULO = "obras";
@@ -19,24 +19,35 @@ export const POST: APIRoute = async ({ request }) => {
     const db = supabaseAdmin();
 
     const body = await request.json().catch(() => null);
-    if (!body?.obra_id) return jsonErr(400, "Escolha a obra.");
+
+    // Duas carteiras: Obras & Projetos (tabela `obras`) e Fundação
+    // (`obras_fundacao`). A área diz de onde vem a obra e qual coluna do
+    // relatório é preenchida — o banco não deixa as duas ao mesmo tempo.
+    const area = areaValida(body?.area);
+    const daFundacao = area === "fundacao";
+    const vinculoId = String((daFundacao ? body?.fundacao_id : body?.obra_id) || "").trim();
+    if (!vinculoId) return jsonErr(400, "Escolha a obra.");
+
     const data = String(body.data || "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return jsonErr(400, "Informe a data da visita.");
 
-    const { data: obra } = await db.from("obras").select("id, nome").eq("id", body.obra_id).maybeSingle();
+    const { data: obra } = await db.from(areaDe(area).tabela)
+      .select("id, nome").eq("id", vinculoId).maybeSingle();
     if (!obra) return jsonErr(404, "Obra não encontrada.");
 
-    // um relatório por obra por dia (a própria tabela tem unique(obra_id, data)):
-    // em vez de estourar erro de banco, devolvemos o que já existe
+    // um relatório por obra por dia: em vez de estourar erro de banco,
+    // devolvemos o que já existe
     const { data: ja } = await db.from("obras_rdo").select("id")
-      .eq("obra_id", body.obra_id).eq("data", data).maybeSingle();
+      .eq(daFundacao ? "fundacao_id" : "obra_id", vinculoId).eq("data", data).maybeSingle();
     if (ja) return jsonOk({ id: ja.id, jaExistia: true });
 
     const { data: novo, error } = await db.from("obras_rdo").insert({
-      obra_id: body.obra_id,
+      area,
+      obra_id: daFundacao ? null : vinculoId,
+      fundacao_id: daFundacao ? vinculoId : null,
       data,
       status: "rascunho",
-      empresa: empresaValida(body.empresa),
+      empresa: empresaValida(body.empresa || areaDe(area).empresaPadrao),
       responsavel: String(body.responsavel || "").trim() || null,
       criado_por: admin.email || null,
     }).select("id").single();
@@ -59,7 +70,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     await registrarAcao(db, { req: request, admin }, {
       acao: "criar", entidade: "obras_rdo", registro_id: novo.id,
-      descricao: `Relatório de visita ${data} — obra "${obra.nome}"`,
+      descricao: `Relatório de visita ${data} — ${areaDe(area).label}: "${obra.nome}"`,
     });
     return jsonOk({ id: novo.id }, 201);
   } catch (e: any) {

@@ -30,6 +30,34 @@ export const EMPRESAS = [
 
 export type EmpresaRel = (typeof EMPRESAS)[number];
 
+/** As duas áreas que fazem visita. Cada uma tem a SUA carteira de obras:
+ *  Obras e Projetos usa a tabela `obras` (a que alimenta financeiro, ativos e
+ *  tarefas); Fundação tem carteira própria em `obras_fundacao`, porque essa
+ *  frente não aparece no cadastro de obras. */
+export const AREAS = [
+  {
+    v: "obras",
+    label: "Obras e Projetos",
+    icone: "🏗️",
+    tabela: "obras",
+    empresaPadrao: "engenharia",
+    ajuda: "Usa o cadastro de Obras & Projetos que já existe no portal.",
+  },
+  {
+    v: "fundacao",
+    label: "Fundação",
+    icone: "🧱",
+    tabela: "obras_fundacao",
+    empresaPadrao: "consultoria",
+    ajuda: "Carteira própria da área de fundação, cadastrada em Obras de Fundação.",
+  },
+] as const;
+
+export type AreaRel = (typeof AREAS)[number];
+
+export const areaDe = (v?: string | null): AreaRel =>
+  AREAS.find((a) => a.v === v) || AREAS[0];
+
 export const empresaDe = (v?: string | null): EmpresaRel =>
   EMPRESAS.find((e) => e.v === v) || EMPRESAS[0];
 
@@ -100,6 +128,21 @@ export const climaValido = (v: unknown) => umDe(CLIMA, v);
 export const condicaoValida = (v: unknown) => umDe(CONDICAO, v);
 export const statusValido = (v: unknown) => umDe(STATUS_RDO, v);
 export const empresaValida = (v: unknown) => umDe(EMPRESAS, v) || "engenharia";
+export const areaValida = (v: unknown) => umDe(AREAS, v) || "obras";
+
+/** Status da obra — vale para as duas carteiras. */
+export const STATUS_OBRA = [
+  { v: "planejada", label: "Planejada", badge: "badge-blue" },
+  { v: "ativa", label: "Ativa", badge: "badge-green" },
+  { v: "pausada", label: "Pausada", badge: "badge-yellow" },
+  { v: "concluida", label: "Concluída", badge: "badge-gray" },
+  { v: "cancelada", label: "Cancelada", badge: "badge-red" },
+] as const;
+
+export const statusObraLabel = (v?: string | null) => rotulo(STATUS_OBRA, v);
+export const statusObraBadge = (v?: string | null) =>
+  STATUS_OBRA.find((s) => s.v === v)?.badge || "badge-gray";
+export const statusObraValido = (v: unknown) => umDe(STATUS_OBRA, v) || "ativa";
 export const situacaoValida = (v: unknown) =>
   umDe(SITUACAO_CHECK, v) || "pendente";
 

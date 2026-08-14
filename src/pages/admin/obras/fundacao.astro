@@ -1,0 +1,288 @@
+---
+// Obras de Fundação — carteira própria da área.
+//
+// A área de fundação não aparece em Obras & Projetos (aquele cadastro alimenta
+// financeiro, ativos e tarefas da construção). Aqui fica a carteira dela, que
+// alimenta o Relatório de Visita da fundação.
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+import { STATUS_OBRA, statusObraLabel, statusObraBadge, fmtDataBr } from "../../../lib/rdo";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const db = supabaseAdmin();
+const busca = (Astro.url.searchParams.get("q") || "").trim();
+const filtroStatus = Astro.url.searchParams.get("status") || "todas";
+
+let q = db.from("obras_fundacao").select("*").order("nome").limit(1000);
+if (busca) q = q.or(`nome.ilike.%${busca}%,cliente.ilike.%${busca}%,codigo.ilike.%${busca}%`);
+if (filtroStatus !== "todas") q = q.eq("status", filtroStatus);
+const { data: obras } = await q;
+const lista = obras || [];
+
+// quantos relatórios cada obra já tem (para a lista não mentir sobre o que dá para excluir)
+const ids = lista.map((o: any) => o.id);
+const { data: rels } = ids.length
+  ? await db.from("obras_rdo").select("fundacao_id").in("fundacao_id", ids)
+  : { data: [] as any[] };
+const qtdRel: Record<string, number> = {};
+for (const r of rels || []) qtdRel[(r as any).fundacao_id] = (qtdRel[(r as any).fundacao_id] || 0) + 1;
+
+const { data: todas } = await db.from("obras_fundacao").select("status");
+const cont: Record<string, number> = {};
+for (const t of todas || []) cont[t.status] = (cont[t.status] || 0) + 1;
+
+const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+const { data: modelos } = await db.from("obras_checklist_modelos").select("id, nome").eq("ativo", true).order("nome");
+---
+<Admin title="Obras de Fundação" current="obras-fundacao">
+  <div class="toolbar">
+    <span class="toolbar-title">🧱 Obras de Fundação <span style="font-weight:500;color:var(--ink-light)">({(todas || []).length})</span></span>
+    <a class="btn btn-secondary btn-sm" href="/admin/obras/diario">Relatórios de Visita →</a>
+    <button class="btn btn-primary" data-requer-edicao onclick="abrirObra()">+ Nova obra de fundação</button>
+  </div>
+
+  <div id="msg"></div>
+
+  <div class="card" style="margin-bottom:16px;background:var(--gray-50)">
+    <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+      <div style="flex:1;min-width:220px">
+        <label style="font-size:12px;color:var(--ink-mid)">Buscar</label>
+        <input name="q" value={busca} placeholder="Nome da obra, cliente ou código" style="width:100%" />
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--ink-mid)">Situação</label>
+        <select name="status" class="filter-select">
+          <option value="todas" selected={filtroStatus === "todas"}>Todas</option>
+          {STATUS_OBRA.map((s) => (
+            <option value={s.v} selected={filtroStatus === s.v}>{s.label} ({cont[s.v] || 0})</option>
+          ))}
+        </select>
+      </div>
+      <button class="btn btn-secondary" type="submit">Filtrar</button>
+      <a class="btn btn-secondary" href="/admin/obras/fundacao">Limpar</a>
+    </form>
+  </div>
+
+  {lista.length ? (
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Obra</th><th>Cliente</th><th>Local</th><th>Responsável</th><th>Início</th><th>Situação</th><th>Relatórios</th><th></th></tr></thead>
+          <tbody>
+            {lista.map((o: any) => (
+              <tr data-obra={JSON.stringify(o)}>
+                <td><strong>{o.nome}</strong>{o.codigo ? <span style="display:block;font-size:11.5px;color:var(--ink-light)">{o.codigo}</span> : null}</td>
+                <td style="font-size:12.5px">{o.cliente || "—"}</td>
+                <td style="font-size:12.5px">{[o.cidade, o.uf].filter(Boolean).join("/") || "—"}</td>
+                <td style="font-size:12.5px">{o.responsavel_nome || "—"}</td>
+                <td style="white-space:nowrap;font-size:12.5px">{fmtDataBr(o.data_inicio)}</td>
+                <td><span class={`badge ${statusObraBadge(o.status)}`}>{statusObraLabel(o.status)}</span></td>
+                <td style="white-space:nowrap;font-size:12.5px">{qtdRel[o.id] ? `📋 ${qtdRel[o.id]}` : "—"}</td>
+                <td style="text-align:right;white-space:nowrap">
+                  <button class="btn btn-primary btn-sm" data-requer-edicao data-novo-rel={o.id} data-nome={o.nome}>+ Relatório</button>
+                  <button class="btn btn-secondary btn-sm" data-editar={o.id}>✏️</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  ) : (
+    <div class="card">
+      <div class="empty-state">
+        <strong>Nenhuma obra de fundação cadastrada</strong>
+        <p>Clique em “+ Nova obra de fundação”. Depois, o botão “+ Relatório” abre o relatório de visita daquela obra.</p>
+      </div>
+    </div>
+  )}
+
+  <!-- Modal: cadastro / edição da obra -->
+  <div class="modal-overlay" id="modalObra">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header">
+        <h2 id="tituloObra">Nova obra de fundação</h2>
+        <button class="modal-close" type="button" onclick="fecharObra()" aria-label="Fechar">✕</button>
+      </div>
+      <form id="formObra" style="padding:16px 24px 24px">
+        <input type="hidden" name="id" />
+        <div id="msgObra"></div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2"><label>Nome da obra *</label><input name="nome" required placeholder="Ex.: Galpão J&T — estaqueamento" /></div>
+          <div class="form-group"><label>Código</label><input name="codigo" placeholder="Interno" /></div>
+        </div>
+        <div class="form-group"><label>Cliente</label><input name="cliente" /></div>
+        <div class="form-group"><label>Endereço</label><input name="endereco" /></div>
+        <div class="form-row">
+          <div class="form-group" style="flex:2"><label>Cidade</label><input name="cidade" /></div>
+          <div class="form-group"><label>UF</label><input name="uf" maxlength="2" style="text-transform:uppercase" /></div>
+          <div class="form-group"><label>Situação</label>
+            <select name="status">
+              {STATUS_OBRA.map((s) => (<option value={s.v} selected={s.v === "ativa"}>{s.label}</option>))}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Início</label><input type="date" name="data_inicio" /></div>
+          <div class="form-group"><label>Previsão de fim</label><input type="date" name="data_fim_prevista" /></div>
+          <div class="form-group"><label>Fim real</label><input type="date" name="data_fim_real" /></div>
+        </div>
+        <div class="form-group"><label>Responsável</label><input name="responsavel_nome" /></div>
+        <div class="form-group"><label>Observações</label><textarea name="observacoes" rows="2"></textarea></div>
+        <div class="modal-footer" style="padding:8px 0 0;justify-content:space-between">
+          <button class="btn btn-danger btn-sm" type="button" id="btnExcluir" style="display:none">Excluir</button>
+          <span style="display:flex;gap:8px;margin-left:auto">
+            <button class="btn btn-secondary" type="button" onclick="fecharObra()">Cancelar</button>
+            <button class="btn btn-primary" type="submit" id="btnSalvarObra">Salvar</button>
+          </span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: novo relatório de visita da obra escolhida -->
+  <div class="modal-overlay" id="modalRel">
+    <div class="modal-box" style="max-width:520px">
+      <div class="modal-header">
+        <h2>Novo relatório de visita</h2>
+        <button class="modal-close" type="button" onclick="fecharRel()" aria-label="Fechar">✕</button>
+      </div>
+      <form id="formRel" style="padding:16px 24px 24px">
+        <input type="hidden" name="fundacao_id" />
+        <input type="hidden" name="area" value="fundacao" />
+        <div id="msgRel"></div>
+        <p style="margin:0 0 12px;font-size:13px;color:var(--ink-mid)">Obra: <strong id="relNome"></strong></p>
+        <div class="form-row">
+          <div class="form-group"><label>Data da visita *</label><input type="date" name="data" required value={hoje} /></div>
+          <div class="form-group"><label>Emitido por *</label>
+            <select name="empresa">
+              <option value="consultoria" selected>Costa Júnior Consultoria e Geotecnia</option>
+              <option value="engenharia">Costa Júnior Engenharia e Construções</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group"><label>Checklist (opcional)</label>
+          <select name="modelo_checklist_id">
+            <option value="">Sem checklist</option>
+            {(modelos || []).map((m: any) => (<option value={m.id}>{m.nome}</option>))}
+          </select>
+        </div>
+        <div class="modal-footer" style="padding:8px 0 0">
+          <button class="btn btn-secondary" type="button" onclick="fecharRel()">Cancelar</button>
+          <button class="btn btn-primary" type="submit" id="btnCriarRel">Criar e abrir</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const msg = document.getElementById("msg") as HTMLElement;
+    const formObra = document.getElementById("formObra") as HTMLFormElement;
+
+    function abrirObra(dados?: any) {
+      formObra.reset();
+      const set = (n: string, v: any) => {
+        const el = formObra.querySelector(`[name="${n}"]`) as HTMLInputElement | null;
+        if (el) el.value = v == null ? "" : String(v);
+      };
+      if (dados) {
+        for (const k of ["id", "nome", "codigo", "cliente", "endereco", "cidade", "uf", "status",
+                         "data_inicio", "data_fim_prevista", "data_fim_real", "responsavel_nome", "observacoes"]) {
+          set(k, dados[k]);
+        }
+        document.getElementById("tituloObra")!.textContent = "Editar obra de fundação";
+        (document.getElementById("btnExcluir") as HTMLElement).style.display = "";
+      } else {
+        set("id", ""); set("status", "ativa");
+        document.getElementById("tituloObra")!.textContent = "Nova obra de fundação";
+        (document.getElementById("btnExcluir") as HTMLElement).style.display = "none";
+      }
+      document.getElementById("msgObra")!.innerHTML = "";
+      document.getElementById("modalObra")!.classList.add("open");
+    }
+    function fecharObra() { document.getElementById("modalObra")!.classList.remove("open"); }
+    function fecharRel() { document.getElementById("modalRel")!.classList.remove("open"); }
+
+    formObra.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = document.getElementById("btnSalvarObra") as HTMLButtonElement;
+      const corpo: Record<string, any> = Object.fromEntries(new FormData(formObra).entries());
+      const id = String(corpo.id || ""); delete corpo.id;
+      btn.disabled = true; btn.textContent = "Salvando…";
+      try {
+        const r = await fetch(id ? `/api/admin/obras/fundacao/${id}` : "/api/admin/obras/fundacao", {
+          method: id ? "PATCH" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(corpo),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Não deu para salvar.");
+        window.location.reload();
+      } catch (e: any) {
+        document.getElementById("msgObra")!.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+        btn.disabled = false; btn.textContent = "Salvar";
+      }
+    });
+
+    document.getElementById("btnExcluir")!.addEventListener("click", async () => {
+      const id = (formObra.querySelector('[name="id"]') as HTMLInputElement).value;
+      if (!id || !confirm("Excluir esta obra de fundação?")) return;
+      const r = await fetch(`/api/admin/obras/fundacao/${id}`, {
+        method: "DELETE", headers: { "content-type": "application/json" },
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) { window.location.reload(); return; }
+      document.getElementById("msgObra")!.innerHTML = `<div class="alert alert-error">${j?.error || "Não deu para excluir."}</div>`;
+    });
+
+    // abrir edição / abrir relatório a partir da linha da tabela
+    document.addEventListener("click", (ev) => {
+      const alvo = ev.target as HTMLElement;
+      const bEditar = alvo.closest?.("[data-editar]") as HTMLElement | null;
+      if (bEditar) {
+        const linha = bEditar.closest("tr") as HTMLElement;
+        abrirObra(JSON.parse(linha.dataset.obra || "{}"));
+        return;
+      }
+      const bRel = alvo.closest?.("[data-novo-rel]") as HTMLElement | null;
+      if (bRel) {
+        const f = document.getElementById("formRel") as HTMLFormElement;
+        (f.querySelector('[name="fundacao_id"]') as HTMLInputElement).value = bRel.dataset.novoRel || "";
+        document.getElementById("relNome")!.textContent = bRel.dataset.nome || "";
+        document.getElementById("msgRel")!.innerHTML = "";
+        document.getElementById("modalRel")!.classList.add("open");
+      }
+    });
+
+    document.getElementById("formRel")!.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = document.getElementById("btnCriarRel") as HTMLButtonElement;
+      const corpo = Object.fromEntries(new FormData(ev.target as HTMLFormElement).entries());
+      btn.disabled = true; btn.textContent = "Criando…";
+      try {
+        const r = await fetch("/api/admin/obras/diario", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Não deu para criar o relatório.");
+        window.location.href = `/admin/obras/diario/${j.id}`;
+      } catch (e: any) {
+        document.getElementById("msgRel")!.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+        btn.disabled = false; btn.textContent = "Criar e abrir";
+      }
+    });
+
+    for (const id of ["modalObra", "modalRel"]) {
+      document.getElementById(id)!.addEventListener("click", (ev) => {
+        if (ev.target === ev.currentTarget) document.getElementById(id)!.classList.remove("open");
+      });
+    }
+
+    Object.assign(window, { abrirObra, fecharObra, fecharRel });
+  </script>
+</Admin>

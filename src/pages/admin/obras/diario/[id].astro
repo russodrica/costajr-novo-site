@@ -15,7 +15,7 @@ import Admin from "../../../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import {
-  CLIMA, CONDICAO, EMPRESAS, empresaDe, statusLabel, statusBadge,
+  CLIMA, CONDICAO, EMPRESAS, empresaDe, areaDe, statusLabel, statusBadge,
   fmtDataExtenso, fmtDataBr,
 } from "../../../../lib/rdo";
 
@@ -29,8 +29,14 @@ const id = Astro.params.id!;
 const { data: rdo } = await db.from("obras_rdo").select("*").eq("id", id).maybeSingle();
 if (!rdo) return Astro.redirect("/admin/obras/diario");
 
-const { data: obra } = await db.from("obras")
-  .select("id, nome, codigo, cliente, endereco, cidade, uf, responsavel_nome").eq("id", rdo.obra_id).maybeSingle();
+// a obra vem da carteira da área: Obras & Projetos ou Fundação
+const area = areaDe(rdo.area);
+const { data: obra } = await db.from(area.tabela)
+  .select("id, nome, codigo, cliente, endereco, cidade, uf, responsavel_nome")
+  .eq("id", area.v === "fundacao" ? rdo.fundacao_id : rdo.obra_id).maybeSingle();
+const voltarPara = area.v === "fundacao"
+  ? "/admin/obras/fundacao"
+  : (obra ? `/admin/obras/${obra.id}` : "/admin/obras");
 const { data: checklist } = await db.from("obras_rdo_checklist").select("*").eq("rdo_id", id).order("ordem");
 const { data: fotos } = await db.from("obras_rdo_fotos").select("*").eq("rdo_id", id).order("ordem").order("created_at");
 const { data: tiposOcor } = await db.from("obras_cat_ocorrencias").select("nome").eq("ativo", true).order("nome");
@@ -50,9 +56,10 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
 ---
 <Admin title={`Relatório de visita ${fmtDataBr(rdo.data)} — ${obra?.nome || "Obra"}`} current="obras-diario">
   <div class="toolbar nao-imprimir">
-    <a class="btn btn-secondary btn-sm" href={obra ? `/admin/obras/${obra.id}` : "/admin/obras/diario"}>‹ Voltar para a obra</a>
+    <a class="btn btn-secondary btn-sm" href={voltarPara}>‹ Voltar</a>
     <span class="toolbar-title" style="margin-left:8px">
       {fmtDataBr(rdo.data)} · {obra?.nome || "Obra"}
+      <span class="badge badge-gray" style="margin-left:6px">{area.icone} {area.label}</span>
       <span class={`badge ${statusBadge(rdo.status)}`} id="badgeStatus" style="margin-left:8px">{statusLabel(rdo.status)}</span>
     </span>
     <div style="margin-left:auto;display:flex;gap:8px">
@@ -98,10 +105,10 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
           <small style="color:var(--ink-light)">Define o logo e o CNPJ do cabeçalho quando o relatório for impresso ou salvo em PDF.</small>
         </div>
         <div class="form-group">
-          <label>Obra</label>
+          <label>Obra ({area.label})</label>
           <input value={obra?.nome || ""} readonly style="background:var(--gray-50)" />
           <small style="color:var(--ink-light)">
-            A obra vem do cadastro. <a href={obra ? `/admin/obras/${obra.id}` : "/admin/obras"}>Abrir a ficha da obra</a>
+            A obra vem do cadastro da área. <a href={voltarPara}>Abrir o cadastro</a>
           </small>
         </div>
       </div>

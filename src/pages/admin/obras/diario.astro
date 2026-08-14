@@ -1,13 +1,19 @@
 ---
-// Relatório de Visita — lista geral (todas as obras).
+// Relatório de Visita — lista geral das duas áreas.
 //
-// O caminho oficial começa na OBRA: cadastra-se a obra em /admin/obras e o
-// relatório nasce de dentro da ficha dela. Esta tela é a visão de cima — serve
-// para achar um relatório antigo sem lembrar de qual obra era.
+// Duas carteiras alimentam esta tela:
+//   * Obras e Projetos — cadastro `obras`, o mesmo do financeiro e dos ativos;
+//   * Fundação — cadastro próprio (`obras_fundacao`), que não aparece em Obras.
+//
+// Por isso o primeiro passo do relatório é escolher a ÁREA. Escolhida a área,
+// a lista de obras vem do cadastro certo — e, na fundação, dá para cadastrar
+// uma obra nova ali mesmo, sem sair do caminho.
 import Admin from "../../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../../lib/auth";
 import { supabaseAdmin } from "../../../lib/supabase";
-import { statusLabel, statusBadge, condicaoLabel, climaIcone, empresaDe, fmtDataBr } from "../../../lib/rdo";
+import {
+  AREAS, areaDe, statusLabel, statusBadge, condicaoLabel, climaIcone, empresaDe, fmtDataBr,
+} from "../../../lib/rdo";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -15,29 +21,43 @@ try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") t
 catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
 
 const db = supabaseAdmin();
+const filtroArea = Astro.url.searchParams.get("area") || "todas";
 const filtroObra = Astro.url.searchParams.get("obra") || "";
 const filtroStatus = Astro.url.searchParams.get("status") || "todos";
 
 let q = db.from("obras_rdo")
-  .select("id, obra_id, data, status, condicao, clima_manha, clima_tarde, atividades, responsavel, empresa")
+  .select("id, area, obra_id, fundacao_id, data, status, condicao, clima_manha, clima_tarde, atividades, responsavel, empresa")
   .order("data", { ascending: false }).limit(400);
-if (filtroObra) q = q.eq("obra_id", filtroObra);
+if (filtroArea !== "todas") q = q.eq("area", filtroArea);
+if (filtroObra) q = q.or(`obra_id.eq.${filtroObra},fundacao_id.eq.${filtroObra}`);
 if (filtroStatus !== "todos") q = q.eq("status", filtroStatus);
 const { data: rdos } = await q;
 const lista = rdos || [];
 
-const { data: obras } = await db.from("obras")
-  .select("id, nome, cliente, status").order("nome").limit(1000);
+const [{ data: obras }, { data: fundacoes }, { data: modelos }] = await Promise.all([
+  db.from("obras").select("id, nome, cliente, status").order("nome").limit(1000),
+  db.from("obras_fundacao").select("id, nome, cliente, status").order("nome").limit(1000),
+  db.from("obras_checklist_modelos").select("id, nome").eq("ativo", true).order("nome"),
+]);
 const obrasLista = obras || [];
+const fundLista = fundacoes || [];
+
 const nomeObra: Record<string, string> = {};
 for (const o of obrasLista) nomeObra[o.id] = o.nome;
+for (const o of fundLista) nomeObra[o.id] = o.nome;
+const vinculoDe = (r: any) => (r.area === "fundacao" ? r.fundacao_id : r.obra_id);
+const linkDaObra = (r: any) =>
+  r.area === "fundacao" ? "/admin/obras/fundacao" : `/admin/obras/${r.obra_id}`;
 
-const { data: todos } = await db.from("obras_rdo").select("status");
-const cont: Record<string, number> = { rascunho: 0, publicado: 0 };
-for (const t of todos || []) cont[t.status] = (cont[t.status] || 0) + 1;
+const { data: todos } = await db.from("obras_rdo").select("status, area");
+const cont: Record<string, number> = { rascunho: 0, publicado: 0, obras: 0, fundacao: 0 };
+for (const t of todos || []) {
+  cont[t.status] = (cont[t.status] || 0) + 1;
+  cont[t.area || "obras"] = (cont[t.area || "obras"] || 0) + 1;
+}
 const total = (todos || []).length;
 
-const hoje = new Date().toISOString().slice(0, 10);
+const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
 // quantas fotos por relatório (para a lista mostrar sem abrir)
 const ids = lista.map((r: any) => r.id);
 const { data: fotos } = ids.length
@@ -45,30 +65,55 @@ const { data: fotos } = ids.length
   : { data: [] as any[] };
 const qtdFotos: Record<string, number> = {};
 for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).rdo_id] || 0) + 1;
+
+// listas de obras por área, para o modal montar o segundo passo sem ir ao servidor
+const obrasPorArea = {
+  obras: obrasLista.map((o: any) => ({ id: o.id, nome: o.nome, cliente: o.cliente, status: o.status })),
+  fundacao: fundLista.map((o: any) => ({ id: o.id, nome: o.nome, cliente: o.cliente, status: o.status })),
+};
 ---
 <Admin title="Relatório de Visita" current="obras-diario">
   <div class="toolbar">
     <span class="toolbar-title">Relatórios de Visita <span style="font-weight:500;color:var(--ink-light)">({total})</span></span>
-    <a class="btn btn-primary" data-requer-edicao href="/admin/obras">Escolher a obra →</a>
+    <button class="btn btn-primary" data-requer-edicao onclick="abrirNovo()">+ Novo relatório de visita</button>
   </div>
+
+  <div id="msg"></div>
 
   <div class="card" style="margin-bottom:16px;background:#EFF6FF;border:1px solid #BFDBFE">
     <p style="margin:0;font-size:13px;color:#1E3A8A">
-      <strong>Como funciona:</strong> primeiro a obra é cadastrada em <a href="/admin/obras">Obras</a>.
-      Depois, dentro da ficha da obra, o botão <em>“+ Novo relatório de visita”</em> cria o relatório
-      daquele dia — com fotos, checklist, ocorrências e a empresa que emite o documento.
+      <strong>Como funciona:</strong> escolha a área — <em>Obras e Projetos</em> usa o cadastro de
+      <a href="/admin/obras">Obras &amp; Projetos</a>; <em>Fundação</em> usa a carteira própria em
+      <a href="/admin/obras/fundacao">Obras de Fundação</a>. Depois é só escolher a obra (ou cadastrar
+      uma nova, no caso da fundação) e o relatório daquele dia é criado.
     </p>
   </div>
 
   <div class="card" style="margin-bottom:16px;background:var(--gray-50)">
     <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
-      <div style="flex:1;min-width:240px">
+      <div>
+        <label style="font-size:12px;color:var(--ink-mid)">Área</label>
+        <select name="area" class="filter-select">
+          <option value="todas" selected={filtroArea === "todas"}>Todas as áreas</option>
+          {AREAS.map((a) => (
+            <option value={a.v} selected={filtroArea === a.v}>{a.icone} {a.label} ({cont[a.v] || 0})</option>
+          ))}
+        </select>
+      </div>
+      <div style="flex:1;min-width:220px">
         <label style="font-size:12px;color:var(--ink-mid)">Obra</label>
         <select name="obra" class="filter-select" style="width:100%">
           <option value="">Todas as obras</option>
-          {obrasLista.map((o: any) => (
-            <option value={o.id} selected={filtroObra === o.id}>{o.nome}{o.cliente ? ` — ${o.cliente}` : ""}</option>
-          ))}
+          <optgroup label="Obras e Projetos">
+            {obrasLista.map((o: any) => (
+              <option value={o.id} selected={filtroObra === o.id}>{o.nome}{o.cliente ? ` — ${o.cliente}` : ""}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Fundação">
+            {fundLista.map((o: any) => (
+              <option value={o.id} selected={filtroObra === o.id}>{o.nome}{o.cliente ? ` — ${o.cliente}` : ""}</option>
+            ))}
+          </optgroup>
         </select>
       </div>
       <div>
@@ -88,7 +133,7 @@ for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).
     <div class="card" style="padding:0;overflow:hidden">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Data</th><th>Obra</th><th>Emitido por</th><th>Clima</th><th>Verificado</th><th>Fotos</th><th>Situação</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Área</th><th>Obra</th><th>Emitido por</th><th>Clima</th><th>Verificado</th><th>Fotos</th><th>Situação</th><th></th></tr></thead>
           <tbody>
             {lista.map((r: any) => (
               <tr>
@@ -96,8 +141,9 @@ for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).
                   <strong>{fmtDataBr(r.data)}</strong>
                   {r.data === hoje ? <span class="badge badge-blue" style="margin-left:5px">hoje</span> : null}
                 </td>
-                <td style="font-size:12.5px;max-width:220px">
-                  <a href={`/admin/obras/${r.obra_id}`}>{nomeObra[r.obra_id] || "—"}</a>
+                <td style="white-space:nowrap;font-size:12px">{areaDe(r.area).icone} {areaDe(r.area).label}</td>
+                <td style="font-size:12.5px;max-width:200px">
+                  <a href={linkDaObra(r)}>{nomeObra[vinculoDe(r)] || "—"}</a>
                 </td>
                 <td style="font-size:12px;white-space:nowrap;color:var(--ink-mid)">{empresaDe(r.empresa).curto}</td>
                 <td style="white-space:nowrap;font-size:13px">
@@ -105,8 +151,8 @@ for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).
                   {r.condicao && r.condicao !== "praticavel"
                     ? <div style="font-size:11px;color:var(--ink-light)">{condicaoLabel(r.condicao)}</div> : null}
                 </td>
-                <td style="font-size:12.5px;max-width:320px;color:var(--ink-mid)">
-                  {r.atividades ? String(r.atividades).slice(0, 110) + (String(r.atividades).length > 110 ? "…" : "") : <em style="color:var(--ink-light)">em branco</em>}
+                <td style="font-size:12.5px;max-width:280px;color:var(--ink-mid)">
+                  {r.atividades ? String(r.atividades).slice(0, 100) + (String(r.atividades).length > 100 ? "…" : "") : <em style="color:var(--ink-light)">em branco</em>}
                 </td>
                 <td style="white-space:nowrap">{qtdFotos[r.id] ? `📷 ${qtdFotos[r.id]}` : "—"}</td>
                 <td><span class={`badge ${statusBadge(r.status)}`}>{statusLabel(r.status)}</span></td>
@@ -123,8 +169,209 @@ for (const f of fotos || []) qtdFotos[(f as any).rdo_id] = (qtdFotos[(f as any).
     <div class="card">
       <div class="empty-state">
         <strong>Nenhum relatório ainda</strong>
-        <p>Abra a obra em <a href="/admin/obras">Obras</a> e clique em “+ Novo relatório de visita”. Se a obra ainda não existe, cadastre-a primeiro.</p>
+        <p>Clique em “+ Novo relatório de visita”, escolha a área e a obra.</p>
       </div>
     </div>
   )}
+
+  <!-- Modal: área → obra → data -->
+  <div class="modal-overlay" id="modalNovo">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header">
+        <h2>Novo relatório de visita</h2>
+        <button class="modal-close" type="button" onclick="fecharNovo()" aria-label="Fechar">✕</button>
+      </div>
+      <form id="formNovo" style="padding:16px 24px 24px">
+        <div id="msgNovo"></div>
+
+        <div class="form-group">
+          <label>1. Qual área faz a visita? *</label>
+          <div class="areas">
+            {AREAS.map((a, i) => (
+              <label class="area-op">
+                <input type="radio" name="area" value={a.v} checked={i === 0} />
+                <span>
+                  <strong>{a.icone} {a.label}</strong>
+                  <small>{a.ajuda}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>2. Qual obra? *</label>
+          <select name="vinculo_id" id="selObra" required>
+            <option value="">Selecione…</option>
+          </select>
+          <small id="dicaObra" style="color:var(--ink-light)"></small>
+        </div>
+
+        <!-- cadastro rápido, só na fundação: a carteira dela nasce aqui -->
+        <div id="blocoNovaObra" style="display:none">
+          <div class="card" style="background:var(--gray-50);margin:0 0 14px">
+            <div class="form-row">
+              <div class="form-group" style="flex:2"><label>Nome da obra nova *</label><input id="novaNome" placeholder="Ex.: Galpão J&T — estaqueamento" /></div>
+              <div class="form-group"><label>Cliente</label><input id="novaCliente" /></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex:2"><label>Cidade</label><input id="novaCidade" /></div>
+              <div class="form-group"><label>UF</label><input id="novaUf" maxlength="2" style="text-transform:uppercase" /></div>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btnCadastrarObra">Cadastrar esta obra</button>
+            <small style="display:block;margin-top:6px;color:var(--ink-light)">
+              Ela entra na carteira de <a href="/admin/obras/fundacao" target="_blank">Obras de Fundação</a> e já fica selecionada aqui.
+            </small>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group"><label>3. Data da visita *</label><input type="date" name="data" required value={hoje} /></div>
+          <div class="form-group"><label>Emitido por *</label>
+            <select name="empresa" id="selEmpresa">
+              <option value="engenharia">Costa Júnior Engenharia e Construções</option>
+              <option value="consultoria">Costa Júnior Consultoria e Geotecnia</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Checklist (opcional)</label>
+          <select name="modelo_checklist_id">
+            <option value="">Sem checklist</option>
+            {(modelos || []).map((m: any) => (<option value={m.id}>{m.nome}</option>))}
+          </select>
+        </div>
+
+        <div class="modal-footer" style="padding:8px 0 0">
+          <button class="btn btn-secondary" type="button" onclick="fecharNovo()">Cancelar</button>
+          <button class="btn btn-primary" type="submit" id="btnCriar">Criar e abrir</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="application/json" id="obrasPorArea" set:html={JSON.stringify(obrasPorArea)}></script>
+
+  <style>
+    .areas { display:grid; gap:8px; }
+    .area-op { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1.5px solid var(--border);
+               border-radius:10px; cursor:pointer; background:var(--surface); }
+    .area-op:has(input:checked) { border-color:#2563EB; background:#EFF6FF; }
+    .area-op input { margin-top:3px; }
+    .area-op small { display:block; color:var(--ink-light); font-size:11.5px; margin-top:2px; }
+  </style>
+
+  <script>
+    const POR_AREA = JSON.parse((document.getElementById("obrasPorArea") as HTMLElement).textContent || "{}");
+    const EMPRESA_PADRAO: Record<string, string> = { obras: "engenharia", fundacao: "consultoria" };
+    const f = document.getElementById("formNovo") as HTMLFormElement;
+    const selObra = document.getElementById("selObra") as HTMLSelectElement;
+    const selEmpresa = document.getElementById("selEmpresa") as HTMLSelectElement;
+
+    const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    const areaAtual = () => (f.querySelector('input[name="area"]:checked') as HTMLInputElement)?.value || "obras";
+
+    function pintarObras(selecionar?: string) {
+      const area = areaAtual();
+      const itens = (POR_AREA[area] || []) as any[];
+      // obras tocando primeiro; o resto vai para um grupo separado no fim
+      const ativas = itens.filter((o) => o.status === "ativa" || o.status === "planejada");
+      const outras = itens.filter((o) => !["ativa", "planejada"].includes(o.status));
+      const opt = (o: any) => `<option value="${esc(o.id)}">${esc(o.nome)}${o.cliente ? " — " + esc(o.cliente) : ""}</option>`;
+      selObra.innerHTML =
+        `<option value="">Selecione…</option>` +
+        ativas.map(opt).join("") +
+        (outras.length ? `<optgroup label="Outras (pausadas, concluídas)">${outras.map(opt).join("")}</optgroup>` : "");
+      if (selecionar) selObra.value = selecionar;
+
+      (document.getElementById("blocoNovaObra") as HTMLElement).style.display = area === "fundacao" ? "" : "none";
+      document.getElementById("dicaObra")!.innerHTML = itens.length
+        ? (area === "fundacao"
+            ? "Não achou a obra? Cadastre logo abaixo."
+            : 'A lista vem de <a href="/admin/obras">Obras &amp; Projetos</a>.')
+        : (area === "fundacao"
+            ? "Nenhuma obra de fundação cadastrada ainda — cadastre abaixo."
+            : 'Nenhuma obra cadastrada em <a href="/admin/obras">Obras &amp; Projetos</a>.');
+      selEmpresa.value = EMPRESA_PADRAO[area] || "engenharia";
+    }
+
+    function abrirNovo() {
+      document.getElementById("msgNovo")!.innerHTML = "";
+      pintarObras();
+      document.getElementById("modalNovo")!.classList.add("open");
+    }
+    function fecharNovo() { document.getElementById("modalNovo")!.classList.remove("open"); }
+
+    f.querySelectorAll('input[name="area"]').forEach((el) =>
+      el.addEventListener("change", () => pintarObras()));
+
+    // cadastro rápido da obra de fundação, sem sair do modal
+    document.getElementById("btnCadastrarObra")!.addEventListener("click", async () => {
+      const btn = document.getElementById("btnCadastrarObra") as HTMLButtonElement;
+      const nome = (document.getElementById("novaNome") as HTMLInputElement).value.trim();
+      const alvo = document.getElementById("msgNovo")!;
+      if (!nome) { alvo.innerHTML = `<div class="alert alert-error">Informe o nome da obra nova.</div>`; return; }
+      btn.disabled = true; btn.textContent = "Cadastrando…";
+      try {
+        const r = await fetch("/api/admin/obras/fundacao", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            nome,
+            cliente: (document.getElementById("novaCliente") as HTMLInputElement).value,
+            cidade: (document.getElementById("novaCidade") as HTMLInputElement).value,
+            uf: (document.getElementById("novaUf") as HTMLInputElement).value,
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Não deu para cadastrar.");
+        POR_AREA.fundacao = [...(POR_AREA.fundacao || []), j];
+        pintarObras(j.id);
+        (document.getElementById("novaNome") as HTMLInputElement).value = "";
+        (document.getElementById("novaCliente") as HTMLInputElement).value = "";
+        alvo.innerHTML = `<div class="alert alert-success">Obra cadastrada e já selecionada.</div>`;
+      } catch (e: any) {
+        alvo.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+      } finally {
+        btn.disabled = false; btn.textContent = "Cadastrar esta obra";
+      }
+    });
+
+    f.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = document.getElementById("btnCriar") as HTMLButtonElement;
+      const dados = Object.fromEntries(new FormData(f).entries()) as Record<string, string>;
+      if (!dados.vinculo_id) {
+        document.getElementById("msgNovo")!.innerHTML = `<div class="alert alert-error">Escolha a obra.</div>`;
+        return;
+      }
+      const corpo: Record<string, unknown> = {
+        area: dados.area,
+        data: dados.data,
+        empresa: dados.empresa,
+        modelo_checklist_id: dados.modelo_checklist_id || "",
+      };
+      if (dados.area === "fundacao") corpo.fundacao_id = dados.vinculo_id;
+      else corpo.obra_id = dados.vinculo_id;
+
+      btn.disabled = true; btn.textContent = "Criando…";
+      try {
+        const r = await fetch("/api/admin/obras/diario", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Não deu para criar.");
+        // já existia relatório daquele dia: abre o que existe em vez de duplicar
+        window.location.href = `/admin/obras/diario/${j.id}`;
+      } catch (e: any) {
+        document.getElementById("msgNovo")!.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+        btn.disabled = false; btn.textContent = "Criar e abrir";
+      }
+    });
+
+    document.getElementById("modalNovo")!.addEventListener("click", (ev) => {
+      if (ev.target === ev.currentTarget) fecharNovo();
+    });
+
+    Object.assign(window, { abrirNovo, fecharNovo });
+  </script>
 </Admin>
