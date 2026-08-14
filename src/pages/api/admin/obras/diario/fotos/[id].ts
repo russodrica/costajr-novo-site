@@ -21,12 +21,14 @@ export const GET: APIRoute = async ({ request, params }) => {
     if (!foto?.storage_path) return jsonErr(404, "Foto não encontrada.");
 
     const { data: assinada, error } = await storageObras().storage
-      .from(BUCKET_OBRAS).createSignedUrl(foto.storage_path, 600);
+      // 1 hora: o relatório fica aberto enquanto se preenche, e a impressão
+      // precisa que as fotos ainda carreguem na hora de gerar o PDF.
+      .from(BUCKET_OBRAS).createSignedUrl(foto.storage_path, 3600);
     if (error || !assinada?.signedUrl) return jsonErr(500, error?.message || "Falha ao abrir a foto.");
 
     return new Response(null, {
       status: 302,
-      headers: { location: assinada.signedUrl, "cache-control": "private, max-age=300" },
+      headers: { location: assinada.signedUrl, "cache-control": "private, max-age=1800" },
     });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);

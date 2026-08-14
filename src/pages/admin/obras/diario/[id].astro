@@ -57,6 +57,17 @@ const dados = {
     visita: rdo.assinatura_visita || "",
     cliente: rdo.assinatura_cliente || "",
   },
+  // cabeçalho e rodapé da folha impressa
+  papel: {
+    area: area.label,
+    obra: obra?.nome || "",
+    codigo: obra?.codigo || "",
+    cliente: obra?.cliente || "",
+    endereco,
+    data: fmtDataBr(rdo.data),
+    dataExtenso: fmtDataExtenso(rdo.data),
+    numero: String(rdo.id).slice(0, 8).toUpperCase(),
+  },
 };
 const listas = {
   tipos: (tiposOcor || []).map((t: any) => t.nome),
@@ -76,7 +87,7 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
       <span class={`badge ${statusBadge(rdo.status)}`} id="badgeStatus" style="margin-left:8px">{statusLabel(rdo.status)}</span>
     </span>
     <div style="margin-left:auto;display:flex;gap:8px">
-      <button class="btn btn-secondary" onclick="window.print()">🖨️ Imprimir / PDF</button>
+      <button class="btn btn-secondary" id="btnImprimir">🖨️ Imprimir / PDF</button>
       <button class="btn btn-secondary" data-requer-edicao id="btnSalvar" onclick="salvar('rascunho')">Salvar rascunho</button>
       <button class="btn btn-primary" data-requer-edicao id="btnPublicar" onclick="salvar('publicado')">Publicar</button>
     </div>
@@ -285,6 +296,9 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
 
   </div><!-- /#folha -->
 
+  <!-- montado por JS na hora de imprimir -->
+  <div id="folhaPrint" aria-hidden="true"></div>
+
   <script type="application/json" id="dadosRDO" set:html={JSON.stringify(dados)}></script>
   <script type="application/json" id="listasRDO" set:html={JSON.stringify(listas)}></script>
 
@@ -337,43 +351,81 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     e reacende só o que está dentro de #folha, independente das classes do
     layout.
   -->
+  <!--
+    A folha do PDF é MONTADA na hora de imprimir (#folhaPrint), não é a tela
+    espremida. Imprimir o formulário trazia caixa de seleção, seta de dropdown,
+    texto de ajuda e campo vazio ocupando meia página. Aqui cada valor vira
+    texto, e o que está em branco simplesmente não entra.
+
+    O estilo é GLOBAL de propósito: o <style> comum do Astro é escopado e não
+    alcança a barra lateral nem o cabeçalho do portal — era por isso que o menu
+    saía no PDF.
+  -->
   <style is:global>
+    #folhaPrint { display: none; }
+
     @media print {
       body * { visibility: hidden !important; }
-      #folha, #folha * { visibility: visible !important; }
-      #folha {
+      #folhaPrint, #folhaPrint * { visibility: visible !important; }
+      #folhaPrint {
+        display: block !important;
         position: absolute !important; left: 0; top: 0; width: 100%;
         margin: 0 !important; padding: 0 !important;
+        font-family: "Open Sans", Arial, sans-serif; color: #1A1D24; font-size: 11pt;
       }
-      .nao-imprimir, .nao-imprimir * { display: none !important; visibility: hidden !important; }
-      .so-imprimir { display: flex !important; }
-
       html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-      .sidebar, .topbar, .main-content > header { display: none !important; }
-      .main-content, main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+      .sidebar, .topbar, .toolbar, .main-content > header { display: none !important; }
+      .main-content, main { margin: 0 !important; padding: 0 !important; }
 
-      #folha .card { border: 1px solid #ccc !important; box-shadow: none !important;
-                     break-inside: avoid; margin-bottom: 10px !important; padding: 12px !important;
-                     background: #fff !important; }
-      #folha .folha-topo { display: flex !important; justify-content: space-between;
-                           align-items: flex-start; border-bottom: 2px solid #C41E3A;
-                           padding-bottom: 8px; margin-bottom: 12px; }
-      #folha h3 { font-size: 13px !important; margin: 0 0 6px !important; }
-      #folha input, #folha select, #folha textarea {
-        border: 0 !important; padding: 2px 0 !important; background: transparent !important;
-        font-size: 12px !important; resize: none; box-shadow: none !important; color: #111 !important; }
-      #folha textarea { height: auto !important; min-height: 0 !important; overflow: visible !important; }
-      #folha .galeria { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
-      #folha .foto img { height: 120px !important; }
-      #folha .foto .legenda { border: 0 !important; text-align: center; }
+      /* cabeçalho */
+      #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: flex-end;
+                             gap: 20px; padding-bottom: 10px; margin-bottom: 4px; }
+      #folhaPrint .pf-logo { height: 74px; width: auto; object-fit: contain; }
+      #folhaPrint .pf-titulo { font-size: 16pt; font-weight: 800; letter-spacing: .04em;
+                               line-height: 1.1; margin: 0; }
+      #folhaPrint .pf-emp { font-size: 8.5pt; color: #555; margin-top: 2px; }
+      #folhaPrint .pf-ident { text-align: right; font-size: 9pt; line-height: 1.5; }
+      #folhaPrint .pf-ident strong { font-size: 11pt; }
+      #folhaPrint .pf-regua { height: 4px; margin-bottom: 14px; }
 
-      /* assinatura: no papel vale a imagem traçada, não a área de rabiscar */
-      #folha .assin canvas { display: none !important; }
-      #folha .assin-img { display: block !important; height: 70px !important; }
-      #folha .assin-nome { text-align: center; font-weight: 600; }
-      #folha .assinaturas { break-inside: avoid; margin-top: 18px !important; }
+      /* seções */
+      #folhaPrint .pf-sec { break-inside: avoid; margin-bottom: 14px; }
+      #folhaPrint .pf-sec > h2 { font-size: 9pt; text-transform: uppercase; letter-spacing: .08em;
+                                 color: #fff; background: #4B5563; padding: 4px 9px; margin: 0 0 8px;
+                                 border-radius: 3px; }
+      #folhaPrint .pf-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 18px; }
+      #folhaPrint .pf-campo { font-size: 10pt; }
+      #folhaPrint .pf-campo span { display: block; font-size: 7.5pt; text-transform: uppercase;
+                                   letter-spacing: .05em; color: #6B7280; }
+      #folhaPrint .pf-texto { white-space: pre-wrap; font-size: 10.5pt; line-height: 1.55;
+                              text-align: justify; margin: 0; }
+      #folhaPrint table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+      #folhaPrint th { text-align: left; background: #F3F4F6; border: 1px solid #D1D5DB;
+                       padding: 5px 8px; font-size: 8pt; text-transform: uppercase; letter-spacing: .04em; }
+      #folhaPrint td { border: 1px solid #D1D5DB; padding: 5px 8px; vertical-align: top; }
 
-      @page { margin: 12mm; }
+      /* fotos */
+      #folhaPrint .pf-fotos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      #folhaPrint .pf-foto { break-inside: avoid; border: 1px solid #D1D5DB; border-radius: 4px;
+                             overflow: hidden; }
+      #folhaPrint .pf-foto img { width: 100%; height: 165px; object-fit: cover; display: block; }
+      #folhaPrint .pf-foto figcaption { font-size: 8.5pt; padding: 5px 7px; color: #374151;
+                                        border-top: 1px solid #E5E7EB; }
+
+      /* assinaturas */
+      #folhaPrint .pf-assin { display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
+                              margin-top: 26px; break-inside: avoid; }
+      #folhaPrint .pf-assin div { text-align: center; }
+      #folhaPrint .pf-assin img { height: 60px; object-fit: contain; display: block; margin: 0 auto 2px; }
+      #folhaPrint .pf-assin .linha { border-top: 1px solid #333; padding-top: 4px; }
+      #folhaPrint .pf-assin .nome { font-size: 9.5pt; font-weight: 700; }
+      #folhaPrint .pf-assin .rot { font-size: 8pt; color: #6B7280; }
+
+      #folhaPrint .pf-rodape { margin-top: 20px; padding-top: 7px; border-top: 1px solid #D1D5DB;
+                               font-size: 7.5pt; color: #6B7280; display: flex;
+                               justify-content: space-between; }
+
+      @page { margin: 14mm 13mm; }
     }
   </style>
 
@@ -661,6 +713,114 @@ const endereco = [obra?.endereco, [obra?.cidade, obra?.uf].filter(Boolean).join(
     pintarCabecalho();
     contar();
 
-    Object.assign(window, { addLinha, salvar });
+    // ── folha do PDF montada na hora ───────────────────────────────────────
+    // Cada valor da tela vira texto na folha. Campo vazio não entra: é isso que
+    // tira as páginas em branco e a caixa de formulário do documento que vai
+    // para o cliente.
+    const P = RDO.papel || {};
+
+    const valDe = (n: string) => {
+      const el = document.querySelector(`[name="${n}"]`) as HTMLInputElement | HTMLSelectElement | null;
+      if (!el) return "";
+      if (el instanceof HTMLSelectElement) return (el.selectedOptions[0]?.textContent || "").trim();
+      return (el.value || "").trim();
+    };
+
+    const campo = (rot: string, v: string) =>
+      v ? `<div class="pf-campo"><span>${esc(rot)}</span>${esc(v)}</div>` : "";
+
+    const secao = (titulo: string, corpo: string) =>
+      corpo ? `<section class="pf-sec"><h2>${esc(titulo)}</h2>${corpo}</section>` : "";
+
+    function montarFolha() {
+      const empSel = (LISTAS.empresas || []).find((e: any) => e.v === selEmpresa.value) || {};
+      const cor = empSel.cor || "#C41E3A";
+
+      const cond = [
+        campo("Clima pela manhã", valDe("clima_manha").replace(/[^\p{L}\s]/gu, "").trim()),
+        campo("Clima à tarde", valDe("clima_tarde").replace(/[^\p{L}\s]/gu, "").trim()),
+        campo("Condição de trabalho", valDe("condicao")),
+        campo("Início da visita", valDe("inicio_jornada")),
+        campo("Fim da visita", valDe("fim_jornada")),
+        campo("Responsável pela visita", valDe("responsavel")),
+      ].join("");
+
+      const ocor = ler("tbOcor", ["tipo", "descricao", "horas"]).filter((o) => o.tipo || o.descricao);
+      const tabOcor = ocor.length
+        ? `<table><thead><tr><th style="width:28%">Tipo</th><th>Descrição</th><th style="width:15%">Horas paradas</th></tr></thead>
+           <tbody>${ocor.map((o) => `<tr><td>${esc(o.tipo)}</td><td>${esc(o.descricao)}</td><td>${esc(o.horas || "—")}</td></tr>`).join("")}</tbody></table>`
+        : "";
+
+      const check = document.getElementById("tbCheck")
+        ? ler("tbCheck", ["item", "situacao", "observacao"]).filter((c) => c.item) : [];
+      const rotSit: Record<string, string> = { ok: "Conforme", nao: "Não conforme", na: "Não se aplica", pendente: "Pendente" };
+      const tabCheck = check.length
+        ? `<table><thead><tr><th style="width:45%">Item</th><th style="width:18%">Situação</th><th>Observação</th></tr></thead>
+           <tbody>${check.map((c) => `<tr><td>${esc(c.item)}</td><td>${esc(rotSit[c.situacao] || c.situacao)}</td><td>${esc(c.observacao)}</td></tr>`).join("")}</tbody></table>`
+        : "";
+
+      const fotos = [...document.querySelectorAll("#galeria .foto")].map((f) => {
+        const img = f.querySelector("img") as HTMLImageElement;
+        const leg = (f.querySelector(".legenda") as HTMLInputElement)?.value || "";
+        return `<figure class="pf-foto"><img src="${img.src}" loading="eager">${leg ? `<figcaption>${esc(leg)}</figcaption>` : ""}</figure>`;
+      });
+
+      const assinatura = (chave: string, rot: string, nomeCampo: string) => {
+        const dados = ASSIN[chave]?.dados || "";
+        const nome = valDe(nomeCampo);
+        return `<div>
+          ${dados ? `<img src="${dados}">` : `<div style="height:60px"></div>`}
+          <div class="linha"><div class="nome">${esc(nome || "&nbsp;")}</div><div class="rot">${esc(rot)}</div></div>
+        </div>`;
+      };
+
+      const atividades = valDe("atividades");
+      const observacoes = valDe("observacoes");
+
+      document.getElementById("folhaPrint")!.innerHTML = `
+        <div class="pf-topo" style="border-bottom:2px solid ${cor}">
+          <div style="display:flex;align-items:center;gap:14px">
+            ${empSel.logo ? `<img class="pf-logo" src="${empSel.logo}" onerror="this.style.display='none'">` : ""}
+            <div>
+              <h1 class="pf-titulo">RELATÓRIO DE VISITA</h1>
+              <div class="pf-emp">${esc(empSel.nome || "")}${empSel.cnpj ? ` · CNPJ ${esc(empSel.cnpj)}` : ""}</div>
+            </div>
+          </div>
+          <div class="pf-ident">
+            <strong>${esc(P.obra || "")}</strong>${P.codigo ? ` (${esc(P.codigo)})` : ""}<br>
+            ${P.cliente ? `Cliente: ${esc(P.cliente)}<br>` : ""}
+            ${P.endereco ? `${esc(P.endereco)}<br>` : ""}
+            <strong>${esc(P.data || "")}</strong> — ${esc(P.dataExtenso || "")}
+          </div>
+        </div>
+        <div class="pf-regua" style="background:${cor}"></div>
+
+        ${secao("Condições da visita", cond ? `<div class="pf-grade">${cond}</div>` : "")}
+        ${secao("Serviços verificados", atividades ? `<p class="pf-texto">${esc(atividades)}</p>` : "")}
+        ${secao("Ocorrências", tabOcor)}
+        ${secao("Checklist", tabCheck)}
+        ${secao("Observações e recomendações", observacoes ? `<p class="pf-texto">${esc(observacoes)}</p>` : "")}
+        ${secao(`Registro fotográfico (${fotos.length})`, fotos.length ? `<div class="pf-fotos">${fotos.join("")}</div>` : "")}
+
+        <div class="pf-assin">
+          ${assinatura("visita", "Responsável pela visita", "assinatura_visita_nome")}
+          ${assinatura("cliente", "Responsável pela obra / Cliente", "assinatura_cliente_nome")}
+        </div>
+
+        <div class="pf-rodape">
+          <span>${esc(empSel.nome || "")}</span>
+          <span>${esc(P.area || "")} · Relatório ${esc(P.numero || "")} · ${esc(P.data || "")}</span>
+        </div>`;
+    }
+
+    document.getElementById("btnImprimir")!.addEventListener("click", () => {
+      montarFolha();
+      // um respiro para o navegador desenhar as imagens antes de abrir a caixa
+      setTimeout(() => window.print(), 120);
+    });
+    // Ctrl+P também precisa da folha montada
+    window.addEventListener("beforeprint", montarFolha);
+
+    Object.assign(window, { addLinha, salvar, montarFolha });
   </script>
 </Admin>
