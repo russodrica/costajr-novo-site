@@ -329,5 +329,9 @@ const nInativo = (membros || []).length - ativos.length;
     (window as any).resetarSenha = resetarSenha;
     (window as any).editarMembro = editarMembro;
     (window as any).excluirMembro = excluirMembro;
+  
+    // O Astro empacota este script como módulo: sem esta linha os onclick="..." do HTML
+    // não encontram as funções (window) e os botões morrem em silêncio.
+    Object.assign(window, { filtrarTipo });
   </script>
 </Admin>

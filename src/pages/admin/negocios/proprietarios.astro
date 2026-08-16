@@ -197,5 +197,9 @@ function fmtQuando(iso: string | null) {
     });
 
     Object.assign(window, { copiarLink, fecharTermo, imprimirTermo });
+  
+    // O Astro empacota este script como módulo: sem esta linha os onclick="..." do HTML
+    // não encontram as funções (window) e os botões morrem em silêncio.
+    Object.assign(window, { verTermo });
   </script>
 </Admin>

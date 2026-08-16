@@ -394,11 +394,18 @@ const somenteLeitura = temPerfis && !semAcessoPagina && nivelPaginaAtual === "ve
     function toggleSidebar() {
       document.getElementById("sidebar")?.classList.toggle("open");
     }
-    // Fechar sidebar ao clicar fora (mobile)
+    // O Astro empacota este <script> como módulo: função declarada aqui NÃO vira
+    // global, e os onclick="..." do HTML procuram no window. Sem esta linha o
+    // botão de menu (☰) e o Sair morriam em silêncio — exatamente o "não abre
+    // no celular". (toggleRail/openCmd já faziam isso mais abaixo.)
+    Object.assign(window, { logout, toggleSidebar });
+    // Fechar sidebar ao clicar fora (mobile). O alvo do toque costuma ser o
+    // ÍCONE dentro do botão ☰ — comparar com "!== toggle" fechava o menu no
+    // mesmo toque que o abria; por isso o contains().
     document.addEventListener("click", (e) => {
       const sidebar = document.getElementById("sidebar");
       const toggle = document.querySelector(".menu-toggle");
-      if (sidebar?.classList.contains("open") && !sidebar.contains(e.target as Node) && e.target !== toggle) {
+      if (sidebar?.classList.contains("open") && !sidebar.contains(e.target as Node) && !(toggle && toggle.contains(e.target as Node))) {
         sidebar.classList.remove("open");
       }
     });

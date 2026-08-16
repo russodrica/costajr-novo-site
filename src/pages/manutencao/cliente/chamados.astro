@@ -346,4 +346,8 @@ export const prerender = false;
 
   load();
   window.addEventListener("portal:refresh", load);
-</script>
+
+    // O Astro empacota este script como módulo: sem esta linha os onclick="..." do HTML
+    // não encontram as funções (window) e os botões morrem em silêncio.
+    Object.assign(window, { abrirPix });
+  </script>

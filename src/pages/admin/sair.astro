@@ -1,0 +1,13 @@
+---
+// /admin/sair — sai da conta pelo endereço, sem depender de botão.
+//
+// Existe porque a sessão às vezes fica presa num celular com a tela antiga em
+// memória: digitar costajr.com.br/admin/sair derruba a sessão e leva ao login,
+// não importa o estado da página.
+export const prerender = false;
+
+Astro.cookies.delete("admin_token", { path: "/" });
+// cookie-ponte do RH embutido (escopo de domínio, vale apex+www)
+Astro.cookies.delete("admin_token", { path: "/", domain: ".costajr.com.br" });
+return Astro.redirect("/admin/login");
+---

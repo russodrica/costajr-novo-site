@@ -2876,6 +2876,10 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     }
 
     (window as any).carregarPonto = carregarPonto;
+  
+    // O Astro empacota este script como módulo: sem esta linha os onclick="..." do HTML
+    // não encontram as funções (window) e os botões morrem em silêncio.
+    Object.assign(window, { abrirModalDocPara });
   </script>
 
   <style>
