@@ -1,0 +1,61 @@
+name: Manutencao - Restaurar arquivo de um commit anterior
+
+# Nasceu de um erro meu (16/08/2026): subi pelo "upload files" do GitHub uma
+# copia ANTIGA de src/pages/admin/vendas.astro, tirada do disco da Adriana,
+# por cima da versao nova que estava no repositorio. O commit ficou
+# "+10 / -193": o painel perdeu o bloco Meta de lucro, o contador de prontos
+# para publicar e o limite de 1000 produtos.
+#
+# Como o GitHub nao deixa editar um arquivo a partir de um commit antigo (404)
+# nem oferece Revert neste repositorio, este workflow faz o que o git faz num
+# comando: `git checkout <commit> -- <caminho>` e empurra.
+#
+# Serve para qualquer arquivo, sempre com caminho e commit explicitos — nada
+# de restaurar em massa. Nao apaga historico: cria um commit novo por cima.
+
+on:
+  workflow_dispatch:
+    inputs:
+      caminho:
+        description: 'Caminho do arquivo (ex.: src/pages/admin/vendas.astro)'
+        type: string
+        required: true
+      commit:
+        description: 'SHA do commit de onde restaurar (a versao BOA)'
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manutencao-restaurar
+  cancel-in-progress: false
+
+jobs:
+  restaurar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout com historico completo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restaurar o arquivo
+        env:
+          CAMINHO: ${{ inputs.caminho }}
+          COMMIT:  ${{ inputs.commit }}
+        run: |
+          set -e
+          echo "Restaurando $CAMINHO a partir de $COMMIT"
+          git checkout "$COMMIT" -- "$CAMINHO"
+          git config user.name  "vendas-bot"
+          git config user.email "vendas-bot@users.noreply.github.com"
+          git add "$CAMINHO"
+          if git diff --cached --quiet; then
+            echo "Nada mudou — o arquivo ja estava igual ao do commit $COMMIT."
+            exit 0
+          fi
+          git diff --cached --stat
+          git commit -m "restaura $CAMINHO a partir de $COMMIT (upload sobrescreveu versao nova)"
+          git push
