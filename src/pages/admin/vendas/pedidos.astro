@@ -58,6 +58,42 @@ const atrasados = aComprar.filter(atrasado);
 
 const totalAComprar = aComprar.reduce((s, p) => s + Number(p.custo_fornecedor || 0), 0);
 
+// ---------------------------------------------------------------------------
+// Resultado das vendas — "total vendido e o lucro, total e por mês"
+// (Adriana, 16/08/2026). Venda cancelada não conta como vendida. O lucro usa
+// a tarifa e o frete REAIS que o ML cobrou (colunas desta tabela), menos o
+// custo do fornecedor; venda sem custo conhecido entra no total vendido mas
+// fica de fora do lucro — e a tela diz quantas são, em vez de fingir zero.
+// ---------------------------------------------------------------------------
+const vendidas = pedidos.filter((p) => !["cancelled", "invalid"].includes(String(p.status_canal || "").toLowerCase()));
+const comLucro = vendidas.filter((p) => p.liquido != null && p.custo_fornecedor != null);
+const semCusto = vendidas.length - comLucro.length;
+const totalVendido = vendidas.reduce((s, p) => s + Number(p.valor_total || 0), 0);
+const lucroTotal = comLucro.reduce((s, p) => s + (Number(p.liquido) - Number(p.custo_fornecedor)), 0);
+const receitaComLucro = comLucro.reduce((s, p) => s + Number(p.valor_total || 0), 0);
+const margemGeral = receitaComLucro > 0 ? (lucroTotal / receitaComLucro) * 100 : null;
+const totalCancelado = pedidos
+  .filter((p) => String(p.status_canal || "").toLowerCase() === "cancelled")
+  .reduce((s, p) => s + Number(p.valor_total || 0), 0);
+
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const porMes: Record<string, { rotulo: string; vendas: number; vendido: number; lucro: number; semCusto: number; cancelado: number }> = {};
+for (const p of pedidos) {
+  if (!p.vendido_em) continue;
+  const d = new Date(p.vendido_em);
+  const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const m = (porMes[chave] ||= { rotulo: `${MESES[d.getMonth()]}/${d.getFullYear()}`, vendas: 0, vendido: 0, lucro: 0, semCusto: 0, cancelado: 0 });
+  if (["cancelled", "invalid"].includes(String(p.status_canal || "").toLowerCase())) {
+    m.cancelado += Number(p.valor_total || 0);
+    continue;
+  }
+  m.vendas += 1;
+  m.vendido += Number(p.valor_total || 0);
+  if (p.liquido != null && p.custo_fornecedor != null) m.lucro += Number(p.liquido) - Number(p.custo_fornecedor);
+  else m.semCusto += 1;
+}
+const mesesOrdenados = Object.keys(porMes).sort().reverse().map((k) => porMes[k]);
+
 const CANAL_LABEL: Record<string, string> = {
   mercadolivre: "Mercado Livre", shopee: "Shopee",
 };
@@ -120,6 +156,60 @@ const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado
         <div style="font-size:26px;font-weight:700">{fmt$(totalAComprar)}</div>
         <div style="color:#6B7280;font-size:13px">custo estimado do que falta</div>
       </div>
+    </div>
+
+    <div style="border:1px solid #E5E7EB;border-radius:10px;padding:16px;margin-bottom:20px;background:#fff">
+      <h2 style="margin:0 0 10px;font-size:16px">Resultado das vendas</h2>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="flex:1;min-width:150px;background:#EFF6FF;border-radius:8px;padding:12px">
+          <div style="font-size:22px;font-weight:700;color:#1D4ED8">{fmt$(totalVendido)}</div>
+          <div style="color:#1E40AF;font-size:13px">total vendido ({vendidas.length} venda{vendidas.length === 1 ? "" : "s"})</div>
+        </div>
+        <div style="flex:1;min-width:150px;background:#DCFCE7;border-radius:8px;padding:12px">
+          <div style="font-size:22px;font-weight:700;color:#15803D">{fmt$(lucroTotal)}</div>
+          <div style="color:#14532D;font-size:13px">
+            lucro real{margemGeral != null ? ` (${margemGeral.toFixed(1).replace(".", ",")}% da receita medida)` : ""}
+          </div>
+        </div>
+        <div style="flex:1;min-width:150px;background:#F3F4F6;border-radius:8px;padding:12px">
+          <div style="font-size:22px;font-weight:700;color:#6B7280">{fmt$(totalCancelado)}</div>
+          <div style="color:#6B7280;font-size:13px">cancelado (não conta como vendido)</div>
+        </div>
+      </div>
+      {semCusto > 0 && (
+        <p style="color:#B45309;font-size:13px;margin:0 0 10px">
+          {semCusto} venda{semCusto === 1 ? "" : "s"} sem custo do fornecedor identificado — entra{semCusto === 1 ? "" : "m"} no total vendido, mas fica{semCusto === 1 ? "" : "m"} fora do lucro.
+        </p>
+      )}
+      {mesesOrdenados.length > 0 && (
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <thead>
+            <tr style="text-align:left;color:#6B7280;border-bottom:1px solid #E5E7EB">
+              <th style="padding:6px 8px">Mês</th>
+              <th style="padding:6px 8px">Vendas</th>
+              <th style="padding:6px 8px">Total vendido</th>
+              <th style="padding:6px 8px">Lucro real</th>
+              <th style="padding:6px 8px">Cancelado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mesesOrdenados.map((m) => (
+              <tr style="border-bottom:1px solid #F3F4F6">
+                <td style="padding:6px 8px;font-weight:600">{m.rotulo}</td>
+                <td style="padding:6px 8px">{m.vendas}</td>
+                <td style="padding:6px 8px">{fmt$(m.vendido)}</td>
+                <td style="padding:6px 8px;color:#15803D">{fmt$(m.lucro)}{m.semCusto > 0 ? ` (+${m.semCusto} sem custo)` : ""}</td>
+                <td style="padding:6px 8px;color:#B91C1C">{m.cancelado > 0 ? fmt$(m.cancelado) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p style="color:#9CA3AF;font-size:12px;margin:10px 0 0">
+        Tarifa e frete reais do Mercado Livre, venda a venda. Enquanto a permissão de Pedidos
+        do DevCenter não sai, as vendas entram por registro manual/retroativo; depois, o robô
+        de 2 em 2 horas atualiza sozinho.
+      </p>
     </div>
 
     <div id="aviso" style="display:none;border-radius:8px;padding:12px;margin-bottom:16px"></div>
