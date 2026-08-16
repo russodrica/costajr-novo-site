@@ -69,6 +69,11 @@
   @media (max-width:700px){
     .topbar, .legenda{padding:0 4px;}
   }
+
+  /* modo captura do PDF: folha encostada no canto 0,0 sem centralização */
+  body.pdf-mode #app{padding:0;}
+  body.pdf-mode .scrollwrap{margin:0; max-width:none; overflow:visible; box-shadow:none; border-radius:0;}
+  body.pdf-mode .topbar, body.pdf-mode .legenda{display:none;}
 </style>
 </head>
 <body>
@@ -547,7 +552,18 @@ function gerarPDF(){
   const rel = document.getElementById("relNum").value.trim() || "SN";
   const data = document.getElementById("data").value || new Date().toISOString().slice(0,10);
   const nome = "Compacidade_Relativa_Rel_" + rel + "_" + data + ".pdf";
+  // No celular a captura saía cortada/deslocada. Correção: durante a captura,
+  // trava o viewport em 1100px (layout igual ao desktop, onde funciona),
+  // zera rolagens e remove a centralização (classe pdf-mode). Depois restaura.
   const folha = document.getElementById("folha");
+  const sw = document.querySelector(".scrollwrap");
+  const meta = document.querySelector('meta[name="viewport"]');
+  const metaOrig = meta.getAttribute("content");
+  const sl = sw.scrollLeft, sy = window.scrollY;
+  meta.setAttribute("content", "width=960");
+  document.body.classList.add("pdf-mode");
+  sw.scrollLeft = 0;
+  window.scrollTo(0, 0);
   const opt = {
     margin: [6,6,6,6],
     filename: nome,
@@ -555,7 +571,17 @@ function gerarPDF(){
     html2canvas: {scale:2, useCORS:true, width:960, windowWidth:960},
     jsPDF: {unit:"mm", format:"a4", orientation:"portrait"}
   };
-  html2pdf().set(opt).from(folha).save();
+  const fim = ()=>{
+    document.body.classList.remove("pdf-mode");
+    meta.setAttribute("content", metaOrig);
+    sw.scrollLeft = sl; window.scrollTo(0, sy);
+  };
+  // pequeno atraso para o navegador aplicar o novo viewport antes da captura;
+  // windowWidth precisa ser IGUAL à largura real do layout (senão a captura desloca)
+  setTimeout(()=>{
+    opt.html2canvas.windowWidth = document.documentElement.clientWidth;
+    html2pdf().set(opt).from(folha).save().then(fim).catch(fim);
+  }, 150);
 }
 
 /* ================= LIMPAR ================= */
