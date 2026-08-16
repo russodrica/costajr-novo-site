@@ -210,6 +210,10 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   { id: "vendas", label: "Vendas TrazPraCa", itens: [
     { key: "vendas", label: "Catálogo & Preços", icon: "🛒", href: "/admin/vendas" },
     { key: "vendas-canais", label: "Onde está publicado", icon: "📍", href: "/admin/vendas/canais" },
+    // A tela de pedidos existia (11/08) mas ficou fora deste registro na
+    // refatoração das permissões — sem a key aqui, o gate bloqueava até a
+    // Adriana (16/08). Também mostra o Resultado das vendas (total + por mês).
+    { key: "vendas-pedidos", label: "Pedidos & Resultado", icon: "🧾", href: "/admin/vendas/pedidos" },
   ] },
   { id: "juridico", label: "Jurídico & Documentos", itens: [
     { key: "doc-empresa", label: "Documentos da Empresa", icon: "📑", href: "/admin/doc-empresa" },
