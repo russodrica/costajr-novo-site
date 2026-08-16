@@ -3,7 +3,7 @@ import Admin from "../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { temPerfilFresco } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
-import { normalizarConfig, avaliar, zonaMortaML } from "../../lib/precificacao";
+import { normalizarConfig, avaliar, zonaMortaML, precoParaMargemML } from "../../lib/precificacao";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -14,11 +14,8 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
 
 const db = supabaseAdmin();
 const [{ data: produtos }, { data: alertas }, { data: execucoes }, { data: config }] = await Promise.all([
-  db.from("vendas_produtos").select("*").order("created_at", { ascending: false }).limit(300),
-  // Falhas de publicação NÃO entram aqui: têm aba própria
-  // (/admin/vendas/publicacao) — pedido da Adriana, 16/08: "vamos separar em
-  // uma aba, pois fica poluído o painel".
-  db.from("vendas_alertas").select("*, vendas_produtos(nome, sku_trazpraca)").eq("resolvido", false).neq("tipo", "publicacao_falhou").order("created_at", { ascending: false }).limit(50),
+  db.from("vendas_produtos").select("*").order("created_at", { ascending: false }).limit(2000),
+  db.from("vendas_alertas").select("*, vendas_produtos(nome, sku_trazpraca)").eq("resolvido", false).order("created_at", { ascending: false }).limit(50),
   db.from("vendas_sync_log").select("*").order("executado_em", { ascending: false }).limit(10),
   db.from("vendas_config").select("*").eq("id", "default").maybeSingle(),
 ]);
@@ -42,10 +39,18 @@ function precoRef(p: any): number | null {
   return v == null ? null : Number(v);
 }
 
+// O peso muda o frete e, com ele, o lucro real. Enquanto o produto não foi
+// enriquecido não há peso, e o motor cai na estimativa — a tela deixa isso
+// explícito em vez de mostrar um número bonito e sem lastro.
+const contexto = (p: any) => ({
+  pesoKg: p.peso_kg == null ? null : Number(p.peso_kg),
+  freteReal: p.ml_frete_real == null ? null : Number(p.ml_frete_real),
+});
+
 const linhas = listaProdutos.map((p) => {
   const custo = p.custo == null ? null : Number(p.custo);
   const preco = precoRef(p);
-  const av = custo != null && preco != null && preco > 0 ? avaliar(custo, preco, cfg) : null;
+  const av = custo != null && preco != null && preco > 0 ? avaliar(custo, preco, cfg, contexto(p)) : null;
   return { p, custo, preco, av };
 });
 
@@ -53,15 +58,100 @@ const comPrejuizo = linhas.filter((l) => l.av?.temPrejuizo).length;
 const abaixoAlvo = linhas.filter((l) => l.av && !l.av.temPrejuizo && l.av.abaixoDoAlvo).length;
 const naZonaMorta = linhas.filter((l) => l.av?.naZonaMortaML).length;
 const totalCandidatos = listaProdutos.filter((p) => p.status === "candidato").length;
+const prontos = listaProdutos.filter((p) => p.pronto_para_publicar).length;
+const semFicha = listaProdutos.filter((p) => !p.enriquecido_em).length;
+
+const ROTULO_FRETE: Record<string, string> = {
+  api: "frete real do ML",
+  faixa: "frete pela faixa de peso",
+  estimativa: "frete estimado — produto sem peso",
+};
 
 const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? "#D97706" : "#059669");
+
+// ---------------------------------------------------------------------------
+// Meta de lucro — o botão que a Adriana pediu para ir afrouxando a margem
+// até a loja engrenar. Cada opção mostra o que ela CUSTA e o que ela COMPRA:
+// o preço mínimo médio cai, e mais produtos passam a caber abaixo do preço
+// que a concorrência pratica hoje (a referência veio da planilha dela).
+// O piso acompanha o alvo quando o alvo desce abaixo dele — senão o portal
+// travaria num piso mais alto que a própria meta.
+// ---------------------------------------------------------------------------
+const METAS = [30, 25, 20, 15, 10];
+
+const simulacao = METAS.map((meta) => {
+  const cfgMeta = { ...cfg, margem_alvo_pct: meta, margem_minima_pct: Math.min(cfg.margem_minima_pct, meta) };
+  let n = 0, soma = 0, somaHoje = 0, competitivos = 0, comReferencia = 0;
+  for (const { p, custo } of linhas) {
+    if (custo == null) continue;
+    const minimo = precoParaMargemML(custo, meta, cfgMeta, contexto(p));
+    if (minimo == null) continue;
+    n++; soma += minimo;
+    const hoje = precoParaMargemML(custo, cfg.margem_alvo_pct, cfg, contexto(p));
+    if (hoje != null) somaHoje += hoje;
+    const ref = p.ml_ref_preco_min == null ? null : Number(p.ml_ref_preco_min);
+    if (ref != null && ref > 0) { comReferencia++; if (minimo <= ref) competitivos++; }
+  }
+  return {
+    meta, n,
+    precoMedio: n ? soma / n : null,
+    variacaoPct: somaHoje > 0 ? ((soma - somaHoje) / somaHoje) * 100 : 0,
+    competitivos, comReferencia,
+  };
+});
+const metaAtual = Number(cfg.margem_alvo_pct);
 ---
 <Admin title="Vendas — TrazPraCa / ML / Shopee" current="vendas">
   <div class="toolbar">
     <span class="toolbar-title">🛒 Vendas — Catálogo & Precificação</span>
     <span style="flex:1"></span>
+    <button class="btn btn-outline" onclick="aprovarProntos()">✅ Aprovar todos os prontos</button>
     <button class="btn btn-outline" onclick="abrirConfig()">⚙️ Taxas e margem</button>
     <button class="btn btn-primary" onclick="abrirNovoProduto()">+ Adicionar produto</button>
+  </div>
+
+  <div class="card" style="padding:14px 16px;margin-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <span style="font-weight:800">🎯 Meta de lucro</span>
+      <span style="font-size:12.5px;color:#6B7280">
+        É a margem líquida que o portal persegue ao calcular o preço. Baixe a meta para ficar mais barata que a concorrência
+        e voltar a vender; suba de novo quando o volume engrenar. O piso acompanha a meta quando ela desce.
+      </span>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+      {simulacao.map((s) => (
+        <button
+          class="meta-btn"
+          data-meta={s.meta}
+          onclick={`definirMeta(${s.meta}, this)`}
+          style={`flex:1;min-width:150px;text-align:left;padding:10px 14px;border-radius:10px;cursor:pointer;
+                  border:2px solid ${s.meta === metaAtual ? "#0891B2" : "#E5E7EB"};
+                  background:${s.meta === metaAtual ? "#ECFEFF" : "#fff"}`}
+        >
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style={`font-size:1.35rem;font-weight:800;color:${s.meta === metaAtual ? "#0E7490" : "#111827"}`}>{s.meta}%</span>
+            {s.meta === metaAtual && <span style="font-size:11px;font-weight:700;color:#0E7490">EM USO</span>}
+          </div>
+          <div style="font-size:11.5px;color:#6B7280;margin-top:2px">
+            preço mínimo médio {fmt$(s.precoMedio)}
+            {s.meta !== metaAtual && s.variacaoPct !== 0 && (
+              <span style={`color:${s.variacaoPct < 0 ? "#059669" : "#B45309"};font-weight:700`}>
+                {" "}({s.variacaoPct > 0 ? "+" : ""}{s.variacaoPct.toFixed(1).replace(".", ",")}%)
+              </span>
+            )}
+          </div>
+          {s.comReferencia > 0 && (
+            <div style="font-size:11.5px;color:#6B7280">
+              <strong>{s.competitivos}</strong> de {s.comReferencia} abaixo do preço da concorrência
+            </div>
+          )}
+        </button>
+      ))}
+    </div>
+    <div style="font-size:11.5px;color:#9CA3AF;margin-top:8px">
+      Piso de segurança hoje: <strong>{pct(cfg.margem_minima_pct)}</strong> — o portal nunca precifica abaixo disso, mesmo perseguindo concorrente.
+      Mudar a meta recalcula a tela na hora; <strong>não altera sozinho o preço dos anúncios já no ar</strong>.
+    </div>
   </div>
 
   <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
@@ -80,6 +170,10 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
     <div class="card" style="flex:1;min-width:130px;padding:12px 16px;text-align:center">
       <div style="font-size:1.6rem;font-weight:800;color:{abaixoAlvo ? '#D97706' : undefined}">{abaixoAlvo}</div>
       <div style="font-size:12px;color:#6B7280">abaixo de {pct(cfg.margem_alvo_pct)}</div>
+    </div>
+    <div class="card" style="flex:1;min-width:130px;padding:12px 16px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:800;color:{prontos ? '#059669' : undefined}">{prontos}</div>
+      <div style="font-size:12px;color:#6B7280">prontos p/ publicar</div>
     </div>
     <div class="card" style="flex:1;min-width:130px;padding:12px 16px;text-align:center">
       <div style="font-size:1.6rem;font-weight:800;color:{listaAlertas.length ? '#DC2626' : undefined}">{listaAlertas.length}</div>
@@ -117,7 +211,8 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
 
   <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
     <div style="padding:10px 16px;border-bottom:1px solid #E5E7EB;font-size:12.5px;color:#6B7280">
-      Lucro já <strong>descontadas as taxas do canal</strong>. Base: ML {pct(cfg.ml_comissao_pct)} + {fmt$(cfg.ml_custo_fixo)} fixo (abaixo de {fmt$(cfg.ml_limite_frete_gratis)}) ou {fmt$(cfg.ml_frete_estimado)} de frete (acima) · Shopee por faixa de preço · margem alvo {pct(cfg.margem_alvo_pct)}.
+      Lucro já <strong>descontadas as taxas do canal</strong>. Mercado Livre <strong>{cfg.ml_tipo_anuncio === "premium" ? "Premium" : "Clássico"}</strong> {pct(cfg.ml_tipo_anuncio === "premium" ? cfg.ml_comissao_premium_pct : cfg.ml_comissao_classico_pct)} + {fmt$(cfg.ml_custo_fixo)} fixo abaixo de {fmt$(cfg.ml_limite_frete_gratis)}; acima disso o frete sai <strong>pela faixa de peso do produto</strong> · Shopee por faixa de preço · margem alvo {pct(cfg.margem_alvo_pct)}, piso {pct(cfg.margem_minima_pct)}.
+      {semFicha > 0 && <span> · <strong>{semFicha} produto(s) ainda sem ficha</strong> — nesses o frete é estimativa.</span>}
     </div>
     <div class="table-wrap">
       <table>
@@ -129,13 +224,14 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
             <th>Lucro ML</th>
             <th>Lucro Shopee</th>
             <th>Preço mín. p/ {pct(cfg.margem_alvo_pct)}</th>
+            <th>Ficha</th>
             <th>Status</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {linhas.length === 0 && (
-            <tr><td colspan="8" style="text-align:center;color:#9CA3AF;padding:28px">Nenhum produto ainda. Use <strong>+ Adicionar produto</strong> ou aguarde o scanner automático rodar.</td></tr>
+            <tr><td colspan="9" style="text-align:center;color:#9CA3AF;padding:28px">Nenhum produto ainda. Use <strong>+ Adicionar produto</strong> ou aguarde o scanner automático rodar.</td></tr>
           )}
           {linhas.map(({ p, custo, preco, av }) => (
             <tr style={av?.temPrejuizo ? "background:#FEF2F2" : av?.naZonaMortaML ? "background:#FFFBEB" : undefined}>
@@ -157,6 +253,11 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
                   <>
                     <strong style={`color:${corMargem(av.ml.margemPct)}`}>{fmt$(av.ml.lucro)}</strong>
                     <div style="font-size:11px;color:#9CA3AF">{pct(av.ml.margemPct)} · taxa {fmt$(av.ml.taxas)}</div>
+                    {preco != null && preco >= cfg.ml_limite_frete_gratis && (
+                      <div style={`font-size:10.5px;color:${av.freteML.fonte === "estimativa" ? "#B45309" : "#9CA3AF"}`}>
+                        {ROTULO_FRETE[av.freteML.fonte]} · {fmt$(av.freteML.valor)}
+                      </div>
+                    )}
                   </>
                 ) : "—"}
               </td>
@@ -175,6 +276,22 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
                     <div style="color:#6B7280">Shopee <strong>{fmt$(av.precoMinimoShopee)}</strong></div>
                   </>
                 ) : <span style="color:#9CA3AF">informe o custo</span>}
+              </td>
+              <td style="font-size:12px;max-width:210px">
+                {!p.enriquecido_em ? (
+                  <span style="color:#9CA3AF">sem ficha</span>
+                ) : p.pronto_para_publicar ? (
+                  <span style="color:#059669;font-weight:700">✓ pronto</span>
+                ) : (
+                  <span style="color:#B45309">{(p.pendencias || []).join(" · ") || "pendente"}</span>
+                )}
+                {p.enriquecido_em && (
+                  <div style="font-size:10.5px;color:#9CA3AF">
+                    {(p.fotos || []).length} foto(s)
+                    {p.marca ? ` · ${p.marca}` : ""}
+                    {p.peso_kg ? ` · ${Number(p.peso_kg).toLocaleString("pt-BR")} kg` : ""}
+                  </div>
+                )}
               </td>
               <td>
                 <select class="input-sm" onchange={`mudarStatus('${p.id}', this.value)`} style="font-size:12.5px">
@@ -273,6 +390,53 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
     function abrirNovoProduto() { (document.getElementById("formProduto") as HTMLFormElement).reset(); overlayV("modalProduto").classList.add("open"); }
     function fecharProduto() { overlayV("modalProduto").classList.remove("open"); }
     function abrirConfig() { overlayV("modalConfig").classList.add("open"); }
+
+    // Aprova de uma vez todos os candidatos que já passaram na conferência.
+    // Existe porque a varredura do catálogo completo da TrazPraCa traz dezenas
+    // de produtos de uma vez, e mudar o status de um em um não é trabalho de
+    // gente. Quem autoriza continua sendo ela: o clique é dela, e produto com
+    // pendência não entra no lote.
+    //
+    // Sem confirm() nem alert(): na primeira versão a Adriana clicou e não
+    // soube se algo aconteceu. Janela do navegador some, é engolida por
+    // bloqueador e não deixa rastro. Agora TODA resposta — inclusive erro de
+    // servidor e resposta que não é JSON — aparece escrita na própria tela.
+    async function aprovarProntos() {
+      const botao = document.activeElement as HTMLButtonElement | null;
+      const rotulo = botao ? botao.textContent : "";
+      if (botao) { botao.disabled = true; botao.textContent = "Aprovando..."; }
+      aviso("Aprovando os candidatos prontos...", "info");
+      try {
+        const r = await fetch("/api/admin/vendas/aprovar-prontos", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+        });
+        const bruto = await r.text();
+        let j: any = null;
+        try { j = JSON.parse(bruto); } catch { /* resposta não-JSON: mostra crua */ }
+        if (!r.ok || !j) {
+          aviso(`Não deu. O servidor respondeu ${r.status}: ${(j && j.error) || bruto.slice(0, 200)}`, "erro");
+          return;
+        }
+        aviso(`${j.aprovados} produto(s) aprovados. Vão ao ar na próxima rodada de publicação.`, "ok");
+        setTimeout(() => location.reload(), 2500);
+      } catch (e: any) {
+        aviso(`Falha de rede ao aprovar: ${e.message || e}`, "erro");
+      } finally {
+        if (botao) { botao.disabled = false; if (rotulo) botao.textContent = rotulo; }
+      }
+    }
+
+    // Uma caixa de recado só, para não depender de janela do navegador.
+    function aviso(texto: string, tipo: "ok" | "erro" | "info") {
+      const cor = tipo === "ok" ? "#0f7b3d" : tipo === "erro" ? "#b42318" : "#475467";
+      const fundo = tipo === "ok" ? "#e7f6ec" : tipo === "erro" ? "#fdeceb" : "#f2f4f7";
+      msgBoxV().innerHTML =
+        `<div style="padding:10px 12px;border-radius:8px;margin:8px 0;` +
+        `background:${fundo};color:${cor};border:1px solid ${cor}33">` +
+        `${texto.replace(/</g, "&lt;")}</div>`;
+      msgBoxV().scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     function fecharConfig() { overlayV("modalConfig").classList.remove("open"); }
     function msgBoxV() { return document.getElementById("vendasMsg") as HTMLElement; }
     function avisoErro(texto: string) {
@@ -332,6 +496,25 @@ const corMargem = (m: number) => (m < 0 ? "#DC2626" : m < cfg.margem_alvo_pct ? 
       location.reload();
     }
 
-    Object.assign(window, { abrirNovoProduto, fecharProduto, abrirConfig, fecharConfig, mudarStatus, excluirProduto, resolverAlerta });
+    // Meta de lucro: um clique muda a margem alvo. Se a meta escolhida for
+    // menor que o piso atual, o piso desce junto — senão a API recusa (piso
+    // maior que alvo não faz sentido) e a Adriana levaria um erro sem entender.
+    async function definirMeta(pct: number, btn: HTMLButtonElement) {
+      const antes = btn.style.opacity;
+      btn.style.opacity = "0.5";
+      try {
+        const res = await fetch("/api/admin/vendas/config", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ margem_alvo_pct: pct, margem_minima_pct: Math.min(pct, 15) }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { location.reload(); return; }
+        avisoErro(d.error || "Não consegui mudar a meta.");
+      } catch { avisoErro("Falha de rede."); }
+      btn.style.opacity = antes;
+    }
+
+    Object.assign(window, { abrirNovoProduto, fecharProduto, abrirConfig, fecharConfig, mudarStatus, excluirProduto, resolverAlerta, definirMeta, aprovarProntos });
   </script>
 </Admin>
