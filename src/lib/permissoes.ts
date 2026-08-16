@@ -214,6 +214,10 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     // refatoração das permissões — sem a key aqui, o gate bloqueava até a
     // Adriana (16/08). Também mostra o Resultado das vendas (total + por mês).
     { key: "vendas-pedidos", label: "Pedidos & Resultado", icon: "🧾", href: "/admin/vendas/pedidos" },
+    // Aba própria das falhas (16/08: "separar em uma aba, pois fica poluído o
+    // painel") e o financeiro mensal ("valor de venda e lucro, por mês").
+    { key: "vendas-publicacao", label: "Falhas de publicação", icon: "🚫", href: "/admin/vendas/publicacao" },
+    { key: "vendas-resultado", label: "Financeiro — Vendas", icon: "💰", href: "/admin/vendas/resultado" },
   ] },
   { id: "juridico", label: "Jurídico & Documentos", itens: [
     { key: "doc-empresa", label: "Documentos da Empresa", icon: "📑", href: "/admin/doc-empresa" },
