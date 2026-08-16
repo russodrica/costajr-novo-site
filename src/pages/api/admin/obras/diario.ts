@@ -6,7 +6,7 @@ import { bloqueioSeSoLeitura } from "../../../../lib/permissoes";
 import { empresaValida, areaValida, areaDe } from "../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-diario";
 
 // POST /api/admin/obras/diario  { obra_id, data, empresa?, modelo_checklist_id? }
 // Cria o Relatório de Visita. O caminho começa pela OBRA: ela é cadastrada uma

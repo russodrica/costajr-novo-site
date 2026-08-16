@@ -179,7 +179,17 @@ export async function diagnosticoOneDrive(): Promise<{ ok: boolean; mensagem: st
     });
     const drive = await rd.json().catch(() => ({}));
     if (!rd.ok) {
-      return { ok: false, mensagem: `A biblioteca não respondeu: ${drive?.error?.message || rd.status}` };
+      // as permissões do aplicativo, para saber se falta consentimento
+      let escopos = "";
+      try {
+        const corpo = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+        escopos = [corpo.roles?.join(" "), corpo.scp].filter(Boolean).join(" ") || "(nenhuma)";
+      } catch { /* token opaco */ }
+      return {
+        ok: false,
+        mensagem: `A biblioteca não respondeu (HTTP ${rd.status}${drive?.error?.code ? `, ${drive.error.code}` : ""}): ` +
+          `${drive?.error?.message || "sem detalhe"}. Permissões do aplicativo: ${escopos || "não deu para ler"}.`,
+      };
     }
     const raiz = process.env.MS_PASTA_RAIZ || "Portal CJR";
     const id = await garantirPasta(raiz);

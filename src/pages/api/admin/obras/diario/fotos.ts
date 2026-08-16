@@ -4,7 +4,7 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-diario";
 
 // POST /api/admin/obras/diario/fotos  { rdo_id, storage_path, nome_arquivo, legenda? }
 // Registra no banco a foto que o navegador já subiu pela URL assinada.

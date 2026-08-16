@@ -9,7 +9,7 @@ import {
 } from "../../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-diario";
 
 // PATCH /api/admin/obras/diario/[id]
 // Salva o Relatório de Visita inteiro de uma vez (campos + checklist). A tela manda tudo

@@ -5,7 +5,7 @@ import { bloqueioSeSemLeitura } from "../../../../../../lib/permissoes";
 import { BUCKET_OBRAS, storageObras } from "../../../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-diario";
 
 // GET /api/admin/obras/diario/pdf/[id]
 //

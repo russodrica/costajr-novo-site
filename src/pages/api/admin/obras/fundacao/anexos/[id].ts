@@ -6,7 +6,7 @@ import { bloqueioSeSoLeitura, bloqueioSeSemLeitura } from "../../../../../../lib
 import { BUCKET_OBRAS, storageObras } from "../../../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-fundacao";
 
 // GET /api/admin/obras/fundacao/anexos/[id]
 // Entrega o PDF do histórico. Servido pelo portal: abre com o nome certo,

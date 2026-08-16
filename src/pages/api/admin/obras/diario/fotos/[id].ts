@@ -5,7 +5,7 @@ import { bloqueioSeSoLeitura, bloqueioSeSemLeitura } from "../../../../../../lib
 import { BUCKET_OBRAS, storageObras } from "../../../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-diario";
 
 // GET /api/admin/obras/diario/fotos/[id] — a foto em si.
 // O bucket é privado: aqui assinamos uma URL de 10 minutos e redirecionamos.

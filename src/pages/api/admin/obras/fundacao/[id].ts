@@ -6,7 +6,7 @@ import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { statusObraValido } from "../../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-fundacao";
 
 // PATCH /api/admin/obras/fundacao/[id] — edita a obra da carteira de fundação.
 export const PATCH: APIRoute = async ({ request, params }) => {

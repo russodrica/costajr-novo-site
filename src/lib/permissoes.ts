@@ -378,6 +378,15 @@ export function moduloDaRotaApi(pathname: string): string | null {
   if (["login", "logout", "forgot-senha"].includes(seg)) return null;
   // especiais (a pasta não bate com a key do módulo)
   if (seg === "fin") return "financeiro";
+  if (seg === "obras") {
+    // Fundação e Relatório de Visita são módulos próprios no menu. Sem isto,
+    // quem recebe só "Obras de Fundação" abre a tela e leva 403 em tudo:
+    // a rota /api/admin/obras/... caía no módulo "Obras & Projetos".
+    const sub = (rest.split("/")[0] || "").replace(/\.ts$/, "");
+    if (sub === "fundacao") return "obras-fundacao";
+    if (sub === "diario") return "obras-diario";
+    return "obras";
+  }
   if (seg === "caixa") return "caixa-entrada";
   if (seg === "d4sign" || seg === "termos") return "assinaturas";
   if (seg === "permissoes" || seg === "permissoes-usuarios") return "permissoes";

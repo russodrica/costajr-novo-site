@@ -5,7 +5,7 @@ import { bloqueioSeSoLeitura } from "../../../../../../lib/permissoes";
 import { BUCKET_OBRAS, storageObras, garantirBucketObras } from "../../../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-diario";
 const EXT_OK = ["jpg", "jpeg", "png", "webp", "heic", "gif"];
 
 // POST /api/admin/obras/diario/fotos/upload-url  { rdo_id, nome }

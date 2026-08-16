@@ -9,7 +9,7 @@ import {
 } from "../../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-diario";
 
 /** Teto por foto e por relatório. O depósito é compartilhado com Documentos e
  *  Novos Negócios: uma importação sem limite derrubaria o portal inteiro. */

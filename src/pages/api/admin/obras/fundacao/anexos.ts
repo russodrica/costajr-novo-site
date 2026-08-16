@@ -6,7 +6,7 @@ import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { BUCKET_OBRAS, storageObras, garantirBucketObras } from "../../../../../lib/rdo";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-fundacao";
 const MAX_PDF = 25 * 1024 * 1024;
 
 // POST /api/admin/obras/fundacao/anexos

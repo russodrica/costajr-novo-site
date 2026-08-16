@@ -8,7 +8,7 @@ import { statusObraValido } from "../../../../lib/rdo";
 export const prerender = false;
 // A trava central deduz o módulo do primeiro segmento depois de /api/admin —
 // aqui é "obras", a mesma equipe que cuida da carteira de fundação.
-const MODULO = "obras";
+const MODULO = "obras-fundacao";
 
 /** Nome de obra e de cliente entram sempre em MAIÚSCULO: é o padrão da
  *  carteira e evita a mesma obra cadastrada de três jeitos diferentes. */

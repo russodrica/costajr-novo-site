@@ -6,7 +6,7 @@ import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { garantirPasta, enviarArquivo, oneDriveConfigurado, diagnosticoOneDrive } from "../../../../../lib/onedrive";
 
 export const prerender = false;
-const MODULO = "obras";
+const MODULO = "obras-fundacao";
 
 // GET — diagnóstico: diz se as credenciais do OneDrive estão de pé.
 export const GET: APIRoute = async ({ request }) => {
