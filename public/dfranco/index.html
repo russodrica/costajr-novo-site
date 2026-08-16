@@ -1,0 +1,548 @@
+TESTE123<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>DFRANCO — Compacidade Relativa</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+  :root{
+    --amarelo:#fff9c4; --amarelo-borda:#e6c200;
+    --laranja:#ffe0b2; --laranja-txt:#7a4a00;
+    --cinza:#f4f4f4; --borda:#333;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:Arial, Helvetica, sans-serif; background:#e9ecef; color:#111;}
+
+  /* ===== LOGIN ===== */
+  #loginScreen{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px;}
+  .login-card{background:#fff; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.15); padding:32px; width:100%; max-width:380px;}
+  .login-card h1{font-size:22px; margin-bottom:4px; letter-spacing:1px;}
+  .login-card .sub{color:#666; font-size:13px; margin-bottom:22px;}
+  .login-card label{display:block; font-size:12px; font-weight:bold; margin:12px 0 4px; text-transform:uppercase; color:#444;}
+  .login-card input{width:100%; padding:11px; border:1px solid #bbb; border-radius:6px; font-size:15px;}
+  .login-card button{width:100%; margin-top:20px; padding:12px; background:#1a1a1a; color:#fff; border:0; border-radius:6px; font-size:15px; font-weight:bold; cursor:pointer;}
+  .login-card button:active{opacity:.8;}
+  #loginErro{color:#c62828; font-size:13px; margin-top:10px; display:none; text-align:center;}
+
+  /* ===== APP ===== */
+  #app{display:none; padding:10px;}
+  .topbar{max-width:1000px; margin:0 auto 10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:space-between;}
+  .topbar .brand{font-weight:bold; font-size:15px;}
+  .topbar .actions{display:flex; gap:8px; flex-wrap:wrap;}
+  .btn{padding:10px 16px; border:0; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer;}
+  .btn-pdf{background:#b71c1c; color:#fff;}
+  .btn-limpar{background:#fff; color:#333; border:1px solid #999;}
+  .btn-sair{background:#eee; color:#333;}
+  .legenda{max-width:1000px; margin:0 auto 8px; font-size:12px; color:#333; display:flex; gap:14px; flex-wrap:wrap;}
+  .legenda .chip{display:inline-flex; align-items:center; gap:5px;}
+  .legenda .sq{width:13px; height:13px; border:1px solid #999; display:inline-block;}
+  .scrollwrap{max-width:1000px; margin:0 auto; overflow-x:auto; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.12); border-radius:4px;}
+
+  /* ===== FOLHA ===== */
+  #folha{width:960px; padding:18px 22px; background:#fff;}
+  #folha table{border-collapse:collapse; width:100%;}
+  #folha td, #folha th{border:1px solid var(--borda); font-size:11px; padding:2px 4px; vertical-align:middle;}
+  #folha .noborder td, td.nb{border:none;}
+  .hdr-title{text-align:center; font-weight:bold; font-size:13px;}
+  .hdr-title small{font-weight:bold; font-size:10.5px; display:block;}
+  .logo-cell{width:110px; text-align:center;}
+  .logo-cell .logo{font-weight:900; font-size:15px; letter-spacing:1px;}
+  .logo-cell .logo span{font-size:8px; display:block; letter-spacing:2px; color:#555;}
+  .sec-title{background:var(--cinza); font-weight:bold; text-align:center;}
+  .lbl{font-weight:bold;}
+  input.campo, select.campo{
+    width:100%; border:none; background:var(--amarelo); font-size:11px; padding:3px 4px;
+    font-family:inherit; outline:2px solid transparent; border-radius:0; text-align:center;
+  }
+  input.campo:focus{outline:2px solid var(--amarelo-borda);}
+  input.campo.esq{text-align:left;}
+  td.calc{background:var(--laranja); text-align:center; font-weight:bold; color:var(--laranja-txt);}
+  td.num{text-align:center;}
+  .calc-box{font-size:16px !important; font-weight:bold;}
+  .assinatura{text-align:center; font-size:10px;}
+  .spec{font-size:9.5px; font-weight:bold;}
+  .resultado-cr{font-size:15px; font-weight:bold; text-align:center;}
+  .cls-verde{color:#1b5e20;} .cls-vermelho{color:#b71c1c;}
+
+  @media (max-width:700px){
+    .topbar, .legenda{padding:0 4px;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="loginScreen">
+  <div class="login-card">
+    <h1>D'FRANCO</h1>
+    <div class="sub">Engenharia &amp; Consultoria — Área restrita</div>
+    <label>E-mail</label>
+    <input type="email" id="loginEmail" autocomplete="username" placeholder="seu@email.com">
+    <label>Senha</label>
+    <input type="password" id="loginSenha" autocomplete="current-password" placeholder="••••••••">
+    <button onclick="fazerLogin()">Entrar</button>
+    <div id="loginErro">E-mail ou senha incorretos.</div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app">
+  <div class="topbar">
+    <div class="brand">D'FRANCO — Compacidade Relativa</div>
+    <div class="actions">
+      <button class="btn btn-pdf" onclick="gerarPDF()">Gerar PDF</button>
+      <button class="btn btn-limpar" onclick="limpar()">Limpar</button>
+      <button class="btn btn-sair" onclick="sair()">Sair</button>
+    </div>
+  </div>
+  <div class="legenda">
+    <span class="chip"><span class="sq" style="background:var(--amarelo)"></span> Preencher (técnico)</span>
+    <span class="chip"><span class="sq" style="background:var(--laranja)"></span> Calculado automaticamente</span>
+  </div>
+
+  <div class="scrollwrap">
+  <div id="folha">
+    <!-- CABEÇALHO -->
+    <table>
+      <tr>
+        <td class="logo-cell" rowspan="1">
+          <div class="logo">D'FRANCO<span>ENGENHARIA E CONSULTORIA</span></div>
+        </td>
+        <td class="hdr-title" colspan="6">COMPACIDADE RELATIVA
+          <small>NBR 6457:2016; NBR 16840/20 e NBR 16843/20</small>
+        </td>
+      </tr>
+    </table>
+    <table>
+      <tr>
+        <td class="lbl" style="width:34%">Cliente: <input class="campo esq" style="width:70%; display:inline-block" id="cliente" value="CONSORCIO SES LITORAL SUL."></td>
+        <td class="lbl" style="width:6%">Obra:</td>
+        <td colspan="3"><input class="campo esq" id="obra" value="CONSORCIO SES LITORAL SUL - I.E: 154.620.407.114 - CNPJ: 61.473.979/0001-00"></td>
+      </tr>
+      <tr>
+        <td class="lbl">Operador: <input class="campo esq" style="width:70%; display:inline-block" id="operador"></td>
+        <td class="lbl">N:</td>
+        <td><input class="campo" id="coordN" value="ND"></td>
+        <td class="lbl" style="width:14%">Relatório nº: <input class="campo" style="width:52%; display:inline-block" id="relNum"></td>
+        <td rowspan="2" style="width:20%"><input class="campo" id="material" placeholder="Material (ex.: Areia Marrom Clara)"></td>
+      </tr>
+      <tr>
+        <td class="lbl" rowspan="2" style="border-bottom:1px solid var(--borda)">Verificado por: Daniel Franco</td>
+        <td class="lbl">E:</td>
+        <td><input class="campo" id="coordE" value="ND"></td>
+        <td class="spec" style="text-align:center">NBR 12051</td>
+      </tr>
+      <tr>
+        <td class="lbl">cota:</td>
+        <td><input class="campo" id="cota"></td>
+        <td colspan="2"></td>
+      </tr>
+      <tr>
+        <td class="lbl">Data: <input class="campo" type="date" style="width:60%; display:inline-block" id="data"></td>
+        <td class="lbl">Local:</td>
+        <td colspan="1"><input class="campo esq" id="local"></td>
+        <td class="lbl">Estaca:</td>
+        <td><input class="campo" id="estaca"></td>
+      </tr>
+      <tr>
+        <td class="lbl">DISPOSITIVOS DE PRECISÃO</td>
+        <td colspan="2"><input class="campo esq" id="dispositivos" value="Vibrador 01, cilindro 02, soquete 01"></td>
+        <td colspan="2" style="text-align:center" class="lbl">ESTUFA: <input class="campo" style="width:40%; display:inline-block" id="estufa" value="01"></td>
+      </tr>
+    </table>
+
+    <div style="height:8px"></div>
+
+    <!-- DENSIDADES MÁXIMA / MÍNIMA -->
+    <table>
+      <tr>
+        <td class="sec-title" colspan="4" style="width:50%">DENSIDADE SECA MÁXIMA</td>
+        <td class="sec-title" colspan="4">DENSIDADE SECA MÍNIMA</td>
+      </tr>
+      <tr>
+        <td class="lbl" style="width:19%">NÚMERO DO CILINDRO</td>
+        <td style="width:10%"><input class="campo" id="mx_cil_1"></td>
+        <td style="width:10%"><input class="campo" id="mx_cil_2"></td>
+        <td style="width:10%"><input class="campo" id="mx_cil_3"></td>
+        <td class="lbl" style="width:19%">NÚMERO DO CILINDRO</td>
+        <td style="width:10%"><input class="campo" id="mn_cil_1"></td>
+        <td style="width:10%"><input class="campo" id="mn_cil_2"></td>
+        <td style="width:10%"><input class="campo" id="mn_cil_3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">MOLDE + SOLO (g)</td>
+        <td><input class="campo" inputmode="decimal" id="mx_ms_1"></td>
+        <td><input class="campo" inputmode="decimal" id="mx_ms_2"></td>
+        <td><input class="campo" inputmode="decimal" id="mx_ms_3"></td>
+        <td class="lbl">MOLDE + SOLO (g)</td>
+        <td><input class="campo" inputmode="decimal" id="mn_ms_1"></td>
+        <td><input class="campo" inputmode="decimal" id="mn_ms_2"></td>
+        <td><input class="campo" inputmode="decimal" id="mn_ms_3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">MOLDE (g)</td>
+        <td><input class="campo" inputmode="decimal" id="mx_m_1"></td>
+        <td><input class="campo" inputmode="decimal" id="mx_m_2"></td>
+        <td><input class="campo" inputmode="decimal" id="mx_m_3"></td>
+        <td class="lbl">MOLDE (g)</td>
+        <td><input class="campo" inputmode="decimal" id="mn_m_1"></td>
+        <td><input class="campo" inputmode="decimal" id="mn_m_2"></td>
+        <td><input class="campo" inputmode="decimal" id="mn_m_3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">SOLO (g)</td>
+        <td class="calc" id="mx_solo_1"></td>
+        <td class="calc" id="mx_solo_2"></td>
+        <td class="calc" id="mx_solo_3"></td>
+        <td class="lbl">SOLO (g)</td>
+        <td class="calc" id="mn_solo_1"></td>
+        <td class="calc" id="mn_solo_2"></td>
+        <td class="calc" id="mn_solo_3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">VOLUME (cm³)</td>
+        <td><input class="campo" inputmode="decimal" id="mx_vol_1"></td>
+        <td><input class="campo" inputmode="decimal" id="mx_vol_2"></td>
+        <td><input class="campo" inputmode="decimal" id="mx_vol_3"></td>
+        <td class="lbl">VOLUME (cm³)</td>
+        <td><input class="campo" inputmode="decimal" id="mn_vol_1"></td>
+        <td><input class="campo" inputmode="decimal" id="mn_vol_2"></td>
+        <td><input class="campo" inputmode="decimal" id="mn_vol_3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">γh (g/cm³)</td>
+        <td class="calc" id="mx_gh_1"></td>
+        <td class="calc" id="mx_gh_2"></td>
+        <td class="calc" id="mx_gh_3"></td>
+        <td class="lbl">γh (g/cm³)</td>
+        <td class="calc" id="mn_gh_1"></td>
+        <td class="calc" id="mn_gh_2"></td>
+        <td class="calc" id="mn_gh_3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">w (%)</td>
+        <td><input class="campo" inputmode="decimal" id="mx_w_1" value="0"></td>
+        <td><input class="campo" inputmode="decimal" id="mx_w_2" value="0"></td>
+        <td><input class="campo" inputmode="decimal" id="mx_w_3" value="0"></td>
+        <td class="lbl">w (%)</td>
+        <td><input class="campo" inputmode="decimal" id="mn_w_1" value="0"></td>
+        <td><input class="campo" inputmode="decimal" id="mn_w_2" value="0"></td>
+        <td><input class="campo" inputmode="decimal" id="mn_w_3" value="0"></td>
+      </tr>
+      <tr>
+        <td class="lbl">γs (g/cm³)</td>
+        <td class="calc" id="mx_gs_1"></td>
+        <td class="calc" id="mx_gs_2"></td>
+        <td class="calc" id="mx_gs_3"></td>
+        <td class="lbl">γs (g/cm³)</td>
+        <td class="calc" id="mn_gs_1"></td>
+        <td class="calc" id="mn_gs_2"></td>
+        <td class="calc" id="mn_gs_3"></td>
+      </tr>
+      <tr>
+        <td class="lbl">γsmáx (g/cm³)</td>
+        <td class="calc" id="mx_gsx_1"></td>
+        <td class="calc" id="mx_gsx_2"></td>
+        <td class="calc" id="mx_gsx_3"></td>
+        <td class="lbl">γs (g/cm³)</td>
+        <td class="calc" id="mn_gsx_1"></td>
+        <td class="calc" id="mn_gsx_2"></td>
+        <td class="calc" id="mn_gsx_3"></td>
+      </tr>
+      <tr>
+        <td class="lbl" style="text-align:right">γsmáx MÉDIA =</td>
+        <td class="calc" colspan="3" id="gsmax_media"></td>
+        <td class="lbl" style="text-align:right">γsmín (g/cm³) MÉDIA =</td>
+        <td class="calc" colspan="3" id="gsmin_media"></td>
+      </tr>
+    </table>
+
+    <div style="height:8px"></div>
+
+    <!-- IN SITU + UMIDADE -->
+    <table>
+      <tr>
+        <td class="sec-title" colspan="3" style="width:50%">DENSIDADE "IN SITU" - CILINDRO DE CRAVAÇÃO<br>NBR 9813:2016</td>
+        <td class="sec-title" colspan="3">TEOR DE UMIDADE</td>
+      </tr>
+      <tr>
+        <td class="lbl" style="width:24%"></td>
+        <td class="lbl num" style="width:13%">FURO 1</td>
+        <td class="lbl num" style="width:13%">FURO 2</td>
+        <td class="lbl" style="width:24%"></td>
+        <td class="lbl num" style="width:13%">FURO 1</td>
+        <td class="lbl num" style="width:13%">FURO 2</td>
+      </tr>
+      <tr>
+        <td class="lbl">NÚMERO DO CILINDRO</td>
+        <td><input class="campo" id="is_cil_1"></td>
+        <td><input class="campo" id="is_cil_2"></td>
+        <td class="lbl">CÁPSULA Nº</td>
+        <td><input class="campo" id="um_cap_1"></td>
+        <td><input class="campo" id="um_cap_2"></td>
+      </tr>
+      <tr>
+        <td class="lbl">VOLUME DO CILINDRO (cm³)</td>
+        <td><input class="campo" inputmode="decimal" id="is_vol_1"></td>
+        <td><input class="campo" inputmode="decimal" id="is_vol_2"></td>
+        <td class="lbl">SOLO ÚMIDO + TARA (g)</td>
+        <td><input class="campo" inputmode="decimal" id="um_ut_1"></td>
+        <td><input class="campo" inputmode="decimal" id="um_ut_2"></td>
+      </tr>
+      <tr>
+        <td class="lbl">SOLO ÚMIDO + TARA (g)</td>
+        <td><input class="campo" inputmode="decimal" id="is_st_1"></td>
+        <td><input class="campo" inputmode="decimal" id="is_st_2"></td>
+        <td class="lbl">SOLO SECO + TARA (g)</td>
+        <td><input class="campo" inputmode="decimal" id="um_st_1"></td>
+        <td><input class="campo" inputmode="decimal" id="um_st_2"></td>
+      </tr>
+      <tr>
+        <td class="lbl">MOLDE (g)</td>
+        <td><input class="campo" inputmode="decimal" id="is_m_1"></td>
+        <td><input class="campo" inputmode="decimal" id="is_m_2"></td>
+        <td class="lbl">TARA (g)</td>
+        <td><input class="campo" inputmode="decimal" id="um_t_1"></td>
+        <td><input class="campo" inputmode="decimal" id="um_t_2"></td>
+      </tr>
+      <tr>
+        <td class="lbl">SOLO ÚMIDO (g)</td>
+        <td class="calc" id="is_su_1"></td>
+        <td class="calc" id="is_su_2"></td>
+        <td class="lbl">SOLO SECO (g)</td>
+        <td class="calc" id="um_ss_1"></td>
+        <td class="calc" id="um_ss_2"></td>
+      </tr>
+      <tr>
+        <td class="lbl">DENSIDADE ÚMIDA "IN SITU" (g/cm³)</td>
+        <td class="calc" id="is_du_1"></td>
+        <td class="calc" id="is_du_2"></td>
+        <td class="lbl">ÁGUA (g)</td>
+        <td class="calc" id="um_ag_1"></td>
+        <td class="calc" id="um_ag_2"></td>
+      </tr>
+      <tr>
+        <td class="lbl">DENSIDADE SECA "IN SITU" (g/cm³)</td>
+        <td class="calc" id="is_ds_1"></td>
+        <td class="calc" id="is_ds_2"></td>
+        <td class="lbl">UMIDADE (%)</td>
+        <td class="calc" id="um_u_1"></td>
+        <td class="calc" id="um_u_2"></td>
+      </tr>
+      <tr>
+        <td class="lbl">DENSIDADE SECA MÉDIA "IN SITU" (g/cm³)</td>
+        <td class="calc" colspan="2" id="is_media"></td>
+        <td class="lbl">UMIDADE MÉDIA (%)</td>
+        <td class="calc" colspan="2" id="um_media"></td>
+      </tr>
+    </table>
+
+    <div style="height:8px"></div>
+
+    <!-- CÁLCULO CR -->
+    <table>
+      <tr><td class="sec-title">Cálculo:</td></tr>
+      <tr>
+        <td style="padding:10px">
+          <table style="width:80%; margin:0 auto; border:none">
+            <tr>
+              <td class="nb resultado-cr" style="width:15%">CR =</td>
+              <td class="calc calc-box" style="width:20%" id="cr1"></td>
+              <td class="nb resultado-cr" style="width:5%">%</td>
+              <td class="nb" style="width:30%; text-align:center; border-bottom:1px solid #333">
+                <input class="campo" id="camada1" value="Camada inferior"></td>
+            </tr>
+            <tr><td class="nb" colspan="4" style="height:6px"></td></tr>
+            <tr>
+              <td class="nb resultado-cr">CR =</td>
+              <td class="calc calc-box" id="cr2"></td>
+              <td class="nb resultado-cr">%</td>
+              <td class="nb" style="text-align:center; border-bottom:1px solid #333">
+                <input class="campo" id="camada2" value="Camada final"></td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <div style="height:8px"></div>
+
+    <!-- CLASSIFICAÇÃO + ESPECIFICAÇÕES + ASSINATURA -->
+    <table>
+      <tr>
+        <td class="lbl" style="width:20%">Classificação das areias</td>
+        <td class="lbl num" style="width:16%">Compacidade Relativa</td>
+        <td class="spec" colspan="2">Especificação de projeto: SABESP: Fundações de estrutura críticas (Reservatórios, ETE, ETA) = ≥80 %</td>
+      </tr>
+      <tr>
+        <td>muito fofa</td><td class="num">0 - 15</td>
+        <td class="spec" colspan="2">Especificação de projeto: SABESP: Valas de tubulação, envoltória e laterais = ≥70 %</td>
+      </tr>
+      <tr><td>fofa</td><td class="num">15 - 50</td><td class="nb" colspan="2" rowspan="4" style="vertical-align:bottom">
+        <div class="assinatura">
+          _____________________________________<br>
+          <b>ENG.º DANIEL FRANCO DA SILVA</b><br>
+          Engº Civil - CREA Nº 5063702060
+        </div>
+      </td></tr>
+      <tr><td>média</td><td class="num">50 - 70</td></tr>
+      <tr><td>compacta</td><td class="num">70 - 85</td></tr>
+      <tr><td>muito compacta</td><td class="num">85 - 100</td></tr>
+    </table>
+  </div>
+  </div>
+</div>
+
+<script>
+/* ================= LOGIN ================= */
+const MASTER_EMAIL = "adriana@costajr.com.br";
+const MASTER_HASH  = "463fa24e7689dcc94c67ee2833341f6a1caaba2a19d8ddec4827a1e88e8c165c";
+
+async function sha256(txt){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function fazerLogin(){
+  const email = document.getElementById("loginEmail").value.trim().toLowerCase();
+  const senha = document.getElementById("loginSenha").value;
+  const ok = (email === MASTER_EMAIL) && (await sha256(senha)) === MASTER_HASH;
+  if(ok){
+    sessionStorage.setItem("dfranco_auth","1");
+    entrar();
+  } else {
+    document.getElementById("loginErro").style.display = "block";
+  }
+}
+function entrar(){
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  recalc();
+}
+function sair(){
+  sessionStorage.removeItem("dfranco_auth");
+  location.reload();
+}
+if(sessionStorage.getItem("dfranco_auth")==="1"){ window.addEventListener("DOMContentLoaded", entrar); }
+document.addEventListener("keydown", e=>{
+  if(e.key==="Enter" && document.getElementById("loginScreen").style.display!=="none"
+     && document.getElementById("app").style.display!=="block") fazerLogin();
+});
+
+/* ================= CÁLCULOS =================
+   Réplica das fórmulas da planilha "28-04 (7)" do arquivo PILOTO:
+   SOLO = (MOLDE+SOLO) - MOLDE
+   γh   = SOLO / VOLUME
+   γs   = γh / (1 + w/100)
+   γsmáx/γsmín = média das 3 determinações
+   In situ: SOLO ÚMIDO = (SOLO ÚMIDO+TARA) - MOLDE
+            DENS. ÚMIDA = SOLO ÚMIDO / VOLUME CILINDRO
+            DENS. SECA  = DENS. ÚMIDA / (1 + w/100)  [w do furo correspondente]
+   Umidade: SOLO SECO = (SOLO SECO+TARA) - TARA
+            ÁGUA = (SOLO ÚMIDO+TARA) - (SOLO SECO+TARA)
+            UMIDADE = ÁGUA / SOLO SECO * 100
+   CR (fórmula exata das células D35/D37 da planilha):
+   CR = [γdmax*(γd−γdmin)] / [γd*(γdmax−γdmin)] * 100
+   com γdmax = maior média entre os dois blocos e γdmin = menor.
+================================================ */
+const num = id => {
+  const el = document.getElementById(id);
+  const v = parseFloat((el.value ?? "").toString().replace(",", "."));
+  return isFinite(v) ? v : NaN;
+};
+const put = (id, v, dec) => {
+  document.getElementById(id).textContent = isFinite(v) ? v.toFixed(dec).replace(".", ",") : "";
+};
+
+function recalc(){
+  let gsx = {mx:[], mn:[]};
+  for(const p of ["mx","mn"]){
+    for(let i=1;i<=3;i++){
+      const ms=num(p+"_ms_"+i), m=num(p+"_m_"+i), vol=num(p+"_vol_"+i), w=num(p+"_w_"+i);
+      const solo = ms - m;
+      const gh = solo / vol;
+      const gs = gh / (1 + (isFinite(w)?w:0)/100);
+      put(p+"_solo_"+i, solo, 0);
+      put(p+"_gh_"+i, gh, 3);
+      put(p+"_gs_"+i, gs, 3);
+      put(p+"_gsx_"+i, gs, 3);
+      if(isFinite(gs)) gsx[p].push(gs);
+    }
+  }
+  const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : NaN;
+  const mediaMx = avg(gsx.mx), mediaMn = avg(gsx.mn);
+  put("gsmax_media", mediaMx, 3);
+  put("gsmin_media", mediaMn, 3);
+  const gdmax = Math.max(mediaMx, mediaMn), gdmin = Math.min(mediaMx, mediaMn);
+
+  let umid = [];
+  for(let i=1;i<=2;i++){
+    const ut=num("um_ut_"+i), st=num("um_st_"+i), t=num("um_t_"+i);
+    const ss = st - t;
+    const ag = ut - st;
+    const u = ag/ss*100;
+    put("um_ss_"+i, ss, 1);
+    put("um_ag_"+i, ag, 1);
+    put("um_u_"+i, u, 1);
+    umid.push(u);
+  }
+  const umValidas = umid.filter(isFinite);
+  put("um_media", avg(umValidas), 1);
+
+  let ds = [];
+  for(let i=1;i<=2;i++){
+    const st=num("is_st_"+i), m=num("is_m_"+i), vol=num("is_vol_"+i);
+    const su = st - m;
+    const du = su/vol;
+    const w = isFinite(umid[i-1]) ? umid[i-1] : avg(umValidas);
+    const d = du/(1+w/100);
+    put("is_su_"+i, su, 0);
+    put("is_du_"+i, du, 3);
+    put("is_ds_"+i, d, 3);
+    ds.push(d);
+  }
+  const dsValidas = ds.filter(isFinite);
+  put("is_media", avg(dsValidas), 3);
+
+  for(let i=1;i<=2;i++){
+    const gd = ds[i-1];
+    const cr = (gdmax*(gd-gdmin))/(gd*(gdmax-gdmin))*100;
+    put("cr"+i, cr, 1);
+    const el = document.getElementById("cr"+i);
+    el.classList.remove("cls-verde","cls-vermelho");
+    if(isFinite(cr)) el.classList.add(cr>=70 ? "cls-verde" : "cls-vermelho");
+  }
+}
+document.querySelectorAll("input.campo").forEach(el=>el.addEventListener("input", recalc));
+
+/* ================= PDF ================= */
+function gerarPDF(){
+  recalc();
+  const rel = document.getElementById("relNum").value.trim() || "SN";
+  const data = document.getElementById("data").value || new Date().toISOString().slice(0,10);
+  const nome = "Compacidade_Relativa_Rel_" + rel + "_" + data + ".pdf";
+  const folha = document.getElementById("folha");
+  const opt = {
+    margin: [6,6,6,6],
+    filename: nome,
+    image: {type:"jpeg", quality:0.97},
+    html2canvas: {scale:2, useCORS:true, width:960, windowWidth:960},
+    jsPDF: {unit:"mm", format:"a4", orientation:"portrait"}
+  };
+  html2pdf().set(opt).from(folha).save();
+}
+
+/* ================= LIMPAR ================= */
+function limpar(){
+  if(!confirm("Limpar todos os campos do ensaio?")) return;
+  const manter = ["cliente","obra","dispositivos","estufa","coordN","coordE","camada1","camada2"];
+  document.querySelectorAll("input.campo").forEach(el=>{
+    if(!manter.includes(el.id)) el.value = "";
+  });
+  ["mx_w_1","mx_w_2","mx_w_3","mn_w_1","mn_w_2","mn_w_3"].forEach(id=>document.getElementById(id).value="0");
+  recalc();
+}
+</script>
+</body>
+</html>
