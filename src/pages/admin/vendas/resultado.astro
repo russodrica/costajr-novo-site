@@ -1,0 +1,129 @@
+---
+// Financeiro — Vendas: "meu painel financeiro com valor de venda e lucro e
+// também um local onde possa ver isso por mês" (Adriana, 16/08/2026).
+//
+// Fonte: vendas_pedidos — alimentada de 2 em 2 horas pelo robô, com a tarifa
+// e o frete REAIS que o Mercado Livre cobrou em cada venda (a permissão de
+// Pedidos destravou em 16/08). Venda cancelada nunca conta como vendida;
+// venda sem custo do fornecedor entra na receita mas fica fora do lucro, e a
+// tela diz quantas são — nulo é honesto, zero mentiria.
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { temPerfilFresco } from "../../../lib/permissoes";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
+
+const db = supabaseAdmin();
+const { data } = await db.from("vendas_pedidos").select("*").order("vendido_em", { ascending: false }).limit(1000);
+const pedidos: any[] = data || [];
+
+const fmt$ = (n: any) => (n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+const cancelada = (p: any) => ["cancelled", "invalid"].includes(String(p.status_canal || "").toLowerCase());
+
+const vendidas = pedidos.filter((p) => !cancelada(p));
+const comLucro = vendidas.filter((p) => p.liquido != null && p.custo_fornecedor != null);
+const semCusto = vendidas.length - comLucro.length;
+const totalVendido = vendidas.reduce((s, p) => s + Number(p.valor_total || 0), 0);
+const totalLiquido = vendidas.reduce((s, p) => s + Number(p.liquido || 0), 0);
+const lucroTotal = comLucro.reduce((s, p) => s + (Number(p.liquido) - Number(p.custo_fornecedor)), 0);
+const receitaMedida = comLucro.reduce((s, p) => s + Number(p.valor_total || 0), 0);
+const margemGeral = receitaMedida > 0 ? (lucroTotal / receitaMedida) * 100 : null;
+const totalCancelado = pedidos.filter(cancelada).reduce((s, p) => s + Number(p.valor_total || 0), 0);
+const canceladas = pedidos.filter(cancelada).length;
+
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+type Mes = { rotulo: string; vendas: number; vendido: number; lucro: number; semCusto: number; cancelado: number; canceladas: number };
+const porMes: Record<string, Mes> = {};
+for (const p of pedidos) {
+  if (!p.vendido_em) continue;
+  const d = new Date(p.vendido_em);
+  const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const m = (porMes[chave] ||= { rotulo: `${MESES[d.getMonth()]}/${d.getFullYear()}`, vendas: 0, vendido: 0, lucro: 0, semCusto: 0, cancelado: 0, canceladas: 0 });
+  if (cancelada(p)) { m.cancelado += Number(p.valor_total || 0); m.canceladas += 1; continue; }
+  m.vendas += 1;
+  m.vendido += Number(p.valor_total || 0);
+  if (p.liquido != null && p.custo_fornecedor != null) m.lucro += Number(p.liquido) - Number(p.custo_fornecedor);
+  else m.semCusto += 1;
+}
+const meses = Object.keys(porMes).sort().reverse().map((k) => porMes[k]);
+---
+
+<Admin title="Financeiro — Vendas" current="vendas-resultado">
+  <div style="max-width:1000px">
+    <h1 style="margin:0 0 4px">Financeiro — Vendas</h1>
+    <p style="color:#6B7280;margin:0 0 18px">
+      Valor de venda e lucro, no total e por mês — com a tarifa e o frete reais do Mercado Livre,
+      venda a venda. Atualiza sozinho de 2 em 2 horas.
+    </p>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      <div style="flex:1;min-width:180px;background:#EFF6FF;border-radius:8px;padding:16px">
+        <div style="font-size:28px;font-weight:700;color:#1D4ED8">{fmt$(totalVendido)}</div>
+        <div style="color:#1E40AF;font-size:13px">total vendido ({vendidas.length} venda{vendidas.length === 1 ? "" : "s"})</div>
+      </div>
+      <div style="flex:1;min-width:180px;background:#F0FDF4;border-radius:8px;padding:16px">
+        <div style="font-size:28px;font-weight:700;color:#15803D">{fmt$(totalLiquido)}</div>
+        <div style="color:#14532D;font-size:13px">líquido recebido (após tarifa e frete)</div>
+      </div>
+      <div style="flex:1;min-width:180px;background:#DCFCE7;border-radius:8px;padding:16px">
+        <div style="font-size:28px;font-weight:700;color:#15803D">{fmt$(lucroTotal)}</div>
+        <div style="color:#14532D;font-size:13px">
+          lucro{margemGeral != null ? ` · ${margemGeral.toFixed(1).replace(".", ",")}% da receita medida` : ""}
+        </div>
+      </div>
+      <div style="flex:1;min-width:180px;background:#FEF2F2;border-radius:8px;padding:16px">
+        <div style="font-size:28px;font-weight:700;color:#B91C1C">{fmt$(totalCancelado)}</div>
+        <div style="color:#7F1D1D;font-size:13px">cancelado ({canceladas} venda{canceladas === 1 ? "" : "s"}) — dinheiro perdido</div>
+      </div>
+    </div>
+
+    {semCusto > 0 && (
+      <p style="color:#B45309;font-size:13px;margin:0 0 14px">
+        {semCusto} venda{semCusto === 1 ? "" : "s"} sem custo do fornecedor identificado —
+        conta{semCusto === 1 ? "" : "m"} na receita, mas fica{semCusto === 1 ? "" : "m"} fora do lucro.
+      </p>
+    )}
+
+    <div style="border:1px solid #E5E7EB;border-radius:10px;background:#fff;overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1px solid #E5E7EB"><strong>Por mês</strong></div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <thead>
+          <tr style="text-align:left;color:#6B7280;border-bottom:1px solid #E5E7EB;background:#F9FAFB">
+            <th style="padding:10px 16px">Mês</th>
+            <th style="padding:10px 12px">Vendas</th>
+            <th style="padding:10px 12px">Total vendido</th>
+            <th style="padding:10px 12px">Lucro</th>
+            <th style="padding:10px 12px">Cancelado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {meses.map((m) => (
+            <tr style="border-bottom:1px solid #F3F4F6">
+              <td style="padding:10px 16px;font-weight:600">{m.rotulo}</td>
+              <td style="padding:10px 12px">{m.vendas}</td>
+              <td style="padding:10px 12px">{fmt$(m.vendido)}</td>
+              <td style={`padding:10px 12px;color:${m.lucro < 0 ? "#B91C1C" : "#15803D"};font-weight:600`}>
+                {fmt$(m.lucro)}{m.semCusto > 0 ? ` (+${m.semCusto} sem custo)` : ""}
+              </td>
+              <td style="padding:10px 12px;color:#B91C1C">{m.cancelado > 0 ? `${fmt$(m.cancelado)} (${m.canceladas})` : "—"}</td>
+            </tr>
+          ))}
+          {meses.length === 0 && (
+            <tr><td colspan="5" style="padding:16px;color:#6B7280">Nenhuma venda registrada ainda.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+
+    <p style="color:#9CA3AF;font-size:12px;margin:12px 0 0">
+      Meses antigos com lucro negativo são reais: eram os preços de antes da correção automática
+      (14–16/08). O detalhe de cada venda está em <a href="/admin/vendas/pedidos">Pedidos &amp; Resultado</a>.
+    </p>
+  </div>
+</Admin>

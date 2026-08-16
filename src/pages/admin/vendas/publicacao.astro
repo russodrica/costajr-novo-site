@@ -1,0 +1,134 @@
+---
+// Falhas de publicação — a aba própria que a Adriana pediu (16/08/2026):
+// "vamos separar em uma aba, pois fica poluído o painel e conforme for
+// resolvendo baixar". O painel principal (/admin/vendas) deixou de mostrar
+// alertas `publicacao_falhou`; todos vivem aqui, agrupados por MOTIVO —
+// porque o conserto é por motivo (preencher "Cor" em lote, por exemplo),
+// não por anúncio.
+import Admin from "../../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../../lib/auth";
+import { temPerfilFresco } from "../../../lib/permissoes";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
+
+const db = supabaseAdmin();
+const { data } = await db.from("vendas_alertas")
+  .select("*, vendas_produtos(nome, sku_trazpraca)")
+  .eq("resolvido", false)
+  .eq("tipo", "publicacao_falhou")
+  .order("created_at", { ascending: false })
+  .limit(500);
+const alertas: any[] = data || [];
+
+// Uma linha por PRODUTO (a rodada horária re-tenta e re-alerta o mesmo
+// anúncio; mostrar 5 cópias do mesmo problema é o que poluía o painel).
+const porProduto = new Map<string, any>();
+for (const a of alertas) {
+  const chave = a.produto_id || a.mensagem;
+  if (!porProduto.has(chave)) porProduto.set(chave, { ...a, repeticoes: 0, ids: [] });
+  const reg = porProduto.get(chave);
+  reg.repeticoes += 1;
+  reg.ids.push(a.id);
+}
+const unicos = [...porProduto.values()];
+
+// Agrupar por motivo: o conserto é em lote, por tipo de pendência.
+const motivoDe = (m: string) => {
+  const falta = m.match(/exige informação que a ficha não tem: ([^.]+)\./);
+  if (falta) return `Ficha sem: ${falta[1]}`;
+  if (/free_shipping_cost_exceeded|Free shipping costs exceeds/i.test(m)) return "Frete grátis maior que o preço";
+  if (/not mode me1|lost_me1/i.test(m)) return "Modo de envio (me1) não habilitado";
+  if (/"Cor" é obrigatório/i.test(m)) return "Ficha sem: Cor";
+  if (/código universal|GTIN|EAN/i.test(m)) return "Código de barras (EAN/GTIN)";
+  return "Outros motivos";
+};
+const grupos = new Map<string, any[]>();
+for (const u of unicos) {
+  const motivo = motivoDe(u.mensagem || "");
+  if (!grupos.has(motivo)) grupos.set(motivo, []);
+  grupos.get(motivo)!.push(u);
+}
+const listaGrupos = [...grupos.entries()].sort((a, b) => b[1].length - a[1].length);
+
+const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
+---
+
+<Admin title="Falhas de publicação" current="vendas-publicacao">
+  <div style="max-width:1100px">
+    <h1 style="margin:0 0 4px">Falhas de publicação</h1>
+    <p style="color:#6B7280;margin:0 0 18px">
+      Anúncios que o Mercado Livre recusou, agrupados por motivo — o conserto é em lote.
+      Cada linha é UM produto (as repetições das rodadas horárias estão somadas).
+      Resolvendo a pendência da ficha, a próxima rodada publica e a linha some sozinha.
+    </p>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      <div style="flex:1;min-width:170px;background:#FEE2E2;border-radius:8px;padding:14px">
+        <div style="font-size:26px;font-weight:700;color:#B91C1C">{unicos.length}</div>
+        <div style="color:#7F1D1D;font-size:13px">produto(s) com falha</div>
+      </div>
+      <div style="flex:1;min-width:170px;background:#F3F4F6;border-radius:8px;padding:14px">
+        <div style="font-size:26px;font-weight:700">{listaGrupos.length}</div>
+        <div style="color:#6B7280;font-size:13px">motivo(s) diferentes</div>
+      </div>
+    </div>
+
+    <div id="aviso" style="display:none;border-radius:8px;padding:12px;margin-bottom:16px"></div>
+
+    {unicos.length === 0 && (
+      <p style="color:#15803D;font-weight:600">Nenhuma falha de publicação aberta. 🎉</p>
+    )}
+
+    {listaGrupos.map(([motivo, itens]) => (
+      <div style="border:1px solid #E5E7EB;border-radius:10px;margin-bottom:16px;background:#fff">
+        <div style="padding:12px 16px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center">
+          <strong>{motivo}</strong>
+          <span style="background:#FEE2E2;color:#B91C1C;border-radius:99px;padding:2px 10px;font-size:13px">{itens.length}</span>
+        </div>
+        {itens.map((u: any) => (
+          <div data-alertas={u.ids.join(",")} style="padding:10px 16px;border-bottom:1px solid #F3F4F6;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+            <div style="min-width:0">
+              <div style="font-weight:600;font-size:14px">
+                {u.vendas_produtos?.nome || "—"}
+                {u.vendas_produtos?.sku_trazpraca && <span style="color:#6B7280;font-weight:400"> · SKU {u.vendas_produtos.sku_trazpraca}</span>}
+              </div>
+              <div style="color:#6B7280;font-size:13px;margin-top:2px">{(u.mensagem || "").slice(0, 220)}</div>
+              <div style="color:#9CA3AF;font-size:12px;margin-top:2px">
+                última tentativa {fdt(u.created_at)}{u.repeticoes > 1 ? ` · ${u.repeticoes} tentativas registradas` : ""}
+              </div>
+            </div>
+            <button type="button" data-resolver style="flex-shrink:0;padding:6px 12px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;cursor:pointer;font-size:13px">Marcar resolvido</button>
+          </div>
+        ))}
+      </div>
+    ))}
+  </div>
+</Admin>
+
+<script is:inline>
+  function aviso(texto, tipo) {
+    const el = document.getElementById("aviso");
+    const cores = { ok: ["#DCFCE7", "#15803D"], erro: ["#FEE2E2", "#B91C1C"], info: ["#EFF6FF", "#1D4ED8"] }[tipo] || ["#F3F4F6", "#374151"];
+    el.style.background = cores[0]; el.style.color = cores[1];
+    el.textContent = texto; el.style.display = "block";
+  }
+  document.addEventListener("click", async (ev) => {
+    if (!ev.target.matches("[data-resolver]")) return;
+    const linha = ev.target.closest("[data-alertas]");
+    const ids = (linha.getAttribute("data-alertas") || "").split(",").filter(Boolean);
+    aviso("Resolvendo…", "info");
+    let ok = 0;
+    for (const id of ids) {
+      const r = await fetch(`/api/admin/vendas/alertas/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ acao: "resolver" }) });
+      if (r.ok) ok++;
+    }
+    if (ok) { linha.style.opacity = "0.35"; ev.target.disabled = true; aviso(`Resolvido (${ok} registro${ok > 1 ? "s" : ""}).`, "ok"); }
+    else aviso("Não consegui resolver — tente de novo.", "erro");
+  });
+</script>
