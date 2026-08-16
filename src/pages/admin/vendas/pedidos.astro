@@ -130,6 +130,10 @@ const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado
       As vendas do Mercado Livre, prontas para cadastrar na TrazPraCa em
       <a href="https://app.trazpracaclub.com.br/pedidos-cadastro" target="_blank" rel="noopener">Pedidos → Cadastrar Pedido</a>.
       Última leitura: {ultimaExec ? fdt(ultimaExec.executado_em) : "nunca"}.
+      <br />
+      A cada 2 horas o robô confere a tela do fornecedor e marca sozinho o que já foi
+      <strong> comprado</strong> e o que já foi <strong>despachado</strong> (com o código de rastreio).
+      Os botões abaixo continuam valendo para corrigir na mão.
     </p>
 
     {faltaMigration && (
@@ -229,12 +233,31 @@ const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado
               {p.status_canal === "cancelled" && <span style="margin-left:8px;background:#F3F4F6;color:#6B7280;border-radius:99px;padding:2px 10px;font-size:12px">venda cancelada</span>}
               {p.fornecedor_status === "comprado" && <span style="margin-left:8px;background:#DCFCE7;color:#15803D;border-radius:99px;padding:2px 10px;font-size:12px">comprado</span>}
               {p.fornecedor_status === "a_comprar" && p.status_canal !== "cancelled" && <span style="margin-left:8px;background:#FEE2E2;color:#B91C1C;border-radius:99px;padding:2px 10px;font-size:12px">a comprar</span>}
+              {/* Situação lida sozinha na tela da TrazPraCa (migration 109). */}
+              {p.fornecedor_situacao && (
+                <span style={`margin-left:8px;border-radius:99px;padding:2px 10px;font-size:12px;${
+                  ["ATENDIDO", "ENVIADO", "ENTREGUE"].includes(p.fornecedor_situacao)
+                    ? "background:#DBEAFE;color:#1D4ED8"
+                    : p.fornecedor_situacao === "DELETADO" || p.fornecedor_situacao === "CANCELADO"
+                    ? "background:#F3F4F6;color:#6B7280"
+                    : "background:#FEF3C7;color:#B45309"}`}>
+                  fornecedor: {p.fornecedor_situacao.toLowerCase()}
+                </span>
+              )}
             </div>
             <div style="color:#6B7280;font-size:13px;margin-top:2px">
               Vendido em {fdt(p.vendido_em)}
               {p.prazo_despacho && ` · despachar até ${fdata(p.prazo_despacho)}`}
               {p.comprado_em && ` · comprado em ${fdt(p.comprado_em)}`}
+              {p.comprado_por === "trazpraca_automatico" && " (detectado automaticamente)"}
             </div>
+            {(p.fornecedor_rastreio || p.fornecedor_enviado_em) && (
+              <div style="color:#1D4ED8;font-size:13px;margin-top:4px">
+                📦 Despachado pelo fornecedor
+                {p.fornecedor_enviado_em && ` em ${fdt(p.fornecedor_enviado_em)}`}
+                {p.fornecedor_rastreio && <> · rastreio <strong>{p.fornecedor_rastreio}</strong></>}
+              </div>
+            )}
           </div>
           <div style="text-align:right">
             <div style="font-size:18px;font-weight:700">{fmt$(p.valor_total)}</div>
