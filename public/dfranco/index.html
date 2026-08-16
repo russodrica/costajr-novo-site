@@ -497,7 +497,8 @@ function recalc(){
     const st=num("is_st_"+i), m=num("is_m_"+i), vol=num("is_vol_"+i);
     const su = st - m;
     const du = su/vol;
-    const w = isFinite(umid[i-1]) ? umid[i-1] : avg(umValidas);
+    let w = isFinite(umid[i-1]) ? umid[i-1] : avg(umValidas);
+    if(!isFinite(w)) w = 0; // sem umidade preenchida, segue o Excel (w = 0)
     const d = du/(1+w/100);
     put("is_su_"+i, su, 0);
     put("is_du_"+i, du, 3);
