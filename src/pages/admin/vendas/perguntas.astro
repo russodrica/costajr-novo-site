@@ -1,0 +1,160 @@
+---
+// Perguntas do Mercado Livre — revisar o rascunho do robô e aprovar.
+//
+// "Sim construir" (Adriana, 17/08/2026). O robô lê as perguntas de hora em
+// hora e deixa aqui um rascunho montado com os dados da ficha. Ela edita se
+// quiser e aprova; a rodada seguinte envia ao ML. Rascunho com a marca
+// [REVISAR...] nunca é enviado, mesmo aprovado — o robô trava por segurança.
+import Admin from "../../../layouts/Admin.astro";
+import { requireAdminPage } from "../../../lib/auth";
+import { supabaseAdmin } from "../../../lib/supabase";
+
+const admin = await requireAdminPage(Astro, ["admin"]);
+if (admin instanceof Response) return admin;
+
+const db = supabaseAdmin();
+const { data: todas, error } = await db
+  .from("vendas_perguntas")
+  .select("*")
+  .order("perguntado_em", { ascending: false })
+  .limit(200);
+
+const faltaMigration = !!error;
+const linhas = todas || [];
+const pendentes = linhas.filter((q) => q.status === "pendente");
+const aprovadas = linhas.filter((q) => q.status === "aprovada");
+const respondidas = linhas.filter((q) => q.status === "respondida").slice(0, 20);
+const comErro = linhas.filter((q) => q.status === "erro");
+
+const fdt = (v: string | null) =>
+  v ? new Date(v).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+---
+
+<Admin title="Perguntas — Mercado Livre" current="vendas-perguntas">
+  <div style="max-width:900px">
+    <h1 style="margin:0 0 4px">Perguntas — Mercado Livre</h1>
+    <p style="color:#6B7280;margin:0 0 18px">
+      O robô lê as perguntas de hora em hora e deixa um rascunho montado com os dados da ficha.
+      Revise, edite se precisar e aprove — a próxima rodada envia ao comprador. Nada é
+      respondido sem a sua aprovação.
+    </p>
+
+    {faltaMigration && (
+      <p style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:12px;color:#991B1B">
+        A tabela ainda não existe — rode a migration 113 (push no repositório aplica sozinho).
+      </p>
+    )}
+
+    <div id="aviso" style="display:none;border-radius:8px;padding:12px;margin-bottom:16px"></div>
+
+    {comErro.length > 0 && (
+      <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;margin-bottom:14px;color:#991B1B;font-size:14px">
+        {comErro.length} resposta(s) falharam no envio — o motivo está no cartão; corrija o texto e aprove de novo.
+      </div>
+    )}
+
+    <h2 style="font-size:17px;margin:18px 0 10px">
+      Aguardando sua aprovação ({pendentes.length + comErro.length})
+    </h2>
+    {pendentes.length === 0 && comErro.length === 0 && (
+      <p style="color:#6B7280">Nenhuma pergunta pendente. 🎉</p>
+    )}
+    {[...comErro, ...pendentes].map((q) => (
+      <div data-pergunta={q.id} style="border:1px solid #E5E7EB;border-radius:10px;padding:16px;margin-bottom:14px;background:#fff">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:600">{q.produto_nome || `Anúncio ${q.ml_item_id || "?"}`}</div>
+            <div style="color:#6B7280;font-size:13px">
+              perguntado em {fdt(q.perguntado_em)}
+              {q.ml_item_id && (
+                <> · <a href={`https://produto.mercadolivre.com.br/${String(q.ml_item_id).replace("MLB", "MLB-")}`} target="_blank" rel="noopener">ver anúncio</a></>
+              )}
+            </div>
+          </div>
+          {q.status === "erro" && (
+            <span style="background:#FEE2E2;color:#B91C1C;border-radius:99px;padding:2px 10px;font-size:12px;height:fit-content">falhou no envio</span>
+          )}
+        </div>
+
+        <p style="background:#F3F4F6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:15px">
+          ❓ {q.pergunta}
+        </p>
+
+        {q.erro_envio && (
+          <p style="color:#B91C1C;font-size:13px;margin:0 0 8px">Motivo da falha: {q.erro_envio}</p>
+        )}
+
+        <label style="font-size:13px;color:#6B7280">Resposta (edite à vontade):</label>
+        <textarea data-texto rows="4" maxlength="2000" style="width:100%;box-sizing:border-box;border:1px solid #D1D5DB;border-radius:8px;padding:10px;font-size:14px;font-family:inherit;margin:4px 0 10px">{q.resposta || q.rascunho || ""}</textarea>
+        {String(q.rascunho || "").includes("[REVISAR") && (
+          <p style="color:#B45309;font-size:13px;margin:0 0 8px">
+            ⚠ A ficha não tinha esse dado — o robô NÃO envia enquanto o texto contiver a marca [REVISAR…]. Apague a marca ao completar a resposta.
+          </p>
+        )}
+        <div style="display:flex;gap:8px">
+          <button type="button" data-aprovar style="padding:8px 16px;border:none;border-radius:6px;background:#15803D;color:#fff;cursor:pointer;font-weight:600">Aprovar — enviar na próxima rodada</button>
+          <button type="button" data-descartar style="padding:8px 16px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;cursor:pointer">Descartar (respondo no ML mesmo)</button>
+        </div>
+      </div>
+    ))}
+
+    {aprovadas.length > 0 && (
+      <>
+        <h2 style="font-size:17px;margin:22px 0 10px">Aprovadas, aguardando o robô enviar ({aprovadas.length})</h2>
+        {aprovadas.map((q) => (
+          <div style="border:1px solid #BBF7D0;background:#F0FDF4;border-radius:10px;padding:12px 16px;margin-bottom:10px;font-size:14px">
+            <strong>{q.produto_nome || q.ml_item_id}</strong> — ❓ {q.pergunta}<br />
+            <span style="color:#15803D">→ {q.resposta || q.rascunho}</span>
+          </div>
+        ))}
+      </>
+    )}
+
+    {respondidas.length > 0 && (
+      <>
+        <h2 style="font-size:17px;margin:22px 0 10px">Respondidas recentemente</h2>
+        {respondidas.map((q) => (
+          <div style="border:1px solid #E5E7EB;border-radius:10px;padding:12px 16px;margin-bottom:10px;font-size:14px;color:#374151">
+            <strong>{q.produto_nome || q.ml_item_id}</strong> — ❓ {q.pergunta}<br />
+            ✅ {q.resposta} <span style="color:#9CA3AF">({fdt(q.respondido_em)})</span>
+          </div>
+        ))}
+      </>
+    )}
+  </div>
+
+  <script>
+    const aviso = document.getElementById("aviso");
+    function mostrar(texto, ok) {
+      aviso.style.display = "block";
+      aviso.style.background = ok ? "#F0FDF4" : "#FEF2F2";
+      aviso.style.border = ok ? "1px solid #BBF7D0" : "1px solid #FECACA";
+      aviso.style.color = ok ? "#15803D" : "#991B1B";
+      aviso.textContent = texto;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    async function agir(card, acao) {
+      const id = card.dataset.pergunta;
+      const texto = card.querySelector("[data-texto]")?.value || "";
+      const r = await fetch("/api/admin/vendas/perguntas", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, acao, texto }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) {
+        card.style.opacity = "0.45";
+        card.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        mostrar(acao === "aprovar"
+          ? "Aprovada! O robô envia na próxima rodada (toda hora, no minuto 15)."
+          : "Descartada.", true);
+      } else {
+        mostrar(j.error || "Não consegui salvar — tente de novo.", false);
+      }
+    }
+    document.querySelectorAll("[data-pergunta]").forEach((card) => {
+      card.querySelector("[data-aprovar]")?.addEventListener("click", () => agir(card, "aprovar"));
+      card.querySelector("[data-descartar]")?.addEventListener("click", () => agir(card, "descartar"));
+    });
+  </script>
+</Admin>
