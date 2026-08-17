@@ -13,7 +13,10 @@ create table if not exists vendas_perguntas (
   id uuid primary key default gen_random_uuid(),
   ml_question_id text not null unique,
   ml_item_id text,
-  produto_id uuid references vendas_produtos(id),
+  -- Sem foreign key de propósito: o tipo do id de vendas_produtos não casa
+  -- com uuid (o runner #47 recusou o constraint) e a ligação por ml_item_id
+  -- já basta para o painel. Guardar o id como texto resolve.
+  produto_id text,
   produto_nome text,
   pergunta text not null,
   comprador text,
