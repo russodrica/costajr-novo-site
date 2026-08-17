@@ -218,6 +218,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     // painel") e o financeiro mensal ("valor de venda e lucro, por mês").
     { key: "vendas-publicacao", label: "Falhas de publicação", icon: "🚫", href: "/admin/vendas/publicacao" },
     { key: "vendas-resultado", label: "Financeiro — Vendas", icon: "💰", href: "/admin/vendas/resultado" },
+    { key: "vendas-perguntas", label: "Perguntas — ML", icon: "❓", href: "/admin/vendas/perguntas" },
   ] },
   { id: "juridico", label: "Jurídico & Documentos", itens: [
     { key: "doc-empresa", label: "Documentos da Empresa", icon: "📑", href: "/admin/doc-empresa" },
