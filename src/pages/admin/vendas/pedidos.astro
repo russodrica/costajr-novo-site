@@ -261,8 +261,18 @@ const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado
           </div>
           <div style="text-align:right">
             <div style="font-size:18px;font-weight:700">{fmt$(p.valor_total)}</div>
-            <div style="color:#6B7280;font-size:12px">
-              líquido {fmt$(p.liquido)} · custo {fmt$(p.custo_fornecedor)}
+            {/* Os TRES custos de cada venda, abertos (pedido da Adriana,
+                17/08): produto (TrazPraCa) + frete + tarifa do ML. */}
+            <div style="color:#6B7280;font-size:12px;line-height:1.6">
+              tarifa ML −{fmt$(p.tarifa_canal)} · frete ML −{fmt$(p.frete_canal)}<br />
+              produto −{fmt$(p.custo_fornecedor)} ·{" "}
+              {p.liquido != null && p.custo_fornecedor != null ? (
+                <strong style={`color:${Number(p.liquido) - Number(p.custo_fornecedor) >= 0 ? "#059669" : "#DC2626"}`}>
+                  resultado {fmt$(Number(p.liquido) - Number(p.custo_fornecedor))}
+                </strong>
+              ) : (
+                <span>resultado — falta custo</span>
+              )}
             </div>
           </div>
         </div>
@@ -272,6 +282,29 @@ const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado
             <li>{i.quantidade || 1}× <strong>SKU {i.sku || "sem SKU"}</strong> — {i.nome}</li>
           ))}
         </ul>
+
+        {/* A cobranca do fornecedor conferida: o robo grava o que ela PAGOU
+            (fornecedor_pago) e compara com o custo do produto. */}
+        {p.fornecedor_pago != null && p.custo_fornecedor != null &&
+          Math.abs(Number(p.fornecedor_pago) - Number(p.custo_fornecedor)) > 0.05 && (
+          <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;margin:0 0 12px;color:#991B1B;font-size:13px">
+            ⚠ A TrazPraCa cobrou <strong>{fmt$(p.fornecedor_pago)}</strong> neste pedido, mas o custo do
+            produto é <strong>{fmt$(p.custo_fornecedor)}</strong> (diferença de{" "}
+            {fmt$(Number(p.fornecedor_pago) - Number(p.custo_fornecedor))}). A cobrança certa é só o
+            custo do produto — conteste pelo Chamado deles.
+          </div>
+        )}
+
+        {/* A TrazPraCa confirmou (17/08): o pagamento do pedido la e SO o
+            custo do produto. A automacao deles ja cobrou frete embutido por
+            engano (pedido #26622148877: R$ 50,02 por um produto de R$ 26,72)
+            — por isso o valor certo fica aqui, na cara, antes de pagar. */}
+        {p.fornecedor_status !== "comprado" && p.status_canal !== "cancelled" && p.custo_fornecedor != null && (
+          <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 12px;margin:0 0 12px;color:#92400E;font-size:13px">
+            💰 Ao pagar na TrazPraCa, o valor certo é <strong>{fmt$(p.custo_fornecedor)}</strong> — só o
+            custo do produto. Se vier mais que isso, é erro deles: conteste pelo Chamado antes de pagar.
+          </div>
+        )}
 
         <details>
           <summary style="cursor:pointer;color:#2563EB;font-size:14px">Dados para cadastrar na TrazPraCa</summary>

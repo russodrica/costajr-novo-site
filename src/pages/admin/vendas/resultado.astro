@@ -37,19 +37,29 @@ const margemGeral = receitaMedida > 0 ? (lucroTotal / receitaMedida) * 100 : nul
 const totalCancelado = pedidos.filter(cancelada).reduce((s, p) => s + Number(p.valor_total || 0), 0);
 const canceladas = pedidos.filter(cancelada).length;
 
+// Os TRES custos abertos (pedido da Adriana, 17/08): "eu preciso enxergar o
+// custo do produto, mais o custo do frete, mais o custo do Mercado Livre".
+const totalTarifa = vendidas.reduce((s, p) => s + Number(p.tarifa_canal || 0), 0);
+const totalFrete = vendidas.reduce((s, p) => s + Number(p.frete_canal || 0), 0);
+const totalProduto = comLucro.reduce((s, p) => s + Number(p.custo_fornecedor || 0), 0);
+
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-type Mes = { rotulo: string; vendas: number; vendido: number; lucro: number; semCusto: number; cancelado: number; canceladas: number };
+type Mes = { rotulo: string; vendas: number; vendido: number; tarifa: number; frete: number; produto: number; lucro: number; semCusto: number; cancelado: number; canceladas: number };
 const porMes: Record<string, Mes> = {};
 for (const p of pedidos) {
   if (!p.vendido_em) continue;
   const d = new Date(p.vendido_em);
   const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  const m = (porMes[chave] ||= { rotulo: `${MESES[d.getMonth()]}/${d.getFullYear()}`, vendas: 0, vendido: 0, lucro: 0, semCusto: 0, cancelado: 0, canceladas: 0 });
+  const m = (porMes[chave] ||= { rotulo: `${MESES[d.getMonth()]}/${d.getFullYear()}`, vendas: 0, vendido: 0, tarifa: 0, frete: 0, produto: 0, lucro: 0, semCusto: 0, cancelado: 0, canceladas: 0 });
   if (cancelada(p)) { m.cancelado += Number(p.valor_total || 0); m.canceladas += 1; continue; }
   m.vendas += 1;
   m.vendido += Number(p.valor_total || 0);
-  if (p.liquido != null && p.custo_fornecedor != null) m.lucro += Number(p.liquido) - Number(p.custo_fornecedor);
-  else m.semCusto += 1;
+  m.tarifa += Number(p.tarifa_canal || 0);
+  m.frete += Number(p.frete_canal || 0);
+  if (p.liquido != null && p.custo_fornecedor != null) {
+    m.produto += Number(p.custo_fornecedor);
+    m.lucro += Number(p.liquido) - Number(p.custo_fornecedor);
+  } else m.semCusto += 1;
 }
 const meses = Object.keys(porMes).sort().reverse().map((k) => porMes[k]);
 ---
@@ -83,6 +93,12 @@ const meses = Object.keys(porMes).sort().reverse().map((k) => porMes[k]);
       </div>
     </div>
 
+    <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px 16px;margin:0 0 18px;color:#374151;font-size:14px">
+      A conta, aberta: vendido {fmt$(totalVendido)} − tarifa ML <strong>{fmt$(totalTarifa)}</strong> −
+      frete ML <strong>{fmt$(totalFrete)}</strong> − produto (TrazPraCa) <strong>{fmt$(totalProduto)}</strong>
+      {" "}= lucro <strong style={`color:${lucroTotal < 0 ? "#B91C1C" : "#15803D"}`}>{fmt$(lucroTotal)}</strong>
+    </div>
+
     {semCusto > 0 && (
       <p style="color:#B45309;font-size:13px;margin:0 0 14px">
         {semCusto} venda{semCusto === 1 ? "" : "s"} sem custo do fornecedor identificado —
@@ -98,6 +114,9 @@ const meses = Object.keys(porMes).sort().reverse().map((k) => porMes[k]);
             <th style="padding:10px 16px">Mês</th>
             <th style="padding:10px 12px">Vendas</th>
             <th style="padding:10px 12px">Total vendido</th>
+            <th style="padding:10px 12px">Tarifa ML</th>
+            <th style="padding:10px 12px">Frete ML</th>
+            <th style="padding:10px 12px">Produto</th>
             <th style="padding:10px 12px">Lucro</th>
             <th style="padding:10px 12px">Cancelado</th>
           </tr>
@@ -108,6 +127,9 @@ const meses = Object.keys(porMes).sort().reverse().map((k) => porMes[k]);
               <td style="padding:10px 16px;font-weight:600">{m.rotulo}</td>
               <td style="padding:10px 12px">{m.vendas}</td>
               <td style="padding:10px 12px">{fmt$(m.vendido)}</td>
+              <td style="padding:10px 12px;color:#6B7280">{fmt$(m.tarifa)}</td>
+              <td style="padding:10px 12px;color:#6B7280">{fmt$(m.frete)}</td>
+              <td style="padding:10px 12px;color:#6B7280">{fmt$(m.produto)}</td>
               <td style={`padding:10px 12px;color:${m.lucro < 0 ? "#B91C1C" : "#15803D"};font-weight:600`}>
                 {fmt$(m.lucro)}{m.semCusto > 0 ? ` (+${m.semCusto} sem custo)` : ""}
               </td>
@@ -115,7 +137,7 @@ const meses = Object.keys(porMes).sort().reverse().map((k) => porMes[k]);
             </tr>
           ))}
           {meses.length === 0 && (
-            <tr><td colspan="5" style="padding:16px;color:#6B7280">Nenhuma venda registrada ainda.</td></tr>
+            <tr><td colspan="8" style="padding:16px;color:#6B7280">Nenhuma venda registrada ainda.</td></tr>
           )}
         </tbody>
       </table>
