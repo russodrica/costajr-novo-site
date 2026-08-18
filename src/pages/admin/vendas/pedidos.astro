@@ -258,6 +258,16 @@ const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado
                 {p.fornecedor_rastreio && <> · rastreio <strong>{p.fornecedor_rastreio}</strong></>}
               </div>
             )}
+            {/* O vigia da declaração (18/08): envio em invoice_pending = o
+                botão da Declaração de Conteúdo está LIBERADO no painel do ML
+                — emitir destrava a etiqueta, que aí desce para a TrazPraCa. */}
+            {p.etiqueta_status === "declaracao_pendente_no_ml" && p.status_canal !== "cancelled" && (
+              <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:8px 12px;margin-top:6px;color:#9A3412;font-size:13px">
+                📋 <strong>Declaração de Conteúdo liberada no Mercado Livre</strong> — emita no
+                painel do ML (Vendas → esta venda) para destravar a etiqueta.
+                {" "}<a href="https://www.mercadolivre.com.br/vendas/omni/listing" target="_blank" rel="noopener">Abrir minhas vendas</a>
+              </div>
+            )}
           </div>
           <div style="text-align:right">
             <div style="font-size:18px;font-weight:700">{fmt$(p.valor_total)}</div>
