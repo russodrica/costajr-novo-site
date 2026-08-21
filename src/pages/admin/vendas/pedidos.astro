@@ -136,6 +136,33 @@ const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado
       Os botões abaixo continuam valendo para corrigir na mão.
     </p>
 
+    {/*
+      O botão que ela pediu (21/08/2026): "assim que eu receba mensagem de que
+      algo foi vendido, eu consiga apertar e esse botão trazer as informações
+      pro meu painel. Pois, preciso saber os custos do produto para não pagar
+      errado."
+
+      Antes disso a leitura só existia dentro do robô no GitHub Actions — e
+      quando o orçamento do Actions estourou, em 20/08, TODA venda parou de
+      chegar. Este botão lê o Mercado Livre aqui mesmo, na Vercel: não gasta
+      minuto de Actions e funciona mesmo com o robô bloqueado.
+
+      Ele só LÊ. Não compra e não paga nada — e não desfaz o que já foi
+      marcado como comprado nesta tela.
+    */}
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+      <button
+        type="button"
+        id="btn-buscar"
+        style="padding:12px 20px;border:0;border-radius:8px;background:#1D4ED8;color:#fff;font-size:15px;font-weight:600;cursor:pointer"
+      >
+        Buscar vendas agora
+      </button>
+      <span style="color:#6B7280;font-size:13px">
+        Puxa direto do Mercado Livre as vendas dos últimos 7 dias, com o custo real de cada produto.
+      </span>
+    </div>
+
     {faltaMigration && (
       <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:14px;margin-bottom:18px">
         <strong>Falta rodar a migration 088.</strong> A tabela <code>vendas_pedidos</code> ainda não existe no banco.
@@ -380,6 +407,58 @@ const linhas = pedidos.map((p) => ({ ...p, bloco: blocoDe(p), atrasado: atrasado
     } catch (e) {
       aviso("Falha de rede: " + e.message, "erro");
     }
+  }
+
+  // Buscar vendas agora — a leitura do ML feita pelo próprio portal.
+  //
+  // Trava o botão enquanto roda: dois cliques seguidos não duplicam pedido
+  // (a chave única canal+numero impede), mas duplicam a espera e confundem.
+  // Enquanto espera, o texto muda — botão que não dá sinal de vida é o erro
+  // que já aconteceu aqui em 05/08.
+  const btn = document.getElementById("btn-buscar");
+  if (btn) {
+    btn.addEventListener("click", async () => {
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.style.opacity = "0.6";
+      btn.style.cursor = "wait";
+      btn.textContent = "Buscando no Mercado Livre…";
+      aviso("Lendo as vendas no Mercado Livre e cruzando com o custo da ficha. Pode levar até um minuto.", "info");
+      try {
+        const r = await fetch("/api/admin/vendas/pedidos/sincronizar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dias: 7 }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          aviso(j.error || j.message || `Erro ${r.status}`, "erro");
+          return;
+        }
+        const s = j.resumo || j.data?.resumo || {};
+        const partes = [
+          `${s.lidas ?? 0} venda(s) lida(s)`,
+          `${s.novas ?? 0} nova(s)`,
+          `${s.atualizadas ?? 0} atualizada(s)`,
+        ];
+        // Pedido sem custo é o caso que ela precisa ver ANTES de pagar —
+        // aparece com destaque em vez de sumir no meio do resumo.
+        const semCusto = (s.semCusto || []).length;
+        if (semCusto) {
+          partes.push(`⚠️ ${semCusto} sem custo na ficha — confira antes de pagar`);
+        }
+        if (s.erros) partes.push(`${s.erros} com erro`);
+        aviso(partes.join(" · ") + ". Recarregando…", semCusto || s.erros ? "erro" : "ok");
+        setTimeout(() => location.reload(), semCusto || s.erros ? 2600 : 900);
+      } catch (e) {
+        aviso("Falha de rede: " + e.message, "erro");
+      } finally {
+        btn.disabled = false;
+        btn.style.opacity = "";
+        btn.style.cursor = "pointer";
+        btn.textContent = original;
+      }
+    });
   }
 
   document.addEventListener("click", (ev) => {
