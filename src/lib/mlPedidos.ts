@@ -315,9 +315,23 @@ export async function importarPedidosML(db: any, dias = 7): Promise<ResumoImport
         tarifa_canal: tarifa || null,
         frete_canal: freteVendedor,
         liquido,
-        custo_fornecedor: temTodosOsCustos ? Number(custoTotal.toFixed(2)) : null,
         updated_at: new Date().toISOString(),
       };
+
+      // 21/08/2026 — BUG QUE APAGOU DADO REAL, corrigido no mesmo dia.
+      // Antes, `custo_fornecedor` entrava SEMPRE no update, valendo null
+      // quando a ficha não tinha o custo. Como o update roda em cima da linha
+      // que já existe, isso APAGAVA o custo que já estava lá: no primeiro
+      // clique do botão, 7 vendas perderam o custo e o lucro do painel caiu
+      // de R$ 211,94 para R$ 86,63 sem nada ter mudado na realidade.
+      //
+      // Agora o custo só é gravado quando REALMENTE foi encontrado. Não achar
+      // o custo é motivo para avisar (resumo.semCusto), nunca para escrever
+      // por cima do que já existe. Em linha nova o campo simplesmente nasce
+      // vazio, que é o correto.
+      if (temTodosOsCustos) {
+        doRobo.custo_fornecedor = Number(custoTotal.toFixed(2));
+      }
 
       const idExistente = jaTem.get(pedidoCanal);
       if (idExistente) {
