@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
+import { lerTudo } from "../../../../../lib/paginado";
 
 export const prerender = false;
 const PERFIS = ["admin"]; // negócio pessoal da Adriana — só admin por enquanto
@@ -16,12 +17,15 @@ export const GET: APIRoute = async ({ request }) => {
     const origem = url.searchParams.get("origem");
 
     const db = supabaseAdmin();
-    let q = db.from("vendas_produtos").select("*").order("created_at", { ascending: false });
-    if (status) q = q.eq("status", status);
-    if (origem) q = q.eq("origem", origem);
-    const { data, error } = await q;
-    if (error) return jsonErr(400, error.message);
-    return jsonOk({ produtos: data || [] });
+    // 21/08/2026: sem paginar, isto devolvia SEMPRE no máximo 1.000 produtos
+    // (teto do PostgREST, silencioso) — e quem consumisse achava que era tudo.
+    const produtos = await lerTudo((de, ate) => {
+      let q = db.from("vendas_produtos").select("*").order("created_at", { ascending: false });
+      if (status) q = q.eq("status", status);
+      if (origem) q = q.eq("origem", origem);
+      return q.range(de, ate);
+    });
+    return jsonOk({ produtos });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
