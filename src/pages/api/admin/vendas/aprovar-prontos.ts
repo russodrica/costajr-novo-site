@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
+import { lerTudo } from "../../../../lib/paginado";
 
 export const prerender = false;
 const PERFIS = ["admin"];
@@ -24,13 +25,16 @@ export const POST: APIRoute = async ({ request }) => {
     if (!temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
 
     const db = supabaseAdmin();
-    const { data: prontos, error: erroBusca } = await db
-      .from("vendas_produtos")
-      .select("id, sku_trazpraca")
-      .eq("status", "candidato")
-      .eq("pronto_para_publicar", true);
-    if (erroBusca) return jsonErr(400, erroBusca.message);
-    if (!prontos || prontos.length === 0) return jsonOk({ ok: true, aprovados: 0 });
+    // 21/08/2026: sem paginar, aprovava no máximo 1.000 por clique e ninguém
+    // via que tinha sobrado gente de fora (o teto do PostgREST é silencioso).
+    const prontos = await lerTudo<{ id: string; sku_trazpraca: string | null }>((de, ate) =>
+      db.from("vendas_produtos")
+        .select("id, sku_trazpraca")
+        .eq("status", "candidato")
+        .eq("pronto_para_publicar", true)
+        .range(de, ate),
+    );
+    if (prontos.length === 0) return jsonOk({ ok: true, aprovados: 0 });
 
     const ids = prontos.map((p: any) => p.id);
     const { error } = await db
