@@ -205,15 +205,51 @@ export async function importarPedidosML(db: any, dias = 7): Promise<ResumoImport
   //    da migração pode não ter SELLER_SKU gravado — casar só por SKU deixaria
   //    o custo em branco justamente nos anúncios órfãos, que são os que já
   //    causaram prejuízo.
-  const { data: fichas } = await db
-    .from("vendas_produtos")
-    .select("sku_trazpraca, ml_item_id, nome, custo")
-    .not("custo", "is", null);
+  //
+  // 21/08/2026 — SEGUNDO BUG DO MESMO DIA, e o que de fato causou o estrago.
+  // Antes isto lia a tabela INTEIRA, sem filtro e sem ordem. O PostgREST corta
+  // a resposta em 1.000 linhas SEM AVISAR, e o catálogo já passa disso: a
+  // busca do custo enxergava um pedaço arbitrário do catálogo e concluía "sem
+  // custo na ficha" para vendas cuja ficha existia e tinha custo. Somado ao
+  // update que gravava null, isso APAGOU o custo de 7 vendas.
+  //
+  // Agora pedimos só as fichas dos itens que vieram nas vendas desta rodada —
+  // algumas dezenas, sempre longe de qualquer teto.
+  const skusDaRodada = new Set<string>();
+  const itensDaRodada = new Set<string>();
+  for (const v of vendas) {
+    for (const oi of v?.order_items || []) {
+      const s = skuDoItem(oi?.item);
+      if (s) skusDaRodada.add(s);
+      const i = txt(oi?.item?.id);
+      if (i) itensDaRodada.add(i);
+    }
+  }
+
   const porSku = new Map<string, any>();
   const porItem = new Map<string, any>();
-  for (const f of fichas || []) {
-    if (f.sku_trazpraca) porSku.set(String(f.sku_trazpraca), f);
-    if (f.ml_item_id) porItem.set(String(f.ml_item_id), f);
+  const guardarFichas = (linhas: any[] | null) => {
+    for (const f of linhas || []) {
+      if (f.sku_trazpraca) porSku.set(String(f.sku_trazpraca), f);
+      if (f.ml_item_id) porItem.set(String(f.ml_item_id), f);
+    }
+  };
+  const COLS_FICHA = "sku_trazpraca, ml_item_id, nome, custo";
+  if (skusDaRodada.size) {
+    const { data } = await db
+      .from("vendas_produtos")
+      .select(COLS_FICHA)
+      .not("custo", "is", null)
+      .in("sku_trazpraca", [...skusDaRodada]);
+    guardarFichas(data);
+  }
+  if (itensDaRodada.size) {
+    const { data } = await db
+      .from("vendas_produtos")
+      .select(COLS_FICHA)
+      .not("custo", "is", null)
+      .in("ml_item_id", [...itensDaRodada]);
+    guardarFichas(data);
   }
 
   // 3) O que a tela já decidiu, para não sobrescrever.
