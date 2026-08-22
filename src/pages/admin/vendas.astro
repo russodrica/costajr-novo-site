@@ -4,6 +4,7 @@ import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { temPerfilFresco } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
 import { normalizarConfig, avaliar, zonaMortaML, precoParaMargemML } from "../../lib/precificacao";
+import { lerTudo } from "../../lib/paginado";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -13,13 +14,17 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
 
 const db = supabaseAdmin();
-const [{ data: produtos }, { data: alertas }, { data: execucoes }, { data: config }] = await Promise.all([
-  db.from("vendas_produtos").select("*").order("created_at", { ascending: false }).limit(2000),
+// 21/08/2026: `.limit(2000)` NÃO valia — o PostgREST corta em 1.000 e não avisa,
+// então a tela dizia "1000 no catálogo" com o catálogo bem maior. Pagina de verdade.
+const produtosTodos = await lerTudo((de, ate) =>
+  db.from("vendas_produtos").select("*").order("created_at", { ascending: false }).range(de, ate),
+);
+const [{ data: alertas }, { data: execucoes }, { data: config }] = await Promise.all([
   db.from("vendas_alertas").select("*, vendas_produtos(nome, sku_trazpraca)").eq("resolvido", false).neq("tipo", "publicacao_falhou").order("created_at", { ascending: false }).limit(50),
   db.from("vendas_sync_log").select("*").order("executado_em", { ascending: false }).limit(10),
   db.from("vendas_config").select("*").eq("id", "default").maybeSingle(),
 ]);
-const listaProdutos: any[] = produtos || [];
+const listaProdutos: any[] = produtosTodos;
 const listaAlertas: any[] = alertas || [];
 const listaExecucoes: any[] = execucoes || [];
 
