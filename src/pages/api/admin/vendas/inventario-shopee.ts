@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../lib/auth";
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
+import { lerTudo } from "../../../../lib/paginado";
 
 export const prerender = false;
 const PERFIS = ["admin"];
@@ -140,11 +141,13 @@ export const POST: APIRoute = async ({ request }) => {
     if (anuncios.length === 0) return jsonErr(400, "Nenhum anúncio da lista tinha id. Refaça a coleta.");
 
     const db = supabaseAdmin();
-    const { data: produtos, error: erroProdutos } = await db
-      .from("vendas_produtos")
-      .select("id,sku_trazpraca,sku_proprio,nome,titulo_anuncio,shopee_item_id,publicado_shopee,shopee_situacao,preco_shopee,fotos,descricao,peso_kg,altura_cm,largura_cm,profundidade_cm,marca")
-      .limit(5000);
-    if (erroProdutos) return jsonErr(400, erroProdutos.message);
+    // 21/08/2026: `.limit(5000)` não vale — o PostgREST corta em 1.000. Sem
+    // paginar, produto fora do recorte não casava e virava "anúncio órfão".
+    const produtos = await lerTudo((de, ate) =>
+      db.from("vendas_produtos")
+        .select("id,sku_trazpraca,sku_proprio,nome,titulo_anuncio,shopee_item_id,publicado_shopee,shopee_situacao,preco_shopee,fotos,descricao,peso_kg,altura_cm,largura_cm,profundidade_cm,marca")
+        .range(de, ate),
+    );
 
     // Índices para casar anúncio → produto sem varrer a lista a cada volta.
     const porShopeeId = new Map<string, any>();
