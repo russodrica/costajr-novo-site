@@ -11,6 +11,7 @@ import Admin from "../../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../../lib/auth";
 import { temPerfilFresco } from "../../../lib/permissoes";
 import { supabaseAdmin } from "../../../lib/supabase";
+import { lerTudo } from "../../../lib/paginado";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -20,7 +21,11 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
 
 const db = supabaseAdmin();
-const { data } = await db.from("vendas_pedidos").select("*").order("vendido_em", { ascending: false }).limit(1000);
+// 21/08/2026: `.limit(1000)` era exatamente o teto do PostgREST — o histórico
+// ia parar de crescer na tela sem ninguém perceber. Pagina de verdade.
+const data = await lerTudo((de, ate) =>
+  db.from("vendas_pedidos").select("*").order("vendido_em", { ascending: false }).range(de, ate),
+);
 const pedidos: any[] = data || [];
 
 const fmt$ = (n: any) => (n == null ? "—" : Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
