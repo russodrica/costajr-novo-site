@@ -10,6 +10,7 @@ import Admin from "../../../layouts/Admin.astro";
 import { verifyToken, type AdminClaims } from "../../../lib/auth";
 import { temPerfilFresco } from "../../../lib/permissoes";
 import { supabaseAdmin } from "../../../lib/supabase";
+import { lerTudo, lerTudoSeguro } from "../../../lib/paginado";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -19,19 +20,27 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
 
 const db = supabaseAdmin();
-const [prod, anun, exec] = await Promise.all([
-  db.from("vendas_produtos")
-    .select("id,nome,sku_trazpraca,sku_proprio,status,custo,preco_recomendado,pronto_para_publicar,inventariado_em,enriquecido_em,ml_saude,ml_acoes_qualidade,ml_visibilidade_em,ml_campos_preenchidos")
-    .order("nome", { ascending: true }).limit(2000),
-  db.from("vendas_anuncios_canal").select("*").order("visto_em", { ascending: false }).limit(5000),
+// 21/08/2026: os `.limit(2000)`/`.limit(5000)` daqui eram inúteis — o PostgREST
+// corta em 1.000 sem avisar. Era por isso que a conta fechava sempre em 1.000
+// redondo ("447 só no ML" + "553 em nenhum canal"). Agora pagina de verdade.
+const COLS_PROD =
+  "id,nome,sku_trazpraca,sku_proprio,status,custo,preco_recomendado,pronto_para_publicar,inventariado_em,enriquecido_em,ml_saude,ml_acoes_qualidade,ml_visibilidade_em,ml_campos_preenchidos";
+const [prodTodos, anunLidos, exec] = await Promise.all([
+  lerTudo((de, ate) =>
+    db.from("vendas_produtos").select(COLS_PROD).order("nome", { ascending: true }).range(de, ate),
+  ),
+  // A tela precisa abrir mesmo antes da migration 082 — por isso o modo seguro.
+  lerTudoSeguro((de, ate) =>
+    db.from("vendas_anuncios_canal").select("*").order("visto_em", { ascending: false }).range(de, ate),
+  ),
   db.from("vendas_sync_log").select("*").eq("tipo", "inventario").order("executado_em", { ascending: false }).limit(1),
 ]);
 
 // A tela precisa funcionar mesmo antes da migration 082 rodar — senão a
 // Adriana abre o menu e leva um erro 500 sem explicação.
-const faltaMigration = !!anun.error;
-const listaProdutos: any[] = prod.data || [];
-const listaAnuncios: any[] = anun.data || [];
+const faltaMigration = !!anunLidos.erro;
+const listaProdutos: any[] = prodTodos;
+const listaAnuncios: any[] = anunLidos.linhas;
 const ultimaExec: any = (exec.data || [])[0] || null;
 
 const NO_AR = new Set(["active", "paused"]);
