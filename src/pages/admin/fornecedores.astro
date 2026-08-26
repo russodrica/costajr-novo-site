@@ -101,8 +101,8 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
             <span><b>Documentos Bancários</b><br/><span style="font-size:12px;color:#475569">Só extratos — faturas de cartão e empréstimos nunca aparecem para quem é de fora.</span></span>
           </label>
 
-          <div id="boxBancos" style="display:none;margin:10px 0 0;padding:10px 12px;background:#fff;border:1px solid #DBEAFE;border-radius:8px">
-            <div style="font-size:12.5px;font-weight:700;color:#1E3A8A;margin-bottom:6px">Quais bancos?</div>
+          <div id="boxBancos" style="margin:10px 0 0;padding:10px 12px;background:#fff;border:1px solid #DBEAFE;border-radius:8px">
+            <div style="font-size:12.5px;font-weight:700;color:#1E3A8A;margin-bottom:6px">Quais bancos? <span id="dicaBancos" style="font-weight:400;color:#9CA3AF">— marque <b>Documentos Bancários</b> acima para escolher</span></div>
             <label style="display:flex;gap:8px;align-items:center;margin-bottom:5px;cursor:pointer">
               <input type="radio" name="bancosModo" value="lista" checked style="width:auto" onchange="toggleBancos()" />
               <span style="font-size:13px"><b>Somente os bancos que eu marcar</b></span>
@@ -178,18 +178,23 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
     function toggleBancos() {
       const lig = (document.getElementById("chkDocBanc") as HTMLInputElement).checked;
       const box = document.getElementById("boxBancos") as HTMLElement;
-      box.style.display = lig ? "block" : "none";
-      if (!lig) return;
       const lista = document.getElementById("listaBancos") as HTMLElement;
       if (!lista.innerHTML.trim()) caixasBancos(lista, [], "novo");
+      // O bloco NUNCA some: os nomes dos bancos ficam à vista desde que o modal
+      // abre. Enquanto o módulo bancário estiver desmarcado ele fica apagado e
+      // travado — assim ninguém precisa adivinhar que a lista existe.
       const todos = ((document.querySelector('#formForn input[name="bancosModo"]:checked') as HTMLInputElement)?.value || "lista") === "todos";
       Array.from(lista.querySelectorAll("[data-novo-banco]")).forEach((el) => {
         const cx = el as HTMLInputElement;
-        if (todos) { cx.dataset.antes = cx.checked ? "1" : ""; cx.checked = true; cx.disabled = true; }
-        else { cx.disabled = false; if (cx.dataset.antes !== undefined) cx.checked = cx.dataset.antes === "1"; }
+        if (!lig) { cx.disabled = true; return; }
+        if (todos) { if (cx.dataset.antes === undefined) cx.dataset.antes = cx.checked ? "1" : ""; cx.checked = true; cx.disabled = true; }
+        else { cx.disabled = false; if (cx.dataset.antes !== undefined) { cx.checked = cx.dataset.antes === "1"; delete cx.dataset.antes; } }
       });
-      lista.style.opacity = todos ? "0.55" : "1";
-      (document.getElementById("avisoBancos") as HTMLElement).style.display = todos ? "none" : "block";
+      Array.from(document.querySelectorAll('#formForn input[name="bancosModo"]')).forEach((el) => { (el as HTMLInputElement).disabled = !lig; });
+      box.style.opacity = lig ? "1" : "0.5";
+      lista.style.opacity = lig && todos ? "0.6" : "1";
+      (document.getElementById("dicaBancos") as HTMLElement).style.display = lig ? "none" : "inline";
+      (document.getElementById("avisoBancos") as HTMLElement).style.display = lig && !todos ? "block" : "none";
     }
     function abrirNovoForn() {
       (document.getElementById("formForn") as HTMLFormElement).reset();
