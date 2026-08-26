@@ -7,7 +7,7 @@
 // Ao mudar o texto, MUDE A VERSÃO. Os aceites antigos guardam o texto integral
 // que a pessoa leu, então nada quebra retroativamente.
 
-export const TERMO_VERSAO = "2026-08-20.1";
+export const TERMO_VERSAO = "2026-08-26.1";
 
 /** Quem intermedia a venda (confirmado pela Adriana em 12/08/2026). */
 export const INTERMEDIARIO = "CR INTERMEDIAÇÕES IMOBILIÁRIAS";
@@ -19,7 +19,7 @@ export const INTERMEDIARIO = "CR INTERMEDIAÇÕES IMOBILIÁRIAS";
  *  (pessoa jurídica) próprio, troque este valor antes de publicar — cobrar
  *  comissão de intermediação sem corretor/registro CRECI válido é exercício
  *  ilegal da profissão (Lei 6.530/1978). */
-export const CRECI_RESPONSAVEL = "CRECISP 304329 (José Ferreira da Costa Júnior, corretor responsável)";
+export const CRECI_RESPONSAVEL = "CRECISP 304329 (José Ferreira, corretor responsável)";
 
 /** Comissão de intermediação (confirmada pela Adriana em 20/08/2026): 10%,
  *  composta por intermediação + serviços agregados de valorização do imóvel.
