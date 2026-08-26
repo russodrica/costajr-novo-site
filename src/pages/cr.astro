@@ -103,6 +103,16 @@ const blocos = clausulas({});
             </label>
           </div>
 
+          <div class="aceite" style="margin-top:12px">
+            <input type="checkbox" id="ciencia_comissao" name="ciencia_comissao" required />
+            <label for="ciencia_comissao">
+              Estou ciente de que, em caso de venda, será devida comissão de <strong>10% (dez por cento)</strong> sobre
+              o valor do negócio (Cláusula 3ª), composta pela intermediação e pelos serviços agregados de
+              valorização do imóvel (vista aérea, ideia conceitual em 3D ilustrativa do potencial construtivo e
+              demais materiais de divulgação).
+            </label>
+          </div>
+
           <div class="campo" style="margin-top:14px">
             <label class="obr">Assine digitando seu nome completo</label>
             <input name="assinatura_nome" required placeholder="Seu nome completo, como no documento" />
@@ -174,6 +184,7 @@ const blocos = clausulas({});
       const btn = document.getElementById("btn");
       const body = Object.fromEntries(new FormData(f).entries());
       body.aceite = document.getElementById("aceite").checked;
+      body.ciencia_comissao = document.getElementById("ciencia_comissao").checked;
       btn.disabled = true; btn.textContent = "Enviando…";
       try {
         const r = await fetch("/api/publico/autorizacao-venda", {
