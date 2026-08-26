@@ -72,6 +72,8 @@ export const POST: APIRoute = async ({ request }) => {
 
     const aceitou = body.aceite === true || body.aceite === "true" || body.aceite === "on";
     if (!aceitou) return jsonErr(400, "É preciso aceitar o termo para concluir.");
+    const cienteComissao = body.ciencia_comissao === true || body.ciencia_comissao === "true" || body.ciencia_comissao === "on";
+    if (!cienteComissao) return jsonErr(400, "É preciso marcar a ciência do valor da intermediação para concluir.");
     const assinatura = String(body.assinatura_nome || "").trim();
     if (assinatura.length < 5) return jsonErr(400, "Digite seu nome completo no campo de assinatura.");
 
