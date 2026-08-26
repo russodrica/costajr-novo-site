@@ -430,17 +430,30 @@ const emp = empresaDe(rdo.empresa);
          fluxo ignora a margem da página e o texto sai cortado na borda. */
       body > *:not(#folhaPrint) { display: none !important; }
       #folhaPrint {
-        display: flex !important; flex-direction: column;
-        min-height: 100vh;   /* uma página inteira: joga a assinatura para o pé */
+        display: block !important;
         font-family: "Open Sans", Arial, sans-serif; color: #1A1D24; font-size: 12pt;
       }
+
+      /* A folha inteira é UMA tabela: <thead> é a única construção que o
+         navegador REPETE no topo de cada página E reserva o espaço dela na
+         quebra. Com position:fixed o cabeçalho até repetia, mas o texto da
+         página 2 passava por baixo dele. */
+      #folhaPrint .pf-folha { width: 100%; border-collapse: collapse; }
+      #folhaPrint .pf-folha > thead { display: table-header-group; }
+      #folhaPrint .pf-folha > tfoot { display: table-footer-group; }
+      #folhaPrint .pf-folha > thead > tr > td,
+      #folhaPrint .pf-folha > tbody > tr > td,
+      #folhaPrint .pf-folha > tfoot > tr > td { border: 0; padding: 0; }
+      /* respiro entre o cabeçalho e o começo do texto, em TODA página */
+      #folhaPrint .pf-folha > thead > tr > td { padding-bottom: 6mm; }
+      #folhaPrint .pf-folha > tfoot > tr > td { padding-top: 4mm; }
       html, body { background: #fff !important; margin: 0 !important; padding: 0 !important;
                    height: auto !important; overflow: visible !important; }
 
       /* cabeçalho */
       #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: center;
-                             gap: 16px; min-height: 92px; padding-bottom: 14px; margin-bottom: 4px; }
-      #folhaPrint .pf-marca { display: flex; align-items: center; gap: 64px; flex: 1; }
+                             gap: 16px; min-height: 74px; padding-bottom: 10px; margin-bottom: 4px; }
+      #folhaPrint .pf-marca { display: flex; align-items: center; gap: 44px; flex: 1; }
       /* O TÍTULO fica no centro exato da faixa, na mesma linha do meio do logo.
          O nome da empresa sai do fluxo (absoluto) para não empurrar o título
          para cima — era isso que deixava o conjunto parecendo desalinhado. */
@@ -448,8 +461,8 @@ const emp = empresaDe(rdo.empresa);
                                     align-self: center; }
       #folhaPrint .pf-emp { position: absolute; top: calc(100% + 3px); left: 0;
                             white-space: nowrap; margin: 0; }
-      #folhaPrint .pf-logo { height: 82px; width: auto; object-fit: contain; }
-      #folhaPrint .pf-titulo { font-size: 18pt; font-weight: 800; letter-spacing: .05em;
+      #folhaPrint .pf-logo { height: 64px; width: auto; object-fit: contain; }
+      #folhaPrint .pf-titulo { font-size: 16pt; font-weight: 800; letter-spacing: .05em;
                                line-height: 1.1; margin: 0; }
       #folhaPrint .pf-emp { font-size: 9.5pt; color: #555; }
       #folhaPrint .pf-ident { text-align: right; font-size: 10pt; line-height: 1.45;
@@ -458,22 +471,34 @@ const emp = empresaDe(rdo.empresa);
       #folhaPrint .pf-regua { height: 4px; margin-bottom: 14px; }
 
       /* seções */
-      #folhaPrint .pf-sec { break-inside: avoid; margin-bottom: 14px; }
+      /* Antes toda seção era indivisível: um texto longo que não coubesse no
+         resto da folha pulava inteiro para a próxima e deixava meia página em
+         branco. Agora o texto CONTINUA na página seguinte; o que continua
+         indivisível é só o que fica feio partido (grade, foto, linha de tabela,
+         assinatura), e o título nunca se separa do que ele anuncia. */
+      #folhaPrint .pf-sec { break-inside: auto; margin-bottom: 14px; }
+      #folhaPrint .pf-sec > h2 { break-after: avoid; page-break-after: avoid; }
       #folhaPrint .pf-sec > h2 { font-size: 10pt; text-transform: uppercase; letter-spacing: .08em;
                                  color: #fff; background: #4B5563; padding: 4px 9px; margin: 0 0 8px;
                                  border-radius: 3px; }
       #folhaPrint .pf-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 18px;
-                              padding-bottom: 12px; border-bottom: 1.5px solid #9CA3AF; }
+                              padding-bottom: 12px; border-bottom: 1.5px solid #9CA3AF;
+                              break-inside: avoid; }
       #folhaPrint .pf-campo { font-size: 11.5pt;
         font-family: "Open Sans", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
       #folhaPrint .pf-campo span { display: block; font-size: 8.5pt; text-transform: uppercase;
                                    letter-spacing: .05em; color: #6B7280; }
       #folhaPrint .pf-texto { white-space: pre-wrap; font-size: 11.5pt; line-height: 1.6;
-                              text-align: justify; margin: 0; }
-      #folhaPrint table { width: 100%; border-collapse: collapse; font-size: 11pt; }
-      #folhaPrint th { text-align: left; background: #F3F4F6; border: 1px solid #D1D5DB;
+                              text-align: justify; margin: 0;
+                              /* nunca deixa 1 linha solta no fim/começo de página */
+                              orphans: 3; widows: 3; }
+      #folhaPrint .pf-sec table { width: 100%; border-collapse: collapse; font-size: 11pt; }
+      /* tabela que atravessa a página leva o cabeçalho dela junto */
+      #folhaPrint .pf-sec thead { display: table-header-group; }
+      #folhaPrint .pf-sec tr { break-inside: avoid; }
+      #folhaPrint .pf-sec th { text-align: left; background: #F3F4F6; border: 1px solid #D1D5DB;
                        padding: 6px 9px; font-size: 9pt; text-transform: uppercase; letter-spacing: .04em; }
-      #folhaPrint td { border: 1px solid #D1D5DB; padding: 7px 9px; vertical-align: top; }
+      #folhaPrint .pf-sec td { border: 1px solid #D1D5DB; padding: 7px 9px; vertical-align: top; }
 
       /* fotos */
       #folhaPrint .pf-fotos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -485,7 +510,8 @@ const emp = empresaDe(rdo.empresa);
 
       /* assinaturas */
       #folhaPrint .pf-assin { display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
-                              margin-top: auto; padding-top: 26px; break-inside: avoid; }
+                              margin-top: 16mm; padding-top: 26px; break-inside: avoid;
+                              page-break-inside: avoid; }
       #folhaPrint .pf-assin div { text-align: center; }
       #folhaPrint .pf-assin img { height: 68px; object-fit: contain; display: block; margin: 0 auto 2px; }
       #folhaPrint .pf-assin .linha { border-top: 1px solid #333; padding-top: 4px; }
@@ -497,11 +523,12 @@ const emp = empresaDe(rdo.empresa);
                                justify-content: space-between; gap: 12px; }
       #folhaPrint .pf-rodape span { max-width: 48%; }
 
-      /* margem de segurança: se a caixa de impressão vier com "sem margens",
-         o texto ainda não encosta na borda do papel */
-      #folhaPrint { padding: 14mm 12mm !important; box-sizing: border-box; }
+      /* Sem padding próprio: o padding só valeria na PRIMEIRA página e o
+         cabeçalho repetido ficaria desalinhado nas demais. Quem dá a margem
+         em todas as folhas é o @page. */
+      #folhaPrint { padding: 0 !important; box-sizing: border-box; }
 
-      @page { margin: 16mm 14mm; }
+      @page { margin: 18mm 14mm 14mm; }
     }
   </style>
 
@@ -954,8 +981,9 @@ const emp = empresaDe(rdo.empresa);
       const observacoes = valDe("observacoes");
 
       document.getElementById("folhaPrint")!.innerHTML = `
+        <table class="pf-folha"><thead><tr><td>
         <div class="pf-topo" style="border-bottom:2px solid ${cor}">
-          <div class="pf-marca" style="display:flex;align-items:center;gap:64px">
+          <div class="pf-marca">
             ${empSel.logo ? `<img class="pf-logo" src="${empSel.logo}" onerror="this.style.display='none'">` : ""}
             <div>
               <h1 class="pf-titulo" style="color:${cor}">RELATÓRIO DE VISITA</h1>
@@ -970,6 +998,8 @@ const emp = empresaDe(rdo.empresa);
           </div>
         </div>
         <div class="pf-regua" style="background:${cor}"></div>
+        </td></tr></thead>
+        <tbody><tr><td>
 
         ${secao("Condições da visita", cond ? `<div class="pf-grade">${cond}</div>` : "")}
         ${secao("Serviços verificados", atividades ? `<p class="pf-texto">${esc(atividades)}</p>` : "")}
@@ -983,20 +1013,26 @@ const emp = empresaDe(rdo.empresa);
           ${assinatura("cliente", "Responsável pela obra / Cliente", "assinatura_cliente_nome")}
         </div>
 
+        </td></tr></tbody>
+        <tfoot><tr><td>
         <div class="pf-rodape">
           <span>${esc(empSel.nome || "")}</span>
           <span>${esc(P.area || "")} · Relatório ${esc(P.numero || "")} · ${esc(P.data || "")}</span>
-        </div>`;
+        </div>
+        </td></tr></tfoot></table>`;
     }
 
-    document.getElementById("btnImprimir")!.addEventListener("click", async (ev) => {
+    document.getElementById("btnImprimir")?.addEventListener("click", async (ev) => {
       const btn = ev.currentTarget as HTMLButtonElement;
       const rotulo = btn.textContent;
       btn.disabled = true; btn.textContent = "Preparando…";
       try {
-        await embutirFotos();
-        montarFolha();
+        // O título vem PRIMEIRO: é dele que o navegador tira o nome do PDF, e
+        // se montarFolha() falhasse no meio o nome ficava o da aba (era isso
+        // que fazia o arquivo sair fora do padrão AAMMDD_RV_Cliente_Obra).
         document.title = nomeDoArquivo();
+        await embutirFotos();
+        try { montarFolha(); } catch (e) { console.error("montarFolha", e); }
         // um respiro para o navegador desenhar antes de abrir a caixa
         await new Promise((r) => setTimeout(r, 150));
         window.print();
@@ -1006,8 +1042,8 @@ const emp = empresaDe(rdo.empresa);
     });
     // Ctrl+P: monta com o que já estiver em cache (sem esperar rede)
     window.addEventListener("beforeprint", () => {
-      montarFolha();
       document.title = nomeDoArquivo();
+      try { montarFolha(); } catch (e) { console.error("montarFolha", e); }
     });
 
     Object.assign(window, { addLinha, salvar, montarFolha });
