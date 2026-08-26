@@ -463,24 +463,25 @@ const emp = empresaDe(rdo.empresa);
                    height: auto !important; overflow: visible !important; }
 
       /* cabeçalho */
+      /* Este bloco se REPETE em toda página: cada milímetro aqui é milímetro
+         a menos de texto em TODAS as folhas. Por isso é enxuto. */
       #folhaPrint .pf-topo { display: flex; justify-content: space-between; align-items: center;
-                             gap: 16px; min-height: 74px; padding-bottom: 10px; margin-bottom: 4px; }
-      #folhaPrint .pf-marca { display: flex; align-items: center; gap: 44px; flex: 1; }
-      /* O TÍTULO fica no centro exato da faixa, na mesma linha do meio do logo.
-         O nome da empresa sai do fluxo (absoluto) para não empurrar o título
-         para cima — era isso que deixava o conjunto parecendo desalinhado. */
-      #folhaPrint .pf-marca > div { position: relative; display: flex; align-items: center;
-                                    align-self: center; }
-      #folhaPrint .pf-emp { position: absolute; top: calc(100% + 3px); left: 0;
-                            white-space: nowrap; margin: 0; }
-      #folhaPrint .pf-logo { height: 64px; width: auto; object-fit: contain; }
-      #folhaPrint .pf-titulo { font-size: 16pt; font-weight: 800; letter-spacing: .05em;
+                             gap: 14px; min-height: 0; padding-bottom: 8px; margin-bottom: 3px; }
+      #folhaPrint .pf-marca { display: flex; align-items: center; gap: 22px; flex: 0 1 auto; }
+      /* O nome da empresa volta ao FLUXO, embaixo do título. Absoluto ele
+         passava por cima do bloco da direita (a data batia em "Geotecnia"). */
+      #folhaPrint .pf-marca > div { display: block; }
+      #folhaPrint .pf-emp { margin: 1px 0 0; font-size: 8pt; color: #555; }
+      #folhaPrint .pf-logo { height: 46px; width: auto; object-fit: contain; }
+      #folhaPrint .pf-titulo { font-size: 13pt; font-weight: 800; letter-spacing: .04em;
                                line-height: 1.1; margin: 0; }
-      #folhaPrint .pf-emp { font-size: 9.5pt; color: #555; }
-      #folhaPrint .pf-ident { text-align: right; font-size: 10pt; line-height: 1.45;
-                              max-width: 46%; word-break: break-word; }
-      #folhaPrint .pf-ident strong { font-size: 12pt; }
-      #folhaPrint .pf-regua { height: 4px; margin-bottom: 14px; }
+      /* largura fixa: sem isto o endereço longo empurrava tudo e quebrava em
+         4 linhas, com a data sobrando sozinha na última */
+      #folhaPrint .pf-ident { text-align: right; font-size: 8pt; line-height: 1.35;
+                              flex: 0 0 46mm; max-width: 46mm; overflow-wrap: break-word; }
+      #folhaPrint .pf-ident strong { font-size: 9.5pt; }
+      #folhaPrint .pf-ident .pf-data { font-size: 9pt; }
+      #folhaPrint .pf-regua { height: 3px; margin-bottom: 10px; }
 
       /* seções */
       /* Antes toda seção era indivisível: um texto longo que não coubesse no
@@ -1009,9 +1010,9 @@ const emp = empresaDe(rdo.empresa);
           </div>
           <div class="pf-ident">
             <strong>${esc(P.obra || "")}</strong>${P.codigo ? ` (${esc(P.codigo)})` : ""}<br>
-            ${P.cliente ? `Cliente: ${esc(P.cliente)}<br>` : ""}
+            ${P.cliente ? `${esc(P.cliente)}<br>` : ""}
             ${P.endereco ? `${esc(P.endereco)}<br>` : ""}
-            <strong>${esc(P.data || "")}</strong> — ${esc(P.dataExtenso || "")}
+            <strong class="pf-data">${esc(P.data || "")}</strong>
           </div>
         </div>
         <div class="pf-regua" style="background:${cor}"></div>
