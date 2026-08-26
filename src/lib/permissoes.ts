@@ -37,7 +37,9 @@ export const PERFIS = [
 // aparece na matriz de permissões, membros, público-alvo de conteúdo etc.).
 // Acesso DENY-BY-DEFAULT hard-coded: SOMENTE os módulos de NIVEL_FORNECEDOR,
 // nível máximo "ver" (visualizar + baixar; nunca inserir/editar/excluir).
-// Overrides por usuário NÃO elevam (cap absoluto — segurança de dados/LGPD).
+// Overrides por usuário NÃO elevam (cap absoluto — segurança de dados/LGPD), mas
+// RESTRINGEM: desde a 115, cada fornecedor só entra nos módulos que foram
+// marcados na criação do login dele. Sem marca gravada = não entra em nada.
 // Fica FORA da lista do requireAdmin (auth.ts) => /api/portal/* rejeitam.
 export const ROLE_FORNECEDOR = "fornecedor";
 export const NIVEL_FORNECEDOR: Record<string, NivelPerm> = {
@@ -300,7 +302,16 @@ export const MODULO_ROLES_EXTRA: Record<string, Record<string, NivelPerm>> = {
 export function nivelEfetivo(moduloKey: string, perfis: string[], overrides: Record<string, NivelPerm>): NivelPerm {
   // FORNECEDOR (externo): cap absoluto ANTES de tudo — deny-by-default, overrides
   // não elevam, e vence até um eventual role interno na mesma conta (mais restritivo).
-  if (ehFornecedorPerfis(perfis)) return NIVEL_FORNECEDOR[moduloKey] || "nenhum";
+  if (ehFornecedorPerfis(perfis)) {
+    // Teto absoluto do papel: fora desses módulos não existe acesso, nem por override.
+    const teto = NIVEL_FORNECEDOR[moduloKey];
+    if (!teto) return "nenhum";
+    // Dentro do teto, vale o que foi liberado na criação do acesso (migration 115).
+    // Sem linha gravada → "nenhum": um fornecedor não nasce enxergando nada.
+    const ov = overrides[moduloKey];
+    if (ov === "ver" || ov === "editar") return teto; // nunca sobe de "ver"
+    return "nenhum";
+  }
   if (perfis.includes("admin")) return "editar";
   const ov = overrides[moduloKey];
   if (ov === "nenhum" || ov === "ver" || ov === "editar") return ov;

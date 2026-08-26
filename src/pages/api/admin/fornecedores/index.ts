@@ -3,6 +3,8 @@ import { requireAdminCookie, temPerfil, hashSenha, jsonOk, jsonErr } from "../..
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
 import { enviarSenhaFornecedor } from "../../../../lib/mailer";
+import { salvarModulosFornecedor, salvarBancosFornecedor, resumoAcesso, type BancosModo } from "../../../../lib/fornecedorAcesso";
+import { BANCOS } from "../../../../lib/bancos";
 
 export const prerender = false;
 const PERFIS = ["admin"]; // gestão de acesso externo é só do admin
@@ -45,6 +47,21 @@ export const POST: APIRoute = async ({ request }) => {
     if (!nome || !email) return jsonErr(400, "Informe nome e e-mail.");
     if (!EMAIL_RX.test(email)) return jsonErr(400, "E-mail inválido.");
 
+    // ── LIBERAÇÕES (migration 115) ──────────────────────────────────────────
+    // Passam a ser escolhidas AQUI, na criação. Nada de "cria e ajusta depois":
+    // um acesso sem liberação nenhuma não serve para nada e um acesso amplo demais
+    // é justamente o risco que se quer evitar.
+    const docEmpresa = !!b.docEmpresa;
+    const docBancarios = !!b.docBancarios;
+    if (!docEmpresa && !docBancarios) return jsonErr(400, "Escolha ao menos um módulo que esta pessoa poderá acessar.");
+    const bancosModo: BancosModo = String(b.bancosModo || "todos") === "lista" ? "lista" : "todos";
+    const bancos: string[] = Array.isArray(b.bancos)
+      ? b.bancos.map((x: any) => String(x)).filter((x: string) => BANCOS.includes(x))
+      : [];
+    if (docBancarios && bancosModo === "lista" && !bancos.length) {
+      return jsonErr(400, "Você escolheu bancos específicos, mas não marcou nenhum.");
+    }
+
     const db = supabaseAdmin();
     const { data: ja } = await db.from("portal_profiles").select("id, role").eq("email", email).maybeSingle();
     if (ja) return jsonErr(409, "Já existe um usuário com este e-mail.");
@@ -59,10 +76,20 @@ export const POST: APIRoute = async ({ request }) => {
     }).select("id").single();
     if (error) return jsonErr(400, error.message);
 
+    // Escopo gravado ANTES de qualquer e-mail sair: se isto falhar, o acesso
+    // nasce sem liberação (deny-by-default) em vez de nascer enxergando tudo.
+    const acesso = { docEmpresa, docBancarios, bancosModo, bancos };
+    try {
+      await salvarModulosFornecedor(db, String(row!.id), { docEmpresa, docBancarios });
+      await salvarBancosFornecedor(db, String(row!.id), bancosModo, bancos, admin.email || null);
+    } catch (e: any) {
+      return jsonErr(500, `Usuário criado, mas as liberações não foram salvas (${e?.message || "erro"}). Abra "Acesso" na lista e salve de novo antes de passar a senha.`);
+    }
+
     await registrarAcao(db, { req: request, admin }, {
       acao: "criar", entidade: "portal_profiles", registro_id: row?.id ?? null,
-      descricao: `Criou usuário FORNECEDOR ${nome}${empresa ? ` (${empresa})` : ""} <${email}>`,
-      dados: { role: "fornecedor", empresa },
+      descricao: `Criou usuário FORNECEDOR ${nome}${empresa ? ` (${empresa})` : ""} <${email}> — acesso: ${resumoAcesso(acesso)}`,
+      dados: { role: "fornecedor", empresa, acesso },
     }).catch(() => {});
 
     // Envia a senha provisória por e-mail (boas-vindas + link da intranet + instruções).
@@ -76,7 +103,7 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     // Retorna a senha como FALLBACK (o admin repassa manualmente se o e-mail falhar).
-    return jsonOk({ ok: true, id: row?.id, senha, emailEnviado, emailErro });
+    return jsonOk({ ok: true, id: row?.id, senha, emailEnviado, emailErro, acesso: resumoAcesso(acesso) });
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }

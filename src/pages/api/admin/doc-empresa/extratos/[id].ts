@@ -4,6 +4,7 @@ import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
 import { excluirComLixeira, registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 import { bancosRestritosExterno, externosPermitidos, podeVerComoExterno } from "../../../../../lib/sigilo";
+import { acessoFornecedor, bancoLiberado } from "../../../../../lib/fornecedorAcesso";
 
 export const prerender = false;
 const PERFIS = ["admin", "financeiro", "juridico"];
@@ -23,6 +24,10 @@ export const GET: APIRoute = async ({ request, params }) => {
     // 👤 Documento restrito a externos: o contador não baixa nem com o link na mão.
     // Responde 404 (e não 403) de propósito — não confirma que o documento existe.
     if (ehForn) {
+      // ESCOPO DO EXTERNO (115): banco fora da lista dele não abre nem com o link
+      // direto na mão. 404 de propósito — não confirma que o documento existe.
+      const acesso = await acessoFornecedor(db, admin.sub);
+      if (!bancoLiberado(acesso, (row as any).banco)) return jsonErr(404, "Extrato não encontrado.");
       const restritos = await bancosRestritosExterno(db);
       const perm = await externosPermitidos(db, "doc_extratos_bancarios", [params.id!]);
       if (!podeVerComoExterno(row, { ehExterno: true, profileId: admin.sub, restritos, permitidos: perm[params.id!] || [] })) {

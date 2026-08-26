@@ -4,6 +4,8 @@ import { verifyToken, assertSessaoValida, type AdminClaims } from "../../lib/aut
 import { temPerfilFresco, perfisFrescos, ehFornecedorPerfis } from "../../lib/permissoes";
 import { supabaseAdmin } from "../../lib/supabase";
 import { bancosSigilosos, bancosRestritosExterno, externosPermitidos, bancoEhSigiloso, linhaEhSigilosa, linhaRestritaExterno, podeVerComoExterno } from "../../lib/sigilo";
+import { acessoFornecedor, bancoLiberado, ACESSO_VAZIO, type AcessoFornecedor } from "../../lib/fornecedorAcesso";
+import { BANCOS, BANCO_DESDE, CARTOES, ymOf, bancosDoMes } from "../../lib/bancos";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -16,14 +18,13 @@ catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirec
 const perfisPg = await perfisFrescos(claims);
 const ehForn = ehFornecedorPerfis(perfisPg);
 if (!ehForn && !(await temPerfilFresco(claims, ["admin", "financeiro", "juridico"]))) return Astro.redirect("/admin");
+// ESCOPO DO EXTERNO (migration 115): o módulo e a lista de bancos foram escolhidos
+// na criação do acesso dele. Sem o módulo, a tela nem abre.
+const acessoForn: AcessoFornecedor = ehForn ? await acessoFornecedor(supabaseAdmin(), claims.sub) : ACESSO_VAZIO;
+if (ehForn && !acessoForn.docBancarios) return Astro.redirect("/admin/doc-empresa");
 
-const BANCOS = ["Banco do Brasil", "Caixa Econômica Federal", "Santander", "Sicoob", "Bradesco", "Itaú", "Nubank", "VillelaPay", "Banco Inter"];
-// Contas criadas depois: só aparecem nos extratos A PARTIR do mês informado (evita "falta" retroativo).
-const BANCO_DESDE: Record<string, string> = { "VillelaPay": "2026-06", "Banco Inter": "2024-01" };
-const ymOf = (a: number, m: number) => `${a}-${String(m).padStart(2, "0")}`;
-const bancosDoMes = (a: number, m: number) => BANCOS.filter((b) => !BANCO_DESDE[b] || ymOf(a, m) >= BANCO_DESDE[b]);
-// Cartões de crédito com fatura MENSAL → slots fixos por mês (como os bancos dos extratos).
-const CARTOES = ["Nubank", "Itaú"];
+// BANCOS / BANCO_DESDE / CARTOES / bancosDoMes vêm de lib/bancos.ts — a MESMA
+// lista que a tela de Fornecedores usa para montar o escopo de quem é de fora.
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const db = supabaseAdmin();
@@ -52,7 +53,11 @@ if (ehForn) {
   const idsRestritos = [...todosEx, ...todasFt, ...todosEmp].filter(restEx).map((r: any) => String(r.id));
   permExt = await externosPermitidos(db, "doc_extratos_bancarios", idsRestritos);
 }
-const visivelExt = (r: any) => podeVerComoExterno(r, { ehExterno: ehForn, profileId: claims.sub, restritos: restBancos, permitidos: permExt[String(r.id)] || [] });
+// Um documento só chega ao externo se passar nas DUAS peneiras: o banco está no
+// escopo dele E o documento não foi escondido (regra antiga, por banco ou item).
+const visivelExt = (r: any) =>
+  (!ehForn || bancoLiberado(acessoForn, r.banco ?? r.cartao)) &&
+  podeVerComoExterno(r, { ehExterno: ehForn, profileId: claims.sub, restritos: restBancos, permitidos: permExt[String(r.id)] || [] });
 const extratos: any[] = ehForn ? todosEx.filter(visivelExt) : todosEx;
 const faturas: any[] = ehForn ? todasFt.filter(visivelExt) : todasFt;
 const emprestimos: any[] = ehForn ? todosEmp.filter(visivelExt) : todosEmp;
@@ -83,7 +88,11 @@ const anosFt = anosDe(mapaFt);
 const anoAnteriorBtn = Math.min(desde, anoVigente - 1) - 1;
 
 function totalAnoEx(a: number) { return Object.values(mapaEx[a] || {}).reduce((s, m) => s + Object.values(m).reduce((x, arr) => x + arr.length, 0), 0); }
-function bancosMes(a: number, m: number) { const mm = mapaEx[a]?.[m] || {}; return bancosDoMes(a, m).filter((b) => (mm[b] || []).length > 0).length; }
+// Bancos que ESTA pessoa pode ver no mês. Para o externo, um banco fora do escopo
+// não vira nem célula vazia: o nome do banco também é informação.
+const bancosVis = (a: number, m: number) =>
+  bancosDoMes(a, m).filter((b) => !ehForn || bancoLiberado(acessoForn, b));
+function bancosMes(a: number, m: number) { const mm = mapaEx[a]?.[m] || {}; return bancosVis(a, m).filter((b) => (mm[b] || []).length > 0).length; }
 function totalAnoFt(a: number) { return Object.values(mapaFt[a] || {}).reduce((s, arr) => s + arr.length, 0); }
 const fdata = (s: string) => (s ? String(s).split("T")[0].split("-").reverse().join("/") : "—");
 const brl = (v: any) => (v != null && v !== "" ? "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—");
@@ -142,9 +151,9 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
             const futuro = a === anoVigente && m > (hoje.getMonth() + 1);
             return (
               <details class="mes-card" style={`margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden;${futuro ? 'opacity:.55' : ''}`}>
-                <summary class="mes-sum"><span class="chev">▸</span><span style="flex:1">{nome}</span><span class={`badge ${preench === bancosDoMes(a, m).length ? 'badge-green' : preench === 0 ? 'badge-gray' : 'badge-orange'}`}>{preench}/{bancosDoMes(a, m).length} bancos</span></summary>
+                <summary class="mes-sum"><span class="chev">▸</span><span style="flex:1">{nome}</span><span class={`badge ${preench === bancosVis(a, m).length ? 'badge-green' : preench === 0 ? 'badge-gray' : 'badge-orange'}`}>{preench}/{bancosVis(a, m).length} bancos</span></summary>
                 <div class="grid-cells">
-                  {bancosDoMes(a, m).map((banco) => {
+                  {bancosVis(a, m).map((banco) => {
                     const arqs = mapaEx[a]?.[m]?.[banco] || [];
                     return (
                       <div class="cell" data-drop-ano={String(a)} data-drop-mes={String(m)} data-drop-banco={banco}>

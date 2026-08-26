@@ -4,6 +4,7 @@ import { verifyToken, assertSessaoValida, type AdminClaims } from "../../lib/aut
 import { temPerfilFresco, perfisFrescos, ehFornecedorPerfis } from "../../lib/permissoes";
 import { bancosRestritosExterno, externosPermitidos, podeVerComoExterno } from "../../lib/sigilo";
 import { supabaseAdmin } from "../../lib/supabase";
+import { acessoFornecedor } from "../../lib/fornecedorAcesso";
 
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
@@ -17,6 +18,12 @@ const perfisPg = await perfisFrescos(claims);
 // NÃO embute no HTML os metadados de contratos/seguros/arquivados (LGPD).
 const ehForn = ehFornecedorPerfis(perfisPg);
 if (!ehForn && !(await temPerfilFresco(claims, ["admin", "financeiro", "juridico", "comercial"]))) return Astro.redirect("/admin");
+// ESCOPO DO EXTERNO (migration 115): só entra quem teve "Documentos da Empresa"
+// marcado na criação do acesso. Quem não teve vai para a outra tela liberada.
+if (ehForn) {
+  const acessoForn = await acessoFornecedor(supabaseAdmin(), claims.sub);
+  if (!acessoForn.docEmpresa) return Astro.redirect(acessoForn.docBancarios ? "/admin/doc-bancarios" : "/admin/sair");
+}
 
 const db = supabaseAdmin();
 // Carrega TODOS (ativos + arquivados) — a aba "Arquivados" filtra no cliente

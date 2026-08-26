@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
 import { bancosRestritosExterno, externosPermitidos, podeVerComoExterno } from "../../../../../lib/sigilo";
+import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
@@ -23,6 +24,9 @@ export const GET: APIRoute = async ({ request, params }) => {
     const { data: arq } = await db.from("doc_empresa_arquivos").select("*").eq("id", params.fid!).maybeSingle();
     if (!arq?.storage_path) return jsonErr(404, "Arquivo não encontrado");
     if (ehForn) {
+      // ESCOPO DO EXTERNO (115): se "Documentos da Empresa" não foi liberado na
+      // criação do acesso dele, o download morre aqui — inclusive por link direto.
+      const semModulo = await bloqueioSeSemLeitura(admin, "doc-empresa"); if (semModulo) return semModulo;
       const { data: doc } = await db.from("doc_empresa").select("categoria, arquivado").eq("id", (arq as any).doc_id).maybeSingle();
       if (!doc || (doc as any).arquivado || CATS_VEDADAS_FORNECEDOR.has((doc as any).categoria || "")) {
         return jsonErr(403, "Acesso de fornecedor: este documento não está disponível.");
