@@ -3,7 +3,6 @@ import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../lib/
 import { supabaseAdmin, supabaseAdmin2 } from "../../../../lib/supabase";
 import { enviarEmailComAnexo } from "../../../../lib/mailer";
 import { registrarAcao } from "../../../../lib/auditoria";
-import { bloqueioSeSemLeitura } from "../../../../lib/permissoes";
 import { bancosSigilosos, linhaEhSigilosa, bancosRestritosExterno, externosPermitidos, podeVerComoExterno } from "../../../../lib/sigilo";
 import { acessoFornecedor, bancoLiberado } from "../../../../lib/fornecedorAcesso";
 
@@ -21,6 +20,8 @@ export const prerender = false;
 //   • documento marcado como sigiloso ("não compartilhar") não sai por e-mail —
 //     igual à regra que já vale para a equipe interna;
 //   • todo envio é registrado na auditoria, com a lista de arquivos.
+// Espelha CATS_VEDADAS_FORNECEDOR da rota de download de anexo.
+const CATS_VEDADAS = new Set(["Contratos", "Clientes", "Consórcios", "Seguros"]);
 const MAX_TOTAL = 25 * 1024 * 1024;
 const MAX_ITENS = 30;
 
@@ -32,7 +33,6 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const admin = await requireAdminCookie(request, { permitirFornecedor: true });
     if (!temPerfil(admin, ["fornecedor"])) return jsonErr(403, "Esta rota é do acesso externo.");
-    const ro = await bloqueioSeSemLeitura(admin, "doc-bancarios"); if (ro) return ro;
 
     const db = supabaseAdmin();
     // Destinatário = o e-mail do cadastro. Nunca o que vier no corpo do pedido.
@@ -42,31 +42,63 @@ export const POST: APIRoute = async ({ request }) => {
     if (!destino) return jsonErr(400, "Seu cadastro está sem e-mail. Fale com a Costa Júnior.");
 
     const b = await request.json().catch(() => ({}));
-    const ids: string[] = Array.isArray(b.ids) ? b.ids.map((x: any) => String(x)).filter(Boolean) : [];
-    if (!ids.length) return jsonErr(400, "Selecione ao menos um documento.");
-    if (ids.length > MAX_ITENS) return jsonErr(400, `Máximo de ${MAX_ITENS} arquivos por e-mail.`);
+    // Aceita as duas telas: "extrato" (Documentos Bancários) e "arquivo" (Documentos
+    // da Empresa). `ids` puro continua valendo como lista de extratos (compatível).
+    const itens: Array<{ tipo: string; id: string }> = Array.isArray(b.itens)
+      ? b.itens.filter((x: any) => x?.id).map((x: any) => ({ tipo: String(x.tipo || "extrato"), id: String(x.id) }))
+      : (Array.isArray(b.ids) ? b.ids.map((x: any) => ({ tipo: "extrato", id: String(x) })) : []);
+    if (!itens.length) return jsonErr(400, "Selecione ao menos um documento.");
+    if (itens.length > MAX_ITENS) return jsonErr(400, `Máximo de ${MAX_ITENS} arquivos por e-mail.`);
+    const idsEx = itens.filter((i) => i.tipo === "extrato").map((i) => i.id);
+    const idsArq = itens.filter((i) => i.tipo === "arquivo").map((i) => i.id);
 
-    const [acesso, sigilosos, restritos, perm] = await Promise.all([
+    const [acesso, sigilosos, restritos, permEx, permArq] = await Promise.all([
       acessoFornecedor(db, admin.sub),
       bancosSigilosos(db),
       bancosRestritosExterno(db),
-      externosPermitidos(db, "doc_extratos_bancarios", ids),
+      idsEx.length ? externosPermitidos(db, "doc_extratos_bancarios", idsEx) : Promise.resolve({} as Record<string, string[]>),
+      idsArq.length ? externosPermitidos(db, "doc_empresa_arquivos", idsArq) : Promise.resolve({} as Record<string, string[]>),
     ]);
-    if (!acesso.docBancarios) return jsonErr(403, "Você não tem acesso aos documentos bancários.");
+    if (idsEx.length && !acesso.docBancarios) return jsonErr(403, "Você não tem acesso aos documentos bancários.");
+    if (idsArq.length && !acesso.docEmpresa) return jsonErr(403, "Você não tem acesso aos documentos da empresa.");
 
-    const { data: rows } = await db.from("doc_extratos_bancarios").select("*").in("id", ids);
     const MESES = ["01","02","03","04","05","06","07","08","09","10","11","12"];
     const escolhidos: Array<{ storage_path: string; label: string }> = [];
     let semPermissao = 0, sigilosoBloqueado = 0;
-    for (const r of ((rows || []) as any[])) {
-      if (!bancoLiberado(acesso, r.banco)) { semPermissao++; continue; }
-      if (!podeVerComoExterno(r, { ehExterno: true, profileId: admin.sub, restritos, permitidos: perm[String(r.id)] || [] })) { semPermissao++; continue; }
-      if (linhaEhSigilosa(r, sigilosos)) { sigilosoBloqueado++; continue; }
-      if (!r.storage_path) continue;
-      escolhidos.push({
-        storage_path: r.storage_path,
-        label: r.nome_arquivo || `Extrato ${r.banco} ${MESES[(Number(r.mes) || 1) - 1]}-${r.ano}`,
-      });
+
+    if (idsEx.length) {
+      const { data: rows } = await db.from("doc_extratos_bancarios").select("*").in("id", idsEx);
+      for (const r of ((rows || []) as any[])) {
+        if (!bancoLiberado(acesso, r.banco)) { semPermissao++; continue; }
+        if (!podeVerComoExterno(r, { ehExterno: true, profileId: admin.sub, restritos, permitidos: permEx[String(r.id)] || [] })) { semPermissao++; continue; }
+        if (linhaEhSigilosa(r, sigilosos)) { sigilosoBloqueado++; continue; }
+        if (!r.storage_path) continue;
+        escolhidos.push({
+          storage_path: r.storage_path,
+          label: r.nome_arquivo || `Extrato ${r.banco} ${MESES[(Number(r.mes) || 1) - 1]}-${r.ano}`,
+        });
+      }
+    }
+
+    if (idsArq.length) {
+      // Mesmas peneiras da rota de download de anexo: categoria vedada, documento
+      // arquivado e restrição a externos derrubam o item aqui também.
+      const { data: rows } = await db.from("doc_empresa_arquivos").select("*").in("id", idsArq);
+      const arqs = (rows || []) as any[];
+      const docIds = [...new Set(arqs.map((a) => a.doc_id).filter(Boolean))];
+      let docs: Record<string, any> = {};
+      if (docIds.length) {
+        const { data: d } = await db.from("doc_empresa").select("id, nome, categoria, arquivado").in("id", docIds);
+        docs = Object.fromEntries(((d || []) as any[]).map((x) => [x.id, x]));
+      }
+      for (const a of arqs) {
+        const doc = docs[a.doc_id];
+        if (!doc || doc.arquivado || a.arquivado || CATS_VEDADAS.has(doc.categoria || "")) { semPermissao++; continue; }
+        if (!podeVerComoExterno(a, { ehExterno: true, profileId: admin.sub, restritos, permitidos: permArq[String(a.id)] || [] })) { semPermissao++; continue; }
+        if (a.nao_compartilhar) { sigilosoBloqueado++; continue; }
+        if (!a.storage_path) continue;
+        escolhidos.push({ storage_path: a.storage_path, label: a.nome || doc.nome || "documento" });
+      }
     }
     if (!escolhidos.length) {
       return jsonErr(sigilosoBloqueado ? 403 : 404, sigilosoBloqueado
@@ -102,7 +134,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     await registrarAcao(db, { req: request, admin }, {
       acao: "criar", entidade: "fornecedor_email", registro_id: null,
-      descricao: `Fornecedor ${admin.email} enviou ${anexos.length} extrato(s) para o próprio e-mail`,
+      descricao: `Fornecedor ${admin.email} enviou ${anexos.length} documento(s) para o próprio e-mail`,
       dados: { to: destino, arquivos: anexos.map((a) => a.filename), recusados: { semPermissao, sigilosoBloqueado } },
     }).catch(() => {});
 

@@ -161,7 +161,7 @@ export async function enviarSenhaFornecedor(
     ? "Bem-vindo(a) ao Portal do Fornecedor — Costa Júnior"
     : "Nova senha de acesso — Portal do Fornecedor Costa Júnior";
   const intro = contexto === "boas-vindas"
-    ? `Seu acesso ao <strong>Portal do Fornecedor</strong> da Costa Júnior foi criado${empresaEsc ? ` para <strong>${empresaEsc}</strong>` : ""}. Por ele você pode <strong>visualizar e baixar</strong> os documentos da empresa e extratos bancários disponibilizados para você — sem inserir, editar ou excluir nada.`
+    ? `Seu acesso ao <strong>Portal do Fornecedor</strong> da Costa Júnior foi criado${empresaEsc ? ` para <strong>${empresaEsc}</strong>` : ""}. Por ele você pode <strong>visualizar e baixar</strong> os documentos que a Costa Júnior disponibilizar para você — sem inserir, editar ou excluir nada. O que aparece na sua tela depende do que foi liberado para o seu acesso.`
     : `Geramos uma <strong>nova senha provisória</strong> para o seu acesso ao <strong>Portal do Fornecedor</strong> da Costa Júnior. A senha anterior deixou de funcionar.`;
   return sendOrThrow({
     to: email,
@@ -190,7 +190,7 @@ export async function enviarSenhaFornecedor(
             <li>Clique no botão acima (ou abra <a href="${SITE}/admin/login?fornecedor=1" style="color:#C41E3A">${site}/admin/login</a>).</li>
             <li>Entre com o <strong>e-mail</strong> e a <strong>senha provisória</strong> acima.</li>
             <li>Crie sua <strong>senha pessoal</strong> quando for solicitado.</li>
-            <li>Pronto: consulte e baixe os <strong>Documentos da Empresa</strong> e <strong>Extratos Bancários</strong>.</li>
+            <li>Pronto: consulte e baixe os documentos liberados para você — e, se preferir, selecione vários e receba todos no seu e-mail.</li>
           </ol>
         </div>
 

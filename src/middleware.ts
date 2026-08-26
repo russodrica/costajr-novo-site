@@ -123,7 +123,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
         // "ver" ao módulo já pode BAIXAR cada documento, então também pode compartilhá-lo. O
         // próprio endpoint gateia por perfil + bloqueioSeSemLeitura (recusa "nenhum"). Por isso
         // NÃO exigimos "editar" nelas (senão o botão retornaria 403 para perfis só-leitura).
-        const ehCompartilhar = ["/enviar-email", "/bancarios-email", "/whatsapp-links", "/bancarios-whatsapp"].some((s) => path.endsWith(s));
+        // Enviar documento por e-mail/WhatsApp é LEITURA travestida de POST: não muda
+        // nada no módulo, só entrega o que a pessoa já pode abrir. Por isso não passa
+        // pela trava de "somente leitura" — quem tem "ver" pode enviar o que vê.
+        // (/fornecedor-email é a versão do usuário externo: destinatário é ele mesmo.)
+        const ehCompartilhar = ["/enviar-email", "/bancarios-email", "/whatsapp-links", "/bancarios-whatsapp", "/fornecedor-email"].some((s) => path.endsWith(s));
         const modulo = ehCompartilhar ? null : moduloDaRotaApi(path);
         if (modulo) {
           const tok = getAdminTokenFromCookie(req);
