@@ -15,10 +15,11 @@ export const BANCOS = [
   "Nubank",
   "VillelaPay",
   "Banco Inter",
+  "UPay",
 ];
 
 /** Contas criadas depois: só entram nos extratos A PARTIR do mês informado. */
-export const BANCO_DESDE: Record<string, string> = { "VillelaPay": "2026-06", "Banco Inter": "2024-01" };
+export const BANCO_DESDE: Record<string, string> = { "VillelaPay": "2026-06", "Banco Inter": "2024-01", "UPay": "2026-08" };
 
 /** Cartões de crédito com fatura mensal (não fazem parte do escopo do fornecedor). */
 export const CARTOES = ["Nubank", "Itaú"];

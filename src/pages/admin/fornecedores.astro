@@ -104,14 +104,15 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
           <div id="boxBancos" style="display:none;margin:10px 0 0;padding:10px 12px;background:#fff;border:1px solid #DBEAFE;border-radius:8px">
             <div style="font-size:12.5px;font-weight:700;color:#1E3A8A;margin-bottom:6px">Quais bancos?</div>
             <label style="display:flex;gap:8px;align-items:center;margin-bottom:5px;cursor:pointer">
-              <input type="radio" name="bancosModo" value="todos" checked style="width:auto" onchange="toggleBancos()" />
-              <span style="font-size:13px">Todos os bancos <span style="color:#9CA3AF">(inclusive os cadastrados no futuro)</span></span>
+              <input type="radio" name="bancosModo" value="lista" checked style="width:auto" onchange="toggleBancos()" />
+              <span style="font-size:13px"><b>Somente os bancos que eu marcar</b></span>
             </label>
             <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
-              <input type="radio" name="bancosModo" value="lista" style="width:auto" onchange="toggleBancos()" />
-              <span style="font-size:13px">Somente os bancos que eu marcar</span>
+              <input type="radio" name="bancosModo" value="todos" style="width:auto" onchange="toggleBancos()" />
+              <span style="font-size:13px">Todos os bancos <span style="color:#9CA3AF">(inclusive os que forem cadastrados no futuro)</span></span>
             </label>
-            <div id="listaBancos" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed #DBEAFE"></div>
+            <div id="listaBancos" style="margin-top:8px;padding-top:8px;border-top:1px dashed #DBEAFE;max-height:330px;overflow:auto"></div>
+            <p id="avisoBancos" style="margin:8px 0 0;font-size:11.5px;color:#9CA3AF">Um banco novo (como o UPay) só entra para esta pessoa se voce marcar aqui — ou se escolher "Todos os bancos".</p>
           </div>
         </div>
 
@@ -171,20 +172,30 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
         .filter((el) => (el as HTMLInputElement).checked)
         .map((el) => (el as HTMLElement).getAttribute(`data-${prefixo}-banco`) || "");
     }
-    /** Mostra/esconde o bloco de bancos conforme os cliques do formulário de criação. */
+    /** Liga/desliga o bloco de bancos. Os NOMES dos bancos ficam sempre à vista:
+     *  em "todos" aparecem marcados e travados (para deixar claro o que isso inclui),
+     *  em "somente os que eu marcar" viram caixinhas de verdade. */
     function toggleBancos() {
       const lig = (document.getElementById("chkDocBanc") as HTMLInputElement).checked;
       const box = document.getElementById("boxBancos") as HTMLElement;
       box.style.display = lig ? "block" : "none";
-      const modo = (document.querySelector('#formForn input[name="bancosModo"]:checked') as HTMLInputElement)?.value || "todos";
+      if (!lig) return;
       const lista = document.getElementById("listaBancos") as HTMLElement;
-      const mostrarLista = lig && modo === "lista";
-      lista.style.display = mostrarLista ? "block" : "none";
-      if (mostrarLista && !lista.innerHTML.trim()) caixasBancos(lista, [], "novo");
+      if (!lista.innerHTML.trim()) caixasBancos(lista, [], "novo");
+      const todos = ((document.querySelector('#formForn input[name="bancosModo"]:checked') as HTMLInputElement)?.value || "lista") === "todos";
+      Array.from(lista.querySelectorAll("[data-novo-banco]")).forEach((el) => {
+        const cx = el as HTMLInputElement;
+        if (todos) { cx.dataset.antes = cx.checked ? "1" : ""; cx.checked = true; cx.disabled = true; }
+        else { cx.disabled = false; if (cx.dataset.antes !== undefined) cx.checked = cx.dataset.antes === "1"; }
+      });
+      lista.style.opacity = todos ? "0.55" : "1";
+      (document.getElementById("avisoBancos") as HTMLElement).style.display = todos ? "none" : "block";
     }
     function abrirNovoForn() {
       (document.getElementById("formForn") as HTMLFormElement).reset();
-      (document.getElementById("listaBancos") as HTMLElement).innerHTML = "";
+      const lista = document.getElementById("listaBancos") as HTMLElement;
+      lista.innerHTML = "";
+      caixasBancos(lista, [], "novo");
       toggleBancos();
       overlayF("modalForn").classList.add("open");
     }
@@ -217,8 +228,8 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
         const dados = Object.fromEntries(new FormData(f).entries());
         const docEmpresa = (document.getElementById("chkDocEmpresa") as HTMLInputElement).checked;
         const docBancarios = (document.getElementById("chkDocBanc") as HTMLInputElement).checked;
-        const bancosModo = (document.querySelector('#formForn input[name="bancosModo"]:checked') as HTMLInputElement)?.value || "todos";
-        const bancos = bancosMarcados("novo");
+        const bancosModo = (document.querySelector('#formForn input[name="bancosModo"]:checked') as HTMLInputElement)?.value || "lista";
+        const bancos = bancosModo === "lista" ? bancosMarcados("novo") : [];
         if (!docEmpresa && !docBancarios) { alert("Marque ao menos um módulo que esta pessoa poderá acessar."); btn.disabled = false; btn.textContent = "Criar acesso"; return; }
         if (docBancarios && bancosModo === "lista" && !bancos.length) { alert("Você escolheu bancos específicos, mas não marcou nenhum."); btn.disabled = false; btn.textContent = "Criar acesso"; return; }
         const body = { ...dados, docEmpresa, docBancarios, bancosModo, bancos };
@@ -307,9 +318,9 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
           </label>
           <div id="acBox" style="margin:10px 0 0;padding:10px 12px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px">
             <div style="font-size:12.5px;font-weight:700;margin-bottom:6px">Quais bancos?</div>
-            <label style="display:flex;gap:8px;align-items:center;margin-bottom:5px;cursor:pointer"><input type="radio" name="acModo" value="todos" ${a.bancosModo !== "lista" ? "checked" : ""} style="width:auto" /><span style="font-size:13px">Todos os bancos</span></label>
-            <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="radio" name="acModo" value="lista" ${a.bancosModo === "lista" ? "checked" : ""} style="width:auto" /><span style="font-size:13px">Somente os que eu marcar</span></label>
-            <div id="acLista" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)"></div>
+            <label style="display:flex;gap:8px;align-items:center;margin-bottom:5px;cursor:pointer"><input type="radio" name="acModo" value="lista" ${a.bancosModo === "lista" ? "checked" : ""} style="width:auto" /><span style="font-size:13px"><b>Somente os que eu marcar</b></span></label>
+            <label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="radio" name="acModo" value="todos" ${a.bancosModo !== "lista" ? "checked" : ""} style="width:auto" /><span style="font-size:13px">Todos os bancos <span style="color:#9CA3AF">(inclusive os futuros)</span></span></label>
+            <div id="acLista" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);max-height:330px;overflow:auto"></div>
           </div>
           <div id="acMsg" style="margin-top:10px"></div>
           <div class="modal-footer" style="padding-left:0;padding-right:0">
@@ -320,8 +331,15 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
         const sincroniza = () => {
           const lig = (document.getElementById("acBanc") as HTMLInputElement).checked;
           (document.getElementById("acBox") as HTMLElement).style.display = lig ? "block" : "none";
-          const modo = (document.querySelector('input[name="acModo"]:checked') as HTMLInputElement)?.value || "todos";
-          (document.getElementById("acLista") as HTMLElement).style.display = lig && modo === "lista" ? "block" : "none";
+          if (!lig) return;
+          const todos = ((document.querySelector('input[name="acModo"]:checked') as HTMLInputElement)?.value || "lista") === "todos";
+          const lista = document.getElementById("acLista") as HTMLElement;
+          Array.from(lista.querySelectorAll("[data-ed-banco]")).forEach((el) => {
+            const cx = el as HTMLInputElement;
+            if (todos) { if (cx.dataset.antes === undefined) cx.dataset.antes = cx.checked ? "1" : ""; cx.checked = true; cx.disabled = true; }
+            else { cx.disabled = false; if (cx.dataset.antes !== undefined) { cx.checked = cx.dataset.antes === "1"; delete cx.dataset.antes; } }
+          });
+          lista.style.opacity = todos ? "0.55" : "1";
         };
         (document.getElementById("acBanc") as HTMLElement).addEventListener("change", sincroniza);
         Array.from(document.querySelectorAll('input[name="acModo"]')).forEach((el) => el.addEventListener("change", sincroniza));
@@ -335,8 +353,8 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
       const msg = document.getElementById("acMsg") as HTMLElement;
       const docEmpresa = (document.getElementById("acEmp") as HTMLInputElement).checked;
       const docBancarios = (document.getElementById("acBanc") as HTMLInputElement).checked;
-      const bancosModo = (document.querySelector('input[name="acModo"]:checked') as HTMLInputElement)?.value || "todos";
-      const bancos = bancosMarcados("ed");
+      const bancosModo = (document.querySelector('input[name="acModo"]:checked') as HTMLInputElement)?.value || "lista";
+      const bancos = bancosModo === "lista" ? bancosMarcados("ed") : [];
       if (docBancarios && bancosModo === "lista" && !bancos.length) {
         msg.innerHTML = `<div class="alert alert-error">Você escolheu bancos específicos, mas não marcou nenhum.</div>`; return;
       }
