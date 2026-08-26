@@ -24,10 +24,17 @@ const FORNECEDOR_API_ALLOW: RegExp[] = [
   /^\/api\/admin\/doc-empresa\/arquivos\/[^/]+$/,   // GET download de anexo (o handler restringe categoria e método)
   /^\/api\/admin\/doc-empresa\/extratos\/[^/]+$/,   // GET download de extrato (o handler barra DELETE por perfil)
   /^\/api\/fornecedor\/trocar-senha$/,              // POST: troca da PRÓPRIA senha provisória (endpoint só-fornecedor)
+  /^\/api\/admin\/doc-empresa\/fornecedor-email$/, // POST: manda para o PRÓPRIO e-mail o que ele já pode baixar
   /^\/api\/admin\/logout$/,
 ];
-// Único POST que o fornecedor pode fazer além do logout (trocar a própria senha).
-const FORNECEDOR_MUTACAO_OK = new Set(["/api/admin/logout", "/api/fornecedor/trocar-senha"]);
+// POSTs que o fornecedor pode fazer: sair, trocar a própria senha e mandar para o
+// próprio e-mail documentos que ele já teria como baixar um a um (o destinatário é
+// lido do cadastro dele, nunca do pedido — ver fornecedor-email.ts).
+const FORNECEDOR_MUTACAO_OK = new Set([
+  "/api/admin/logout",
+  "/api/fornecedor/trocar-senha",
+  "/api/admin/doc-empresa/fornecedor-email",
+]);
 function ehTokenFornecedor(claims: { role?: string; roles?: string[] } | null): boolean {
   if (!claims) return false;
   const perfis = (claims.roles && claims.roles.length ? claims.roles : [claims.role]).filter(Boolean) as string[];

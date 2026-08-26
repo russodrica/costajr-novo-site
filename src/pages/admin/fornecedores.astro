@@ -116,7 +116,7 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
           </div>
         </div>
 
-        <p style="font-size:12.5px;color:#6B7280;margin:4px 0 10px">Uma <b>senha provisória</b> é gerada e <b>enviada por e-mail</b> ao fornecedor, com o link da intranet e as instruções. No primeiro acesso ele cria a própria senha.</p>
+        <p style="font-size:12.5px;color:#6B7280;margin:4px 0 10px">Uma <b>senha provisória</b> é gerada e <b>enviada por e-mail</b> ao fornecedor, com o link que abre direto a tela de entrada. No primeiro acesso ele cria a própria senha.</p>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" onclick="fecharForn()">Cancelar</button>
           <button type="submit" class="btn btn-primary" id="btnCriarForn">Criar acesso</button>
@@ -211,7 +211,7 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
       if (emailEnviado) {
         msgBox().innerHTML = `<div class="card" style="border:1.5px solid #6EE7B7;background:#ECFDF5;padding:14px 18px">
           <div style="font-weight:800;color:#065F46;margin-bottom:6px">${titulo}</div>
-          <div style="font-size:13.5px;color:#065F46">📧 Senha provisória <b>enviada por e-mail</b> para <b>${emailEsc}</b>, com o link da intranet e as instruções de acesso.</div>
+          <div style="font-size:13.5px;color:#065F46">📧 Senha provisória <b>enviada por e-mail</b> para <b>${emailEsc}</b>, com o link que abre direto a tela de entrada.</div>
           <p style="font-size:12px;color:#047857;margin:8px 0 0">Caso o e-mail não chegue (verifique o spam), a senha provisória é <code style="background:#fff;padding:1px 6px;border-radius:5px;border:1px solid #6EE7B7">${senha}</code> — o fornecedor troca no primeiro acesso.</p>
         </div>`;
       } else {
@@ -220,7 +220,7 @@ const fdt = (s: any) => (s ? new Date(s).toLocaleString("pt-BR", { day: "2-digit
           <div style="font-size:12.5px;color:#991B1B;margin-bottom:8px">${(emailErro || "Falha no envio").replace(/</g, "&lt;")}. Repasse manualmente por canal seguro:</div>
           <div style="font-size:13.5px">Login: <b>${emailEsc}</b></div>
           <div style="font-size:13.5px">Senha provisória: <code style="font-size:15px;font-weight:800;background:#fff;padding:2px 8px;border-radius:6px;border:1px solid #FCA5A5">${senha}</code></div>
-          <p style="font-size:12px;color:#991B1B;margin:8px 0 0">Acesso: <b>https://www.costajr.com.br/intranet</b> → Portal do Fornecedor. Troca de senha no primeiro acesso.</p>
+          <p style="font-size:12px;color:#991B1B;margin:8px 0 0">Acesso direto: <b>https://www.costajr.com.br/admin/login?fornecedor=1</b> — troca de senha no primeiro acesso.</p>
         </div>`;
       }
     }

@@ -142,7 +142,7 @@ export async function enviarSenhaResetRepresentante(email: string, nome: string,
 }
 
 // Boas-vindas / nova senha do FORNECEDOR externo — senha provisória + link da
-// intranet + instruções de acesso. No 1º acesso ele cria a própria senha.
+// tela de entrada do fornecedor + instruções. No 1º acesso ele cria a própria senha.
 export async function enviarSenhaFornecedor(
   email: string,
   nome: string,
@@ -182,12 +182,12 @@ export async function enviarSenhaFornecedor(
 
         <p style="color:#5B5F6B;margin:0 0 14px;line-height:1.6;font-size:14px"><strong>No primeiro acesso</strong> você será solicitado a criar uma <strong>senha pessoal</strong>. A senha provisória acima só serve para essa primeira entrada.</p>
 
-        <a href="${SITE}/intranet" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin:6px 0 22px">Acessar a Intranet →</a>
+        <a href="${SITE}/admin/login?fornecedor=1" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin:6px 0 22px">Entrar no Portal do Fornecedor →</a>
 
         <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:16px 20px;margin-bottom:20px">
           <div style="font-weight:700;color:#2D2F36;font-size:14px;margin-bottom:8px">Como acessar</div>
           <ol style="color:#5B5F6B;font-size:13.5px;line-height:1.7;padding-left:20px;margin:0">
-            <li>Abra <a href="${SITE}/intranet" style="color:#C41E3A">${site}/intranet</a> e clique em <strong>Portal do Fornecedor</strong>.</li>
+            <li>Clique no botão acima (ou abra <a href="${SITE}/admin/login?fornecedor=1" style="color:#C41E3A">${site}/admin/login</a>).</li>
             <li>Entre com o <strong>e-mail</strong> e a <strong>senha provisória</strong> acima.</li>
             <li>Crie sua <strong>senha pessoal</strong> quando for solicitado.</li>
             <li>Pronto: consulte e baixe os <strong>Documentos da Empresa</strong> e <strong>Extratos Bancários</strong>.</li>

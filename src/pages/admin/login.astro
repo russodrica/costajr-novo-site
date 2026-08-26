@@ -8,13 +8,17 @@ if (token) {
     if (c.tipo === "admin") return Astro.redirect("/admin");
   } catch {}
 }
+// ?fornecedor=1 — o e-mail de boas-vindas do fornecedor cai direto aqui. A tela é
+// a mesma (o login é o mesmo), só o rótulo muda: quem é de fora não precisa ver
+// "Painel Administrativo" nem passar pela intranet para escolher a porta.
+const ehForn = Astro.url.searchParams.get("fornecedor") === "1";
 ---
 <!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login — CJR Admin</title>
+  <title>{ehForn ? "Entrar — Portal do Fornecedor" : "Login — CJR Admin"}</title>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   <meta name="robots" content="noindex,nofollow" />
   <style>
@@ -35,7 +39,7 @@ if (token) {
 <body>
   <div class="login-box">
     <div class="logo">CJR</div>
-    <div class="logo-sub">Painel Administrativo</div>
+    <div class="logo-sub">{ehForn ? "Portal do Fornecedor" : "Painel Administrativo"}</div>
     <div class="error" id="err"></div>
     <form id="form">
       <label for="email">E-mail</label>
