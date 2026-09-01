@@ -94,6 +94,8 @@ export const GET: APIRoute = async ({ request, params }) => {
     if (acesso.docBancarios && acesso.bancosModo === "todos") {
       alertas.push("Documentos Bancários está liberado para TODOS os bancos, inclusive os que forem cadastrados no futuro.");
     }
+    if (acesso.faturas) alertas.push("A aba Faturas de Cartão está liberada para esta pessoa (o padrão é fechada).");
+    if (acesso.emprestimos) alertas.push("A aba Empréstimos e Financiamentos está liberada para esta pessoa (o padrão é fechada).");
     const bancosVistos = [...new Set(vistosEx.map((x) => String(x.label).split(" — ")[0]))].sort();
 
     return jsonOk({

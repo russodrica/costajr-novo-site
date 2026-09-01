@@ -1,0 +1,15 @@
+import { bancoLiberado, resumoAcesso, type AcessoFornecedor } from "./fornecedorAcesso";
+let ok=0, f=0;
+const t=(n:string,r:any,e:any)=>{const b=JSON.stringify(r)===JSON.stringify(e); if(b){ok++;console.log("  ok   "+n);}else{f++;console.log(`  FALHA ${n} → esperado ${JSON.stringify(e)}, veio ${JSON.stringify(r)}`);}};
+const base: AcessoFornecedor = { docEmpresa:false, docBancarios:true, bancosModo:"lista", bancos:["Itaú"], faturas:false, emprestimos:false };
+console.log("\n[abas bancarias — resumo em texto]");
+t("so extratos", resumoAcesso(base), "Documentos Bancários (Itaú)");
+t("com faturas", resumoAcesso({...base, faturas:true}), "Documentos Bancários (Itaú; faturas)");
+t("com as duas", resumoAcesso({...base, faturas:true, emprestimos:true}), "Documentos Bancários (Itaú; faturas + empréstimos)");
+t("todos + emprestimos", resumoAcesso({...base, bancosModo:"todos", bancos:[], emprestimos:true}), "Documentos Bancários (todos os bancos; empréstimos)");
+t("modulo desligado", resumoAcesso({...base, docBancarios:false}), "nenhum acesso liberado");
+console.log("\n[escopo de banco vale para cartao e contrato]");
+t("cartao Itau liberado", bancoLiberado({...base, faturas:true}, "Itaú"), true);
+t("cartao Nubank fora do escopo", bancoLiberado({...base, faturas:true}, "Nubank"), false);
+console.log(`\n${f===0?"TUDO PASSOU":"TEM FALHA"} — ${ok} ok, ${f} falha(s)\n`);
+process.exit(f===0?0:1);

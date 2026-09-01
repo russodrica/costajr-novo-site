@@ -23,6 +23,8 @@ const MUTACOES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const FORNECEDOR_API_ALLOW: RegExp[] = [
   /^\/api\/admin\/doc-empresa\/arquivos\/[^/]+$/,   // GET download de anexo (o handler restringe categoria e método)
   /^\/api\/admin\/doc-empresa\/extratos\/[^/]+$/,   // GET download de extrato (o handler barra DELETE por perfil)
+  /^\/api\/admin\/doc-empresa\/faturas\/[^/]+$/,     // GET download de fatura (só com a aba liberada — ver 116)
+  /^\/api\/admin\/doc-empresa\/emprestimos\/[^/]+$/, // GET download de contrato (idem)
   /^\/api\/fornecedor\/trocar-senha$/,              // POST: troca da PRÓPRIA senha provisória (endpoint só-fornecedor)
   /^\/api\/admin\/doc-empresa\/fornecedor-email$/, // POST: manda para o PRÓPRIO e-mail o que ele já pode baixar
   /^\/api\/admin\/logout$/,

@@ -61,6 +61,9 @@ export const POST: APIRoute = async ({ request }) => {
     if (docBancarios && bancosModo === "lista" && !bancos.length) {
       return jsonErr(400, "Você escolheu bancos específicos, mas não marcou nenhum.");
     }
+    // Abas de dentro de Documentos Bancários (116): só existem se o módulo estiver ligado.
+    const faturas = docBancarios && !!b.faturas;
+    const emprestimos = docBancarios && !!b.emprestimos;
 
     const db = supabaseAdmin();
     const { data: ja } = await db.from("portal_profiles").select("id, role").eq("email", email).maybeSingle();
@@ -78,10 +81,10 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Escopo gravado ANTES de qualquer e-mail sair: se isto falhar, o acesso
     // nasce sem liberação (deny-by-default) em vez de nascer enxergando tudo.
-    const acesso = { docEmpresa, docBancarios, bancosModo, bancos };
+    const acesso = { docEmpresa, docBancarios, bancosModo, bancos, faturas, emprestimos };
     try {
       await salvarModulosFornecedor(db, String(row!.id), { docEmpresa, docBancarios });
-      await salvarBancosFornecedor(db, String(row!.id), bancosModo, bancos, admin.email || null);
+      await salvarBancosFornecedor(db, String(row!.id), bancosModo, bancos, admin.email || null, { faturas, emprestimos });
     } catch (e: any) {
       return jsonErr(500, `Usuário criado, mas as liberações não foram salvas (${e?.message || "erro"}). Abra "Acesso" na lista e salve de novo antes de passar a senha.`);
     }

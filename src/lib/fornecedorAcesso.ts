@@ -25,14 +25,17 @@ export interface AcessoFornecedor {
   bancosModo: BancosModo;
   /** Só vale quando bancosModo === "lista". */
   bancos: string[];
+  /** Abas de dentro de Documentos Bancários (migration 116). Padrão: fechadas. */
+  faturas: boolean;
+  emprestimos: boolean;
 }
 
 /** Escopo mais fechado possível — usado quando nada foi gravado ou a leitura falha. */
-export const ACESSO_VAZIO: AcessoFornecedor = { docEmpresa: false, docBancarios: false, bancosModo: "lista", bancos: [] };
+export const ACESSO_VAZIO: AcessoFornecedor = { docEmpresa: false, docBancarios: false, bancosModo: "lista", bancos: [], faturas: false, emprestimos: false };
 
 export const MODULOS_FORNECEDOR = [
   { key: "doc-empresa", label: "Documentos da Empresa", ajuda: "Certidões, cadastrais, contábeis, fiscais. Contratos, clientes, consórcios e seguros ficam fora sempre." },
-  { key: "doc-bancarios", label: "Documentos Bancários", ajuda: "Extratos bancários (faturas de cartão e empréstimos nunca aparecem para quem é de fora)." },
+  { key: "doc-bancarios", label: "Documentos Bancários", ajuda: "Extratos bancários. Faturas de cartão e empréstimos são abas à parte, liberadas só se você marcar." },
 ] as const;
 
 /**
@@ -52,10 +55,14 @@ export async function acessoFornecedor(db: any, profileId: string): Promise<Aces
     }
   } catch { /* tabela ausente → escopo vazio */ }
   try {
-    const { data: row } = await db.from("portal_fornecedor_acesso").select("bancos_modo, bancos").eq("profile_id", pid).maybeSingle();
+    const { data: row } = await db.from("portal_fornecedor_acesso").select("*").eq("profile_id", pid).maybeSingle();
     if (row) {
       out.bancosModo = (row as any).bancos_modo === "lista" ? "lista" : "todos";
       out.bancos = (((row as any).bancos || []) as any[]).map((b) => String(b)).filter(Boolean);
+      // colunas da 116 — se a migration ainda não rodou, o campo vem undefined e
+      // o padrão fechado prevalece (falha fechando).
+      out.faturas = (row as any).faturas === true;
+      out.emprestimos = (row as any).emprestimos === true;
     } else {
       // Sem linha de escopo: não inventa liberação. Se o módulo bancário estiver
       // ligado mas ninguém escolheu bancos, ele não vê banco nenhum até alguém
@@ -86,11 +93,14 @@ export async function salvarBancosFornecedor(
   modo: BancosModo,
   bancos: string[],
   porQuem?: string | null,
+  abas?: { faturas?: boolean; emprestimos?: boolean },
 ): Promise<void> {
   await db.from("portal_fornecedor_acesso").upsert({
     profile_id: String(profileId),
     bancos_modo: modo === "lista" ? "lista" : "todos",
     bancos: modo === "lista" ? bancos.map((b) => String(b).slice(0, 120)) : [],
+    faturas: !!abas?.faturas,
+    emprestimos: !!abas?.emprestimos,
     atualizado_em: new Date().toISOString(),
     atualizado_por: porQuem || null,
   }, { onConflict: "profile_id" });
@@ -115,9 +125,10 @@ export function resumoAcesso(a: AcessoFornecedor): string {
   const mods: string[] = [];
   if (a.docEmpresa) mods.push("Documentos da Empresa");
   if (a.docBancarios) {
-    mods.push(a.bancosModo === "todos"
-      ? "Documentos Bancários (todos os bancos)"
-      : `Documentos Bancários (${a.bancos.length ? a.bancos.join(", ") : "nenhum banco escolhido"})`);
+    const extras = [a.faturas ? "faturas" : null, a.emprestimos ? "empréstimos" : null].filter(Boolean).join(" + ");
+    mods.push((a.bancosModo === "todos"
+      ? "Documentos Bancários (todos os bancos"
+      : `Documentos Bancários (${a.bancos.length ? a.bancos.join(", ") : "nenhum banco escolhido"}`) + (extras ? `; ${extras}` : "") + ")");
   }
   return mods.length ? mods.join(" + ") : "nenhum acesso liberado";
 }

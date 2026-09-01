@@ -57,10 +57,12 @@ export const POST: APIRoute = async ({ request, params }) => {
     if (docBancarios && bancosModo === "lista" && !bancos.length) {
       return jsonErr(400, "Você escolheu bancos específicos, mas não marcou nenhum.");
     }
+    const faturas = docBancarios && !!b.faturas;
+    const emprestimos = docBancarios && !!b.emprestimos;
 
     const antes = await acessoFornecedor(db, pid);
     await salvarModulosFornecedor(db, pid, { docEmpresa, docBancarios });
-    await salvarBancosFornecedor(db, pid, bancosModo, bancos, admin.email || null);
+    await salvarBancosFornecedor(db, pid, bancosModo, bancos, admin.email || null, { faturas, emprestimos });
     const depois = await acessoFornecedor(db, pid);
 
     await registrarAcao(db, { req: request, admin }, {

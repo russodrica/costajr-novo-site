@@ -3,6 +3,8 @@ import { requireAdminCookie, temPerfil, jsonOk, jsonErr } from "../../../../../l
 import { supabaseAdmin, supabaseAdmin2 } from "../../../../../lib/supabase";
 import { registrarAcao, excluirComLixeira } from "../../../../../lib/auditoria";
 import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
+import { bancosRestritosExterno, externosPermitidos, podeVerComoExterno } from "../../../../../lib/sigilo";
+import { acessoFornecedor, bancoLiberado } from "../../../../../lib/fornecedorAcesso";
 
 export const prerender = false;
 const PERFIS = ["admin", "financeiro", "juridico"];
@@ -13,12 +15,28 @@ const num = (v: any) => (v != null && v !== "" && !isNaN(Number(v)) ? Number(v) 
 // GET (sem subrota) → redireciona p/ o contrato (URL assinada), se houver.
 export const GET: APIRoute = async ({ request, params }) => {
   try {
-    const admin = await requireAdminCookie(request);
-    if (!temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
+    const admin = await requireAdminCookie(request, { permitirFornecedor: true });
+    const ehForn = temPerfil(admin, ["fornecedor"]);
+    if (!ehForn && !temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
     const ro = await bloqueioSeSemLeitura(admin, "doc-bancarios"); if (ro) return ro;
     const db = supabaseAdmin();
-    const { data: row } = await db.from("doc_emprestimos").select("storage_path").eq("id", params.id!).maybeSingle();
+    const { data: row } = await db.from("doc_emprestimos").select("*").eq("id", params.id!).maybeSingle();
     if (!row?.storage_path) return jsonErr(404, "Sem contrato anexado.");
+    // EXTERNO: só com a aba "Empréstimos" liberada (116) e o banco no escopo dele.
+    if (ehForn) {
+      const acesso = await acessoFornecedor(db, admin.sub);
+      if (!acesso.emprestimos) return jsonErr(404, "Sem contrato anexado.");
+      if (!bancoLiberado(acesso, (row as any).banco)) return jsonErr(404, "Sem contrato anexado.");
+      const restritos = await bancosRestritosExterno(db);
+      const perm = await externosPermitidos(db, "doc_emprestimos", [params.id!]);
+      if (!podeVerComoExterno(row, { ehExterno: true, profileId: admin.sub, restritos, permitidos: perm[params.id!] || [] })) {
+        return jsonErr(404, "Sem contrato anexado.");
+      }
+      await registrarAcao(db, { req: request, admin }, {
+        acao: "criar", entidade: "fornecedor_download", registro_id: params.id!,
+        descricao: `Fornecedor ${admin.email} baixou contrato de ${(row as any).banco || "empréstimo"}`,
+      }).catch(() => {});
+    }
     const { data, error } = await supabaseAdmin2().storage.from("doc-empresa").createSignedUrl(row.storage_path, 600);
     if (error || !data?.signedUrl) return jsonErr(500, error?.message || "Falha ao gerar link.");
     return new Response(null, { status: 302, headers: { Location: data.signedUrl } });

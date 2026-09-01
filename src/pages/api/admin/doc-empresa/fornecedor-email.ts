@@ -51,6 +51,8 @@ export const POST: APIRoute = async ({ request }) => {
     if (itens.length > MAX_ITENS) return jsonErr(400, `Máximo de ${MAX_ITENS} arquivos por e-mail.`);
     const idsEx = itens.filter((i) => i.tipo === "extrato").map((i) => i.id);
     const idsArq = itens.filter((i) => i.tipo === "arquivo").map((i) => i.id);
+    const idsFt = itens.filter((i) => i.tipo === "fatura").map((i) => i.id);
+    const idsEmp = itens.filter((i) => i.tipo === "emprestimo").map((i) => i.id);
 
     const [acesso, sigilosos, restritos, permEx, permArq] = await Promise.all([
       acessoFornecedor(db, admin.sub),
@@ -59,8 +61,10 @@ export const POST: APIRoute = async ({ request }) => {
       idsEx.length ? externosPermitidos(db, "doc_extratos_bancarios", idsEx) : Promise.resolve({} as Record<string, string[]>),
       idsArq.length ? externosPermitidos(db, "doc_empresa_arquivos", idsArq) : Promise.resolve({} as Record<string, string[]>),
     ]);
-    if (idsEx.length && !acesso.docBancarios) return jsonErr(403, "Você não tem acesso aos documentos bancários.");
+    if ((idsEx.length || idsFt.length || idsEmp.length) && !acesso.docBancarios) return jsonErr(403, "Você não tem acesso aos documentos bancários.");
     if (idsArq.length && !acesso.docEmpresa) return jsonErr(403, "Você não tem acesso aos documentos da empresa.");
+    if (idsFt.length && !acesso.faturas) return jsonErr(403, "Você não tem acesso às faturas de cartão.");
+    if (idsEmp.length && !acesso.emprestimos) return jsonErr(403, "Você não tem acesso aos empréstimos.");
 
     const MESES = ["01","02","03","04","05","06","07","08","09","10","11","12"];
     const escolhidos: Array<{ storage_path: string; label: string }> = [];
@@ -77,6 +81,30 @@ export const POST: APIRoute = async ({ request }) => {
           storage_path: r.storage_path,
           label: r.nome_arquivo || `Extrato ${r.banco} ${MESES[(Number(r.mes) || 1) - 1]}-${r.ano}`,
         });
+      }
+    }
+
+    if (idsFt.length) {
+      const { data: rows } = await db.from("doc_cartao_faturas").select("*").in("id", idsFt);
+      const perm = await externosPermitidos(db, "doc_cartao_faturas", idsFt);
+      for (const r of ((rows || []) as any[])) {
+        if (!bancoLiberado(acesso, r.cartao)) { semPermissao++; continue; }
+        if (!podeVerComoExterno(r, { ehExterno: true, profileId: admin.sub, restritos, permitidos: perm[String(r.id)] || [] })) { semPermissao++; continue; }
+        if (linhaEhSigilosa(r, sigilosos)) { sigilosoBloqueado++; continue; }
+        if (!r.storage_path) continue;
+        escolhidos.push({ storage_path: r.storage_path, label: r.nome_arquivo || `Fatura ${r.cartao} ${MESES[(Number(r.mes) || 1) - 1]}-${r.ano}` });
+      }
+    }
+
+    if (idsEmp.length) {
+      const { data: rows } = await db.from("doc_emprestimos").select("*").in("id", idsEmp);
+      const perm = await externosPermitidos(db, "doc_emprestimos", idsEmp);
+      for (const r of ((rows || []) as any[])) {
+        if (!bancoLiberado(acesso, r.banco)) { semPermissao++; continue; }
+        if (!podeVerComoExterno(r, { ehExterno: true, profileId: admin.sub, restritos, permitidos: perm[String(r.id)] || [] })) { semPermissao++; continue; }
+        if (linhaEhSigilosa(r, sigilosos)) { sigilosoBloqueado++; continue; }
+        if (!r.storage_path) continue;
+        escolhidos.push({ storage_path: r.storage_path, label: r.nome_arquivo || [r.banco, r.descricao].filter(Boolean).join(" — ") || "Contrato" });
       }
     }
 

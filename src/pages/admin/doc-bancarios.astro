@@ -29,10 +29,12 @@ if (ehForn && !acessoForn.docBancarios) return Astro.redirect("/admin/doc-empres
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const db = supabaseAdmin();
+// Para o EXTERNO, faturas e empréstimos só são BUSCADOS se a aba tiver sido
+// liberada para ele (migration 116). Sem liberação, o dado nem entra no HTML.
 const [{ data: exRows }, { data: ftRows }, { data: empRows }, sigBancos, restBancos] = await Promise.all([
   db.from("doc_extratos_bancarios").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
-  ehForn ? Promise.resolve({ data: [] as any[] }) : db.from("doc_cartao_faturas").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
-  ehForn ? Promise.resolve({ data: [] as any[] }) : db.from("doc_emprestimos").select("*").order("status").order("data_contratacao", { ascending: false }),
+  (ehForn && !acessoForn.faturas) ? Promise.resolve({ data: [] as any[] }) : db.from("doc_cartao_faturas").select("*").order("ano", { ascending: false }).order("mes", { ascending: false }),
+  (ehForn && !acessoForn.emprestimos) ? Promise.resolve({ data: [] as any[] }) : db.from("doc_emprestimos").select("*").order("status").order("data_contratacao", { ascending: false }),
   bancosSigilosos(db),
   bancosRestritosExterno(db),
 ]);
@@ -52,7 +54,11 @@ const todosEmp: any[] = empRows || [];
 let permExt: Record<string, string[]> = {};
 if (ehForn) {
   const idsRestritos = [...todosEx, ...todasFt, ...todosEmp].filter(restEx).map((r: any) => String(r.id));
-  permExt = await externosPermitidos(db, "doc_extratos_bancarios", idsRestritos);
+  permExt = {
+    ...(await externosPermitidos(db, "doc_extratos_bancarios", idsRestritos)),
+    ...(await externosPermitidos(db, "doc_cartao_faturas", idsRestritos)),
+    ...(await externosPermitidos(db, "doc_emprestimos", idsRestritos)),
+  };
 }
 // Um documento só chega ao externo se passar nas DUAS peneiras: o banco está no
 // escopo dele E o documento não foi escondido (regra antiga, por banco ou item).
@@ -131,8 +137,8 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
 
   <div class="pills" id="bancPills" style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px">
     <button type="button" class="pill active" data-tab="extratos" onclick="setTab(this)">🏦 Extratos</button>
-    {!ehForn && <button type="button" class="pill" data-tab="faturas" onclick="setTab(this)">💳 Faturas de Cartão</button>}
-    {!ehForn && <button type="button" class="pill" data-tab="emprestimos" onclick="setTab(this)">🏛️ Empréstimos &amp; Financiamentos</button>}
+    {(!ehForn || acessoForn.faturas) && <button type="button" class="pill" data-tab="faturas" onclick="setTab(this)">💳 Faturas de Cartão</button>}
+    {(!ehForn || acessoForn.emprestimos) && <button type="button" class="pill" data-tab="emprestimos" onclick="setTab(this)">🏛️ Empréstimos &amp; Financiamentos</button>}
   </div>
 
   <input type="file" id="fileExtrato" accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx,.csv,.ofx" style="display:none" />
@@ -319,7 +325,7 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
     <div class="modal" style="max-width:520px">
       <div class="modal-head"><h3 style="margin:0">✉️ Enviar para o meu e-mail</h3><button class="modal-x" onclick="fecharEnvioForn()">×</button></div>
       <div class="modal-body">
-        <p style="margin:0 0 12px;font-size:13px;color:var(--muted)">Marque os extratos e receba todos de uma vez, em anexo, no e-mail do seu cadastro: <b id="envFornEmail">{emailForn || "seu e-mail cadastrado"}</b>. Nada é enviado para outro endereço.</p>
+        <p style="margin:0 0 12px;font-size:13px;color:var(--muted)">Marque os documentos e receba todos de uma vez, em anexo, no e-mail do seu cadastro: <b id="envFornEmail">{emailForn || "seu e-mail cadastrado"}</b>. Nada é enviado para outro endereço.</p>
         <div style="display:flex;gap:8px;margin-bottom:8px">
           <button type="button" class="btn btn-outline btn-sm" onclick="envFornTodos(true)">Marcar todos</button>
           <button type="button" class="btn btn-outline btn-sm" onclick="envFornTodos(false)">Limpar</button>
@@ -663,14 +669,15 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
     envFornCountUpd();
   }
   async function enviarParaMeuEmail() {
-    const ids = Array.from(document.querySelectorAll("#envFornLista input[type=checkbox]:checked")).map((el) => (el as HTMLInputElement).value);
+    const itensSel = Array.from(document.querySelectorAll("#envFornLista input[type=checkbox]:checked"))
+      .map((el) => ({ tipo: (el as HTMLElement).dataset.tipo || "extrato", id: (el as HTMLInputElement).value }));
     const msg = document.getElementById("envFornMsg") as HTMLElement;
     const btn = document.getElementById("envFornBtn") as HTMLButtonElement;
-    if (!ids.length) { msg.innerHTML = `<div class="alert alert-error">Marque ao menos um extrato.</div>`; return; }
+    if (!itensSel.length) { msg.innerHTML = `<div class="alert alert-error">Marque ao menos um documento.</div>`; return; }
     btn.disabled = true; btn.textContent = "Enviando…";
     try {
       const r = await fetch("/api/admin/doc-empresa/fornecedor-email", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids }),
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ itens: itensSel }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Não deu para enviar");
