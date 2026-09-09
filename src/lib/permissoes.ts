@@ -174,8 +174,10 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   { id: "operacoes", label: "Operações & Obras", itens: [
     { key: "ativos", label: "Ativos Patrimoniais", icon: "🏷️", href: "/admin/ativos" },
     { key: "obras", label: "Obras & Projetos", icon: "🏗️", href: "/admin/obras" },
-    { key: "obras-fundacao", label: "Obras de Fundação", icon: "🧱", href: "/admin/obras/fundacao" },
-    { key: "obras-diario", label: "Relatório de Visita", icon: "📋", href: "/admin/obras/diario" },
+    // Fundação e Relatório de Visita migraram para o portal da consultoria.
+    // Tirar a chave daqui já BLOQUEIA as telas, inclusive para admin: o layout é
+    // fail-closed com módulo que não está no catálogo. As páginas continuam no
+    // repositório e os dados no banco — nada foi apagado.
     { key: "vobi-projetos", label: "Projetos Ativos (Vobi)", icon: "🔗", href: "/admin/vobi-projetos" },
     { key: "depositos", label: "Depósitos", icon: "📦", href: "/admin/depositos" },
     { key: "orcamentos", label: "Orçamentos", icon: "🧮", href: "/admin/orcamentos" },
