@@ -21,7 +21,7 @@ import { escTg } from "./telegram";
 import { type Bot, enviar, inline, baixarArquivoTg } from "./telegramBot";
 import { lerDocumentoGemini, geminiConfigurado, extrairJson } from "./llm";
 import {
-  buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, darBaixa,
+  buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelaPorId, darBaixa,
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
   CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO, CARTOES,
   CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
@@ -364,6 +364,32 @@ async function pedirJurosCartao(db: any, B: Bot, token: string, estado: EstadoBa
 // ───────────────────────── callbacks (botões) ─────────────────────────
 
 export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: number, data: string) {
+  // "✅ Paguei" tocado no lembrete do dia: a parcela já é conhecida, então
+  // pulamos a busca de fornecedor e a escolha de vencimento.
+  if (data.startsWith("fbpago:")) {
+    const idInst = data.slice("fbpago:".length);
+    const p = await parcelaPorId(idInst).catch(() => null);
+    if (!p) {
+      await enviar(B, chatId, "Não encontrei essa conta em aberto — talvez já tenha sido baixada. 👍");
+      return;
+    }
+    const tk = novoToken();
+    const estado: EstadoBaixa = {
+      chat_id: chatId,
+      autor: `${cq.from?.first_name || ""} ${cq.from?.last_name || ""}`.trim() || "alguém",
+      valorPago: p.valor,
+      dataPagamento: hojeISO(),
+      fornecedor: p.fornecedor ? { id: 0, nome: p.fornecedor } : undefined,
+      forma: FORMA_PADRAO,
+      conta: CONTA_PADRAO,
+      etapa: "esc_forma",
+    };
+    await salvarEstado(db, tk, estado);
+    return await escolherParcela(db, B, tk, estado, chatId, {
+      ...p, diferenca: 0, exata: true,
+    } as Candidata);
+  }
+
   const [acao, token, arg] = data.split(":");
   const estado = await lerEstado(db, token);
   if (!estado) {

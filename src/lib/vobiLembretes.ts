@@ -94,10 +94,22 @@ export async function enviarVencimentosDoDia(): Promise<{ enviou: boolean; qtd: 
     ? cab +
       `💸 <b>Vence HOJE — ${lista.length} conta(s) · ${brl(total(lista))}</b>\n\n` +
       montarLista(lista, false) +
-      `\n\n<i>Pagou alguma? Responda aqui com o valor e o fornecedor (ou mande o comprovante) que eu dou baixa na Vobi.</i>`
+      `\n\n<i>Pagou alguma? Toque no botão dela — ou mande o comprovante.</i>`
     : cab + `✅ <b>Nenhuma conta vence hoje.</b>`;
 
-  const r = await enviarTelegram(texto, { canal: CANAL });
+  // Um botão "Paguei" por conta: tocar já abre a baixa daquela parcela, sem
+  // precisar digitar valor e fornecedor. O id da parcela (uuid) cabe no
+  // callback_data (limite de 64 bytes).
+  const teclado = lista.length
+    ? {
+        inline_keyboard: lista.slice(0, 8).map((p) => [{
+          text: `✅ Paguei: ${(p.fornecedor || p.descricao).slice(0, 24)} · ${brl(p.valor)}`.slice(0, 60),
+          callback_data: `fbpago:${p.id}`,
+        }]),
+      }
+    : undefined;
+
+  const r = await enviarTelegram(texto, { canal: CANAL, teclado });
   return { enviou: !!r?.ok, qtd: lista.length, motivo: r?.ok ? undefined : r?.motivo };
 }
 

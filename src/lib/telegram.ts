@@ -30,7 +30,10 @@ export function telegramConfigurado(): boolean {
 type EnvioResp = { ok: boolean; motivo?: string; resposta?: any };
 
 /** Envia mensagem (HTML). opts.canal escolhe o bot+grupo da área ("ATIVOS"|"ADM"...); opts.chatId sobrescreve o destino. */
-export async function enviarTelegram(texto: string, opts: { chatId?: string | number; canal?: string; area?: string } = {}): Promise<EnvioResp> {
+export async function enviarTelegram(
+  texto: string,
+  opts: { chatId?: string | number; canal?: string; area?: string; teclado?: any } = {},
+): Promise<EnvioResp> {
   const cfg = canalConfig(opts.canal || opts.area);
   const TOKEN = cfg.token;
   if (!TOKEN) return { ok: false, motivo: "token do Telegram ausente" };
@@ -40,7 +43,10 @@ export async function enviarTelegram(texto: string, opts: { chatId?: string | nu
     const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: chat, text: texto, parse_mode: "HTML", disable_web_page_preview: true }),
+      body: JSON.stringify({
+        chat_id: chat, text: texto, parse_mode: "HTML", disable_web_page_preview: true,
+        ...(opts.teclado ? { reply_markup: opts.teclado } : {}),
+      }),
     });
     const d = await r.json().catch(() => ({}));
     return { ok: !!d?.ok, resposta: d };
