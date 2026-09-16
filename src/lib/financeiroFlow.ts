@@ -564,7 +564,7 @@ function resumoCartao(e: EstadoBaixa): string {
   else txt += `<b>Valor:</b> `;
   txt += `${brl(valorConta)}`;
   if (juros > 0) txt += ` + ${brl(juros)} de juros = <b>${brl(novoValor)}</b>`;
-  txt += `\n\n<i>A conta continua EM ABERTO — vai ser baixada quando a fatura for paga.</i>\n`;
+  txt += `\n\n<i>O fornecedor já recebeu. A conta continua EM ABERTO como <b>cartão de crédito</b> — a baixa acontece quando a fatura for paga (a conta bancária não muda).</i>\n`;
   return txt;
 }
 
@@ -660,7 +660,7 @@ async function aplicarForma(db: any, B: Bot, token: string, estado: EstadoBaixa,
 /** Entrou no cartão: fixa o cartão e resolve a diferença antes de pedir juros. */
 async function entrarNoCartao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, idCartao: number) {
   estado.cartao = { id: idCartao, nome: CARTOES.find((c) => c.id === idCartao)?.nome || String(idCartao) };
-  estado.conta = idCartao;
+  // a conta NÃO vira o cartão: a fatura sai do Santander (ver rolarParaCartao)
   estado.vencimentoFatura = proximoVencimentoCartao(); // sempre a fatura de agora
   if (precisaResolverDiferenca(estado)) {
     return await perguntarDiferenca(db, B, token, estado, chatId);

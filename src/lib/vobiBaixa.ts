@@ -488,8 +488,15 @@ export async function rolarParaCartao(
       description: desc,
       idInstallmentStatus: i.idInstallmentStatus ?? 1,
       ...(i.paidDate ? { paidDate: String(i.paidDate).slice(0, 10) } : {}),
+      // A CONTA NÃO MUDA (regra da Adriana, 16/09/2026): a fatura do cartão vai
+      // ser paga pelo Santander, então o dinheiro sai de lá. O cartão é só a
+      // FORMA — é ela que registra "o fornecedor já recebeu, falta a fatura".
       ...(ehAlvo
-        ? { interest: dados.juros || 0, idPaymentType: FORMA_CARTAO, idPaymentBankAccount: dados.idCartao }
+        ? {
+            interest: dados.juros || 0,
+            idPaymentType: FORMA_CARTAO,
+            ...(i.idPaymentBankAccount ? { idPaymentBankAccount: i.idPaymentBankAccount } : {}),
+          }
         : {
             ...(num(i.interest) ? { interest: num(i.interest) } : {}),
             ...(i.idPaymentType ? { idPaymentType: i.idPaymentType } : {}),
@@ -510,14 +517,15 @@ export async function rolarParaCartao(
     }
   });
 
-  // A DESPESA tem forma de pagamento e conta próprias, no cabeçalho — mandar só
-  // dentro da parcela deixava a tela da Vobi com "Forma de pagamento: Selecione"
-  // e a conta no Santander. `paymentTypes` (array de {value}) é o campo da forma
-  // no nível da despesa; confirmado no spec (PaymentType 3 = cartão de crédito).
+  // A DESPESA tem forma de pagamento própria, no cabeçalho — mandar só dentro
+  // da parcela deixava a tela da Vobi com "Forma de pagamento: Selecione".
+  // `paymentTypes` (array de {value}) é esse campo; confirmado no spec
+  // (PaymentType 3 = cartão de crédito).
+  // A CONTA fica de fora de propósito: não enviar preserva a que já estava
+  // (Santander), que é de onde a fatura do cartão vai ser paga.
   const corpo = {
     value: total,
     paymentTypes: [{ value: FORMA_CARTAO }],
-    idPaymentBankAccount: dados.idCartao,
     installments: linhas,
   };
 
