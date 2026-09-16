@@ -165,11 +165,11 @@ export async function lerDocumentoGemini(
 // ── Leitura de IMAGEM por outro provedor (plano B do Gemini) ─────────────────
 // O Gemini é o único que lê PDF, mas a cota grátis dele é curta: numa sequência
 // de leituras ele começa a devolver 429 e a leitura por imagem simplesmente
-// parava. Estes modelos do Groq leem IMAGEM (não PDF) e são grátis.
-const MODELOS_GROQ_VISAO = [
-  "meta-llama/llama-4-scout-17b-16e-instruct",
-  "meta-llama/llama-4-maverick-17b-128e-instruct",
-];
+// parava. Estes modelos do Groq leem IMAGEM (não PDF).
+// CONFERIDO na documentação do Groq (console.groq.com/docs/vision, 16/09/2026):
+// são estes os multimodais ativos — os Llama 4 Scout/Maverick foram retirados.
+// Limite de 20 MB por requisição com imagem.
+const MODELOS_GROQ_VISAO = ["qwen/qwen3.6-27b", "qwen/qwen3.8-27b"];
 
 async function chamarGroqVisao(key: string, system: string, prompt: string, base64: string, mt: string): Promise<string | null> {
   let ultimoErro: any = null;
@@ -193,7 +193,9 @@ async function chamarGroqVisao(key: string, system: string, prompt: string, base
       });
       if (!r.ok) throw new Error(`GroqVisão(${modelo}) ${r.status}: ${(await r.text()).slice(0, 160)}`);
       const j: any = await r.json();
-      const out = String(j?.choices?.[0]?.message?.content || "").trim();
+      const msg = j?.choices?.[0]?.message;
+      // os qwen têm modo "thinking": o JSON pode vir em reasoning_content
+      const out = String(msg?.content || msg?.reasoning_content || "").trim();
       if (out) return out;
     } catch (e) { ultimoErro = e; } // esse modelo falhou -> tenta o próximo
   }
