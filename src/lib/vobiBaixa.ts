@@ -510,7 +510,16 @@ export async function rolarParaCartao(
     }
   });
 
-  const corpo = { value: total, installments: linhas };
+  // A DESPESA tem forma de pagamento e conta próprias, no cabeçalho — mandar só
+  // dentro da parcela deixava a tela da Vobi com "Forma de pagamento: Selecione"
+  // e a conta no Santander. `paymentTypes` (array de {value}) é o campo da forma
+  // no nível da despesa; confirmado no spec (PaymentType 3 = cartão de crédito).
+  const corpo = {
+    value: total,
+    paymentTypes: [{ value: FORMA_CARTAO }],
+    idPaymentBankAccount: dados.idCartao,
+    installments: linhas,
+  };
 
   if (opts.dryRun) {
     return { ...base, ok: true, valorDepois: novoValor, mensagem: `SIMULAÇÃO — enviaria: ${JSON.stringify(corpo).slice(0, 400)}` };

@@ -279,12 +279,18 @@ function formaDoTexto(v: unknown): number | null {
   // tira acento ANTES de limpar: "Cartão de crédito" precisa virar "cartaodecredito"
   const s = String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]/g, "");
   if (!s) return null;
+  // tabela PaymentType da Vobi (conferida no spec): 1 PIX · 2 Boleto ·
+  // 3 Cartão de crédito · 4 Cartão de débito · 5 Transferência · 6 Dinheiro ·
+  // 7 Outros · 8 Cheque · 9 Débito em conta · 10 Depósito · 11 Crédito em conta
   if (s.includes("credito") || s === "cartao") return FORMA_CARTAO; // 3
   if (s.includes("pix")) return 1;
   if (s.includes("boleto")) return 2;
-  if (s.includes("debito")) return 9; // débito em conta / cartão de débito
+  if (s.includes("cartao") && s.includes("debito")) return 4; // cartão de débito
+  if (s.includes("debito")) return 9; // débito em conta
   if (s.includes("transferencia") || s.includes("ted") || s.includes("doc")) return 5;
   if (s.includes("dinheiro") || s.includes("especie")) return 6;
+  if (s.includes("cheque")) return 8;
+  if (s.includes("deposito")) return 10;
   return null;
 }
 
