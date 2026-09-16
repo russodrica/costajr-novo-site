@@ -6,11 +6,14 @@
 //   2. o bot acha as parcelas EM ABERTO daquele fornecedor — inclusive as
 //      VENCIDAS, porque ela quase sempre paga com atraso
 //   3. escolhido o vencimento, pergunta COMO foi pago:
-//      • dinheiro/PIX/boleto → BAIXA a parcela, lançando juros se pagou a mais
+//      • dinheiro/PIX/boleto → BAIXA a parcela
 //      • CARTÃO DE CRÉDITO   → NÃO baixa! empurra o vencimento para o dia 02 do
 //        mês seguinte (fatura) e soma os juros do cartão, deixando em aberto
+//   3b. se o valor pago NÃO bate com o da Vobi, PERGUNTA o que houve — juros/
+//      multa ou o valor da conta mudou (energia é apuração de consumo, e
+//      parcelas às vezes são revisadas). Nunca presumir que é juros.
 //   4. mostra o resumo e pergunta:  [✅ Sim] [❌ Não] [✏️ Alterar]
-//      "Alterar" pergunta o que mudar: [💵 Valor] [📅 Vencimento]
+//      "Alterar" separa valor pago, valor da conta, juros e vencimento
 //   5. confirmado, grava na Vobi e RELÊ para provar que gravou
 //
 // O estado de cada lançamento fica em telegram_sessoes na chave "fb:<token>" —
@@ -87,12 +90,47 @@ type EstadoBaixa = {
   forma: number;
   conta: number;
   cartao?: { id: number; nome: string };
-  jurosCartao?: number;
-  /** valor da conta em si no fluxo do cartão (ex.: energia varia por consumo) */
-  valorContaCartao?: number;
+  /**
+   * Valor REAL da conta (sem juros). Só fica definido depois que a pessoa
+   * resolve a diferença entre o pago e o que está na Vobi — porque a diferença
+   * tanto pode ser juros quanto o próprio valor da conta ter mudado (energia é
+   * apuração de consumo; parcelas às vezes são revisadas).
+   */
+  valorConta?: number;
+  /** Juros/multa (ou juros do cartão) informados pela pessoa. */
+  juros?: number;
   vencimentoFatura?: string;
   etapa: string;
+
+  // nomes antigos — só para sessões que já estavam em andamento no deploy
+  jurosCartao?: number;
+  valorContaCartao?: number;
 };
+
+/** Valor da conta em si: o corrigido, senão o que está na Vobi. */
+function contaDe(e: EstadoBaixa): number {
+  return e.valorConta ?? e.valorContaCartao ?? e.parcela?.valor ?? e.valorPago;
+}
+
+/** Juros: o informado, senão o que sobra entre o pago e o valor da conta. */
+function jurosDe(e: EstadoBaixa): number {
+  if (e.juros != null) return e.juros;
+  if (e.jurosCartao != null) return e.jurosCartao;
+  if (e.forma === FORMA_CARTAO) return 0;
+  return calcularAcrescimo(contaDe(e), e.valorPago).juros;
+}
+
+function descontoDe(e: EstadoBaixa): number {
+  if (e.forma === FORMA_CARTAO) return 0;
+  return calcularAcrescimo(contaDe(e), e.valorPago).desconto;
+}
+
+/** true quando ainda não sabemos se a diferença é juros ou valor novo da conta. */
+function precisaResolverDiferenca(e: EstadoBaixa): boolean {
+  if (!e.parcela) return false;
+  if (e.valorConta != null || e.valorContaCartao != null || e.juros != null || e.jurosCartao != null) return false;
+  return Math.abs(e.valorPago - e.parcela.valor) >= 0.01;
+}
 
 async function salvarEstado(db: any, token: string, dados: EstadoBaixa) {
   await db.from("telegram_sessoes").upsert(
@@ -306,7 +344,9 @@ async function escolherParcela(db: any, B: Bot, token: string, estado: EstadoBai
 
 function resumoBaixa(e: EstadoBaixa): string {
   const p = e.parcela!;
-  const { juros, desconto } = calcularAcrescimo(p.valor, e.valorPago);
+  const valorConta = contaDe(e);
+  const juros = jurosDe(e);
+  const desconto = descontoDe(e);
   const contaNome = CONTAS_PRINCIPAIS.find((c) => c.id === e.conta)?.nome || `conta ${e.conta}`;
   const formaNome = FORMAS_PAGAMENTO.find((f) => f.id === e.forma)?.nome || "—";
   const d = Math.round((Date.parse(e.dataPagamento) - Date.parse(p.vencimento)) / 86400000);
@@ -316,10 +356,12 @@ function resumoBaixa(e: EstadoBaixa): string {
   txt += `<b>Fornecedor:</b> ${escTg(p.fornecedor || "—")}\n`;
   txt += `<b>Conta:</b> ${escTg(p.descricao.slice(0, 50))}\n`;
   txt += `<b>Vencimento:</b> ${dataBR(p.vencimento)}${atraso}\n`;
-  txt += `<b>Valor devido:</b> ${brl(p.valor)}\n`;
-  txt += `<b>Valor pago:</b> ${brl(e.valorPago)}\n`;
+  txt += Math.abs(valorConta - p.valor) >= 0.01
+    ? `<b>Valor da conta:</b> ${brl(p.valor)} → <b>${brl(valorConta)}</b> <i>(corrigido)</i>\n`
+    : `<b>Valor da conta:</b> ${brl(valorConta)}\n`;
   if (juros > 0) txt += `<b>Juros/multa:</b> ${brl(juros)} ⚠️\n`;
   if (desconto > 0) txt += `<b>Desconto:</b> ${brl(desconto)}\n`;
+  txt += `<b>Valor pago:</b> ${brl(e.valorPago)}\n`;
   txt += `<b>Pago em:</b> ${dataBR(e.dataPagamento)}\n`;
   txt += `<b>Saiu de:</b> ${escTg(contaNome)} · ${escTg(formaNome)}\n`;
   return txt;
@@ -327,9 +369,9 @@ function resumoBaixa(e: EstadoBaixa): string {
 
 function resumoCartao(e: EstadoBaixa): string {
   const p = e.parcela!;
-  const juros = e.jurosCartao || 0;
+  const juros = jurosDe(e);
   const venc = e.vencimentoFatura || proximoVencimentoCartao();
-  const valorConta = e.valorContaCartao ?? p.valor;
+  const valorConta = contaDe(e);
   const novoValor = Math.round((valorConta + juros) * 100) / 100;
 
   let txt = `💳 <b>Confirmar o pagamento no cartão?</b>\n\n`;
@@ -345,15 +387,76 @@ function resumoCartao(e: EstadoBaixa): string {
   return txt;
 }
 
-/** Define o cartão e pergunta os juros (digitados ou lidos do print da fatura). */
-async function pedirJurosCartao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, idCartao: number) {
+/** Salva e mostra o resumo certo (baixa normal ou cartão) com [Sim][Não][Alterar]. */
+async function irParaConfirmacao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  estado.etapa = "confirmar";
+  await salvarEstado(db, token, estado);
+  const txt = estado.forma === FORMA_CARTAO ? resumoCartao(estado) : resumoBaixa(estado);
+  await enviar(B, chatId, txt, BOTOES_CONFIRMA(token));
+}
+
+/**
+ * O pago não bate com o que está na Vobi — e o bot NÃO pode chutar.
+ *
+ * Pedido da Adriana (16/09/2026): a diferença tanto pode ser juros por atraso
+ * quanto o próprio valor da conta ter mudado (a Enel é apuração de consumo, e
+ * outras parcelas às vezes são revisadas). Presumir juros lança errado, então
+ * aqui perguntamos antes de montar o resumo.
+ */
+async function perguntarDiferenca(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const p = estado.parcela!;
+  const dif = Math.round((estado.valorPago - p.valor) * 100) / 100;
+  const ehCartao = estado.forma === FORMA_CARTAO;
+  estado.etapa = "esc_diferenca";
+  await salvarEstado(db, token, estado);
+
+  const cabecalho =
+    `🤔 <b>O valor não bate com o da Vobi.</b>\n\n` +
+    `<b>Na Vobi:</b> ${brl(p.valor)}\n` +
+    `<b>${ehCartao ? "No cartão" : "Pago"}:</b> ${brl(estado.valorPago)}\n` +
+    `<b>Diferença:</b> ${brl(Math.abs(dif))}\n\n`;
+
+  if (dif > 0) {
+    await enviar(B, chatId,
+      cabecalho + `A conta <b>mudou de valor</b> (ex.: consumo de energia, revisão da parcela) ou a diferença é <b>${ehCartao ? "juros do cartão" : "juros/multa"}</b>?`,
+      inline([
+        [{ text: `🧾 A conta é ${brl(estado.valorPago)} mesmo`, callback_data: `fbdifv:${token}` }],
+        [{ text: `📈 É ${ehCartao ? "juros do cartão" : "juros/multa"} de ${brl(dif)}`, callback_data: `fbdifj:${token}` }],
+        [{ text: "✏️ Os dois — eu informo o valor da conta", callback_data: `fbdifb:${token}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]));
+    return;
+  }
+
+  // pagou MENOS que o lançado: ou a conta baixou de valor, ou houve desconto
+  await enviar(B, chatId,
+    cabecalho + `A conta <b>mudou de valor</b> para menos, ou foi um <b>desconto</b> no pagamento?`,
+    inline([
+      [{ text: `🧾 A conta é ${brl(estado.valorPago)} mesmo`, callback_data: `fbdifv:${token}` }],
+      [{ text: `🏷️ Foi desconto de ${brl(Math.abs(dif))}`, callback_data: `fbdifj:${token}` }],
+      [{ text: "✏️ Os dois — eu informo o valor da conta", callback_data: `fbdifb:${token}` }],
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ]));
+}
+
+/** Entrou no cartão: fixa o cartão e resolve a diferença antes de pedir juros. */
+async function entrarNoCartao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, idCartao: number) {
   estado.cartao = { id: idCartao, nome: CARTOES.find((c) => c.id === idCartao)?.nome || String(idCartao) };
   estado.conta = idCartao;
-  estado.vencimentoFatura = proximoVencimentoCartao();
+  estado.vencimentoFatura = estado.vencimentoFatura || proximoVencimentoCartao();
+  if (precisaResolverDiferenca(estado)) {
+    return await perguntarDiferenca(db, B, token, estado, chatId);
+  }
+  return await pedirJurosCartao(db, B, token, estado, chatId);
+}
+
+/** Pergunta os juros do cartão (digitados ou lidos do print da fatura). */
+async function pedirJurosCartao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  estado.vencimentoFatura = estado.vencimentoFatura || proximoVencimentoCartao();
   estado.etapa = "aguarda_juros";
   await salvarEstado(db, token, estado);
   await enviar(B, chatId,
-    `💳 <b>${escTg(estado.cartao.nome)}</b> — a conta vai para a fatura de <b>${dataBR(estado.vencimentoFatura)}</b>.\n\n` +
+    `💳 <b>${escTg(estado.cartao?.nome || "cartão")}</b> — a conta (${brl(contaDe(estado))}) vai para a fatura de <b>${dataBR(estado.vencimentoFatura)}</b>.\n\n` +
     `Quanto de <b>juros do cartão</b>?\nMande o valor (ex.: <code>35,90</code>), o <b>print da fatura</b>, ou toque em “sem juros”.`,
     inline([
       [{ text: "🚫 Sem juros", callback_data: `fbjuros0:${token}` }],
@@ -418,7 +521,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     if (forma === FORMA_CARTAO) {
       // com um único cartão ativo, não faz sentido perguntar qual é
       if (CARTOES.length === 1) {
-        return await pedirJurosCartao(db, B, token, estado, chatId, CARTOES[0].id);
+        return await entrarNoCartao(db, B, token, estado, chatId, CARTOES[0].id);
       }
       estado.etapa = "esc_cartao";
       await salvarEstado(db, token, estado);
@@ -427,21 +530,56 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       await enviar(B, chatId, "Qual cartão?", inline(botoes));
       return;
     }
-    // não é cartão → conta padrão e vai pro resumo da baixa
+    // não é cartão → conta padrão. Se o pago não bate com a Vobi, PERGUNTA
+    // antes: pode ser juros, ou a conta ter mudado de valor.
     estado.conta = CONTA_PADRAO;
+    if (precisaResolverDiferenca(estado)) {
+      return await perguntarDiferenca(db, B, token, estado, chatId);
+    }
     estado.etapa = "confirmar";
     await salvarEstado(db, token, estado);
     await enviar(B, chatId, resumoBaixa(estado), BOTOES_CONFIRMA(token));
     return;
   }
 
-  // ── cartão escolhido → pergunta os juros ──
+  // ── cartão escolhido ──
   if (acao === "fbcartao") {
-    return await pedirJurosCartao(db, B, token, estado, chatId, Number(arg));
+    return await entrarNoCartao(db, B, token, estado, chatId, Number(arg));
+  }
+
+  // ── a diferença é o VALOR DA CONTA (não é juros) ──
+  if (acao === "fbdifv") {
+    estado.valorConta = estado.valorPago;
+    if (estado.forma === FORMA_CARTAO) {
+      // a conta foi corrigida, mas o cartão ainda pode ter juros próprios
+      return await pedirJurosCartao(db, B, token, estado, chatId);
+    }
+    estado.juros = 0;
+    return await irParaConfirmacao(db, B, token, estado, chatId);
+  }
+
+  // ── a diferença é JUROS/MULTA (ou desconto, se pagou menos) ──
+  if (acao === "fbdifj") {
+    estado.valorConta = estado.parcela?.valor ?? estado.valorPago;
+    if (estado.forma === FORMA_CARTAO) {
+      estado.juros = Math.max(0, Math.round((estado.valorPago - estado.valorConta) * 100) / 100);
+    } else {
+      estado.juros = undefined; // deixa derivar (juros OU desconto) do valor da conta
+    }
+    return await irParaConfirmacao(db, B, token, estado, chatId);
+  }
+
+  // ── os dois: ela digita o valor da conta e o resto vira juros ──
+  if (acao === "fbdifb") {
+    estado.etapa = "aguarda_conta_resto";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `🧾 Qual o <b>valor da conta</b> (sem os juros)?\n<i>(na Vobi está ${brl(estado.parcela?.valor ?? 0)} e foi pago ${brl(estado.valorPago)} — o resto eu lanço como ${estado.forma === FORMA_CARTAO ? "juros do cartão" : "juros/multa"})</i>`);
+    return;
   }
 
   if (acao === "fbjuros0") {
-    estado.jurosCartao = 0;
+    estado.juros = 0;
     estado.etapa = "confirmar";
     await salvarEstado(db, token, estado);
     await enviar(B, chatId, resumoCartao(estado), BOTOES_CONFIRMA(token));
@@ -461,14 +599,20 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     // muda todo mês pelo consumo) e os juros do cartão
     const opcoes = estado.forma === FORMA_CARTAO
       ? [
-          [{ text: "💵 Valor da conta", callback_data: `fbaltv:${token}` }],
+          [{ text: "🧾 Valor da conta", callback_data: `fbaltc:${token}` }],
           [{ text: "💳 Juros do cartão", callback_data: `fbaltj:${token}` }],
           [{ text: "📅 Vencimento", callback_data: `fbaltd:${token}` }],
           [{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }],
         ]
       : [
+          // "valor pago" (o que saiu da conta) e "valor da conta" (o que era
+          // devido) são coisas diferentes — a diferença entre eles é o juros
           [
-            { text: "💵 Valor", callback_data: `fbaltv:${token}` },
+            { text: "💵 Valor pago", callback_data: `fbaltv:${token}` },
+            { text: "🧾 Valor da conta", callback_data: `fbaltc:${token}` },
+          ],
+          [
+            { text: "📈 Juros/multa", callback_data: `fbaltj:${token}` },
             { text: "📅 Vencimento", callback_data: `fbaltd:${token}` },
           ],
           [{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }],
@@ -477,25 +621,31 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     return;
   }
 
-  // valor da CONTA (tanto no fluxo normal quanto no cartão)
+  // VALOR PAGO — o que saiu da conta. Muda o pago, então a diferença volta a
+  // ser uma incógnita: zeramos o que foi resolvido para perguntar de novo.
   if (acao === "fbaltv") {
     estado.etapa = "aguarda_valor";
     await salvarEstado(db, token, estado);
-    const atual = estado.forma === FORMA_CARTAO
-      ? (estado.valorContaCartao ?? estado.parcela?.valor ?? estado.valorPago)
-      : estado.valorPago;
-    await enviar(B, chatId,
-      estado.forma === FORMA_CARTAO
-        ? `💵 Qual o <b>valor da conta</b> (sem os juros do cartão)?\n<i>(hoje está ${brl(atual)})</i>`
-        : `💵 Qual foi o valor pago de verdade?\n<i>(hoje está ${brl(atual)} — mande só o número)</i>`);
+    await enviar(B, chatId, `💵 Qual foi o <b>valor pago</b> de verdade?\n<i>(hoje está ${brl(estado.valorPago)} — mande só o número)</i>`);
     return;
   }
 
-  // juros do cartão
+  // VALOR DA CONTA — o que era devido (energia por consumo, parcela revisada…)
+  if (acao === "fbaltc") {
+    estado.etapa = "aguarda_valor_conta";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `🧾 Qual o <b>valor da conta</b> (sem os juros)?\n<i>(hoje está ${brl(contaDe(estado))}; na Vobi está ${brl(estado.parcela?.valor ?? 0)})</i>`);
+    return;
+  }
+
+  // JUROS — do cartão, ou juros/multa por atraso
   if (acao === "fbaltj") {
     estado.etapa = "aguarda_juros";
     await salvarEstado(db, token, estado);
-    await enviar(B, chatId, `💳 Qual o valor dos <b>juros do cartão</b>?\n<i>(hoje está ${brl(estado.jurosCartao || 0)})</i>\nPode mandar o número ou o <b>print da fatura</b>.`);
+    const rotulo = estado.forma === FORMA_CARTAO ? "juros do cartão" : "juros/multa";
+    await enviar(B, chatId,
+      `📈 Qual o valor dos <b>${rotulo}</b>?\n<i>(hoje está ${brl(jurosDe(estado))})</i>\nPode mandar o número ou o <b>print</b>.`);
     return;
   }
 
@@ -505,11 +655,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
   if (acao === "fbvolta") {
     if (!estado.parcela) return await mostrarParcelas(db, B, token, estado, chatId);
-    estado.etapa = "confirmar";
-    await salvarEstado(db, token, estado);
-    const txt = estado.forma === FORMA_CARTAO ? resumoCartao(estado) : resumoBaixa(estado);
-    await enviar(B, chatId, txt, BOTOES_CONFIRMA(token));
-    return;
+    return await irParaConfirmacao(db, B, token, estado, chatId);
   }
 
   // ── SIM → executa ──
@@ -522,11 +668,11 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       let r;
       try {
         r = await rolarParaCartao(estado.parcela.id, {
-          juros: estado.jurosCartao || 0,
+          juros: jurosDe(estado),
           idCartao: estado.cartao?.id || estado.conta,
           nomeCartao: estado.cartao?.nome,
           vencimentoFatura: estado.vencimentoFatura,
-          novoValorConta: estado.valorContaCartao,
+          novoValorConta: estado.valorConta ?? estado.valorContaCartao,
         });
       } catch (e: any) {
         await enviar(B, chatId, "❌ Erro: " + escTg(String(e?.message || e)) + "\n<i>Confira na Vobi.</i>");
@@ -554,6 +700,9 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       r = await darBaixa({
         idInstallment: estado.parcela.id,
         valorPago: estado.valorPago,
+        // o valor que a conta REALMENTE tinha — sem isso a Vobi registraria a
+        // diferença como juros, que foi o erro que a Adriana pegou (16/09/2026)
+        valorConta: contaDe(estado),
         dataPagamento: estado.dataPagamento,
         idPaymentBankAccount: estado.conta,
         idPaymentType: estado.forma,
@@ -573,7 +722,11 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     let txt = `✅ <b>Baixa confirmada na Vobi!</b>\n\n`;
     txt += `${escTg(estado.parcela.fornecedor || "")} — ${escTg(estado.parcela.descricao.slice(0, 45))}\n`;
     txt += `Venc. ${dataBR(estado.parcela.vencimento)} · pago ${brl(r.valorPago)} em ${dataBR(estado.dataPagamento)}\n`;
-    if (r.juros > 0) txt += `Juros lançados: <b>${brl(r.juros)}</b>\n`;
+    if (Math.abs(r.valorOriginal - estado.parcela.valor) >= 0.01) {
+      txt += `Valor da conta: ${brl(estado.parcela.valor)} → <b>${brl(r.valorOriginal)}</b> (corrigido)\n`;
+    }
+    if (r.juros > 0) txt += `Juros/multa lançados: <b>${brl(r.juros)}</b>\n`;
+    if (r.desconto > 0) txt += `Desconto lançado: <b>${brl(r.desconto)}</b>\n`;
     txt += `\n<i>Lançado por ${escTg(estado.autor)} via Telegram.</i>`;
     await enviar(B, chatId, txt);
     return;
@@ -588,7 +741,7 @@ async function pendenteEsperandoNumero(db: any, chatId: number) {
     .select("telegram_user_id, dados, estado")
     .like("telegram_user_id", "fb:%")
     .eq("chat_id", String(chatId))
-    .in("estado", ["aguarda_valor", "aguarda_juros"])
+    .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros"])
     .order("telegram_user_id", { ascending: false })
     .limit(1);
   const linha = (data || [])[0];
@@ -608,31 +761,52 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
     return true;
   }
 
+  // ── juros informados: o valor da conta passa a ser o pago menos os juros ──
   if (etapa === "aguarda_juros") {
-    estado.jurosCartao = novo;
-    estado.etapa = "confirmar";
-    await salvarEstado(db, token, estado);
-    await enviar(B, chatId, resumoCartao(estado), BOTOES_CONFIRMA(token));
+    estado.juros = novo;
+    if (estado.forma !== FORMA_CARTAO) {
+      estado.valorConta = Math.max(0, Math.round((estado.valorPago - novo) * 100) / 100);
+    }
+    await irParaConfirmacao(db, B, token, estado, chatId);
     return true;
   }
 
-  // no cartão, o número digitado é o valor DA CONTA (os juros têm passo próprio)
-  if (estado.forma === FORMA_CARTAO) {
-    estado.valorContaCartao = novo;
-    estado.etapa = "confirmar";
-    await salvarEstado(db, token, estado);
-    await enviar(B, chatId, resumoCartao(estado), BOTOES_CONFIRMA(token));
+  // ── "os dois": ela informa a conta e o RESTO do que foi pago vira juros ──
+  if (etapa === "aguarda_conta_resto") {
+    estado.valorConta = novo;
+    estado.juros = estado.forma === FORMA_CARTAO
+      ? Math.max(0, Math.round((estado.valorPago - novo) * 100) / 100)
+      : undefined; // fora do cartão, juros OU desconto saem do cálculo
+    await irParaConfirmacao(db, B, token, estado, chatId);
     return true;
   }
 
+  // ── correção só do valor da conta (no cartão, os juros ficam como estavam) ──
+  if (etapa === "aguarda_valor_conta") {
+    estado.valorConta = novo;
+    if (estado.forma !== FORMA_CARTAO) estado.juros = undefined;
+    await irParaConfirmacao(db, B, token, estado, chatId);
+    return true;
+  }
+
+  // ── valor PAGO: mudou o que saiu da conta, então a diferença volta a ser
+  //    incógnita — esquecemos o que já foi resolvido e perguntamos de novo.
   estado.valorPago = novo;
-  estado.etapa = "confirmar";
-  await salvarEstado(db, token, estado);
+  estado.valorConta = undefined;
+  estado.valorContaCartao = undefined;
+  estado.juros = undefined;
+  estado.jurosCartao = undefined;
   if (!estado.parcela) {
+    estado.etapa = "confirmar";
+    await salvarEstado(db, token, estado);
     await mostrarParcelas(db, B, token, estado, chatId);
     return true;
   }
-  await enviar(B, chatId, resumoBaixa(estado), BOTOES_CONFIRMA(token));
+  if (precisaResolverDiferenca(estado)) {
+    await perguntarDiferenca(db, B, token, estado, chatId);
+    return true;
+  }
+  await irParaConfirmacao(db, B, token, estado, chatId);
   return true;
 }
 
@@ -666,9 +840,11 @@ export async function onPrintDuranteBaixa(db: any, B: Bot, msg: any, chatId: num
     await enviar(B, chatId, "🤔 Não consegui ler os juros. Mande o valor por texto, ex.: <code>35,90</code>");
     return true;
   }
-  p.estado.jurosCartao = juros;
-  p.estado.etapa = "confirmar";
-  await salvarEstado(db, p.token, p.estado);
-  await enviar(B, chatId, `📄 Li <b>${brl(juros)}</b> de juros.\n\n` + resumoCartao(p.estado), BOTOES_CONFIRMA(p.token));
+  p.estado.juros = juros;
+  if (p.estado.forma !== FORMA_CARTAO) {
+    p.estado.valorConta = Math.max(0, Math.round((p.estado.valorPago - juros) * 100) / 100);
+  }
+  await enviar(B, chatId, `📄 Li <b>${brl(juros)}</b> de juros.`);
+  await irParaConfirmacao(db, B, p.token, p.estado, chatId);
   return true;
 }

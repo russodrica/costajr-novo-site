@@ -389,7 +389,14 @@ export type DadosBaixa = {
   dataPagamento: string; // AAAA-MM-DD
   idPaymentBankAccount?: number;
   idPaymentType?: number;
-  /** Se não vier, é calculado: valorPago - valorOriginal (quando positivo). */
+  /**
+   * Valor REAL da conta (o que era devido), quando ele mudou em relação ao que
+   * está na Vobi — ex.: energia elétrica, que é apuração de consumo, ou uma
+   * revisão de valor da parcela. Sem isso, a diferença entre o pago e o que
+   * estava lançado viraria juros, o que nem sempre é verdade.
+   */
+  valorConta?: number;
+  /** Se não vier, é calculado: valorPago - valorConta (quando positivo). */
   juros?: number;
   multa?: number;
   desconto?: number;
@@ -559,7 +566,11 @@ export async function darBaixa(dados: DadosBaixa, opts: { dryRun?: boolean } = {
     };
   }
 
-  const auto = calcularAcrescimo(antes.valorOriginal, dados.valorPago);
+  // Base do cálculo: o valor que a conta REALMENTE tinha. Normalmente é o que
+  // está na Vobi, mas quem lançou pode ter corrigido (energia por consumo,
+  // revisão de parcela...) — nesse caso a diferença NÃO é juros.
+  const valorConta = dados.valorConta ?? antes.valorOriginal;
+  const auto = calcularAcrescimo(valorConta, dados.valorPago);
   const juros = dados.juros ?? auto.juros;
   const multa = dados.multa ?? 0;
   const desconto = dados.desconto ?? auto.desconto;
@@ -573,7 +584,7 @@ export async function darBaixa(dados: DadosBaixa, opts: { dryRun?: boolean } = {
   const corpo: Record<string, any> = {
     idInstallmentStatus: STATUS_PAGO_MANUAL,
     paidDate: dados.dataPagamento,
-    originalValue: antes.valorOriginal,
+    originalValue: valorConta,
     price: dados.valorPago,
     interest: juros,
     fine: multa,
@@ -587,7 +598,7 @@ export async function darBaixa(dados: DadosBaixa, opts: { dryRun?: boolean } = {
     ok: false,
     idInstallment: dados.idInstallment,
     descricao: antes.descricao,
-    valorOriginal: antes.valorOriginal,
+    valorOriginal: valorConta,
     valorPago: dados.valorPago,
     juros, multa, desconto,
     statusDepois: null,

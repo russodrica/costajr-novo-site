@@ -365,7 +365,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   await responderCallback(B, cq.id);
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
-  if (/^fb(pago|forn|parc|forma|cartao|juros0|sim|nao|alt|altv|altj|altd|volta):/.test(data)) return await onCallbackFinanceiro(db, B, cq, chatId, data);
+  if (/^fb(pago|forn|parc|forma|cartao|juros0|dif[vjb]|sim|nao|alt|altv|altc|altj|altd|volta):/.test(data)) return await onCallbackFinanceiro(db, B, cq, chatId, data);
   if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, cq, chatId, data);
   if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gempl|gemppk|gbanc\w*):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
