@@ -316,7 +316,9 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
 
   const botoes = cands.map((c, i) => {
     const atraso = c.diasAtraso > 0 ? ` (${c.diasAtraso}d atraso)` : "";
-    return [{ text: `${dataBR(c.vencimento).slice(0, 5)} · ${brl(c.valor)}${atraso}`.slice(0, 60), callback_data: `fbparc:${token}:${i}` }];
+    // o ID da parcela vai no botão (não o índice da lista): se alguém tocar num
+    // botão de uma lista ANTIGA, o índice apontaria para outra conta
+    return [{ text: `${dataBR(c.vencimento).slice(0, 5)} · ${brl(c.valor)}${atraso}`.slice(0, 60), callback_data: `fbparc:${token}:${c.id}` }];
   });
   botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
 
@@ -343,10 +345,16 @@ async function escolherParcela(db: any, B: Bot, token: string, estado: EstadoBai
     estado.jurosCartao = undefined;
   }
   estado.parcela = { id: c.id, descricao: c.descricao, valor: c.valor, vencimento: c.vencimento, fornecedor: c.fornecedor };
+  return await perguntarForma(db, B, token, estado, chatId);
+}
+
+/** "Como foi pago?" — a regra muda no cartão, então isso decide o resto do fluxo. */
+async function perguntarForma(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const p = estado.parcela!;
   estado.etapa = "esc_forma";
   await salvarEstado(db, token, estado);
   await enviar(B, chatId,
-    `Como foi pago?\n<i>${escTg(c.descricao.slice(0, 40))} — venc. ${dataBR(c.vencimento)}</i>`,
+    `Como foi pago?\n<i>${escTg(p.descricao.slice(0, 40))} — venc. ${dataBR(p.vencimento)}</i>`,
     inline([
       [
         { text: "💠 PIX", callback_data: `fbforma:${token}:1` },
@@ -542,8 +550,8 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   }
 
   if (acao === "fbparc") {
-    const c = (estado.candidatas || [])[Number(arg)];
-    if (!c) { await enviar(B, chatId, "Não achei essa opção. Tente de novo."); return; }
+    const c = (estado.candidatas || []).find((x) => x.id === arg);
+    if (!c) { await enviar(B, chatId, "Essa opção é de uma lista antiga. Toque em <b>Alterar → Vencimento</b> para ver a lista atual."); return; }
     return await escolherParcela(db, B, token, estado, chatId, c);
   }
 
@@ -635,6 +643,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
           [{ text: "🧾 Valor da conta", callback_data: `fbaltc:${token}` }],
           [{ text: "💳 Juros do cartão", callback_data: `fbaltj:${token}` }],
           [{ text: "📅 Vencimento", callback_data: `fbaltd:${token}` }],
+          [{ text: "🔁 Não foi no cartão", callback_data: `fbaltf:${token}` }],
           [{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }],
         ]
       : [
@@ -648,6 +657,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
             { text: "📈 Juros/multa", callback_data: `fbaltj:${token}` },
             { text: "📅 Vencimento", callback_data: `fbaltd:${token}` },
           ],
+          [{ text: "🔁 Forma de pagamento", callback_data: `fbaltf:${token}` }],
           [{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }],
         ];
     await enviar(B, chatId, "✏️ O que você quer alterar?", inline(opcoes));
@@ -687,6 +697,17 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       `📈 Qual o valor dos <b>${rotulo}</b>?\n<i>(hoje está ${brl(jurosDe(estado))})</i>${nota}\nPode mandar o número ou o <b>print</b>.`,
       BOTOES_CANCELA(token));
     return;
+  }
+
+  // trocar a FORMA (tocou no cartão sem querer, por exemplo). O juros do cartão
+  // deixa de valer, então volta a ser incógnita; o valor da conta continua.
+  if (acao === "fbaltf") {
+    if (!estado.parcela) return await mostrarParcelas(db, B, token, estado, chatId);
+    estado.juros = undefined;
+    estado.jurosCartao = undefined;
+    estado.cartao = undefined;
+    estado.vencimentoFatura = undefined;
+    return await perguntarForma(db, B, token, estado, chatId);
   }
 
   if (acao === "fbaltd") {
