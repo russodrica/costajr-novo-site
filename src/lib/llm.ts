@@ -148,13 +148,27 @@ export async function lerDocumentoGemini(
         body: JSON.stringify({
           system_instruction: { parts: [{ text: system }] },
           contents: [{ role: "user", parts: [{ text: prompt }, { inline_data: { mime_type: mt, data: base64 } }] }],
-          generationConfig: { maxOutputTokens: 500, temperature: 0.1 },
+          generationConfig: {
+            // 500 tokens truncavam a resposta: os modelos 2.5 "pensam" antes de
+            // responder e o raciocínio consome ESTE MESMO orçamento. O JSON saía
+            // pela metade e o parse falhava (medido em produção, 16/09/2026).
+            maxOutputTokens: 2048,
+            temperature: 0.1,
+            // pede JSON de verdade: sem cerca ```json e sem texto em volta
+            responseMimeType: "application/json",
+          },
         }),
       });
       if (!r.ok) throw new Error(`Gemini(doc/${modelo}) ${r.status}: ${(await r.text()).slice(0, 160)}`);
       const j: any = await r.json();
-      const text = (j?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || "").join("");
+      const cand = j?.candidates?.[0];
+      const text = (cand?.content?.parts || []).map((p: any) => p?.text || "").join("");
       const out = String(text || "").trim();
+      // resposta cortada não serve: melhor tentar o próximo modelo do que
+      // devolver um JSON pela metade
+      if (cand?.finishReason && cand.finishReason !== "STOP") {
+        throw new Error(`Gemini(doc/${modelo}) resposta interrompida (${cand.finishReason})`);
+      }
       if (out) return out;
     } catch (e) { ultimoErro = e; } // 429/erro nesse modelo -> tenta o próximo
   }
@@ -177,7 +191,9 @@ async function groqVisaoUm(key: string, modelo: string, system: string, prompt: 
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
     body: JSON.stringify({
       model: modelo,
-      max_tokens: 900,
+      // folga de sobra: os qwen também "pensam" antes de responder e o
+      // raciocínio consome o orçamento (ver a nota no leitor do Gemini)
+      max_tokens: 2048,
       temperature: 0.1,
       // modo JSON: documentado para estes multimodais e evita o modelo responder
       // em prosa (foi o que aconteceu na primeira tentativa em produção)
@@ -193,7 +209,11 @@ async function groqVisaoUm(key: string, modelo: string, system: string, prompt: 
   });
   if (!r.ok) throw new Error(`GroqVisão(${modelo}${modoJson ? "/json" : ""}) ${r.status}: ${(await r.text()).slice(0, 160)}`);
   const j: any = await r.json();
-  const msg = j?.choices?.[0]?.message;
+  const escolha = j?.choices?.[0];
+  if (escolha?.finish_reason === "length") {
+    throw new Error(`GroqVisão(${modelo}) resposta interrompida (limite de tokens)`);
+  }
+  const msg = escolha?.message;
   // os qwen têm modo "thinking": o JSON pode vir em reasoning_content
   return String(msg?.content || msg?.reasoning_content || "").trim() || null;
 }
