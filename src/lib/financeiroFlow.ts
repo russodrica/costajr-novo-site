@@ -22,7 +22,7 @@
 
 import { escTg } from "./telegram";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
-import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
+import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 import {
   buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelaPorId, darBaixa,
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
@@ -288,16 +288,30 @@ function formaDoTexto(v: unknown): number | null {
   return null;
 }
 
-/** Só aceita a separação valor+encargos quando ela FECHA com o total pago. */
+/**
+ * Só aceita a separação "valor da conta + encargos" quando o comprovante
+ * REALMENTE separou as duas coisas.
+ *
+ * POR QUE TANTO RIGOR: num comprovante comum de PIX/boleto há uma linha só,
+ * "Valor R$ 431,20". A IA devolve valor_nominal = total e encargos = 0, e uma
+ * checagem ingênua ("nominal + encargos == total") aceita, porque 431,20 + 0 =
+ * 431,20. Aí o bot concluiria sozinho que a conta passou a valer o que foi
+ * pago — deixaria de fazer a pergunta obrigatória e ainda reescreveria o valor
+ * da parcela na Vobi, apagando juros de atraso legítimos. Quando a informação
+ * não está separada no papel, o certo é PERGUNTAR.
+ */
 function conferirDecomposicao(total: number, nominal: unknown, encargos: unknown) {
   const n = Number(nominal);
   if (!Number.isFinite(n) || n <= 0) return null;
-  // CUIDADO: Number(null) é 0, não NaN — sem esta checagem um "encargos": null
-  // viraria zero e a conta nunca fecharia.
+  // CUIDADO: Number(null) é 0, não NaN. E deduzir encargos de (total − nominal)
+  // torna a conferência uma tautologia: fecharia sempre, validando qualquer
+  // número que a IA inventasse em valor_nominal. Exigimos os DOIS do papel.
   const informado = encargos !== null && encargos !== undefined && encargos !== "" && Number.isFinite(Number(encargos));
-  const enc = informado ? Math.round(Number(encargos) * 100) / 100 : Math.round((total - n) * 100) / 100;
-  if (enc < 0) return null;
-  if (Math.abs(n + enc - total) >= 0.01) return null; // não fecha → não confio
+  if (!informado) return null;
+  const enc = Math.round(Number(encargos) * 100) / 100;
+  if (enc <= 0) return null; // "juros 0" não diz nada sobre o valor da conta
+  if (Math.abs(n - total) < 0.01) return null; // nominal == total → nada foi separado
+  if (Math.abs(n + enc - total) >= 0.01) return null; // as contas não fecham → não confio
   return { valorConta: Math.round(n * 100) / 100, juros: enc };
 }
 
@@ -362,18 +376,20 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   }
 
   // ── CAMADA 3: visão — foto, ou PDF escaneado (sem camada de texto) ──
-  if ((!valor || !favorecido || forma == null) && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
-    const resp = await lerDocumentoGemini(SYS_COMPROVANTE, PEDIDO_COMPROVANTE, buf.toString("base64"), ct).catch(() => null);
-    usar(resp ? extrairJson(resp) : null, "lendo a imagem");
+  let erroVisao = "";
+  if ((!valor || !favorecido || forma == null) && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+    const r = await lerDocumentoLLM(SYS_COMPROVANTE, PEDIDO_COMPROVANTE, buf.toString("base64"), ct)
+      .catch((e: any) => ({ texto: null, provedor: "", erro: String(e?.message || e) }));
+    erroVisao = r.erro;
+    usar(r.texto ? extrairJson(r.texto) : null, "lendo a imagem");
   }
 
   if (!data) data = hojeISO();
 
   if (!valor || !favorecido) {
     const falta = !valor && !favorecido ? "o valor nem o favorecido" : !valor ? "o valor" : "o favorecido";
-    const porque = !texto && !geminiConfigurado()
-      ? "\n<i>(é uma imagem e a leitura por visão não está ativa aqui)</i>"
-      : "";
+    // sem o motivo é impossível saber se foi cota, formato ou leitura ruim
+    const porque = erroVisao ? `\n<i>(leitura por imagem: ${escTg(erroVisao.slice(0, 110))})</i>` : "";
     await enviar(B, chatId,
       `🤔 Não consegui identificar <b>${falta}</b> nesse comprovante.${porque}\n\n` +
       `Me manda assim: <code>${valor ? valor : "431,20"} ${favorecido || "nome do fornecedor"}</code>`);
@@ -1069,9 +1085,9 @@ export async function onPrintDuranteBaixa(db: any, B: Bot, msg: any, chatId: num
     const j = bruto ? extrairJson(bruto) : null;
     if (j && Number.isFinite(Number(j.juros))) juros = Number(j.juros);
   }
-  if (!Number.isFinite(juros) && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
-    const bruto = await lerDocumentoGemini(SYS, PEDIDO, buf.toString("base64"), ct).catch(() => null);
-    const j = bruto ? extrairJson(bruto) : null;
+  if (!Number.isFinite(juros) && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+    const r = await lerDocumentoLLM(SYS, PEDIDO, buf.toString("base64"), ct).catch(() => ({ texto: null }));
+    const j = r.texto ? extrairJson(r.texto) : null;
     if (j && Number.isFinite(Number(j.juros))) juros = Number(j.juros);
   }
 

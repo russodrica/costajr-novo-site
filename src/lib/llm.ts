@@ -162,6 +162,79 @@ export async function lerDocumentoGemini(
   return null;
 }
 
+// ── Leitura de IMAGEM por outro provedor (plano B do Gemini) ─────────────────
+// O Gemini é o único que lê PDF, mas a cota grátis dele é curta: numa sequência
+// de leituras ele começa a devolver 429 e a leitura por imagem simplesmente
+// parava. Estes modelos do Groq leem IMAGEM (não PDF) e são grátis.
+const MODELOS_GROQ_VISAO = [
+  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "meta-llama/llama-4-maverick-17b-128e-instruct",
+];
+
+async function chamarGroqVisao(key: string, system: string, prompt: string, base64: string, mt: string): Promise<string | null> {
+  let ultimoErro: any = null;
+  for (const modelo of MODELOS_GROQ_VISAO) {
+    try {
+      const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model: modelo,
+          max_tokens: 900,
+          temperature: 0.1,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: `${system}\n\n${prompt}` },
+              { type: "image_url", image_url: { url: `data:${mt};base64,${base64}` } },
+            ],
+          }],
+        }),
+      });
+      if (!r.ok) throw new Error(`GroqVisão(${modelo}) ${r.status}: ${(await r.text()).slice(0, 160)}`);
+      const j: any = await r.json();
+      const out = String(j?.choices?.[0]?.message?.content || "").trim();
+      if (out) return out;
+    } catch (e) { ultimoErro = e; } // esse modelo falhou -> tenta o próximo
+  }
+  if (ultimoErro) throw ultimoErro;
+  return null;
+}
+
+/**
+ * Lê um documento (PDF ou imagem) tentando os provedores EM ORDEM:
+ * Gemini (PDF e imagem) -> Groq visão (só imagem). Devolve também o motivo do
+ * erro, porque "não consegui ler" sem motivo é impossível de diagnosticar.
+ */
+export async function lerDocumentoLLM(
+  system: string,
+  prompt: string,
+  base64: string,
+  mimeType: string,
+): Promise<{ texto: string | null; provedor: string; erro: string }> {
+  const mt = (mimeType || "").toLowerCase();
+  if (!(mt === "application/pdf" || mt.startsWith("image/"))) {
+    return { texto: null, provedor: "", erro: "formato não suportado" };
+  }
+  let erro = "";
+  const gm = envGemini();
+  if (gm) {
+    try {
+      const r = await lerDocumentoGemini(system, prompt, base64, mimeType);
+      if (r) return { texto: r, provedor: "Gemini", erro: "" };
+    } catch (e: any) { erro = String(e?.message || e); }
+  }
+  const gq = envGroq();
+  if (gq && mt.startsWith("image/")) {
+    try {
+      const r = await chamarGroqVisao(gq, system, prompt, base64, mt);
+      if (r) return { texto: r, provedor: "Groq", erro: "" };
+    } catch (e: any) { erro = String(e?.message || e); }
+  }
+  if (!erro) erro = gm || gq ? "os leitores não devolveram nada" : "nenhum leitor de imagem configurado";
+  return { texto: null, provedor: "", erro };
+}
+
 // Extrai o primeiro objeto JSON de uma string (tolerante a ```json e texto em volta).
 export function extrairJson(txt: string): any | null {
   let s = String(txt || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
