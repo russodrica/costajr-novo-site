@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { supabaseAdmin } from "~/lib/supabase";
 import { enviarLembretePagamento } from "~/lib/mailer";
+import { enviarLembretesFinanceiros } from "~/lib/vobiLembretes";
 
 export const prerender = false;
 
@@ -62,7 +63,19 @@ export const GET: APIRoute = async ({ request, url }) => {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, enviados, pulados, falhas, analisados: pagamentos?.length || 0 }), {
-    headers: { "content-type": "application/json" },
-  });
+  // ── Pendurado aqui (Vercel Hobby só permite 2 crons; este dispara 12:00 UTC
+  // = 09:00 BRT, horário melhor para "bom dia" do que o cron das 06:00 BRT):
+  // contas a pagar da Vobi no grupo CJR_ADM — todo dia as do dia, e às
+  // segundas também a agenda da semana. Best-effort: nunca derruba a régua.
+  let financeiro: any = null;
+  try {
+    financeiro = await enviarLembretesFinanceiros();
+  } catch (e: any) {
+    financeiro = { erro: String(e?.message || e) };
+  }
+
+  return new Response(
+    JSON.stringify({ ok: true, enviados, pulados, falhas, analisados: pagamentos?.length || 0, financeiro }),
+    { headers: { "content-type": "application/json" } },
+  );
 };
