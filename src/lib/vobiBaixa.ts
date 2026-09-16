@@ -530,6 +530,93 @@ export async function rolarParaCartao(
   };
 }
 
+export type ResultadoAjuste = {
+  ok: boolean;
+  /** o PUT /payment RECRIA as parcelas: o id muda. Use este daqui adiante. */
+  idNovo: string;
+  valorAntes: number;
+  valorDepois: number;
+  mensagem: string;
+};
+
+/**
+ * Muda o VALOR de uma parcela em aberto.
+ *
+ * POR QUE ISSO EXISTE (medido em 16/09/2026, três experimentos controlados):
+ * na baixa a Vobi **ignora** `price` e `originalValue`. Ela usa o valor
+ * ARMAZENADO da parcela e calcula `price = armazenado + interest + fine −
+ * discount`. Então, quando a conta mudou de valor (energia é apuração de
+ * consumo; parcelas às vezes são revisadas), é obrigatório corrigir o valor
+ * ANTES de baixar — senão o valor novo simplesmente não entra.
+ *
+ * O único caminho que altera valor de verdade é o `PUT /payment/{id}` com o
+ * array COMPLETO de parcelas (o `PUT /installment` também ignora `price`).
+ */
+export async function ajustarValorParcela(
+  idInstallment: string,
+  novoValor: number,
+  opts: { dryRun?: boolean } = {},
+): Promise<ResultadoAjuste> {
+  const antes = await parcelaPorId(idInstallment);
+  const base: ResultadoAjuste = {
+    ok: false, idNovo: idInstallment, valorAntes: antes?.valor || 0, valorDepois: novoValor, mensagem: "",
+  };
+  if (!antes) return { ...base, mensagem: "Parcela não encontrada na Vobi." };
+  if (Math.abs(antes.valor - novoValor) < 0.01) {
+    return { ...base, ok: true, valorDepois: antes.valor, mensagem: "O valor já era esse." };
+  }
+
+  // TODAS as parcelas do lançamento: o PUT recria o conjunto inteiro e recusa
+  // um array que não some o total ("Valor total das parcelas diferente").
+  const irmas = await vGetAll("installment", `&where[idPayment]=${encodeURIComponent(antes.idPayment)}`, 2, "dueDate");
+  if (!irmas.length) return { ...base, mensagem: "Não consegui ler as parcelas do lançamento na Vobi." };
+
+  const linhas = irmas.map((i: any) => ({
+    price: i.id === idInstallment ? novoValor : num(i.price),
+    dueDate: String(i.dueDate).slice(0, 10),
+    number: i.number ?? 1,
+    description: String(i.description || `Parcela ${i.number ?? 1}`).slice(0, 190),
+    idInstallmentStatus: i.idInstallmentStatus ?? 1,
+    ...(i.paidDate ? { paidDate: String(i.paidDate).slice(0, 10) } : {}),
+    ...(num(i.interest) ? { interest: num(i.interest) } : {}),
+    ...(i.idPaymentType ? { idPaymentType: i.idPaymentType } : {}),
+    ...(i.idPaymentBankAccount ? { idPaymentBankAccount: i.idPaymentBankAccount } : {}),
+  }));
+
+  // a Vobi exige `value` = soma dos prices e percentuais somando 100
+  const total = Math.round(linhas.reduce((s, l) => s + l.price, 0) * 100) / 100;
+  let acumulado = 0;
+  linhas.forEach((l: any, idx) => {
+    if (idx === linhas.length - 1) l.percentage = Math.round((100 - acumulado) * 100) / 100;
+    else {
+      const p = Math.round((l.price / total) * 10000) / 100;
+      l.percentage = p;
+      acumulado += p;
+    }
+  });
+
+  const corpo = { value: total, installments: linhas };
+  if (opts.dryRun) {
+    return { ...base, ok: true, mensagem: `SIMULAÇÃO — enviaria: ${JSON.stringify(corpo).slice(0, 400)}` };
+  }
+
+  await vPut(`/payment/${encodeURIComponent(antes.idPayment)}`, corpo);
+
+  // a parcela ganhou id novo: reencontramos pelo vencimento + valor
+  const depois = await vGetAll("installment", `&where[idPayment]=${encodeURIComponent(antes.idPayment)}`, 2, "dueDate");
+  const alvo = depois.find(
+    (i: any) => String(i.dueDate).slice(0, 10) === antes.vencimento && Math.abs(num(i.price) - novoValor) < 0.01,
+  );
+  if (!alvo || depois.length !== irmas.length) {
+    return {
+      ...base,
+      mensagem: `A Vobi aceitou mas não encontrei a parcela de ${antes.vencimento} com ${novoValor} ` +
+        `(parcelas antes: ${irmas.length}, depois: ${depois.length}).`,
+    };
+  }
+  return { ...base, ok: true, idNovo: String(alvo.id), valorDepois: num(alvo.price), mensagem: "Valor da conta corrigido." };
+}
+
 export type ResultadoBaixa = {
   ok: boolean;
   idInstallment: string;
@@ -560,7 +647,8 @@ export function calcularAcrescimo(valorOriginal: number, valorPago: number): { j
  * `dryRun` simula: não escreve nada e devolve o que faria.
  */
 export async function darBaixa(dados: DadosBaixa, opts: { dryRun?: boolean } = {}): Promise<ResultadoBaixa> {
-  const antes = await parcelaPorId(dados.idInstallment);
+  let idAlvo = dados.idInstallment;
+  let antes = await parcelaPorId(idAlvo);
   if (!antes) {
     return {
       ok: false, idInstallment: dados.idInstallment, descricao: "", valorOriginal: 0,
@@ -574,6 +662,26 @@ export async function darBaixa(dados: DadosBaixa, opts: { dryRun?: boolean } = {
   // está na Vobi, mas quem lançou pode ter corrigido (energia por consumo,
   // revisão de parcela...) — nesse caso a diferença NÃO é juros.
   const valorConta = dados.valorConta ?? antes.valorOriginal;
+
+  // A Vobi IGNORA `price`/`originalValue` na baixa e calcula a partir do valor
+  // ARMAZENADO. Então, se a conta mudou de valor, corrigimos a parcela ANTES —
+  // senão o valor novo some e o lançamento fica pelo valor velho.
+  let ajuste: ResultadoAjuste | null = null;
+  if (Math.abs(valorConta - antes.valor) >= 0.01) {
+    ajuste = await ajustarValorParcela(idAlvo, valorConta, opts);
+    if (!ajuste.ok) {
+      return {
+        ok: false, idInstallment: idAlvo, descricao: antes.descricao, valorOriginal: antes.valor,
+        valorPago: dados.valorPago, juros: 0, multa: 0, desconto: 0,
+        statusDepois: null, paidDateDepois: null,
+        mensagem: `Não consegui corrigir o valor da conta (${antes.valor} → ${valorConta}): ${ajuste.mensagem} Nada foi baixado.`,
+      };
+    }
+    if (!opts.dryRun) {
+      idAlvo = ajuste.idNovo; // o PUT /payment recria a parcela com id novo
+      antes = (await parcelaPorId(idAlvo)) || antes;
+    }
+  }
   const auto = calcularAcrescimo(valorConta, dados.valorPago);
   const juros = dados.juros ?? auto.juros;
   const multa = dados.multa ?? 0;
@@ -600,7 +708,7 @@ export async function darBaixa(dados: DadosBaixa, opts: { dryRun?: boolean } = {
 
   const base: ResultadoBaixa = {
     ok: false,
-    idInstallment: dados.idInstallment,
+    idInstallment: idAlvo,
     descricao: antes.descricao,
     valorOriginal: valorConta,
     valorPago: dados.valorPago,
@@ -614,22 +722,30 @@ export async function darBaixa(dados: DadosBaixa, opts: { dryRun?: boolean } = {
     return { ...base, ok: true, mensagem: `SIMULAÇÃO — nada foi gravado. Enviaria: ${JSON.stringify(corpo)}` };
   }
 
-  await vPut(`/installment/${encodeURIComponent(dados.idInstallment)}`, corpo);
+  await vPut(`/installment/${encodeURIComponent(idAlvo)}`, corpo);
 
-  // CONFERÊNCIA OBRIGATÓRIA: relê a parcela e exige que tenha virado paga.
-  const j = await vGet(`/installment?limit=1&where[id]=${encodeURIComponent(dados.idInstallment)}`);
+  // CONFERÊNCIA OBRIGATÓRIA: relê a parcela e exige que tenha virado paga
+  // E que o valor gravado seja o que a pessoa disse ter pago. Checar só o
+  // status deixou passar um erro real (16/09/2026): a Vobi marcou como paga
+  // mantendo o valor antigo, e o bot avisou "confirmado".
+  const j = await vGet(`/installment?limit=1&where[id]=${encodeURIComponent(idAlvo)}`);
   const dep: any = (j?.rows || [])[0] || {};
   const status = dep.idInstallmentStatus ?? null;
   const pago = typeof status === "number" && status >= 2 && status <= 11;
+  const valorGravado = num(dep.price);
+  const valorBate = Math.abs(valorGravado - dados.valorPago) < 0.01;
 
   return {
     ...base,
-    ok: pago,
+    ok: pago && valorBate,
     statusDepois: status,
     paidDateDepois: dep.paidDate ? String(dep.paidDate).slice(0, 10) : null,
-    mensagem: pago
+    mensagem: pago && valorBate
       ? "Baixa confirmada na Vobi."
-      : `A Vobi aceitou a chamada mas a parcela NÃO consta como paga (status=${status}). ` +
-        `Não considere baixada — confira na Vobi e avise a Adriana.`,
+      : !pago
+        ? `A Vobi aceitou a chamada mas a parcela NÃO consta como paga (status=${status}). ` +
+          `Não considere baixada — confira na Vobi e avise a Adriana.`
+        : `A parcela foi marcada como paga, mas com ${valorGravado.toFixed(2)} em vez de ` +
+          `${dados.valorPago.toFixed(2)}. Confira na Vobi antes de considerar resolvida.`,
   };
 }
