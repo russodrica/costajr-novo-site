@@ -381,7 +381,16 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
     const r = await lerDocumentoLLM(SYS_COMPROVANTE, PEDIDO_COMPROVANTE, buf.toString("base64"), ct)
       .catch((e: any) => ({ texto: null, provedor: "", erro: String(e?.message || e) }));
     erroVisao = r.erro;
-    usar(r.texto ? extrairJson(r.texto) : null, "lendo a imagem");
+    if (r.texto) {
+      const j = extrairJson(r.texto);
+      // PONTO CEGO que custou uma rodada de teste: o leitor RESPONDEU (erro
+      // vazio) mas a resposta não era JSON — aí a falha ficava sem explicação.
+      if (!j) erroVisao = `${r.provedor} respondeu fora de JSON: ${r.texto.slice(0, 80)}`;
+      else {
+        usar(j, "lendo a imagem");
+        if (!valor || !favorecido) erroVisao = `${r.provedor} leu mas devolveu ${JSON.stringify(j).slice(0, 80)}`;
+      }
+    }
   }
 
   if (!data) data = hojeISO();

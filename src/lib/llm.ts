@@ -171,33 +171,42 @@ export async function lerDocumentoGemini(
 // Limite de 20 MB por requisição com imagem.
 const MODELOS_GROQ_VISAO = ["qwen/qwen3.6-27b", "qwen/qwen3.8-27b"];
 
+async function groqVisaoUm(key: string, modelo: string, system: string, prompt: string, base64: string, mt: string, modoJson: boolean) {
+  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: modelo,
+      max_tokens: 900,
+      temperature: 0.1,
+      // modo JSON: documentado para estes multimodais e evita o modelo responder
+      // em prosa (foi o que aconteceu na primeira tentativa em produção)
+      ...(modoJson ? { response_format: { type: "json_object" } } : {}),
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: `${system}\n\n${prompt}` },
+          { type: "image_url", image_url: { url: `data:${mt};base64,${base64}` } },
+        ],
+      }],
+    }),
+  });
+  if (!r.ok) throw new Error(`GroqVisão(${modelo}${modoJson ? "/json" : ""}) ${r.status}: ${(await r.text()).slice(0, 160)}`);
+  const j: any = await r.json();
+  const msg = j?.choices?.[0]?.message;
+  // os qwen têm modo "thinking": o JSON pode vir em reasoning_content
+  return String(msg?.content || msg?.reasoning_content || "").trim() || null;
+}
+
 async function chamarGroqVisao(key: string, system: string, prompt: string, base64: string, mt: string): Promise<string | null> {
   let ultimoErro: any = null;
   for (const modelo of MODELOS_GROQ_VISAO) {
-    try {
-      const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          model: modelo,
-          max_tokens: 900,
-          temperature: 0.1,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "text", text: `${system}\n\n${prompt}` },
-              { type: "image_url", image_url: { url: `data:${mt};base64,${base64}` } },
-            ],
-          }],
-        }),
-      });
-      if (!r.ok) throw new Error(`GroqVisão(${modelo}) ${r.status}: ${(await r.text()).slice(0, 160)}`);
-      const j: any = await r.json();
-      const msg = j?.choices?.[0]?.message;
-      // os qwen têm modo "thinking": o JSON pode vir em reasoning_content
-      const out = String(msg?.content || msg?.reasoning_content || "").trim();
-      if (out) return out;
-    } catch (e) { ultimoErro = e; } // esse modelo falhou -> tenta o próximo
+    for (const modoJson of [true, false]) { // se o modelo recusar o modo JSON, tenta sem
+      try {
+        const out = await groqVisaoUm(key, modelo, system, prompt, base64, mt, modoJson);
+        if (out) return out;
+      } catch (e) { ultimoErro = e; }
+    }
   }
   if (ultimoErro) throw ultimoErro;
   return null;
@@ -237,10 +246,40 @@ export async function lerDocumentoLLM(
   return { texto: null, provedor: "", erro };
 }
 
-// Extrai o primeiro objeto JSON de uma string (tolerante a ```json e texto em volta).
+/**
+ * Extrai um objeto JSON de uma resposta de modelo.
+ *
+ * Tolerante a ```json, a texto em volta e — importante — a modelos com modo
+ * "thinking", que escrevem raciocínio ANTES do JSON. A versão anterior pegava
+ * do primeiro "{" ao último "}", o que quebrava quando havia chaves no meio do
+ * raciocínio. Agora varremos os blocos balanceados (ignorando chaves dentro de
+ * strings) e ficamos com o ÚLTIMO que der parse — que é a resposta final.
+ */
 export function extrairJson(txt: string): any | null {
-  let s = String(txt || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-  const i = s.indexOf("{"), j = s.lastIndexOf("}");
-  if (i >= 0 && j > i) s = s.slice(i, j + 1);
-  try { return JSON.parse(s); } catch { return null; }
+  const s = String(txt || "").replace(/```(?:json)?/gi, " ");
+  let melhor: any = null;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== "{") continue;
+    let nivel = 0, dentro = false, esc = false;
+    for (let k = i; k < s.length; k++) {
+      const c = s[k];
+      if (esc) { esc = false; continue; }
+      if (c === "\\") { esc = true; continue; }
+      if (c === '"') { dentro = !dentro; continue; }
+      if (dentro) continue;
+      if (c === "{") nivel++;
+      else if (c === "}") {
+        nivel--;
+        if (nivel === 0) {
+          try {
+            const o = JSON.parse(s.slice(i, k + 1));
+            if (o && typeof o === "object" && !Array.isArray(o)) melhor = o;
+          } catch { /* não era JSON válido — segue procurando */ }
+          i = k; // não reexaminar o que já foi consumido
+          break;
+        }
+      }
+    }
+  }
+  return melhor;
 }
