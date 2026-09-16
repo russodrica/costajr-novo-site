@@ -829,9 +829,10 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
       "✅ <b>Grupo ativado para BAIXA DE PAGAMENTO!</b>\n\n" +
       "Quando pagarem uma conta, mandem aqui o <b>valor e o fornecedor</b>:\n" +
       "<code>1400 construtivo</code>\n\n" +
-      "Eu procuro as contas em aberto desse fornecedor (inclusive as vencidas), " +
-      "mostro os vencimentos pra escolher, calculo os <b>juros</b> se pagaram a mais, " +
-      "e dou baixa na Vobi depois da sua confirmação.\n\n" +
+      "Eu procuro as contas em aberto desse fornecedor (inclusive as vencidas) e " +
+      "mostro os vencimentos pra escolher. Se o valor pago não bater com o da Vobi, " +
+      "eu <b>pergunto</b> se foi juros/multa ou se a conta mudou de valor — nunca chuto. " +
+      "A baixa só acontece depois da sua confirmação.\n\n" +
       "📅 Todo dia de manhã eu aviso o que vence no dia — e às segundas, a agenda da semana.");
     return;
   }

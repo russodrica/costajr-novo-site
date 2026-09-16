@@ -243,6 +243,7 @@ export type ParcelaAberta = {
   idPayment: string;
   descricao: string;
   fornecedor: string | null;
+  idFornecedor: number | null;
   valor: number; // valor atual da parcela (price)
   valorOriginal: number;
   vencimento: string; // AAAA-MM-DD
@@ -275,6 +276,9 @@ function montarParcela(i: any, nomeFornecedor?: string | null): ParcelaAberta {
     idPayment: i.idPayment,
     descricao: String(pay.name || i.description || "Lançamento").trim(),
     fornecedor: nomeFornecedor ?? null,
+    // guardado para o botão "Paguei" do lembrete: sem o id do fornecedor não dá
+    // para reabrir a lista de vencimentos daquele lançamento
+    idFornecedor: Number(pay.idSupplier) || null,
     valor: num(i.price),
     valorOriginal: num(i.originalValue) || num(i.price),
     vencimento: venc,

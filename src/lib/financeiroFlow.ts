@@ -101,6 +101,8 @@ type EstadoBaixa = {
   juros?: number;
   vencimentoFatura?: string;
   etapa: string;
+  /** para não deixar um passo esquecido capturando mensagens do grupo o dia todo */
+  atualizadoEm?: string;
 
   // nomes antigos — só para sessões que já estavam em andamento no deploy
   jurosCartao?: number;
@@ -133,6 +135,7 @@ function precisaResolverDiferenca(e: EstadoBaixa): boolean {
 }
 
 async function salvarEstado(db: any, token: string, dados: EstadoBaixa) {
+  dados.atualizadoEm = new Date().toISOString();
   await db.from("telegram_sessoes").upsert(
     { telegram_user_id: "fb:" + token, chat_id: String(dados.chat_id), estado: dados.etapa, dados },
     { onConflict: "telegram_user_id" },
@@ -159,6 +162,14 @@ export async function ativarGrupoFinanceiro(db: any, chatId: number, titulo: str
     { onConflict: "telegram_user_id" },
   );
 }
+
+/** Todo passo que espera um número digitado precisa ter saída. */
+const BOTOES_CANCELA = (token: string) => inline([
+  [
+    { text: "⬅️ Voltar", callback_data: `fbvolta:${token}` },
+    { text: "❌ Cancelar", callback_data: `fbnao:${token}` },
+  ],
+]);
 
 const BOTOES_CONFIRMA = (token: string) => inline([
   [
@@ -322,6 +333,15 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
 
 /** Escolhida a parcela, pergunta COMO foi pago (a regra muda no cartão). */
 async function escolherParcela(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, c: Candidata) {
+  // TROCOU de parcela? O que ela respondeu sobre a diferença valia para a conta
+  // ANTERIOR. Carregar aquilo para cá gravaria o valor de uma conta na outra —
+  // é obrigatório perguntar de novo. (Reescolher a MESMA parcela não repergunta.)
+  if (estado.parcela && estado.parcela.id !== c.id) {
+    estado.valorConta = undefined;
+    estado.juros = undefined;
+    estado.valorContaCartao = undefined;
+    estado.jurosCartao = undefined;
+  }
   estado.parcela = { id: c.id, descricao: c.descricao, valor: c.valor, vencimento: c.vencimento, fornecedor: c.fornecedor };
   estado.etapa = "esc_forma";
   await salvarEstado(db, token, estado);
@@ -379,7 +399,7 @@ function resumoCartao(e: EstadoBaixa): string {
   txt += `<b>Conta:</b> ${escTg(p.descricao.slice(0, 50))}\n`;
   txt += `<b>Cartão:</b> ${escTg(e.cartao?.nome || "—")}\n\n`;
   txt += `<b>Vencimento:</b> ${dataBR(p.vencimento)} → <b>${dataBR(venc)}</b> (fatura)\n`;
-  if (valorConta !== p.valor) txt += `<b>Valor da conta:</b> ${brl(p.valor)} → <b>${brl(valorConta)}</b>\n<b>Total:</b> `;
+  if (Math.abs(valorConta - p.valor) >= 0.01) txt += `<b>Valor da conta:</b> ${brl(p.valor)} → <b>${brl(valorConta)}</b>\n<b>Total:</b> `;
   else txt += `<b>Valor:</b> `;
   txt += `${brl(valorConta)}`;
   if (juros > 0) txt += ` + ${brl(juros)} de juros = <b>${brl(novoValor)}</b>`;
@@ -422,19 +442,32 @@ async function perguntarDiferenca(db: any, B: Bot, token: string, estado: Estado
       inline([
         [{ text: `🧾 A conta é ${brl(estado.valorPago)} mesmo`, callback_data: `fbdifv:${token}` }],
         [{ text: `📈 É ${ehCartao ? "juros do cartão" : "juros/multa"} de ${brl(dif)}`, callback_data: `fbdifj:${token}` }],
-        [{ text: "✏️ Os dois — eu informo o valor da conta", callback_data: `fbdifb:${token}` }],
+        [{ text: "✏️ Os dois — eu informo a conta", callback_data: `fbdifb:${token}` }],
         [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
       ]));
     return;
   }
 
-  // pagou MENOS que o lançado: ou a conta baixou de valor, ou houve desconto
+  // pagou MENOS que o lançado: ou a conta baixou de valor, ou houve desconto.
+  // No CARTÃO não existe desconto: o que vai para a fatura é o valor lançado,
+  // então a única leitura fiel é a conta ter ficado menor.
+  if (ehCartao) {
+    await enviar(B, chatId,
+      cabecalho + `No cartão o que vai para a fatura é o valor lançado. A conta ficou menor?`,
+      inline([
+        [{ text: `🧾 A conta ficou em ${brl(estado.valorPago)}`, callback_data: `fbdifv:${token}` }],
+        [{ text: "✏️ Eu informo o valor da conta", callback_data: `fbdifb:${token}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]));
+    return;
+  }
+
   await enviar(B, chatId,
     cabecalho + `A conta <b>mudou de valor</b> para menos, ou foi um <b>desconto</b> no pagamento?`,
     inline([
       [{ text: `🧾 A conta é ${brl(estado.valorPago)} mesmo`, callback_data: `fbdifv:${token}` }],
       [{ text: `🏷️ Foi desconto de ${brl(Math.abs(dif))}`, callback_data: `fbdifj:${token}` }],
-      [{ text: "✏️ Os dois — eu informo o valor da conta", callback_data: `fbdifb:${token}` }],
+      [{ text: "✏️ Os dois — eu informo a conta", callback_data: `fbdifb:${token}` }],
       [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
     ]));
 }
@@ -443,7 +476,7 @@ async function perguntarDiferenca(db: any, B: Bot, token: string, estado: Estado
 async function entrarNoCartao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, idCartao: number) {
   estado.cartao = { id: idCartao, nome: CARTOES.find((c) => c.id === idCartao)?.nome || String(idCartao) };
   estado.conta = idCartao;
-  estado.vencimentoFatura = estado.vencimentoFatura || proximoVencimentoCartao();
+  estado.vencimentoFatura = proximoVencimentoCartao(); // sempre a fatura de agora
   if (precisaResolverDiferenca(estado)) {
     return await perguntarDiferenca(db, B, token, estado, chatId);
   }
@@ -482,7 +515,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       autor: `${cq.from?.first_name || ""} ${cq.from?.last_name || ""}`.trim() || "alguém",
       valorPago: p.valor,
       dataPagamento: hojeISO(),
-      fornecedor: p.fornecedor ? { id: 0, nome: p.fornecedor } : undefined,
+      fornecedor: p.fornecedor ? { id: p.idFornecedor || 0, nome: p.fornecedor } : undefined,
       forma: FORMA_PADRAO,
       conta: CONTA_PADRAO,
       etapa: "esc_forma",
@@ -574,16 +607,16 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     estado.etapa = "aguarda_conta_resto";
     await salvarEstado(db, token, estado);
     await enviar(B, chatId,
-      `🧾 Qual o <b>valor da conta</b> (sem os juros)?\n<i>(na Vobi está ${brl(estado.parcela?.valor ?? 0)} e foi pago ${brl(estado.valorPago)} — o resto eu lanço como ${estado.forma === FORMA_CARTAO ? "juros do cartão" : "juros/multa"})</i>`);
+      `🧾 Qual o <b>valor da conta</b> (sem os juros)?\n` +
+      `<i>(na Vobi está ${brl(estado.parcela?.valor ?? 0)} e foi pago ${brl(estado.valorPago)} — o que sobrar eu lanço como ` +
+      `${estado.forma === FORMA_CARTAO ? "juros do cartão" : "juros/multa, ou como desconto se a conta for maior que o pago"})</i>`,
+      BOTOES_CANCELA(token));
     return;
   }
 
   if (acao === "fbjuros0") {
     estado.juros = 0;
-    estado.etapa = "confirmar";
-    await salvarEstado(db, token, estado);
-    await enviar(B, chatId, resumoCartao(estado), BOTOES_CONFIRMA(token));
-    return;
+    return await irParaConfirmacao(db, B, token, estado, chatId);
   }
 
   if (acao === "fbnao") {
@@ -626,7 +659,9 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   if (acao === "fbaltv") {
     estado.etapa = "aguarda_valor";
     await salvarEstado(db, token, estado);
-    await enviar(B, chatId, `💵 Qual foi o <b>valor pago</b> de verdade?\n<i>(hoje está ${brl(estado.valorPago)} — mande só o número)</i>`);
+    await enviar(B, chatId,
+      `💵 Qual foi o <b>valor pago</b> de verdade?\n<i>(hoje está ${brl(estado.valorPago)} — mande só o número)</i>`,
+      BOTOES_CANCELA(token));
     return;
   }
 
@@ -635,7 +670,8 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     estado.etapa = "aguarda_valor_conta";
     await salvarEstado(db, token, estado);
     await enviar(B, chatId,
-      `🧾 Qual o <b>valor da conta</b> (sem os juros)?\n<i>(hoje está ${brl(contaDe(estado))}; na Vobi está ${brl(estado.parcela?.valor ?? 0)})</i>`);
+      `🧾 Qual o <b>valor da conta</b> (o que era devido, sem os juros)?\n<i>(hoje está ${brl(contaDe(estado))}; na Vobi está ${brl(estado.parcela?.valor ?? 0)})</i>`,
+      BOTOES_CANCELA(token));
     return;
   }
 
@@ -644,12 +680,26 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     estado.etapa = "aguarda_juros";
     await salvarEstado(db, token, estado);
     const rotulo = estado.forma === FORMA_CARTAO ? "juros do cartão" : "juros/multa";
+    const nota = estado.forma === FORMA_CARTAO
+      ? ""
+      : `\n<i>O valor da conta vira ${brl(estado.valorPago)} menos os juros.</i>`;
     await enviar(B, chatId,
-      `📈 Qual o valor dos <b>${rotulo}</b>?\n<i>(hoje está ${brl(jurosDe(estado))})</i>\nPode mandar o número ou o <b>print</b>.`);
+      `📈 Qual o valor dos <b>${rotulo}</b>?\n<i>(hoje está ${brl(jurosDe(estado))})</i>${nota}\nPode mandar o número ou o <b>print</b>.`,
+      BOTOES_CANCELA(token));
     return;
   }
 
   if (acao === "fbaltd") {
+    // sem o id do fornecedor não dá para listar os outros vencimentos — e seguir
+    // adiante apagaria o lançamento com a mensagem errada ("não tem parcela em
+    // aberto"). Acontece em lançamento antigo vindo do botão "Paguei".
+    if (!estado.fornecedor?.id) {
+      await enviar(B, chatId,
+        "Para trocar o vencimento eu preciso reabrir a lista do fornecedor.\n" +
+        `Mande <code>${estado.valorPago} ${escTg((estado.fornecedor?.nome || "nome do fornecedor").slice(0, 30))}</code> que eu mostro todos os vencimentos em aberto.`,
+        BOTOES_CONFIRMA(token));
+      return;
+    }
     return await mostrarParcelas(db, B, token, estado, chatId);
   }
 
@@ -661,6 +711,13 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   // ── SIM → executa ──
   if (acao === "fbsim") {
     if (!estado.parcela) { await enviar(B, chatId, "Faltou escolher a parcela."); return; }
+    // dois toques no ✅ (ou duas pessoas ao mesmo tempo) não podem gravar duas vezes
+    if (estado.etapa === "executando") {
+      await enviar(B, chatId, "⏳ Já estou gravando esse lançamento — só um instante.");
+      return;
+    }
+    estado.etapa = "executando";
+    await salvarEstado(db, token, estado);
 
     // CARTÃO: empurra para a fatura, NÃO baixa
     if (estado.forma === FORMA_CARTAO) {
@@ -746,7 +803,17 @@ async function pendenteEsperandoNumero(db: any, chatId: number) {
     .limit(1);
   const linha = (data || [])[0];
   if (!linha) return null;
+  // Passo esquecido não pode ficar capturando mensagem do grupo para sempre:
+  // depois de 2 horas o lançamento é considerado abandonado.
+  const quando = Date.parse(String((linha.dados as any)?.atualizadoEm || ""));
+  if (Number.isFinite(quando) && Date.now() - quando > 2 * 60 * 60 * 1000) return null;
   return { token: String(linha.telegram_user_id).slice(3), estado: linha.dados as EstadoBaixa, etapa: linha.estado as string };
+}
+
+/** A mensagem é SÓ um número? ("35,90", "R$ 1.400,00"). Se não for, é conversa
+ *  normal do grupo e o lançamento pendente não pode engolir. */
+function ehSoNumero(texto: string): boolean {
+  return /^\s*(r\$\s*)?\d{1,3}(\.\d{3})*(,\d{1,2})?\s*$|^\s*(r\$\s*)?\d+([.,]\d{1,2})?\s*$/i.test(texto.trim());
 }
 
 /** Retorna true se a mensagem foi consumida por um lançamento em andamento. */
@@ -755,14 +822,21 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
   if (!p) return false;
   const { token, estado, etapa } = p;
 
+  // No GRUPO as pessoas conversam. Só engolimos a mensagem quando ela é
+  // claramente a resposta do passo — ou seja, um número e nada mais.
+  if (!ehSoNumero(texto)) return false;
   const novo = extrairValor(texto);
-  if (novo === null) {
-    await enviar(B, chatId, "Não entendi o valor. Mande só o número, ex.: <code>35,90</code>");
-    return true;
-  }
+  if (novo === null) return false;
 
   // ── juros informados: o valor da conta passa a ser o pago menos os juros ──
   if (etapa === "aguarda_juros") {
+    if (estado.forma !== FORMA_CARTAO && novo > estado.valorPago + 0.001) {
+      await enviar(B, chatId,
+        `🤔 Os juros (${brl(novo)}) não podem ser maiores que o valor pago (${brl(estado.valorPago)}).\n` +
+        `Se o valor pago estiver errado, toque em <b>Voltar</b> e corrija por “Valor pago”.`,
+        BOTOES_CANCELA(token));
+      return true;
+    }
     estado.juros = novo;
     if (estado.forma !== FORMA_CARTAO) {
       estado.valorConta = Math.max(0, Math.round((estado.valorPago - novo) * 100) / 100);
@@ -785,6 +859,15 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
   if (etapa === "aguarda_valor_conta") {
     estado.valorConta = novo;
     if (estado.forma !== FORMA_CARTAO) estado.juros = undefined;
+    await irParaConfirmacao(db, B, token, estado, chatId);
+    return true;
+  }
+
+  // Sessão criada ANTES desta versão: no cartão, "aguarda_valor" significava o
+  // valor da CONTA (hoje o cartão usa "aguarda_valor_conta"). Mantém o sentido
+  // antigo para não apagar os juros já informados.
+  if (estado.forma === FORMA_CARTAO) {
+    estado.valorConta = novo;
     await irParaConfirmacao(db, B, token, estado, chatId);
     return true;
   }
