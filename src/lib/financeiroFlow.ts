@@ -892,7 +892,10 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       txt += `${escTg(estado.parcela.fornecedor || "")} — ${escTg(estado.parcela.descricao.slice(0, 45))}\n`;
       txt += `💳 ${escTg(r.cartao)}\n`;
       txt += `Vencimento: ${dataBR(r.vencimentoAntes)} → <b>${dataBR(r.vencimentoDepois)}</b>\n`;
-      txt += `Valor: ${brl(r.valorAntes)}${r.juros > 0 ? ` + ${brl(r.juros)} juros = <b>${brl(r.valorDepois)}</b>` : ""}\n`;
+      if (Math.abs(r.valorConta - r.valorAntes) >= 0.01) {
+        txt += `Valor da conta: ${brl(r.valorAntes)} → <b>${brl(r.valorConta)}</b> (corrigido)\n`;
+      }
+      txt += `Valor: ${brl(r.valorConta)}${r.juros > 0 ? ` + ${brl(r.juros)} juros = <b>${brl(r.valorDepois)}</b>` : ""}\n`;
       txt += `\n<i>Continua em aberto até a fatura ser paga. Lançado por ${escTg(estado.autor)}.</i>`;
       await enviar(B, chatId, txt);
       return;

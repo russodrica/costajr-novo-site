@@ -411,7 +411,10 @@ export type ResultadoCartao = {
   ok: boolean;
   idInstallment: string;
   descricao: string;
+  /** o que estava na Vobi antes */
   valorAntes: number;
+  /** o valor REAL da conta usado na soma (igual a valorAntes quando não mudou) */
+  valorConta: number;
   valorDepois: number;
   juros: number;
   vencimentoAntes: string;
@@ -451,6 +454,7 @@ export async function rolarParaCartao(
     idInstallment,
     descricao: antes?.descricao || "",
     valorAntes: antes?.valor || 0,
+    valorConta: dados.novoValorConta ?? antes?.valor ?? 0,
     valorDepois: 0,
     juros: dados.juros,
     vencimentoAntes: antes?.vencimento || "",
