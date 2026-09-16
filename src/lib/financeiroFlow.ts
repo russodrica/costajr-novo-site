@@ -88,6 +88,8 @@ type EstadoBaixa = {
   conta: number;
   cartao?: { id: number; nome: string };
   jurosCartao?: number;
+  /** valor da conta em si no fluxo do cartão (ex.: energia varia por consumo) */
+  valorContaCartao?: number;
   vencimentoFatura?: string;
   etapa: string;
 };
@@ -327,14 +329,17 @@ function resumoCartao(e: EstadoBaixa): string {
   const p = e.parcela!;
   const juros = e.jurosCartao || 0;
   const venc = e.vencimentoFatura || proximoVencimentoCartao();
-  const novoValor = Math.round((p.valor + juros) * 100) / 100;
+  const valorConta = e.valorContaCartao ?? p.valor;
+  const novoValor = Math.round((valorConta + juros) * 100) / 100;
 
   let txt = `💳 <b>Confirmar o pagamento no cartão?</b>\n\n`;
   txt += `<b>Fornecedor:</b> ${escTg(p.fornecedor || "—")}\n`;
   txt += `<b>Conta:</b> ${escTg(p.descricao.slice(0, 50))}\n`;
   txt += `<b>Cartão:</b> ${escTg(e.cartao?.nome || "—")}\n\n`;
   txt += `<b>Vencimento:</b> ${dataBR(p.vencimento)} → <b>${dataBR(venc)}</b> (fatura)\n`;
-  txt += `<b>Valor:</b> ${brl(p.valor)}`;
+  if (valorConta !== p.valor) txt += `<b>Valor da conta:</b> ${brl(p.valor)} → <b>${brl(valorConta)}</b>\n<b>Total:</b> `;
+  else txt += `<b>Valor:</b> `;
+  txt += `${brl(valorConta)}`;
   if (juros > 0) txt += ` + ${brl(juros)} de juros = <b>${brl(novoValor)}</b>`;
   txt += `\n\n<i>A conta continua EM ABERTO — vai ser baixada quando a fatura for paga.</i>\n`;
   return txt;
@@ -426,23 +431,45 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   if (acao === "fbalt") {
     estado.etapa = "alterar";
     await salvarEstado(db, token, estado);
-    await enviar(B, chatId, "✏️ O que você quer alterar?", inline([
-      [
-        { text: "💵 Valor", callback_data: `fbaltv:${token}` },
-        { text: "📅 Vencimento", callback_data: `fbaltd:${token}` },
-      ],
-      [{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }],
-    ]));
+    // no cartão são DUAS coisas diferentes: o valor da conta (ex.: energia, que
+    // muda todo mês pelo consumo) e os juros do cartão
+    const opcoes = estado.forma === FORMA_CARTAO
+      ? [
+          [{ text: "💵 Valor da conta", callback_data: `fbaltv:${token}` }],
+          [{ text: "💳 Juros do cartão", callback_data: `fbaltj:${token}` }],
+          [{ text: "📅 Vencimento", callback_data: `fbaltd:${token}` }],
+          [{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }],
+        ]
+      : [
+          [
+            { text: "💵 Valor", callback_data: `fbaltv:${token}` },
+            { text: "📅 Vencimento", callback_data: `fbaltd:${token}` },
+          ],
+          [{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }],
+        ];
+    await enviar(B, chatId, "✏️ O que você quer alterar?", inline(opcoes));
     return;
   }
 
+  // valor da CONTA (tanto no fluxo normal quanto no cartão)
   if (acao === "fbaltv") {
-    const ehCartao = estado.forma === FORMA_CARTAO;
-    estado.etapa = ehCartao ? "aguarda_juros" : "aguarda_valor";
+    estado.etapa = "aguarda_valor";
     await salvarEstado(db, token, estado);
-    await enviar(B, chatId, ehCartao
-      ? `💵 Qual o valor dos <b>juros do cartão</b>?\n<i>(hoje está ${brl(estado.jurosCartao || 0)})</i>`
-      : `💵 Qual foi o valor pago de verdade?\n<i>(hoje está ${brl(estado.valorPago)} — mande só o número)</i>`);
+    const atual = estado.forma === FORMA_CARTAO
+      ? (estado.valorContaCartao ?? estado.parcela?.valor ?? estado.valorPago)
+      : estado.valorPago;
+    await enviar(B, chatId,
+      estado.forma === FORMA_CARTAO
+        ? `💵 Qual o <b>valor da conta</b> (sem os juros do cartão)?\n<i>(hoje está ${brl(atual)})</i>`
+        : `💵 Qual foi o valor pago de verdade?\n<i>(hoje está ${brl(atual)} — mande só o número)</i>`);
+    return;
+  }
+
+  // juros do cartão
+  if (acao === "fbaltj") {
+    estado.etapa = "aguarda_juros";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, `💳 Qual o valor dos <b>juros do cartão</b>?\n<i>(hoje está ${brl(estado.jurosCartao || 0)})</i>\nPode mandar o número ou o <b>print da fatura</b>.`);
     return;
   }
 
@@ -473,6 +500,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
           idCartao: estado.cartao?.id || estado.conta,
           nomeCartao: estado.cartao?.nome,
           vencimentoFatura: estado.vencimentoFatura,
+          novoValorConta: estado.valorContaCartao,
         });
       } catch (e: any) {
         await enviar(B, chatId, "❌ Erro: " + escTg(String(e?.message || e)) + "\n<i>Confira na Vobi.</i>");
@@ -556,6 +584,15 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
 
   if (etapa === "aguarda_juros") {
     estado.jurosCartao = novo;
+    estado.etapa = "confirmar";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, resumoCartao(estado), BOTOES_CONFIRMA(token));
+    return true;
+  }
+
+  // no cartão, o número digitado é o valor DA CONTA (os juros têm passo próprio)
+  if (estado.forma === FORMA_CARTAO) {
+    estado.valorContaCartao = novo;
     estado.etapa = "confirmar";
     await salvarEstado(db, token, estado);
     await enviar(B, chatId, resumoCartao(estado), BOTOES_CONFIRMA(token));

@@ -412,16 +412,25 @@ export type ResultadoCartao = {
 /**
  * Pagamento no CARTÃO DE CRÉDITO (regra da Adriana, 16/09/2026).
  *
- * Aqui a parcela NÃO é baixada — o fornecedor recebeu, mas o dinheiro só sai
- * da conta quando a FATURA vencer. Então empurramos o vencimento para o dia 02
- * do mês seguinte e somamos os juros do cartão, deixando a parcela EM ABERTO
- * (status 1). A baixa de verdade acontece quando a fatura for paga.
+ * A parcela NÃO é baixada — o fornecedor recebeu, mas o dinheiro só sai da
+ * conta quando a FATURA vencer. Então empurramos o vencimento para o dia 02 do
+ * mês seguinte e somamos os juros do cartão, deixando a parcela EM ABERTO.
  *
- * Igual à baixa: relê a parcela depois e só reporta sucesso se gravou mesmo.
+ * ATENÇÃO — POR QUE ISSO É FEITO PELO /payment E NÃO PELO /installment:
+ * o `PUT /installment/{id}` responde 200 mas IGNORA `dueDate` e `price` (só
+ * persiste os campos de baixa). Medido em 16/09/2026. O único caminho que
+ * realmente altera vencimento/valor é o `PUT /payment/{id}` mandando o ARRAY
+ * COMPLETO de parcelas + o `value` somando exatamente os prices.
+ *
+ * E é obrigatório mandar TODAS as parcelas do pagamento: um lançamento
+ * recorrente (a Enel tem 7) recria as parcelas a cada PUT. Mandar só uma
+ * devolve 400 ("Valor total das parcelas diferente...") — a Vobi protege
+ * contra apagar as irmãs, mas não confie nisso: montamos o array inteiro.
+ * Efeito colateral aceito: as parcelas ganham IDs novos.
  */
 export async function rolarParaCartao(
   idInstallment: string,
-  dados: { juros: number; idCartao: number; nomeCartao?: string; vencimentoFatura?: string },
+  dados: { juros: number; idCartao: number; nomeCartao?: string; vencimentoFatura?: string; novoValorConta?: number },
   opts: { dryRun?: boolean } = {},
 ): Promise<ResultadoCartao> {
   const antes = await parcelaPorId(idInstallment);
@@ -440,33 +449,73 @@ export async function rolarParaCartao(
   };
   if (!antes) return { ...base, mensagem: "Parcela não encontrada na Vobi (ou já não está em aberto)." };
 
-  const novoValor = Math.round((antes.valor + (dados.juros || 0)) * 100) / 100;
-  const corpo: Record<string, any> = {
-    dueDate: venc,
-    originalValue: antes.valorOriginal,
-    price: novoValor,
-    interest: dados.juros || 0,
-    idPaymentType: FORMA_CARTAO,
-    idPaymentBankAccount: dados.idCartao,
-    // status NÃO muda: continua 1 (em aberto) até a fatura ser paga
-  };
+  const valorConta = dados.novoValorConta ?? antes.valor;
+  const novoValor = Math.round((valorConta + (dados.juros || 0)) * 100) / 100;
+
+  // todas as parcelas irmãs (o PUT recria o conjunto inteiro)
+  const irmas = await vGetAll("installment", `&where[idPayment]=${encodeURIComponent(antes.idPayment)}`, 2, "dueDate");
+  if (!irmas.length) return { ...base, mensagem: "Não consegui ler as parcelas do lançamento na Vobi." };
+
+  const linhas = irmas.map((i: any) => {
+    const ehAlvo = i.id === idInstallment;
+    const preco = ehAlvo ? novoValor : num(i.price);
+    // A Vobi NÃO persiste `interest` por este caminho (medido: volta 0), então o
+    // juros do cartão fica embutido no valor. Para não perder a informação,
+    // registramos na descrição da parcela — é o que aparece na tela da Vobi.
+    const descBase = String(i.description || `Parcela ${i.number ?? 1}`).replace(/\s*\(\+ R\$ [\d.,]+ juros cartão\)\s*$/i, "");
+    const desc = ehAlvo && dados.juros > 0
+      ? `${descBase} (+ R$ ${dados.juros.toFixed(2).replace(".", ",")} juros cartão)`.slice(0, 190)
+      : descBase;
+    return {
+      price: preco,
+      dueDate: ehAlvo ? venc : String(i.dueDate).slice(0, 10),
+      number: i.number ?? 1,
+      description: desc,
+      idInstallmentStatus: i.idInstallmentStatus ?? 1,
+      ...(i.paidDate ? { paidDate: String(i.paidDate).slice(0, 10) } : {}),
+      ...(ehAlvo
+        ? { interest: dados.juros || 0, idPaymentType: FORMA_CARTAO, idPaymentBankAccount: dados.idCartao }
+        : {
+            ...(num(i.interest) ? { interest: num(i.interest) } : {}),
+            ...(i.idPaymentType ? { idPaymentType: i.idPaymentType } : {}),
+            ...(i.idPaymentBankAccount ? { idPaymentBankAccount: i.idPaymentBankAccount } : {}),
+          }),
+    };
+  });
+
+  // a Vobi exige que a soma dos percentuais dê 100 e que `value` = soma dos prices
+  const total = Math.round(linhas.reduce((s, l) => s + l.price, 0) * 100) / 100;
+  let acumulado = 0;
+  linhas.forEach((l: any, idx) => {
+    if (idx === linhas.length - 1) l.percentage = Math.round((100 - acumulado) * 100) / 100;
+    else {
+      const p = Math.round((l.price / total) * 10000) / 100;
+      l.percentage = p;
+      acumulado += p;
+    }
+  });
+
+  const corpo = { value: total, installments: linhas };
 
   if (opts.dryRun) {
-    return { ...base, ok: true, valorDepois: novoValor, mensagem: `SIMULAÇÃO — enviaria: ${JSON.stringify(corpo)}` };
+    return { ...base, ok: true, valorDepois: novoValor, mensagem: `SIMULAÇÃO — enviaria: ${JSON.stringify(corpo).slice(0, 400)}` };
   }
 
-  await vPut(`/installment/${encodeURIComponent(idInstallment)}`, corpo);
+  await vPut(`/payment/${encodeURIComponent(antes.idPayment)}`, corpo);
 
-  const dep = await parcelaPorId(idInstallment);
-  const gravou = !!dep && dep.vencimento === venc;
+  // conferência: a parcela alvo ganhou id novo, então procuramos pelo vencimento
+  const depois = await vGetAll("installment", `&where[idPayment]=${encodeURIComponent(antes.idPayment)}`, 2, "dueDate");
+  const alvo = depois.find((i: any) => String(i.dueDate).slice(0, 10) === venc && Math.abs(num(i.price) - novoValor) < 0.01);
+  const gravou = !!alvo && depois.length === irmas.length;
+
   return {
     ...base,
     ok: gravou,
-    valorDepois: dep?.valor ?? novoValor,
+    valorDepois: alvo ? num(alvo.price) : novoValor,
     mensagem: gravou
       ? "Conta transferida para a fatura do cartão."
-      : `A Vobi aceitou a chamada mas o vencimento NÃO mudou (está ${dep?.vencimento || "?"}). ` +
-        `Confira na Vobi antes de considerar feito.`,
+      : `A Vobi aceitou mas não encontrei a parcela em ${venc} com ${novoValor} ` +
+        `(parcelas antes: ${irmas.length}, depois: ${depois.length}). Confira na Vobi.`,
   };
 }
 
