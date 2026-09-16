@@ -17,6 +17,7 @@ import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
 import { assinarTreinoToken } from "./treinoStorage";
 import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial, onMessageComercial, mostrarMenuComercial, onCallbackEtapa } from "./comercialFlow";
+import { onTextoFinanceiro, onCallbackFinanceiro, onTextoDuranteBaixa, getGrupoFinanceiro, ativarGrupoFinanceiro, extrairValor } from "./financeiroFlow";
 
 const SITE_TREINO = "https://www.costajr.com.br";
 
@@ -364,6 +365,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   await responderCallback(B, cq.id);
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
+  if (/^fb(forn|parc|sim|nao|alt|altv|altd|volta):/.test(data)) return await onCallbackFinanceiro(db, B, cq, chatId, data);
   if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, cq, chatId, data);
   if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gempl|gemppk|gbanc\w*):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
@@ -812,9 +814,50 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
     return;
   }
 
+  // ── ativar grupo FINANCEIRO (baixa de pagamento da Vobi) ──
+  if (/^\/ativar_financeiro(@\w+)?/i.test(texto)) {
+    if (B.modo !== "adm") {
+      await enviar(B, chatId, "O fluxo financeiro é do bot <b>@cjr_adm_bot</b>.");
+      return;
+    }
+    if (!(await ehAdminGrupo(B, chatId, msg.from?.id))) {
+      await enviar(B, chatId, "Só um <b>administrador do grupo</b> pode ativar este grupo.");
+      return;
+    }
+    await ativarGrupoFinanceiro(db, chatId, chat.title || "", nomeRemetente(msg.from));
+    await enviar(B, chatId,
+      "✅ <b>Grupo ativado para BAIXA DE PAGAMENTO!</b>\n\n" +
+      "Quando pagarem uma conta, mandem aqui o <b>valor e o fornecedor</b>:\n" +
+      "<code>1400 construtivo</code>\n\n" +
+      "Eu procuro as contas em aberto desse fornecedor (inclusive as vencidas), " +
+      "mostro os vencimentos pra escolher, calculo os <b>juros</b> se pagaram a mais, " +
+      "e dou baixa na Vobi depois da sua confirmação.\n\n" +
+      "📅 Todo dia de manhã eu aviso o que vence no dia — e às segundas, a agenda da semana.");
+    return;
+  }
+
   const rh = await getGrupoRh(db);
   const base = await getGrupoBase(db);
+  const financeiro = await getGrupoFinanceiro(db);
   const cid = String(chatId);
+
+  // ── grupo FINANCEIRO: baixa de pagamento ──
+  if (financeiro && cid === financeiro) {
+    // se alguém está no meio de uma baixa (ex.: digitando o novo valor)
+    if (texto && (await onTextoDuranteBaixa(db, B, chatId, texto))) return;
+    if (msg.photo || msg.document) {
+      await enviar(B, chatId, "📎 Recebi o arquivo. Por enquanto me diga o <b>valor e o fornecedor</b> por texto (ex.: <code>1400 construtivo</code>) — a leitura automática do comprovante entra em seguida.");
+      return;
+    }
+    if (!texto || texto.startsWith("/")) return;
+    // só reage quando parece um lançamento: tem valor E (é curto OU tem palavra-chave)
+    const temValor = extrairValor(texto) !== null;
+    const gatilho = /\b(paguei|pago|pagamento|baixa|baixar|quitei)\b/i.test(texto);
+    if (temValor && (texto.length <= 60 || gatilho)) {
+      return await onTextoFinanceiro(db, B, msg, chatId, texto);
+    }
+    return; // conversa normal no grupo → ignora
+  }
 
   // grupo de DOCUMENTOS
   if (rh && cid === rh) {
