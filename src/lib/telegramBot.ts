@@ -531,7 +531,7 @@ export async function baixarArquivoTg(B: Bot, fileId: string): Promise<Buffer | 
 // Lê o TEXTO de dentro do documento (camada de texto do PDF, via unpdf — sem LLM)
 // para detectar tipo/validade/colaborador quando o NOME do arquivo não ajuda
 // (ex.: arquivo enviado sem nome, "documento.pdf", "foto-telegram.jpg").
-async function extrairTextoConteudo(buf: Buffer, ctL: string, nome: string): Promise<string> {
+export async function extrairTextoConteudo(buf: Buffer, ctL: string, nome: string): Promise<string> {
   try {
     if (ctL === "application/pdf" || /\.pdf$/i.test(nome)) {
       const { extractText, getDocumentProxy } = await import("unpdf");

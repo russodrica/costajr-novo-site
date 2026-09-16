@@ -21,8 +21,8 @@
 // tempo no grupo sem uma atrapalhar a outra.
 
 import { escTg } from "./telegram";
-import { type Bot, enviar, inline, baixarArquivoTg } from "./telegramBot";
-import { lerDocumentoGemini, geminiConfigurado, extrairJson } from "./llm";
+import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
+import { lerDocumentoGemini, geminiConfigurado, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 import {
   buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelaPorId, darBaixa,
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
@@ -247,11 +247,31 @@ async function iniciar(db: any, B: Bot, chatId: number, autor: string, valor: nu
 
 // ───────────────────── entrada: COMPROVANTE (foto/PDF) ─────────────────────
 
+const SYS_COMPROVANTE =
+  "Você lê comprovantes de pagamento brasileiros (PIX, boleto, TED, DOC, cartão) e extrai os dados. Responda SÓ um JSON.";
+
+const PEDIDO_COMPROVANTE = `Devolva JSON com as chaves:
+{"valor": number (valor pago, em reais, sem símbolo),
+ "favorecido": string (nome de quem RECEBEU o dinheiro — a empresa/pessoa beneficiária.
+   NUNCA o pagador: a pagadora é sempre a COSTA JUNIOR ENGENHARIA. Se aparecerem os dois,
+   devolva o OUTRO, não a Costa Júnior),
+ "data": "AAAA-MM-DD" (data do pagamento),
+ "juros": number (juros/multa/acréscimo, 0 se não houver)}
+Se não achar algum campo, use null.`;
+
+/** A Costa Júnior é sempre a PAGADORA — se a leitura devolver ela, está errada. */
+function ehAPropriaCJR(nome: string): boolean {
+  return /costa\s*j(u|ú)nior|costajr|costa\s*jr/i.test(nome);
+}
+
+/**
+ * Lê o comprovante em CAMADAS, igual ao bot de documentos:
+ *   1. legenda da mensagem (se a pessoa escreveu algo junto)
+ *   2. camada de TEXTO do PDF (unpdf) + um LLM de texto (Groq/Gemini/NVIDIA/Claude)
+ *   3. visão (Gemini) — só para foto ou PDF escaneado, que não têm texto
+ * A camada 2 é a que salva: não depende da cota do Gemini, que é apertada.
+ */
 export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId: number) {
-  if (!geminiConfigurado()) {
-    await enviar(B, chatId, "📎 Recebi, mas a leitura automática de comprovante precisa da chave do Gemini.\nPor enquanto me mande por texto: <code>valor fornecedor</code>");
-    return;
-  }
   let fileId = "", ct = "application/octet-stream", nome = "comprovante";
   if (msg.document) { fileId = msg.document.file_id; ct = msg.document.mime_type || ct; nome = msg.document.file_name || nome; }
   else if (msg.photo?.length) { fileId = msg.photo[msg.photo.length - 1].file_id; ct = "image/jpeg"; nome = "foto.jpg"; }
@@ -262,29 +282,66 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   if (!buf) { await enviar(B, chatId, "❌ Não consegui baixar o arquivo. Tente de novo."); return; }
   if (buf.length > 18 * 1024 * 1024) { await enviar(B, chatId, "❌ Arquivo muito grande (máx. ~18 MB)."); return; }
 
-  const bruto = await lerDocumentoGemini(
-    "Você lê comprovantes de pagamento brasileiros (PIX, boleto, TED, cartão) e extrai os dados. Responda SÓ um JSON.",
-    `Extraia deste comprovante e devolva JSON com as chaves:
-{"valor": number (valor pago, em reais, sem símbolo),
- "favorecido": string (nome de quem RECEBEU o dinheiro — a empresa/pessoa beneficiária, NUNCA o pagador "Costa Junior"),
- "data": "AAAA-MM-DD" (data do pagamento),
- "juros": number (juros/multa/acréscimo, 0 se não houver)}
-Se não achar algum campo, use null.`,
-    buf.toString("base64"),
-    ct,
-  ).catch(() => null);
+  const ctL = ct.toLowerCase();
+  let valor: number | null = null;
+  let favorecido = "";
+  let data = "";
+  let comoLi = "";
 
-  const j = bruto ? extrairJson(bruto) : null;
-  const valor = Number(j?.valor) || null;
-  const favorecido = String(j?.favorecido || "").trim();
-  const data = /^\d{4}-\d{2}-\d{2}$/.test(String(j?.data || "")) ? String(j.data) : hojeISO();
+  // ── CAMADA 1: legenda digitada junto com o arquivo ──
+  const legenda = String(msg.caption || "").trim();
+  if (legenda) {
+    valor = extrairValor(legenda);
+    const n = extrairNome(legenda);
+    if (n.length >= 2) favorecido = n;
+    if (valor && favorecido) comoLi = "pela legenda";
+  }
+
+  // ── CAMADA 2: texto de dentro do PDF (sem IA) + LLM de texto ──
+  const texto = await extrairTextoConteudo(buf, ctL, nome);
+  if ((!valor || !favorecido) && texto && llmConfigurado()) {
+    const bruto = await gerarTextoLLM(SYS_COMPROVANTE, [
+      { role: "user", content: `${PEDIDO_COMPROVANTE}\n\nCOMPROVANTE:\n${texto.slice(0, 6000)}` },
+    ]).catch(() => null);
+    const j = bruto ? extrairJson(bruto) : null;
+    if (j) {
+      if (!valor) valor = Number(j.valor) || null;
+      const f = String(j.favorecido || "").trim();
+      if (!favorecido && f && !ehAPropriaCJR(f)) favorecido = f;
+      if (!data && /^\d{4}-\d{2}-\d{2}$/.test(String(j.data || ""))) data = String(j.data);
+      if (valor && favorecido) comoLi = "do texto do comprovante";
+    }
+  }
+
+  // ── CAMADA 3: visão — foto, ou PDF escaneado (sem camada de texto) ──
+  if ((!valor || !favorecido) && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+    const bruto = await lerDocumentoGemini(SYS_COMPROVANTE, PEDIDO_COMPROVANTE, buf.toString("base64"), ct).catch(() => null);
+    const j = bruto ? extrairJson(bruto) : null;
+    if (j) {
+      if (!valor) valor = Number(j.valor) || null;
+      const f = String(j.favorecido || "").trim();
+      if (!favorecido && f && !ehAPropriaCJR(f)) favorecido = f;
+      if (!data && /^\d{4}-\d{2}-\d{2}$/.test(String(j.data || ""))) data = String(j.data);
+      if (valor && favorecido) comoLi = "lendo a imagem";
+    }
+  }
+
+  if (!data) data = hojeISO();
 
   if (!valor || !favorecido) {
-    await enviar(B, chatId, "🤔 Não consegui ler os dados do comprovante com segurança.\nMe manda por texto: <code>valor fornecedor</code>");
+    const falta = !valor && !favorecido ? "o valor nem o favorecido" : !valor ? "o valor" : "o favorecido";
+    const porque = !texto && !geminiConfigurado()
+      ? "\n<i>(é uma imagem e a leitura por visão não está ativa aqui)</i>"
+      : "";
+    await enviar(B, chatId,
+      `🤔 Não consegui identificar <b>${falta}</b> nesse comprovante.${porque}\n\n` +
+      `Me manda assim: <code>${valor ? valor : "431,20"} ${favorecido || "nome do fornecedor"}</code>`);
     return;
   }
 
-  await enviar(B, chatId, `📄 Li do comprovante:\n<b>Valor:</b> ${brl(valor)}\n<b>Favorecido:</b> ${escTg(favorecido)}\n<b>Data:</b> ${dataBR(data)}`);
+  await enviar(B, chatId,
+    `📄 <b>Li do comprovante</b> <i>(${comoLi})</i>:\n` +
+    `<b>Valor:</b> ${brl(valor)}\n<b>Favorecido:</b> ${escTg(favorecido)}\n<b>Data:</b> ${dataBR(data)}`);
   await iniciar(db, B, chatId, autorDe(msg), valor, favorecido, data);
 }
 
@@ -918,12 +975,8 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
 export async function onPrintDuranteBaixa(db: any, B: Bot, msg: any, chatId: number): Promise<boolean> {
   const p = await pendenteEsperandoNumero(db, chatId);
   if (!p || p.etapa !== "aguarda_juros") return false;
-  if (!geminiConfigurado()) {
-    await enviar(B, chatId, "Para ler o print eu preciso da chave do Gemini. Mande o valor dos juros por texto, por favor.");
-    return true;
-  }
-  let fileId = "", ct = "image/jpeg";
-  if (msg.document) { fileId = msg.document.file_id; ct = msg.document.mime_type || "application/pdf"; }
+  let fileId = "", ct = "image/jpeg", nomeArq = "print.jpg";
+  if (msg.document) { fileId = msg.document.file_id; ct = msg.document.mime_type || "application/pdf"; nomeArq = msg.document.file_name || "fatura.pdf"; }
   else if (msg.photo?.length) fileId = msg.photo[msg.photo.length - 1].file_id;
   if (!fileId) return false;
 
@@ -931,16 +984,25 @@ export async function onPrintDuranteBaixa(db: any, B: Bot, msg: any, chatId: num
   const buf = await baixarArquivoTg(B, fileId);
   if (!buf) { await enviar(B, chatId, "❌ Não consegui baixar. Mande o valor por texto."); return true; }
 
-  const bruto = await lerDocumentoGemini(
-    "Você lê faturas e comprovantes de cartão de crédito brasileiros. Responda SÓ um JSON.",
-    `Qual o valor de JUROS / ENCARGOS / ACRÉSCIMO neste documento? Devolva {"juros": number} em reais (0 se não houver).`,
-    buf.toString("base64"),
-    ct,
-  ).catch(() => null);
-  const j = bruto ? extrairJson(bruto) : null;
-  const juros = Number(j?.juros);
+  const SYS = "Você lê faturas e comprovantes de cartão de crédito brasileiros. Responda SÓ um JSON.";
+  const PEDIDO = `Qual o valor de JUROS / ENCARGOS / ACRÉSCIMO neste documento? Devolva {"juros": number} em reais (0 se não houver).`;
+  const ctL = ct.toLowerCase();
+  let juros = NaN;
 
-  if (!Number.isFinite(juros)) {
+  // mesma escada do comprovante: texto do PDF primeiro (sem cota), visão depois
+  const texto = await extrairTextoConteudo(buf, ctL, nomeArq);
+  if (texto && llmConfigurado()) {
+    const bruto = await gerarTextoLLM(SYS, [{ role: "user", content: `${PEDIDO}\n\nDOCUMENTO:\n${texto.slice(0, 6000)}` }]).catch(() => null);
+    const j = bruto ? extrairJson(bruto) : null;
+    if (j && Number.isFinite(Number(j.juros))) juros = Number(j.juros);
+  }
+  if (!Number.isFinite(juros) && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+    const bruto = await lerDocumentoGemini(SYS, PEDIDO, buf.toString("base64"), ct).catch(() => null);
+    const j = bruto ? extrairJson(bruto) : null;
+    if (j && Number.isFinite(Number(j.juros))) juros = Number(j.juros);
+  }
+
+  if (!Number.isFinite(juros) || juros < 0) {
     await enviar(B, chatId, "🤔 Não consegui ler os juros. Mande o valor por texto, ex.: <code>35,90</code>");
     return true;
   }
