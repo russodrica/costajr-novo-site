@@ -1,24 +1,30 @@
 // Fluxo de BAIXA DE PAGAMENTO no grupo financeiro do Telegram (@cjr_adm_bot).
 //
 // Como a Adriana pediu (16/09/2026):
-//   1. alguém do grupo manda "1400 construtivo" (valor + fornecedor) ou o comprovante
-//   2. o bot acha as parcelas EM ABERTO daquele fornecedor — inclusive VENCIDAS,
-//      porque ela quase sempre paga com atraso — e mostra os vencimentos
-//   3. escolhido o vencimento, ele calcula os JUROS (o que passou do valor devido)
-//   4. mostra o resumo e pergunta com botões:  [✅ Sim] [❌ Não] [✏️ Alterar]
+//   1. alguém do grupo manda "1400 construtivo" (valor + fornecedor), ou o
+//      comprovante (foto/PDF) — a IA lê e extrai valor/fornecedor/data
+//   2. o bot acha as parcelas EM ABERTO daquele fornecedor — inclusive as
+//      VENCIDAS, porque ela quase sempre paga com atraso
+//   3. escolhido o vencimento, pergunta COMO foi pago:
+//      • dinheiro/PIX/boleto → BAIXA a parcela, lançando juros se pagou a mais
+//      • CARTÃO DE CRÉDITO   → NÃO baixa! empurra o vencimento para o dia 02 do
+//        mês seguinte (fatura) e soma os juros do cartão, deixando em aberto
+//   4. mostra o resumo e pergunta:  [✅ Sim] [❌ Não] [✏️ Alterar]
 //      "Alterar" pergunta o que mudar: [💵 Valor] [📅 Vencimento]
-//   5. confirmado, dá baixa na Vobi e RELÊ a parcela para provar que gravou
+//   5. confirmado, grava na Vobi e RELÊ para provar que gravou
 //
-// O estado de cada baixa em andamento fica em telegram_sessoes na chave
-// "fb:<token>" — o token viaja no callback_data, então várias pessoas podem
-// lançar baixas ao mesmo tempo no grupo sem uma atrapalhar a outra.
+// O estado de cada lançamento fica em telegram_sessoes na chave "fb:<token>" —
+// o token viaja no callback_data, então várias pessoas podem lançar ao mesmo
+// tempo no grupo sem uma atrapalhar a outra.
 
 import { escTg } from "./telegram";
-import { type Bot, enviar, inline, tg } from "./telegramBot";
+import { type Bot, enviar, inline, baixarArquivoTg } from "./telegramBot";
+import { lerDocumentoGemini, geminiConfigurado, extrairJson } from "./llm";
 import {
   buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, darBaixa,
-  calcularAcrescimo, CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO,
-  CONTA_PADRAO, FORMA_PADRAO, vobiBaixaConfigurada,
+  rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
+  CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO, CARTOES,
+  CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
   type Candidata, type Fornecedor,
 } from "./vobiBaixa";
 
@@ -46,10 +52,8 @@ function novoToken(): string {
 /** Lê o valor em reais de um texto livre: "1400", "1.400,00", "R$ 1400,50". */
 export function extrairValor(texto: string): number | null {
   const t = texto.replace(/r\$\s*/gi, " ");
-  // 1.234,56 | 1234,56 | 1234.56 | 1234
   const m = t.match(/\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+,\d{1,2}|\d+\.\d{2}(?!\d)|\d+/g);
   if (!m) return null;
-  // usa o MAIOR número do texto (evita pegar "2" de "2 vias")
   let melhor: number | null = null;
   for (const bruto of m) {
     let s = bruto;
@@ -70,7 +74,7 @@ export function extrairNome(texto: string): string {
     .trim();
 }
 
-// ───────────────────────── estado da baixa ─────────────────────────
+// ───────────────────────── estado do lançamento ─────────────────────────
 
 type EstadoBaixa = {
   chat_id: number;
@@ -80,8 +84,11 @@ type EstadoBaixa = {
   fornecedor?: { id: number; nome: string };
   candidatas?: Candidata[];
   parcela?: { id: string; descricao: string; valor: number; vencimento: string; fornecedor: string | null };
-  conta: number;
   forma: number;
+  conta: number;
+  cartao?: { id: number; nome: string };
+  jurosCartao?: number;
+  vencimentoFatura?: string;
   etapa: string;
 };
 
@@ -113,34 +120,49 @@ export async function ativarGrupoFinanceiro(db: any, chatId: number, titulo: str
   );
 }
 
-// ───────────────────────────── passo 1 ─────────────────────────────
+const BOTOES_CONFIRMA = (token: string) => inline([
+  [
+    { text: "✅ Sim", callback_data: `fbsim:${token}` },
+    { text: "❌ Não", callback_data: `fbnao:${token}` },
+    { text: "✏️ Alterar", callback_data: `fbalt:${token}` },
+  ],
+]);
 
-/** Entrada por TEXTO no grupo: "1400 construtivo". */
+// ───────────────────────── entrada: TEXTO ─────────────────────────
+
 export async function onTextoFinanceiro(db: any, B: Bot, msg: any, chatId: number, texto: string) {
   if (!vobiBaixaConfigurada()) {
-    await enviar(B, chatId, "⚠️ As credenciais da Vobi não estão configuradas — não consigo dar baixa.");
+    await enviar(B, chatId, "⚠️ As credenciais da Vobi não estão configuradas — não consigo lançar.");
     return;
   }
   const valor = extrairValor(texto);
   const nome = extrairNome(texto);
 
   if (!valor) {
-    await enviar(B, chatId, "Para dar baixa, me diga o <b>valor</b> e o <b>fornecedor</b>.\nEx.: <code>1400 construtivo</code>\n\nOu mande o <b>comprovante</b> (foto/PDF) que eu leio. 📎");
+    await enviar(B, chatId, "Para lançar, me diga o <b>valor</b> e o <b>fornecedor</b>.\nEx.: <code>1400 construtivo</code>\n\nOu mande o <b>comprovante</b> (foto/PDF) que eu leio. 📎");
     return;
   }
   if (nome.length < 2) {
     await enviar(B, chatId, `Entendi o valor <b>${brl(valor)}</b>, mas não o fornecedor.\nMande assim: <code>${valor} nome do fornecedor</code>`);
     return;
   }
+  await iniciar(db, B, chatId, autorDe(msg), valor, nome);
+}
 
+function autorDe(msg: any): string {
+  return `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() || "alguém";
+}
+
+/** Núcleo: com valor + nome do fornecedor, encontra o fornecedor e segue. */
+async function iniciar(db: any, B: Bot, chatId: number, autor: string, valor: number, nome: string, dataPag?: string) {
   const token = novoToken();
   const estado: EstadoBaixa = {
     chat_id: chatId,
-    autor: `${msg.from?.first_name || ""} ${msg.from?.last_name || ""}`.trim() || "alguém",
+    autor,
     valorPago: valor,
-    dataPagamento: hojeISO(),
-    conta: CONTA_PADRAO,
+    dataPagamento: dataPag || hojeISO(),
     forma: FORMA_PADRAO,
+    conta: CONTA_PADRAO,
     etapa: "buscando",
   };
 
@@ -172,7 +194,50 @@ export async function onTextoFinanceiro(db: any, B: Bot, msg: any, chatId: numbe
   await enviar(B, chatId, `Achei <b>${achados.length}</b> fornecedores com “${escTg(nome)}”. Qual é?`, inline(botoes));
 }
 
-// ───────────────────────────── passo 2 ─────────────────────────────
+// ───────────────────── entrada: COMPROVANTE (foto/PDF) ─────────────────────
+
+export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId: number) {
+  if (!geminiConfigurado()) {
+    await enviar(B, chatId, "📎 Recebi, mas a leitura automática de comprovante precisa da chave do Gemini.\nPor enquanto me mande por texto: <code>valor fornecedor</code>");
+    return;
+  }
+  let fileId = "", ct = "application/octet-stream", nome = "comprovante";
+  if (msg.document) { fileId = msg.document.file_id; ct = msg.document.mime_type || ct; nome = msg.document.file_name || nome; }
+  else if (msg.photo?.length) { fileId = msg.photo[msg.photo.length - 1].file_id; ct = "image/jpeg"; nome = "foto.jpg"; }
+  if (!fileId) return;
+
+  await enviar(B, chatId, "📎 Lendo o comprovante… ⏳");
+  const buf = await baixarArquivoTg(B, fileId);
+  if (!buf) { await enviar(B, chatId, "❌ Não consegui baixar o arquivo. Tente de novo."); return; }
+  if (buf.length > 18 * 1024 * 1024) { await enviar(B, chatId, "❌ Arquivo muito grande (máx. ~18 MB)."); return; }
+
+  const bruto = await lerDocumentoGemini(
+    "Você lê comprovantes de pagamento brasileiros (PIX, boleto, TED, cartão) e extrai os dados. Responda SÓ um JSON.",
+    `Extraia deste comprovante e devolva JSON com as chaves:
+{"valor": number (valor pago, em reais, sem símbolo),
+ "favorecido": string (nome de quem RECEBEU o dinheiro — a empresa/pessoa beneficiária, NUNCA o pagador "Costa Junior"),
+ "data": "AAAA-MM-DD" (data do pagamento),
+ "juros": number (juros/multa/acréscimo, 0 se não houver)}
+Se não achar algum campo, use null.`,
+    buf.toString("base64"),
+    ct,
+  ).catch(() => null);
+
+  const j = bruto ? extrairJson(bruto) : null;
+  const valor = Number(j?.valor) || null;
+  const favorecido = String(j?.favorecido || "").trim();
+  const data = /^\d{4}-\d{2}-\d{2}$/.test(String(j?.data || "")) ? String(j.data) : hojeISO();
+
+  if (!valor || !favorecido) {
+    await enviar(B, chatId, "🤔 Não consegui ler os dados do comprovante com segurança.\nMe manda por texto: <code>valor fornecedor</code>");
+    return;
+  }
+
+  await enviar(B, chatId, `📄 Li do comprovante:\n<b>Valor:</b> ${brl(valor)}\n<b>Favorecido:</b> ${escTg(favorecido)}\n<b>Data:</b> ${dataBR(data)}`);
+  await iniciar(db, B, chatId, autorDe(msg), valor, favorecido, data);
+}
+
+// ───────────────────────── escolha da parcela ─────────────────────────
 
 async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
   const f = estado.fornecedor!;
@@ -185,7 +250,7 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   }
 
   if (!cands.length) {
-    await enviar(B, chatId, `❌ <b>${escTg(f.nome)}</b> não tem nenhuma parcela em aberto na Vobi.\n\nPode ser que já esteja baixada, ou que o pagamento esteja cadastrado em outro fornecedor.`);
+    await enviar(B, chatId, `❌ <b>${escTg(f.nome)}</b> não tem nenhuma parcela em aberto na Vobi.\n\nPode já estar baixada, ou o lançamento estar em outro fornecedor.`);
     await apagarEstado(db, token);
     return;
   }
@@ -194,9 +259,8 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   estado.etapa = "esc_parcela";
   await salvarEstado(db, token, estado);
 
-  // uma única candidata com valor EXATO → já vai direto pra confirmação
   if (cands.length === 1 || (cands[0].exata && !cands[1]?.exata)) {
-    return await propor(db, B, token, estado, chatId, cands[0]);
+    return await escolherParcela(db, B, token, estado, chatId, cands[0]);
   }
 
   const botoes = cands.map((c, i) => {
@@ -206,40 +270,45 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
 
   const linhas = cands.map((c, i) => {
-    const marca = c.exata ? " ✅ valor exato" : c.diferenca > 0 ? ` (+${brl(c.diferenca)} de juros)` : "";
+    const marca = c.exata ? " ✅ valor exato" : c.diferenca > 0 ? ` (+${brl(c.diferenca)})` : "";
     const atraso = c.diasAtraso > 0 ? ` · ${c.diasAtraso}d atraso` : "";
     return `${i + 1}. <b>${dataBR(c.vencimento)}</b> — ${brl(c.valor)}${marca}${atraso}\n    <i>${escTg(c.descricao.slice(0, 45))}</i>`;
   }).join("\n");
 
   await enviar(B, chatId,
-    `📋 <b>${escTg(f.nome)}</b> — você pagou ${brl(estado.valorPago)}.\nA qual vencimento se refere?\n\n${linhas}`,
+    `📋 <b>${escTg(f.nome)}</b> — pagamento de ${brl(estado.valorPago)}.\nA qual vencimento se refere?\n\n${linhas}`,
     inline(botoes));
 }
 
-// ───────────────────────────── passo 3 ─────────────────────────────
-
-async function propor(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, c: Candidata) {
+/** Escolhida a parcela, pergunta COMO foi pago (a regra muda no cartão). */
+async function escolherParcela(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, c: Candidata) {
   estado.parcela = { id: c.id, descricao: c.descricao, valor: c.valor, vencimento: c.vencimento, fornecedor: c.fornecedor };
-  estado.etapa = "confirmar";
+  estado.etapa = "esc_forma";
   await salvarEstado(db, token, estado);
-  await enviar(B, chatId, resumo(estado), inline([
-    [
-      { text: "✅ Sim", callback_data: `fbsim:${token}` },
-      { text: "❌ Não", callback_data: `fbnao:${token}` },
-      { text: "✏️ Alterar", callback_data: `fbalt:${token}` },
-    ],
-  ]));
+  await enviar(B, chatId,
+    `Como foi pago?\n<i>${escTg(c.descricao.slice(0, 40))} — venc. ${dataBR(c.vencimento)}</i>`,
+    inline([
+      [
+        { text: "💠 PIX", callback_data: `fbforma:${token}:1` },
+        { text: "🧾 Boleto", callback_data: `fbforma:${token}:2` },
+      ],
+      [
+        { text: "💳 Cartão de crédito", callback_data: `fbforma:${token}:3` },
+        { text: "🏦 Débito em conta", callback_data: `fbforma:${token}:9` },
+      ],
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ]));
 }
 
-function resumo(e: EstadoBaixa): string {
+// ───────────────────────────── resumos ─────────────────────────────
+
+function resumoBaixa(e: EstadoBaixa): string {
   const p = e.parcela!;
   const { juros, desconto } = calcularAcrescimo(p.valor, e.valorPago);
   const contaNome = CONTAS_PRINCIPAIS.find((c) => c.id === e.conta)?.nome || `conta ${e.conta}`;
   const formaNome = FORMAS_PAGAMENTO.find((f) => f.id === e.forma)?.nome || "—";
-  const atraso = (() => {
-    const d = Math.round((Date.parse(e.dataPagamento) - Date.parse(p.vencimento)) / 86400000);
-    return d > 0 ? ` · <b>${d} dia(s) de atraso</b>` : "";
-  })();
+  const d = Math.round((Date.parse(e.dataPagamento) - Date.parse(p.vencimento)) / 86400000);
+  const atraso = d > 0 ? ` · <b>${d} dia(s) de atraso</b>` : "";
 
   let txt = `💰 <b>Confirmar a baixa?</b>\n\n`;
   txt += `<b>Fornecedor:</b> ${escTg(p.fornecedor || "—")}\n`;
@@ -254,17 +323,33 @@ function resumo(e: EstadoBaixa): string {
   return txt;
 }
 
+function resumoCartao(e: EstadoBaixa): string {
+  const p = e.parcela!;
+  const juros = e.jurosCartao || 0;
+  const venc = e.vencimentoFatura || proximoVencimentoCartao();
+  const novoValor = Math.round((p.valor + juros) * 100) / 100;
+
+  let txt = `💳 <b>Confirmar o pagamento no cartão?</b>\n\n`;
+  txt += `<b>Fornecedor:</b> ${escTg(p.fornecedor || "—")}\n`;
+  txt += `<b>Conta:</b> ${escTg(p.descricao.slice(0, 50))}\n`;
+  txt += `<b>Cartão:</b> ${escTg(e.cartao?.nome || "—")}\n\n`;
+  txt += `<b>Vencimento:</b> ${dataBR(p.vencimento)} → <b>${dataBR(venc)}</b> (fatura)\n`;
+  txt += `<b>Valor:</b> ${brl(p.valor)}`;
+  if (juros > 0) txt += ` + ${brl(juros)} de juros = <b>${brl(novoValor)}</b>`;
+  txt += `\n\n<i>A conta continua EM ABERTO — vai ser baixada quando a fatura for paga.</i>\n`;
+  return txt;
+}
+
 // ───────────────────────── callbacks (botões) ─────────────────────────
 
 export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: number, data: string) {
   const [acao, token, arg] = data.split(":");
   const estado = await lerEstado(db, token);
   if (!estado) {
-    await enviar(B, chatId, "Essa baixa já foi tratada ou expirou. Mande o valor e o fornecedor de novo. 👍");
+    await enviar(B, chatId, "Esse lançamento já foi tratado ou expirou. Mande o valor e o fornecedor de novo. 👍");
     return;
   }
 
-  // ── fornecedor escolhido ──
   if (acao === "fbforn") {
     const id = Number(arg);
     const f = (await fornecedores()).find((x) => x.id === id);
@@ -273,21 +358,64 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     return await mostrarParcelas(db, B, token, estado, chatId);
   }
 
-  // ── parcela escolhida ──
   if (acao === "fbparc") {
     const c = (estado.candidatas || [])[Number(arg)];
     if (!c) { await enviar(B, chatId, "Não achei essa opção. Tente de novo."); return; }
-    return await propor(db, B, token, estado, chatId, c);
+    return await escolherParcela(db, B, token, estado, chatId, c);
   }
 
-  // ── NÃO / cancelar ──
-  if (acao === "fbnao") {
-    await apagarEstado(db, token);
-    await enviar(B, chatId, "❌ Baixa cancelada. Nada foi alterado na Vobi.");
+  // ── forma de pagamento escolhida ──
+  if (acao === "fbforma") {
+    const forma = Number(arg);
+    estado.forma = forma;
+    if (forma === FORMA_CARTAO) {
+      estado.etapa = "esc_cartao";
+      await salvarEstado(db, token, estado);
+      const botoes = CARTOES.map((c) => [{ text: "💳 " + c.nome, callback_data: `fbcartao:${token}:${c.id}` }]);
+      botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+      await enviar(B, chatId, "Qual cartão?", inline(botoes));
+      return;
+    }
+    // não é cartão → conta padrão e vai pro resumo da baixa
+    estado.conta = CONTA_PADRAO;
+    estado.etapa = "confirmar";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, resumoBaixa(estado), BOTOES_CONFIRMA(token));
     return;
   }
 
-  // ── ALTERAR → o que? ──
+  // ── cartão escolhido → pergunta os juros ──
+  if (acao === "fbcartao") {
+    const id = Number(arg);
+    estado.cartao = { id, nome: CARTOES.find((c) => c.id === id)?.nome || String(id) };
+    estado.conta = id;
+    estado.vencimentoFatura = proximoVencimentoCartao();
+    estado.etapa = "aguarda_juros";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `💳 <b>${escTg(estado.cartao.nome)}</b> — a conta vai para a fatura de <b>${dataBR(estado.vencimentoFatura)}</b>.\n\n` +
+      `Quanto de <b>juros do cartão</b>?\nMande o valor (ex.: <code>35,90</code>), o <b>print da fatura</b>, ou toque em “sem juros”.`,
+      inline([
+        [{ text: "🚫 Sem juros", callback_data: `fbjuros0:${token}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]));
+    return;
+  }
+
+  if (acao === "fbjuros0") {
+    estado.jurosCartao = 0;
+    estado.etapa = "confirmar";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, resumoCartao(estado), BOTOES_CONFIRMA(token));
+    return;
+  }
+
+  if (acao === "fbnao") {
+    await apagarEstado(db, token);
+    await enviar(B, chatId, "❌ Cancelado. Nada foi alterado na Vobi.");
+    return;
+  }
+
   if (acao === "fbalt") {
     estado.etapa = "alterar";
     await salvarEstado(db, token, estado);
@@ -302,14 +430,16 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   }
 
   if (acao === "fbaltv") {
-    estado.etapa = "aguarda_valor";
+    const ehCartao = estado.forma === FORMA_CARTAO;
+    estado.etapa = ehCartao ? "aguarda_juros" : "aguarda_valor";
     await salvarEstado(db, token, estado);
-    await enviar(B, chatId, `💵 Qual foi o valor pago de verdade?\n<i>(hoje está ${brl(estado.valorPago)} — mande só o número)</i>`);
+    await enviar(B, chatId, ehCartao
+      ? `💵 Qual o valor dos <b>juros do cartão</b>?\n<i>(hoje está ${brl(estado.jurosCartao || 0)})</i>`
+      : `💵 Qual foi o valor pago de verdade?\n<i>(hoje está ${brl(estado.valorPago)} — mande só o número)</i>`);
     return;
   }
 
   if (acao === "fbaltd") {
-    // volta pra lista de vencimentos do mesmo fornecedor
     return await mostrarParcelas(db, B, token, estado, chatId);
   }
 
@@ -317,19 +447,46 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     if (!estado.parcela) return await mostrarParcelas(db, B, token, estado, chatId);
     estado.etapa = "confirmar";
     await salvarEstado(db, token, estado);
-    await enviar(B, chatId, resumo(estado), inline([
-      [
-        { text: "✅ Sim", callback_data: `fbsim:${token}` },
-        { text: "❌ Não", callback_data: `fbnao:${token}` },
-        { text: "✏️ Alterar", callback_data: `fbalt:${token}` },
-      ],
-    ]));
+    const txt = estado.forma === FORMA_CARTAO ? resumoCartao(estado) : resumoBaixa(estado);
+    await enviar(B, chatId, txt, BOTOES_CONFIRMA(token));
     return;
   }
 
-  // ── SIM → executa a baixa ──
+  // ── SIM → executa ──
   if (acao === "fbsim") {
     if (!estado.parcela) { await enviar(B, chatId, "Faltou escolher a parcela."); return; }
+
+    // CARTÃO: empurra para a fatura, NÃO baixa
+    if (estado.forma === FORMA_CARTAO) {
+      await enviar(B, chatId, "⏳ Transferindo para a fatura do cartão…");
+      let r;
+      try {
+        r = await rolarParaCartao(estado.parcela.id, {
+          juros: estado.jurosCartao || 0,
+          idCartao: estado.cartao?.id || estado.conta,
+          nomeCartao: estado.cartao?.nome,
+          vencimentoFatura: estado.vencimentoFatura,
+        });
+      } catch (e: any) {
+        await enviar(B, chatId, "❌ Erro: " + escTg(String(e?.message || e)) + "\n<i>Confira na Vobi.</i>");
+        return;
+      }
+      await apagarEstado(db, token);
+      if (!r.ok) {
+        await enviar(B, chatId, `⚠️ <b>NÃO consegui confirmar.</b>\n${escTg(r.mensagem)}`);
+        return;
+      }
+      let txt = `✅ <b>Lançado no cartão!</b>\n\n`;
+      txt += `${escTg(estado.parcela.fornecedor || "")} — ${escTg(estado.parcela.descricao.slice(0, 45))}\n`;
+      txt += `💳 ${escTg(r.cartao)}\n`;
+      txt += `Vencimento: ${dataBR(r.vencimentoAntes)} → <b>${dataBR(r.vencimentoDepois)}</b>\n`;
+      txt += `Valor: ${brl(r.valorAntes)}${r.juros > 0 ? ` + ${brl(r.juros)} juros = <b>${brl(r.valorDepois)}</b>` : ""}\n`;
+      txt += `\n<i>Continua em aberto até a fatura ser paga. Lançado por ${escTg(estado.autor)}.</i>`;
+      await enviar(B, chatId, txt);
+      return;
+    }
+
+    // DEMAIS FORMAS: baixa normal
     await enviar(B, chatId, "⏳ Dando baixa na Vobi…");
     let r;
     try {
@@ -341,14 +498,14 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
         idPaymentType: estado.forma,
       });
     } catch (e: any) {
-      await enviar(B, chatId, "❌ Erro ao dar baixa: " + escTg(String(e?.message || e)) + "\n<i>Nada foi confirmado — confira na Vobi.</i>");
+      await enviar(B, chatId, "❌ Erro ao dar baixa: " + escTg(String(e?.message || e)) + "\n<i>Nada confirmado — confira na Vobi.</i>");
       return;
     }
 
     await apagarEstado(db, token);
 
     if (!r.ok) {
-      await enviar(B, chatId, `⚠️ <b>NÃO consegui confirmar a baixa.</b>\n${escTg(r.mensagem)}\n\n<i>Não considere paga — confira direto na Vobi.</i>`);
+      await enviar(B, chatId, `⚠️ <b>NÃO consegui confirmar a baixa.</b>\n${escTg(r.mensagem)}\n\n<i>Não considere paga — confira na Vobi.</i>`);
       return;
     }
 
@@ -362,42 +519,86 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   }
 }
 
-// ───────────────── texto durante um passo (ex.: novo valor) ─────────────────
+// ───────────── texto/print durante um passo (novo valor ou juros) ─────────────
 
-/** Se alguém está no meio de uma baixa e digita algo, tratamos aqui.
- *  Retorna true se a mensagem foi consumida pelo fluxo. */
-export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto: string): Promise<boolean> {
+/** Acha o lançamento deste grupo que está esperando um número digitado. */
+async function pendenteEsperandoNumero(db: any, chatId: number) {
   const { data } = await db.from("telegram_sessoes")
     .select("telegram_user_id, dados, estado")
     .like("telegram_user_id", "fb:%")
     .eq("chat_id", String(chatId))
-    .eq("estado", "aguarda_valor")
+    .in("estado", ["aguarda_valor", "aguarda_juros"])
     .order("telegram_user_id", { ascending: false })
     .limit(1);
   const linha = (data || [])[0];
-  if (!linha) return false;
+  if (!linha) return null;
+  return { token: String(linha.telegram_user_id).slice(3), estado: linha.dados as EstadoBaixa, etapa: linha.estado as string };
+}
 
-  const token = String(linha.telegram_user_id).slice(3);
-  const estado: EstadoBaixa = linha.dados;
+/** Retorna true se a mensagem foi consumida por um lançamento em andamento. */
+export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto: string): Promise<boolean> {
+  const p = await pendenteEsperandoNumero(db, chatId);
+  if (!p) return false;
+  const { token, estado, etapa } = p;
+
   const novo = extrairValor(texto);
-  if (!novo) {
-    await enviar(B, chatId, "Não entendi o valor. Mande só o número, ex.: <code>1450,00</code>");
+  if (novo === null) {
+    await enviar(B, chatId, "Não entendi o valor. Mande só o número, ex.: <code>35,90</code>");
     return true;
   }
+
+  if (etapa === "aguarda_juros") {
+    estado.jurosCartao = novo;
+    estado.etapa = "confirmar";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, resumoCartao(estado), BOTOES_CONFIRMA(token));
+    return true;
+  }
+
   estado.valorPago = novo;
   estado.etapa = "confirmar";
   await salvarEstado(db, token, estado);
-
   if (!estado.parcela) {
     await mostrarParcelas(db, B, token, estado, chatId);
     return true;
   }
-  await enviar(B, chatId, resumo(estado), inline([
-    [
-      { text: "✅ Sim", callback_data: `fbsim:${token}` },
-      { text: "❌ Não", callback_data: `fbnao:${token}` },
-      { text: "✏️ Alterar", callback_data: `fbalt:${token}` },
-    ],
-  ]));
+  await enviar(B, chatId, resumoBaixa(estado), BOTOES_CONFIRMA(token));
+  return true;
+}
+
+/** Print da fatura enquanto o bot espera os juros do cartão. */
+export async function onPrintDuranteBaixa(db: any, B: Bot, msg: any, chatId: number): Promise<boolean> {
+  const p = await pendenteEsperandoNumero(db, chatId);
+  if (!p || p.etapa !== "aguarda_juros") return false;
+  if (!geminiConfigurado()) {
+    await enviar(B, chatId, "Para ler o print eu preciso da chave do Gemini. Mande o valor dos juros por texto, por favor.");
+    return true;
+  }
+  let fileId = "", ct = "image/jpeg";
+  if (msg.document) { fileId = msg.document.file_id; ct = msg.document.mime_type || "application/pdf"; }
+  else if (msg.photo?.length) fileId = msg.photo[msg.photo.length - 1].file_id;
+  if (!fileId) return false;
+
+  await enviar(B, chatId, "🔎 Lendo o print… ⏳");
+  const buf = await baixarArquivoTg(B, fileId);
+  if (!buf) { await enviar(B, chatId, "❌ Não consegui baixar. Mande o valor por texto."); return true; }
+
+  const bruto = await lerDocumentoGemini(
+    "Você lê faturas e comprovantes de cartão de crédito brasileiros. Responda SÓ um JSON.",
+    `Qual o valor de JUROS / ENCARGOS / ACRÉSCIMO neste documento? Devolva {"juros": number} em reais (0 se não houver).`,
+    buf.toString("base64"),
+    ct,
+  ).catch(() => null);
+  const j = bruto ? extrairJson(bruto) : null;
+  const juros = Number(j?.juros);
+
+  if (!Number.isFinite(juros)) {
+    await enviar(B, chatId, "🤔 Não consegui ler os juros. Mande o valor por texto, ex.: <code>35,90</code>");
+    return true;
+  }
+  p.estado.jurosCartao = juros;
+  p.estado.etapa = "confirmar";
+  await salvarEstado(db, p.token, p.estado);
+  await enviar(B, chatId, `📄 Li <b>${brl(juros)}</b> de juros.\n\n` + resumoCartao(p.estado), BOTOES_CONFIRMA(p.token));
   return true;
 }

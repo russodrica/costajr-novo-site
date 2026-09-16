@@ -17,7 +17,7 @@ import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
 import { assinarTreinoToken } from "./treinoStorage";
 import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial, onMessageComercial, mostrarMenuComercial, onCallbackEtapa } from "./comercialFlow";
-import { onTextoFinanceiro, onCallbackFinanceiro, onTextoDuranteBaixa, getGrupoFinanceiro, ativarGrupoFinanceiro, extrairValor } from "./financeiroFlow";
+import { onTextoFinanceiro, onComprovanteFinanceiro, onCallbackFinanceiro, onTextoDuranteBaixa, onPrintDuranteBaixa, getGrupoFinanceiro, ativarGrupoFinanceiro, extrairValor } from "./financeiroFlow";
 
 const SITE_TREINO = "https://www.costajr.com.br";
 
@@ -365,7 +365,7 @@ async function onCallback(db: any, B: Bot, cq: any) {
   await responderCallback(B, cq.id);
   if (!chatId) return;
   // botões do fluxo de GRUPO (token embutido; não dependem de sessão de usuário)
-  if (/^fb(forn|parc|sim|nao|alt|altv|altd|volta):/.test(data)) return await onCallbackFinanceiro(db, B, cq, chatId, data);
+  if (/^fb(forn|parc|forma|cartao|juros0|sim|nao|alt|altv|altd|volta):/.test(data)) return await onCallbackFinanceiro(db, B, cq, chatId, data);
   if (/^(gkbsave|gkbcancel):/.test(data)) return await onCallbackKbGrupo(db, B, cq, chatId, data);
   if (/^(ganex|gtipo|gslot|gcancel|gemp|gempok|gempl|gemppk|gbanc\w*):/.test(data)) return await onCallbackGrupo(db, B, cq, chatId, data);
   if (!userId) return;
@@ -846,8 +846,10 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
     // se alguém está no meio de uma baixa (ex.: digitando o novo valor)
     if (texto && (await onTextoDuranteBaixa(db, B, chatId, texto))) return;
     if (msg.photo || msg.document) {
-      await enviar(B, chatId, "📎 Recebi o arquivo. Por enquanto me diga o <b>valor e o fornecedor</b> por texto (ex.: <code>1400 construtivo</code>) — a leitura automática do comprovante entra em seguida.");
-      return;
+      // print da fatura quando o bot está esperando os juros do cartão…
+      if (await onPrintDuranteBaixa(db, B, msg, chatId)) return;
+      // …senão, é um comprovante de pagamento novo
+      return await onComprovanteFinanceiro(db, B, msg, chatId);
     }
     if (!texto || texto.startsWith("/")) return;
     // só reage quando parece um lançamento: tem valor E (é curto OU tem palavra-chave)

@@ -118,6 +118,33 @@ export const FORMAS_PAGAMENTO = [
 export const CONTA_PADRAO = 24582; // Santander Empresa
 export const FORMA_PADRAO = 1; // PIX
 
+/** Cartões de crédito da CJR — quando a conta é paga por aqui, ela NÃO é
+ *  baixada: o vencimento é empurrado para a fatura (ver rolarParaCartao). */
+export const CARTOES = [
+  { id: 24624, nome: "Nubank 1405" },
+  { id: 24625, nome: "Itaú 3380" },
+  { id: 24615, nome: "Santander 5100" },
+  { id: 24617, nome: "Santander 3997" },
+  { id: 24616, nome: "Santander 5235" },
+  { id: 24619, nome: "Caixa 8412" },
+  { id: 24626, nome: "Mercado Pago" },
+];
+
+export const FORMA_CARTAO = 3; // Cartão de crédito
+export const DIA_VENCIMENTO_FATURA = 2; // as faturas da CJR vencem dia 02
+
+/**
+ * Próximo vencimento da fatura do cartão: dia 02 do mês SEGUINTE ao de hoje
+ * (regra da Adriana, 16/09/2026). Ex.: pagou em 16/09 → a fatura vence 02/10.
+ */
+export function proximoVencimentoCartao(hoje?: string): string {
+  const base = hoje ? new Date(hoje + "T12:00:00Z") : new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const ano = base.getUTCFullYear();
+  const mes = base.getUTCMonth() + 1; // 0-based -> mês seguinte
+  const d = new Date(Date.UTC(ano, mes, DIA_VENCIMENTO_FATURA));
+  return d.toISOString().slice(0, 10);
+}
+
 let _contasCache: { at: number; dados: Record<number, string> } | null = null;
 export async function contasBancarias(): Promise<Record<number, string>> {
   if (_contasCache && Date.now() - _contasCache.at < 30 * 60 * 1000) return _contasCache.dados;
@@ -368,6 +395,80 @@ export type DadosBaixa = {
   desconto?: number;
   observacao?: string;
 };
+
+export type ResultadoCartao = {
+  ok: boolean;
+  idInstallment: string;
+  descricao: string;
+  valorAntes: number;
+  valorDepois: number;
+  juros: number;
+  vencimentoAntes: string;
+  vencimentoDepois: string;
+  cartao: string;
+  mensagem: string;
+};
+
+/**
+ * Pagamento no CARTÃO DE CRÉDITO (regra da Adriana, 16/09/2026).
+ *
+ * Aqui a parcela NÃO é baixada — o fornecedor recebeu, mas o dinheiro só sai
+ * da conta quando a FATURA vencer. Então empurramos o vencimento para o dia 02
+ * do mês seguinte e somamos os juros do cartão, deixando a parcela EM ABERTO
+ * (status 1). A baixa de verdade acontece quando a fatura for paga.
+ *
+ * Igual à baixa: relê a parcela depois e só reporta sucesso se gravou mesmo.
+ */
+export async function rolarParaCartao(
+  idInstallment: string,
+  dados: { juros: number; idCartao: number; nomeCartao?: string; vencimentoFatura?: string },
+  opts: { dryRun?: boolean } = {},
+): Promise<ResultadoCartao> {
+  const antes = await parcelaPorId(idInstallment);
+  const venc = dados.vencimentoFatura || proximoVencimentoCartao();
+  const base: ResultadoCartao = {
+    ok: false,
+    idInstallment,
+    descricao: antes?.descricao || "",
+    valorAntes: antes?.valor || 0,
+    valorDepois: 0,
+    juros: dados.juros,
+    vencimentoAntes: antes?.vencimento || "",
+    vencimentoDepois: venc,
+    cartao: dados.nomeCartao || CARTOES.find((c) => c.id === dados.idCartao)?.nome || String(dados.idCartao),
+    mensagem: "",
+  };
+  if (!antes) return { ...base, mensagem: "Parcela não encontrada na Vobi (ou já não está em aberto)." };
+
+  const novoValor = Math.round((antes.valor + (dados.juros || 0)) * 100) / 100;
+  const corpo: Record<string, any> = {
+    dueDate: venc,
+    originalValue: antes.valorOriginal,
+    price: novoValor,
+    interest: dados.juros || 0,
+    idPaymentType: FORMA_CARTAO,
+    idPaymentBankAccount: dados.idCartao,
+    // status NÃO muda: continua 1 (em aberto) até a fatura ser paga
+  };
+
+  if (opts.dryRun) {
+    return { ...base, ok: true, valorDepois: novoValor, mensagem: `SIMULAÇÃO — enviaria: ${JSON.stringify(corpo)}` };
+  }
+
+  await vPut(`/installment/${encodeURIComponent(idInstallment)}`, corpo);
+
+  const dep = await parcelaPorId(idInstallment);
+  const gravou = !!dep && dep.vencimento === venc;
+  return {
+    ...base,
+    ok: gravou,
+    valorDepois: dep?.valor ?? novoValor,
+    mensagem: gravou
+      ? "Conta transferida para a fatura do cartão."
+      : `A Vobi aceitou a chamada mas o vencimento NÃO mudou (está ${dep?.vencimento || "?"}). ` +
+        `Confira na Vobi antes de considerar feito.`,
+  };
+}
 
 export type ResultadoBaixa = {
   ok: boolean;
