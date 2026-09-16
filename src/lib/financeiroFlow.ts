@@ -88,6 +88,8 @@ type EstadoBaixa = {
   candidatas?: Candidata[];
   parcela?: { id: string; descricao: string; valor: number; vencimento: string; fornecedor: string | null };
   forma: number;
+  /** a forma veio escrita no comprovante — não precisa perguntar "como foi pago?" */
+  formaDoComprovante?: boolean;
   conta: number;
   cartao?: { id: number; nome: string };
   /**
@@ -205,15 +207,22 @@ function autorDe(msg: any): string {
 }
 
 /** Núcleo: com valor + nome do fornecedor, encontra o fornecedor e segue. */
-async function iniciar(db: any, B: Bot, chatId: number, autor: string, valor: number, nome: string, dataPag?: string) {
+async function iniciar(
+  db: any, B: Bot, chatId: number, autor: string, valor: number, nome: string, dataPag?: string,
+  /** o que o comprovante já entregou pronto (forma, valor da conta, encargos) */
+  lido?: { forma?: number; valorConta?: number; juros?: number },
+) {
   const token = novoToken();
   const estado: EstadoBaixa = {
     chat_id: chatId,
     autor,
     valorPago: valor,
     dataPagamento: dataPag || hojeISO(),
-    forma: FORMA_PADRAO,
-    conta: CONTA_PADRAO,
+    forma: lido?.forma ?? FORMA_PADRAO,
+    formaDoComprovante: lido?.forma != null,
+    conta: CONTA_PADRAO, // no cartão, entrarNoCartao troca pela conta do cartão
+    valorConta: lido?.valorConta,
+    juros: lido?.juros,
     etapa: "buscando",
   };
 
@@ -251,13 +260,46 @@ const SYS_COMPROVANTE =
   "Você lê comprovantes de pagamento brasileiros (PIX, boleto, TED, DOC, cartão) e extrai os dados. Responda SÓ um JSON.";
 
 const PEDIDO_COMPROVANTE = `Devolva JSON com as chaves:
-{"valor": number (valor pago, em reais, sem símbolo),
+{"valor": number (VALOR TOTAL efetivamente pago/cobrado — o "Valor total", já com
+   juros/IOF se houver),
+ "valor_nominal": number (o valor da CONTA antes dos acréscimos — a linha "Valor".
+   Se o comprovante não separar, use null),
+ "encargos": number (soma de juros + multa + IOF + acréscimos. 0 se não houver,
+   null se o comprovante não informar),
+ "forma": string (como foi pago, um de: "pix", "boleto", "cartao_credito",
+   "cartao_debito", "debito_em_conta", "transferencia", "dinheiro". null se não disser),
  "favorecido": string (nome de quem RECEBEU o dinheiro — a empresa/pessoa beneficiária.
    NUNCA o pagador: a pagadora é sempre a COSTA JUNIOR ENGENHARIA. Se aparecerem os dois,
    devolva o OUTRO, não a Costa Júnior),
- "data": "AAAA-MM-DD" (data do pagamento),
- "juros": number (juros/multa/acréscimo, 0 se não houver)}
+ "data": "AAAA-MM-DD" (data do pagamento)}
 Se não achar algum campo, use null.`;
+
+/** "cartao_credito" → o id da forma de pagamento na Vobi. */
+function formaDoTexto(v: unknown): number | null {
+  // tira acento ANTES de limpar: "Cartão de crédito" precisa virar "cartaodecredito"
+  const s = String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!s) return null;
+  if (s.includes("credito") || s === "cartao") return FORMA_CARTAO; // 3
+  if (s.includes("pix")) return 1;
+  if (s.includes("boleto")) return 2;
+  if (s.includes("debito")) return 9; // débito em conta / cartão de débito
+  if (s.includes("transferencia") || s.includes("ted") || s.includes("doc")) return 5;
+  if (s.includes("dinheiro") || s.includes("especie")) return 6;
+  return null;
+}
+
+/** Só aceita a separação valor+encargos quando ela FECHA com o total pago. */
+function conferirDecomposicao(total: number, nominal: unknown, encargos: unknown) {
+  const n = Number(nominal);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // CUIDADO: Number(null) é 0, não NaN — sem esta checagem um "encargos": null
+  // viraria zero e a conta nunca fecharia.
+  const informado = encargos !== null && encargos !== undefined && encargos !== "" && Number.isFinite(Number(encargos));
+  const enc = informado ? Math.round(Number(encargos) * 100) / 100 : Math.round((total - n) * 100) / 100;
+  if (enc < 0) return null;
+  if (Math.abs(n + enc - total) >= 0.01) return null; // não fecha → não confio
+  return { valorConta: Math.round(n * 100) / 100, juros: enc };
+}
 
 /** A Costa Júnior é sempre a PAGADORA — se a leitura devolver ela, está errada. */
 function ehAPropriaCJR(nome: string): boolean {
@@ -287,6 +329,8 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   let favorecido = "";
   let data = "";
   let comoLi = "";
+  let forma: number | null = null;
+  let bruta: any = null; // o JSON da melhor leitura, p/ tirar valor_nominal/encargos
 
   // ── CAMADA 1: legenda digitada junto com o arquivo ──
   const legenda = String(msg.caption || "").trim();
@@ -297,33 +341,30 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
     if (valor && favorecido) comoLi = "pela legenda";
   }
 
+  const usar = (j: any, de: string) => {
+    if (!j) return;
+    if (!valor) valor = Number(j.valor) || null;
+    const f = String(j.favorecido || "").trim();
+    if (!favorecido && f && !ehAPropriaCJR(f)) favorecido = f;
+    if (!data && /^\d{4}-\d{2}-\d{2}$/.test(String(j.data || ""))) data = String(j.data);
+    if (forma == null) forma = formaDoTexto(j.forma);
+    if (!bruta) bruta = j;
+    if (valor && favorecido && !comoLi) comoLi = de;
+  };
+
   // ── CAMADA 2: texto de dentro do PDF (sem IA) + LLM de texto ──
   const texto = await extrairTextoConteudo(buf, ctL, nome);
-  if ((!valor || !favorecido) && texto && llmConfigurado()) {
-    const bruto = await gerarTextoLLM(SYS_COMPROVANTE, [
+  if (texto && llmConfigurado() && (!valor || !favorecido || forma == null)) {
+    const resp = await gerarTextoLLM(SYS_COMPROVANTE, [
       { role: "user", content: `${PEDIDO_COMPROVANTE}\n\nCOMPROVANTE:\n${texto.slice(0, 6000)}` },
     ]).catch(() => null);
-    const j = bruto ? extrairJson(bruto) : null;
-    if (j) {
-      if (!valor) valor = Number(j.valor) || null;
-      const f = String(j.favorecido || "").trim();
-      if (!favorecido && f && !ehAPropriaCJR(f)) favorecido = f;
-      if (!data && /^\d{4}-\d{2}-\d{2}$/.test(String(j.data || ""))) data = String(j.data);
-      if (valor && favorecido) comoLi = "do texto do comprovante";
-    }
+    usar(resp ? extrairJson(resp) : null, "do texto do comprovante");
   }
 
   // ── CAMADA 3: visão — foto, ou PDF escaneado (sem camada de texto) ──
-  if ((!valor || !favorecido) && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
-    const bruto = await lerDocumentoGemini(SYS_COMPROVANTE, PEDIDO_COMPROVANTE, buf.toString("base64"), ct).catch(() => null);
-    const j = bruto ? extrairJson(bruto) : null;
-    if (j) {
-      if (!valor) valor = Number(j.valor) || null;
-      const f = String(j.favorecido || "").trim();
-      if (!favorecido && f && !ehAPropriaCJR(f)) favorecido = f;
-      if (!data && /^\d{4}-\d{2}-\d{2}$/.test(String(j.data || ""))) data = String(j.data);
-      if (valor && favorecido) comoLi = "lendo a imagem";
-    }
+  if ((!valor || !favorecido || forma == null) && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+    const resp = await lerDocumentoGemini(SYS_COMPROVANTE, PEDIDO_COMPROVANTE, buf.toString("base64"), ct).catch(() => null);
+    usar(resp ? extrairJson(resp) : null, "lendo a imagem");
   }
 
   if (!data) data = hojeISO();
@@ -339,10 +380,29 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
     return;
   }
 
-  await enviar(B, chatId,
-    `📄 <b>Li do comprovante</b> <i>(${comoLi})</i>:\n` +
-    `<b>Valor:</b> ${brl(valor)}\n<b>Favorecido:</b> ${escTg(favorecido)}\n<b>Data:</b> ${dataBR(data)}`);
-  await iniciar(db, B, chatId, autorDe(msg), valor, favorecido, data);
+  // O comprovante do cartão já separa "Valor" de "Juros"/"IOF" — se as contas
+  // fecharem com o total, aproveitamos e não perguntamos nada disso.
+  const dec = conferirDecomposicao(valor, bruta?.valor_nominal, bruta?.encargos);
+  const nomeForma = FORMAS_PAGAMENTO.find((f) => f.id === forma)?.nome;
+
+  let txt = `📄 <b>Li do comprovante</b> <i>(${comoLi})</i>:\n`;
+  txt += `<b>Favorecido:</b> ${escTg(favorecido)}\n`;
+  if (dec && dec.juros > 0) {
+    txt += `<b>Valor da conta:</b> ${brl(dec.valorConta)}\n`;
+    txt += `<b>Juros/encargos:</b> ${brl(dec.juros)}\n`;
+    txt += `<b>Total pago:</b> ${brl(valor)}\n`;
+  } else {
+    txt += `<b>Valor:</b> ${brl(valor)}\n`;
+  }
+  txt += `<b>Data:</b> ${dataBR(data)}\n`;
+  if (nomeForma) txt += `<b>Forma:</b> ${escTg(nomeForma)}\n`;
+  await enviar(B, chatId, txt);
+
+  await iniciar(db, B, chatId, autorDe(msg), valor, favorecido, data, {
+    forma: forma ?? undefined,
+    valorConta: dec?.valorConta,
+    juros: dec?.juros,
+  });
 }
 
 // ───────────────────────── escolha da parcela ─────────────────────────
@@ -402,6 +462,11 @@ async function escolherParcela(db: any, B: Bot, token: string, estado: EstadoBai
     estado.jurosCartao = undefined;
   }
   estado.parcela = { id: c.id, descricao: c.descricao, valor: c.valor, vencimento: c.vencimento, fornecedor: c.fornecedor };
+  // o comprovante já disse como foi pago (ex.: "Forma de pagamento: Cartão de
+  // crédito") — não faz sentido perguntar de novo. Ela pode corrigir em Alterar.
+  if (estado.formaDoComprovante) {
+    return await aplicarForma(db, B, token, estado, chatId, estado.forma);
+  }
   return await perguntarForma(db, B, token, estado, chatId);
 }
 
@@ -537,6 +602,30 @@ async function perguntarDiferenca(db: any, B: Bot, token: string, estado: Estado
     ]));
 }
 
+/** Escolhida a forma (por botão ou lida do comprovante), segue o caminho dela. */
+async function aplicarForma(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, forma: number) {
+  estado.forma = forma;
+  if (forma === FORMA_CARTAO) {
+    // com um único cartão ativo, não faz sentido perguntar qual é
+    if (CARTOES.length === 1) {
+      return await entrarNoCartao(db, B, token, estado, chatId, CARTOES[0].id);
+    }
+    estado.etapa = "esc_cartao";
+    await salvarEstado(db, token, estado);
+    const botoes = CARTOES.map((c) => [{ text: "💳 " + c.nome, callback_data: `fbcartao:${token}:${c.id}` }]);
+    botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+    await enviar(B, chatId, "Qual cartão?", inline(botoes));
+    return;
+  }
+  // não é cartão → conta padrão. Se o pago não bate com a Vobi, PERGUNTA
+  // antes: pode ser juros, ou a conta ter mudado de valor.
+  estado.conta = CONTA_PADRAO;
+  if (precisaResolverDiferenca(estado)) {
+    return await perguntarDiferenca(db, B, token, estado, chatId);
+  }
+  return await irParaConfirmacao(db, B, token, estado, chatId);
+}
+
 /** Entrou no cartão: fixa o cartão e resolve a diferença antes de pedir juros. */
 async function entrarNoCartao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, idCartao: number) {
   estado.cartao = { id: idCartao, nome: CARTOES.find((c) => c.id === idCartao)?.nome || String(idCartao) };
@@ -544,6 +633,10 @@ async function entrarNoCartao(db: any, B: Bot, token: string, estado: EstadoBaix
   estado.vencimentoFatura = proximoVencimentoCartao(); // sempre a fatura de agora
   if (precisaResolverDiferenca(estado)) {
     return await perguntarDiferenca(db, B, token, estado, chatId);
+  }
+  // o comprovante do cartão já separa juros e IOF — não precisa perguntar
+  if (estado.juros != null) {
+    return await irParaConfirmacao(db, B, token, estado, chatId);
   }
   return await pedirJurosCartao(db, B, token, estado, chatId);
 }
@@ -614,30 +707,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
   // ── forma de pagamento escolhida ──
   if (acao === "fbforma") {
-    const forma = Number(arg);
-    estado.forma = forma;
-    if (forma === FORMA_CARTAO) {
-      // com um único cartão ativo, não faz sentido perguntar qual é
-      if (CARTOES.length === 1) {
-        return await entrarNoCartao(db, B, token, estado, chatId, CARTOES[0].id);
-      }
-      estado.etapa = "esc_cartao";
-      await salvarEstado(db, token, estado);
-      const botoes = CARTOES.map((c) => [{ text: "💳 " + c.nome, callback_data: `fbcartao:${token}:${c.id}` }]);
-      botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
-      await enviar(B, chatId, "Qual cartão?", inline(botoes));
-      return;
-    }
-    // não é cartão → conta padrão. Se o pago não bate com a Vobi, PERGUNTA
-    // antes: pode ser juros, ou a conta ter mudado de valor.
-    estado.conta = CONTA_PADRAO;
-    if (precisaResolverDiferenca(estado)) {
-      return await perguntarDiferenca(db, B, token, estado, chatId);
-    }
-    estado.etapa = "confirmar";
-    await salvarEstado(db, token, estado);
-    await enviar(B, chatId, resumoBaixa(estado), BOTOES_CONFIRMA(token));
-    return;
+    return await aplicarForma(db, B, token, estado, chatId, Number(arg));
   }
 
   // ── cartão escolhido ──
