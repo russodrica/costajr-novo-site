@@ -118,16 +118,16 @@ export const FORMAS_PAGAMENTO = [
 export const CONTA_PADRAO = 24582; // Santander Empresa
 export const FORMA_PADRAO = 1; // PIX
 
-/** Cartões de crédito da CJR — quando a conta é paga por aqui, ela NÃO é
- *  baixada: o vencimento é empurrado para a fatura (ver rolarParaCartao). */
+/**
+ * Cartões de crédito EM USO na CJR. Quando a conta é paga por aqui ela NÃO é
+ * baixada: o vencimento é empurrado para a fatura (ver rolarParaCartao).
+ *
+ * Só o Nubank está ativo (decisão da Adriana, 16/09/2026) — os demais cartões
+ * existem na Vobi mas não são usados, então ficam fora do bot para não poluir.
+ * Com um único cartão, o bot nem pergunta qual é: vai direto para os juros.
+ */
 export const CARTOES = [
   { id: 24624, nome: "Nubank 1405" },
-  { id: 24625, nome: "Itaú 3380" },
-  { id: 24615, nome: "Santander 5100" },
-  { id: 24617, nome: "Santander 3997" },
-  { id: 24616, nome: "Santander 5235" },
-  { id: 24619, nome: "Caixa 8412" },
-  { id: 24626, nome: "Mercado Pago" },
 ];
 
 export const FORMA_CARTAO = 3; // Cartão de crédito

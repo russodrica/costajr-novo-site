@@ -340,6 +340,22 @@ function resumoCartao(e: EstadoBaixa): string {
   return txt;
 }
 
+/** Define o cartão e pergunta os juros (digitados ou lidos do print da fatura). */
+async function pedirJurosCartao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, idCartao: number) {
+  estado.cartao = { id: idCartao, nome: CARTOES.find((c) => c.id === idCartao)?.nome || String(idCartao) };
+  estado.conta = idCartao;
+  estado.vencimentoFatura = proximoVencimentoCartao();
+  estado.etapa = "aguarda_juros";
+  await salvarEstado(db, token, estado);
+  await enviar(B, chatId,
+    `💳 <b>${escTg(estado.cartao.nome)}</b> — a conta vai para a fatura de <b>${dataBR(estado.vencimentoFatura)}</b>.\n\n` +
+    `Quanto de <b>juros do cartão</b>?\nMande o valor (ex.: <code>35,90</code>), o <b>print da fatura</b>, ou toque em “sem juros”.`,
+    inline([
+      [{ text: "🚫 Sem juros", callback_data: `fbjuros0:${token}` }],
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ]));
+}
+
 // ───────────────────────── callbacks (botões) ─────────────────────────
 
 export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: number, data: string) {
@@ -369,6 +385,10 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     const forma = Number(arg);
     estado.forma = forma;
     if (forma === FORMA_CARTAO) {
+      // com um único cartão ativo, não faz sentido perguntar qual é
+      if (CARTOES.length === 1) {
+        return await pedirJurosCartao(db, B, token, estado, chatId, CARTOES[0].id);
+      }
       estado.etapa = "esc_cartao";
       await salvarEstado(db, token, estado);
       const botoes = CARTOES.map((c) => [{ text: "💳 " + c.nome, callback_data: `fbcartao:${token}:${c.id}` }]);
@@ -386,20 +406,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
   // ── cartão escolhido → pergunta os juros ──
   if (acao === "fbcartao") {
-    const id = Number(arg);
-    estado.cartao = { id, nome: CARTOES.find((c) => c.id === id)?.nome || String(id) };
-    estado.conta = id;
-    estado.vencimentoFatura = proximoVencimentoCartao();
-    estado.etapa = "aguarda_juros";
-    await salvarEstado(db, token, estado);
-    await enviar(B, chatId,
-      `💳 <b>${escTg(estado.cartao.nome)}</b> — a conta vai para a fatura de <b>${dataBR(estado.vencimentoFatura)}</b>.\n\n` +
-      `Quanto de <b>juros do cartão</b>?\nMande o valor (ex.: <code>35,90</code>), o <b>print da fatura</b>, ou toque em “sem juros”.`,
-      inline([
-        [{ text: "🚫 Sem juros", callback_data: `fbjuros0:${token}` }],
-        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
-      ]));
-    return;
+    return await pedirJurosCartao(db, B, token, estado, chatId, Number(arg));
   }
 
   if (acao === "fbjuros0") {
