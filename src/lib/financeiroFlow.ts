@@ -21,7 +21,7 @@
 // tempo no grupo sem uma atrapalhar a outra.
 
 import { escTg } from "./telegram";
-import { ehAPropriaCJR } from "./identidadeCJR";
+import { ehAPropriaCJR, identificarLado, type LadoCJR } from "./identidadeCJR";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
 import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 import {
@@ -29,7 +29,7 @@ import {
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
   CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO, CARTOES,
   CONTAS_TRANSFERENCIA, contaPorTexto, nomeDaConta, criarTransferenciaEntreContas,
-  receitasAbertasPorValor, parcelaEmAberto,
+  receitasAbertasPorValor, parcelaEmAberto, receitasAbertas, ehReceitaDeCliente,
   CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
   type Candidata, type Fornecedor, type ParcelaAberta,
 } from "./vobiBaixa";
@@ -311,6 +311,8 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
       chatId,
       `❌ Nenhum fornecedor com <b>${escTg(nome)}</b> tem conta em aberto.\n\n<i>Num depósito judicial ou guia de imposto o favorecido do comprovante é o tribunal ou o órgão, não o fornecedor — nesses casos o que liga é o valor.</i>`,
       inline([
+        [{ text: "💰 Na verdade foi um RECEBIMENTO", callback_data: `fbreceb:${token}` }],
+        [{ text: "🔁 Transferência entre nossas contas", callback_data: `fbtransf:${token}` }],
         [{ text: `🔎 Procurar contas de ${brl(estado.valorPago)}`, callback_data: `fbvalor:${token}` }],
         [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
       ]),
@@ -364,29 +366,37 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
 // ───────────────────── entrada: COMPROVANTE (foto/PDF) ─────────────────────
 
 const SYS_COMPROVANTE =
-  "Você lê comprovantes de pagamento brasileiros (PIX, boleto, TED, DOC, cartão) e extrai os dados. Responda SÓ um JSON.";
+  "Você lê comprovantes bancários brasileiros (PIX, boleto, TED, DOC, cartão), " +
+  "comprovantes de recebimento e prints de extrato, e extrai os dados EXATAMENTE " +
+  "como estão impressos. Você nunca deduz um dado que não está escrito. Responda SÓ um JSON.";
 
 const PEDIDO_COMPROVANTE = `Devolva JSON com as chaves:
-{"valor": number (VALOR TOTAL efetivamente pago/cobrado — o "Valor total", já com
-   juros/IOF se houver),
- "valor_nominal": number (o valor da CONTA antes dos acréscimos — a linha "Valor".
-   Se o comprovante não separar, use null),
+{"sentido": "enviado" | "recebido" | null — SÓ o que o papel diz com todas as
+   letras. "Comprovante de pagamento", "Pix enviado", "Transferência enviada" ->
+   "enviado". "Comprovante de recebimento", "Você recebeu um Pix", "Pix recebido",
+   "Transferência recebida", "crédito em conta" -> "recebido". Sem essa frase
+   escrita, devolva null,
+ "pagador": string (nome de quem PAGOU, de quem o dinheiro SAIU — vem sob
+   "Pagador", "Dados do pagador", "Origem", "Debitado de", "Remetente", "De".
+   Copie como está impresso, mesmo truncado),
+ "pagador_documento": string (CPF/CNPJ do pagador COMO ESTÁ IMPRESSO, inclusive
+   mascarado, ex.: "07.******/****-72"),
+ "favorecido": string (nome de quem RECEBEU — vem sob "Favorecido",
+   "Beneficiário", "Dados do recebedor", "Para", "Creditado em", "Destino"),
+ "favorecido_documento": string (CPF/CNPJ do favorecido como está impresso),
+ "valor": number (VALOR TOTAL efetivamente pago/recebido — o "Valor total", já
+   com juros/IOF se houver),
+ "valor_nominal": number (o valor da CONTA antes dos acréscimos — a linha
+   "Valor". Se o comprovante não separar, use null),
  "encargos": number (soma de juros + multa + IOF + acréscimos. 0 se não houver,
    null se o comprovante não informar),
- "forma": string (como foi pago, um de: "pix", "boleto", "cartao_credito",
-   "cartao_debito", "debito_em_conta", "transferencia", "dinheiro". null se não disser),
- "favorecido": string (nome de quem RECEBEU o dinheiro — a empresa/pessoa beneficiária.
-   NUNCA o pagador: a pagadora é sempre a COSTA JUNIOR ENGENHARIA. Se aparecerem os dois,
-   devolva o OUTRO, não a Costa Júnior),
- "banco_origem": string (instituição de ONDE saiu o dinheiro — o banco da conta
-   debitada, do pagador. null se não disser),
- "banco_destino": string (instituição para ONDE foi — o banco da conta creditada,
-   do favorecido. null se não disser),
- "entre_contas_proprias": true SE o pagador e o favorecido forem a MESMA empresa
-   (Costa Júnior Engenharia, CNPJ 07.132.942/0001-72) — dinheiro andando entre as
-   contas dela. false nos outros casos,
+ "forma": string (um de: "pix", "boleto", "cartao_credito", "cartao_debito",
+   "debito_em_conta", "transferencia", "dinheiro". null se não disser),
+ "banco_origem": string (instituição de onde o dinheiro saiu),
+ "banco_destino": string (instituição para onde o dinheiro foi),
  "data": "AAAA-MM-DD" (data do pagamento)}
-Se não achar algum campo, use null.`;
+NÃO deduza nem complete nada: se o papel não traz o campo, devolva null. Não
+presuma quem é o pagador — copie o que está escrito.`;
 
 /** "cartao_credito" → o id da forma de pagamento na Vobi. */
 function formaDoTexto(v: unknown): number | null {
@@ -464,8 +474,12 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   let forma: number | null = null;
   let bruta: any = null; // o JSON da melhor leitura, p/ tirar valor_nominal/encargos
   // A CJR aparecendo dos DOIS lados quer dizer dinheiro andando entre as contas
-  // dela, nao pagamento a fornecedor.
-  let entreContas = false;
+  // Os DOIS lados, crus. Quem decide o que o papel é não é mais a ausência de
+  // um nome: é a matriz pagador × favorecido lá embaixo.
+  let pagador = "";
+  let pagadorDoc = "";
+  let favorecidoDoc = "";
+  let sentido = "";
   let bancoOrigem = "";
   let bancoDestino = "";
 
@@ -481,21 +495,23 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   const usar = (j: any, de: string) => {
     if (!j) return;
     if (!valor) valor = Number(j.valor) || null;
-    const f = String(j.favorecido || "").trim();
-    if (f && ehAPropriaCJR(f)) entreContas = true;
-    if (j.entre_contas_proprias === true) entreContas = true;
+    // O nome da CJR agora é DADO, não lixo: é ele que diz de que lado ela está.
+    if (!favorecido) favorecido = String(j.favorecido || "").trim();
+    if (!favorecidoDoc) favorecidoDoc = String(j.favorecido_documento || "").trim();
+    if (!pagador) pagador = String(j.pagador || "").trim();
+    if (!pagadorDoc) pagadorDoc = String(j.pagador_documento || "").trim();
+    if (!sentido) sentido = String(j.sentido || "").trim().toLowerCase();
     if (!bancoOrigem) bancoOrigem = String(j.banco_origem || "").trim();
     if (!bancoDestino) bancoDestino = String(j.banco_destino || "").trim();
-    if (!favorecido && f && !ehAPropriaCJR(f)) favorecido = f;
     if (!data && /^\d{4}-\d{2}-\d{2}$/.test(String(j.data || ""))) data = String(j.data);
     if (forma == null) forma = formaDoTexto(j.forma);
     if (!bruta) bruta = j;
-    if (valor && favorecido && !comoLi) comoLi = de;
+    if (valor && (favorecido || pagador) && !comoLi) comoLi = de;
   };
 
   // ── CAMADA 2: texto de dentro do PDF (sem IA) + LLM de texto ──
   const texto = await extrairTextoConteudo(buf, ctL, nome);
-  if (texto && llmConfigurado() && (!valor || !favorecido || forma == null)) {
+  if (texto && llmConfigurado() && (!valor || (!pagador && !favorecido) || forma == null)) {
     const resp = await gerarTextoLLM(SYS_COMPROVANTE, [
       { role: "user", content: `${PEDIDO_COMPROVANTE}\n\nCOMPROVANTE:\n${texto.slice(0, 6000)}` },
     ]).catch(() => null);
@@ -504,7 +520,7 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
 
   // ── CAMADA 3: visão — foto, ou PDF escaneado (sem camada de texto) ──
   let erroVisao = "";
-  if ((!valor || !favorecido || forma == null) && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
+  if ((!valor || (!pagador && !favorecido) || forma == null) && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
     const r = await lerDocumentoLLM(SYS_COMPROVANTE, PEDIDO_COMPROVANTE, buf.toString("base64"), ct)
       .catch((e: any) => ({ texto: null, provedor: "", erro: String(e?.message || e) }));
     erroVisao = r.erro;
@@ -515,7 +531,7 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
       if (!j) erroVisao = `${r.provedor} respondeu fora de JSON: ${r.texto.slice(0, 80)}`;
       else {
         usar(j, "lendo a imagem");
-        if (!valor || !favorecido) erroVisao = `${r.provedor} leu mas devolveu ${JSON.stringify(j).slice(0, 80)}`;
+        if (!valor || (!pagador && !favorecido)) erroVisao = `${r.provedor} leu mas devolveu ${JSON.stringify(j).slice(0, 80)}`;
       }
     }
   }
@@ -524,58 +540,245 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
 
   // Sem favorecido mas COM valor: pode ser transferencia entre as contas da
   // propria CJR. A Adriana: "o comprovante da Villela nao vem com o nome da
-  // Villela — sempre que vier sem nome, me deixe escolher o banco".
-  if (valor && !favorecido) {
-    const token = novoToken();
-    const estado: EstadoBaixa = {
-      chat_id: chatId,
-      autor: autorDe(msg),
-      valorPago: valor,
-      dataPagamento: data,
-      forma: 5, // Transferência
-      formaDoComprovante: true,
-      conta: CONTA_PADRAO,
-      transfBancoOrigem: bancoOrigem,
-      transfBancoDestino: bancoDestino,
-      etapa: "transf_origem",
-    };
-    await salvarEstado(db, token, estado);
-    return await pedirContaTransf(B, token, estado, chatId, "origem", entreContas);
-  }
-
-  if (!valor || !favorecido) {
-    const falta = !valor && !favorecido ? "o valor nem o favorecido" : !valor ? "o valor" : "o favorecido";
-    // sem o motivo é impossível saber se foi cota, formato ou leitura ruim
+  // ── sem valor não dá para fazer nada ──
+  if (!valor) {
     const porque = erroVisao ? `\n<i>(leitura por imagem: ${escTg(erroVisao.slice(0, 110))})</i>` : "";
     await enviar(B, chatId,
-      `🤔 Não consegui identificar <b>${falta}</b> nesse comprovante.${porque}\n\n` +
-      `Me manda assim: <code>${valor ? valor : "431,20"} ${favorecido || "nome do fornecedor"}</code>`);
+      `🤔 Não consegui identificar <b>o valor</b> nesse comprovante.${porque}\n\n` +
+      `Me manda assim: <code>431,20 nome do fornecedor</code>`);
     return;
   }
 
-  // O comprovante do cartão já separa "Valor" de "Juros"/"IOF" — se as contas
-  // fecharem com o total, aproveitamos e não perguntamos nada disso.
-  const dec = conferirDecomposicao(valor, bruta?.valor_nominal, bruta?.encargos);
-  const nomeForma = FORMAS_PAGAMENTO.find((f) => f.id === forma)?.nome;
+  // ── quem está de cada lado? ──
+  const vTotal = valor; // já conferido acima; fixa o tipo para as closures abaixo
 
-  let txt = `📄 <b>Li do comprovante</b> <i>(${comoLi})</i>:\n`;
-  txt += `<b>Favorecido:</b> ${escTg(favorecido)}\n`;
-  if (dec && dec.juros > 0) {
-    txt += `<b>Valor da conta:</b> ${brl(dec.valorConta)}\n`;
-    txt += `<b>Juros/encargos:</b> ${brl(dec.juros)}\n`;
-    txt += `<b>Total pago:</b> ${brl(valor)}\n`;
-  } else {
-    txt += `<b>Valor:</b> ${brl(valor)}\n`;
+  const idP = identificarLado(pagador, pagadorDoc);
+  const idF = identificarLado(favorecido, favorecidoDoc);
+  let P: LadoCJR = idP.lado;
+  let F: LadoCJR = idF.lado;
+
+  // O papel dizendo "recebido"/"enviado" com todas as letras desempata quando
+  // um dos lados não foi nomeado — num app de banco o dono da conta é implícito.
+  if (sentido === "recebido" && F === "desconhecido" && P !== "cjr") F = "cjr";
+  if (sentido === "enviado" && P === "desconhecido" && F !== "cjr") P = "cjr";
+
+  const novoEstadoTransf = async (auto: boolean) => {
+    const tk = novoToken();
+    const est: EstadoBaixa = {
+      chat_id: chatId, autor: autorDe(msg), valorPago: valor!, dataPagamento: data,
+      forma: 5, formaDoComprovante: true, conta: CONTA_PADRAO,
+      transfBancoOrigem: bancoOrigem, transfBancoDestino: bancoDestino,
+      nomeBusca: favorecido || pagador, etapa: "transf_origem",
+    };
+    await salvarEstado(db, tk, est);
+    return await pedirContaTransf(B, tk, est, chatId, "origem", auto);
+  };
+
+  // ── TRANSFERÊNCIA: a empresa dos dois lados ──
+  if (P === "cjr" && F === "cjr") return await novoEstadoTransf(true);
+
+  // ── RECEITA: alguém pagou a Costa Júnior ──
+  if (F === "cjr" && P !== "cjr") {
+    return await iniciarRecebimento(db, B, chatId, autorDe(msg), valor, pagador, data, bancoDestino);
   }
-  txt += `<b>Data:</b> ${dataBR(data)}\n`;
-  if (nomeForma) txt += `<b>Forma:</b> ${escTg(nomeForma)}\n`;
-  await enviar(B, chatId, txt);
 
-  await iniciar(db, B, chatId, autorDe(msg), valor, favorecido, data, {
-    forma: forma ?? undefined,
-    valorConta: dec?.valorConta,
-    juros: dec?.juros,
-  });
+  // ── DESPESA: o caminho mais comum, e não pode ganhar atrito ──
+  if (F === "terceiro" && P !== "terceiro") {
+    return await anunciarESeguirDespesa();
+  }
+  if (P === "cjr" && F === "terceiro") return await anunciarESeguirDespesa();
+
+  // ── não deu para afirmar: PERGUNTA em vez de chutar ──
+  {
+    const tk = novoToken();
+    const est: EstadoBaixa = {
+      chat_id: chatId, autor: autorDe(msg), valorPago: valor, dataPagamento: data,
+      forma: forma ?? FORMA_PADRAO, formaDoComprovante: forma != null, conta: CONTA_PADRAO,
+      transfBancoOrigem: bancoOrigem, transfBancoDestino: bancoDestino,
+      nomeBusca: favorecido || pagador, etapa: "esc_tipo",
+    };
+    await salvarEstado(db, tk, est);
+    // ninguém foi nomeado dos dois lados — é o formato do comprovante do Villela
+    const semNinguem = !pagador && !favorecido;
+    const quem =
+      (pagador ? `<b>Pagou:</b> ${escTg(pagador)}\n` : "") +
+      (favorecido ? `<b>Recebeu:</b> ${escTg(favorecido)}\n` : "");
+    await enviar(
+      B, chatId,
+      `🤔 <b>Não consegui afirmar o que é este comprovante.</b>\n` +
+        `<b>Valor:</b> ${brl(valor)} · <b>Data:</b> ${dataBR(data)}\n${quem}\n` +
+        (semNinguem
+          ? `<i>O comprovante do Banco Villela é assim — não traz nome. Se foi dinheiro ` +
+            `andando entre as contas da Costa Júnior, é o primeiro botão.</i>`
+          : `<i>O que foi?</i>`),
+      // Quando o papel não nomeia NINGUÉM, a transferência entre contas vem
+      // primeiro: foi o pedido da Adriana em 17/09/2026, porque o comprovante do
+      // Villela é justamente assim. Continua sendo escolha dela — o bot não
+      // inventa dois lançamentos sozinho.
+      inline(
+        (semNinguem
+          ? [
+              [{ text: "🔁 Transferência entre nossas contas", callback_data: `fbtransf:${tk}` }],
+              [{ text: "💸 Paguei um fornecedor", callback_data: `fbdesp:${tk}` }],
+              [{ text: "💰 Recebi de um cliente", callback_data: `fbreceb:${tk}` }],
+            ]
+          : [
+              [{ text: "💸 Paguei um fornecedor", callback_data: `fbdesp:${tk}` }],
+              [{ text: "💰 Recebi de um cliente", callback_data: `fbreceb:${tk}` }],
+              [{ text: "🔁 Transferência entre nossas contas", callback_data: `fbtransf:${tk}` }],
+            ]
+        ).concat([[{ text: "❌ Cancelar", callback_data: `fbnao:${tk}` }]]),
+      ),
+    );
+    return;
+  }
+  /** Caminho mais comum: a empresa pagou um terceiro. Zero atrito. */
+  async function anunciarESeguirDespesa() {
+    const alvo = favorecido || pagador;
+    // O comprovante do cartão já separa "Valor" de "Juros"/"IOF" — se as contas
+    // fecharem com o total, aproveitamos e não perguntamos nada disso.
+    const dec = conferirDecomposicao(vTotal, bruta?.valor_nominal, bruta?.encargos);
+    const nomeForma = FORMAS_PAGAMENTO.find((f) => f.id === forma)?.nome;
+
+    let txt = `📄 <b>Li do comprovante</b> <i>(${comoLi})</i>:\n`;
+    if (pagador) txt += `<b>Pagou:</b> ${escTg(pagador)}\n`;
+    txt += `<b>Favorecido:</b> ${escTg(alvo)}\n`;
+    if (dec && dec.juros > 0) {
+      txt += `<b>Valor da conta:</b> ${brl(dec.valorConta)}\n`;
+      txt += `<b>Juros/encargos:</b> ${brl(dec.juros)}\n`;
+      txt += `<b>Total pago:</b> ${brl(vTotal)}\n`;
+    } else {
+      txt += `<b>Valor:</b> ${brl(vTotal)}\n`;
+    }
+    txt += `<b>Data:</b> ${dataBR(data)}\n`;
+    if (nomeForma) txt += `<b>Forma:</b> ${escTg(nomeForma)}\n`;
+    await enviar(B, chatId, txt);
+
+    await iniciar(db, B, chatId, autorDe(msg), vTotal, alvo, data, {
+      forma: forma ?? undefined,
+      valorConta: dec?.valorConta,
+      juros: dec?.juros,
+    });
+  }
+}
+
+/**
+ * Um terceiro pagou a Costa Júnior: acha a RECEITA correspondente e entra na
+ * conferência de valor.
+ *
+ * A busca é por nome do cliente primeiro e por valor depois. São só ~23
+ * receitas em aberto, então tudo isso sai de uma lista já em cache — nenhuma
+ * requisição extra na Vobi.
+ */
+async function iniciarRecebimento(
+  db: any, B: Bot, chatId: number, autor: string, valor: number,
+  nomeCliente: string, dataPag: string, bancoDestino?: string,
+) {
+  const tk = novoToken();
+  const estado: EstadoBaixa = {
+    chat_id: chatId, autor, valorPago: valor, dataPagamento: dataPag,
+    forma: FORMA_PADRAO, conta: contaPorTexto(bancoDestino) ?? CONTA_PADRAO,
+    tipo: "receita", nomeBusca: nomeCliente, etapa: "rec_busca",
+  };
+  await salvarEstado(db, tk, estado);
+
+  await enviar(
+    B, chatId,
+    `💰 <b>Entendi como RECEBIMENTO</b>\n` +
+      (nomeCliente ? `<b>Quem pagou:</b> ${escTg(nomeCliente)}
+` : "") +
+      `<b>Valor:</b> ${brl(valor)} · <b>Data:</b> ${dataBR(dataPag)}
+\n` +
+      `<i>Procurando a receita…</i>`,
+  );
+
+  let abertas;
+  try {
+    abertas = (await receitasAbertas()).filter(ehReceitaDeCliente);
+  } catch (e: any) {
+    return await falhaDaVobi(db, B, tk, estado, chatId, e, "procurar a receita");
+  }
+
+  const chave = normalizarBusca(nomeCliente);
+  const porNome = chave.length >= 3
+    ? abertas.filter((p) => normalizarBusca(p.fornecedor || "").includes(chave) || chave.includes(normalizarBusca(p.fornecedor || "")))
+    : [];
+  // valor bate exato ganha de tudo: é a pista mais forte que existe
+  const exatas = abertas.filter((p) => Math.abs(p.valor - valor) < 0.005);
+  const porValor = await receitasAbertasPorValor(valor, 8).catch(() => [] as typeof abertas);
+
+  const candidatas = [...exatas, ...porNome, ...porValor].filter(
+    (p, i, arr) => arr.findIndex((x) => x.id === p.id) === i,
+  ).slice(0, 8);
+
+  if (!candidatas.length) {
+    await enviar(
+      B, chatId,
+      `❌ Não achei nenhuma receita em aberto que combine com ${brl(valor)}` +
+        (nomeCliente ? ` ou com <b>${escTg(nomeCliente)}</b>` : "") + `.
+\n` +
+        `<i>Talvez a receita ainda não esteja lançada na Vobi. Lance lá e me mande o comprovante de novo.</i>`,
+      inline([
+        [{ text: "💸 Na verdade foi um PAGAMENTO", callback_data: `fbdesp:${tk}` }],
+        [{ text: "❌ Encerrar", callback_data: `fbnao:${tk}` }],
+      ]),
+    );
+    return;
+  }
+
+  if (candidatas.length === 1) return await abrirRecebimento(db, B, tk, estado, chatId, candidatas[0]);
+
+  const linhas = candidatas.map((c, i) => {
+    const igual = Math.abs(c.valor - valor) < 0.005 ? " ✅" : "";
+    const atraso = c.diasAtraso > 0 ? ` · <i>${c.diasAtraso}d em atraso</i>` : "";
+    return `${i + 1}. <b>${dataBR(c.vencimento)}</b> — <b>${brl(c.valor)}</b>${igual}${atraso}\n` +
+      `    ${c.fornecedor ? escTg(c.fornecedor) : "<i>sem cliente</i>"}\n` +
+      `    <i>${escTg(c.descricao.slice(0, 46))}</i>`;
+  }).join("\n");
+  const bts = candidatas.map((c) => [{
+    text: `${dataBR(c.vencimento)} · ${brl(c.valor)} · ${(c.fornecedor || c.descricao).slice(0, 20)}`.slice(0, 60),
+    callback_data: `fbrecp:${tk}:${c.id}`,
+  }]);
+  bts.push([{ text: "❌ Cancelar", callback_data: `fbnao:${tk}` }]);
+  await enviar(B, chatId, `Receitas em aberto que combinam:
+
+${linhas}
+
+<i>Qual delas?</i>`, inline(bts));
+}
+
+/** Fixa a receita escolhida e pergunta quanto entrou de verdade. */
+async function abrirRecebimento(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, p: any) {
+  estado.tipo = "receita";
+  estado.parcela = { id: p.id, descricao: p.descricao, valor: p.valor, vencimento: p.vencimento, fornecedor: p.fornecedor };
+  estado.etapa = "rec_valor";
+  await salvarEstado(db, token, estado);
+  const atraso = p.diasAtraso > 0 ? ` · <i>${p.diasAtraso} dias em atraso</i>` : "";
+  const bate = Math.abs(p.valor - estado.valorPago) < 0.005;
+  await enviar(
+    B, chatId,
+    `📥 <b>Recebimento</b>
+${escTg(p.fornecedor || "sem cliente")}\n` +
+      `<i>${escTg(String(p.descricao).slice(0, 45))}</i>\n` +
+      `Venc. ${dataBR(p.vencimento)}${atraso}
+<b>A receita é de ${brl(p.valor)}</b>\n` +
+      (bate ? `<b>Entrou ${brl(estado.valorPago)}</b> — bate certinho.
+` : `<b>O comprovante diz ${brl(estado.valorPago)}.</b>
+`) +
+      `
+<i>Confirma o valor que entrou na conta?</i>`,
+    inline([
+      [{ text: `✅ Entrou ${brl(estado.valorPago)}`, callback_data: `fbrconf:${token}` }],
+      [{ text: "✏️ Entrou outro valor", callback_data: `fbroutro:${token}` }],
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ]),
+  );
+}
+
+/** Normaliza para comparar nome de cliente com o que veio no comprovante. */
+function normalizarBusca(s: string): string {
+  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 14);
 }
 
 // ───────────────────────── escolha da parcela ─────────────────────────
@@ -611,6 +814,10 @@ async function pedirContaTransf(
       `🔁 <b>Transferência entre contas da Costa Júnior</b>\n` +
       `<b>Valor:</b> ${brl(estado.valorPago)}\n<b>Data:</b> ${dataBR(estado.dataPagamento)}\n\n` +
       `<i>De qual conta SAIU?</i>`;
+    linhas.push([
+      { text: "💸 Foi pagamento", callback_data: `fbdesp:${token}` },
+      { text: "💰 Foi recebimento", callback_data: `fbreceb:${token}` },
+    ]);
   } else {
     txt =
       `🤔 Esse comprovante veio <b>sem o nome do favorecido</b>.\n` +
@@ -1138,6 +1345,51 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     estado.etapa = "rec_gravando";
     await salvarEstado(db, token, estado);
     return await executarRecebimento(db, B, token, estado, chatId);
+  }
+
+  // ── "o que é este comprovante?": as três saídas da tela de dúvida ──
+  if (acao === "fbdesp") {
+    estado.tipo = "despesa";
+    await salvarEstado(db, token, estado);
+    if (!estado.nomeBusca) {
+      await enviar(B, chatId, `Qual o fornecedor? Me manda: <code>${brl(estado.valorPago).replace("R$ ", "")} nome do fornecedor</code>`);
+      return;
+    }
+    await enviar(B, chatId, `🔎 Procurando <b>${escTg(estado.nomeBusca)}</b> — ${brl(estado.valorPago)}…`);
+    return await buscarFornecedorEContinuar(db, B, token, estado, chatId);
+  }
+
+  if (acao === "fbreceb") {
+    await apagarEstado(db, token);
+    return await iniciarRecebimento(
+      db, B, chatId, estado.autor, estado.valorPago,
+      estado.nomeBusca || "", estado.dataPagamento, estado.transfBancoDestino,
+    );
+  }
+
+  if (acao === "fbtransf") {
+    estado.etapa = "transf_origem";
+    estado.forma = 5;
+    await salvarEstado(db, token, estado);
+    return await pedirContaTransf(B, token, estado, chatId, "origem", true);
+  }
+
+  // ── recebimento: a pessoa escolheu qual receita ──
+  if (acao === "fbrecp") {
+    let p;
+    try {
+      p = (await receitasAbertas()).find((x) => x.id === arg);
+    } catch (e: any) {
+      return await falhaDaVobi(db, B, token, estado, chatId, e, "abrir a receita");
+    }
+    if (!p) { await enviar(B, chatId, "Essa receita não está mais em aberto."); return; }
+    return await abrirRecebimento(db, B, token, estado, chatId, p);
+  }
+
+  // ── recebimento: confirma o valor que veio do comprovante ──
+  if (acao === "fbrconf") {
+    await salvarEstado(db, token, estado);
+    return await conferirValorRecebido(db, B, token, estado, chatId);
   }
 
   if (acao === "fbtde") {
