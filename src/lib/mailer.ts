@@ -1,8 +1,15 @@
 import { Resend } from "resend";
 
-const RESEND_API_KEY = import.meta.env.RESEND_API_KEY;
-const FROM = import.meta.env.EMAIL_FROM || "onboarding@resend.dev";
-const SITE = import.meta.env.SITE_BASE_URL || "https://costajr.com.br";
+// import.meta.env só existe sob o Vite/Astro. Este módulo é importado também por
+// código que roda em node puro (scripts, testes, o caminho do cron), e lá o
+// acesso direto estoura TypeError logo na carga — derrubando tudo que importa
+// daqui, mesmo quem nunca vai mandar e-mail.
+const envVar = (n: string): string | undefined =>
+  process.env[n] ?? ((import.meta as any)?.env ?? {})[n];
+
+const RESEND_API_KEY = envVar("RESEND_API_KEY");
+const FROM = envVar("EMAIL_FROM") || "onboarding@resend.dev";
+const SITE = envVar("SITE_BASE_URL") || "https://costajr.com.br";
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
@@ -142,7 +149,7 @@ export async function enviarSenhaResetRepresentante(email: string, nome: string,
 }
 
 // Boas-vindas / nova senha do FORNECEDOR externo — senha provisória + link da
-// tela de entrada do fornecedor + instruções. No 1º acesso ele cria a própria senha.
+// intranet + instruções de acesso. No 1º acesso ele cria a própria senha.
 export async function enviarSenhaFornecedor(
   email: string,
   nome: string,
@@ -161,7 +168,7 @@ export async function enviarSenhaFornecedor(
     ? "Bem-vindo(a) ao Portal do Fornecedor — Costa Júnior"
     : "Nova senha de acesso — Portal do Fornecedor Costa Júnior";
   const intro = contexto === "boas-vindas"
-    ? `Seu acesso ao <strong>Portal do Fornecedor</strong> da Costa Júnior foi criado${empresaEsc ? ` para <strong>${empresaEsc}</strong>` : ""}. Por ele você pode <strong>visualizar e baixar</strong> os documentos que a Costa Júnior disponibilizar para você — sem inserir, editar ou excluir nada. O que aparece na sua tela depende do que foi liberado para o seu acesso.`
+    ? `Seu acesso ao <strong>Portal do Fornecedor</strong> da Costa Júnior foi criado${empresaEsc ? ` para <strong>${empresaEsc}</strong>` : ""}. Por ele você pode <strong>visualizar e baixar</strong> os documentos da empresa e extratos bancários disponibilizados para você — sem inserir, editar ou excluir nada.`
     : `Geramos uma <strong>nova senha provisória</strong> para o seu acesso ao <strong>Portal do Fornecedor</strong> da Costa Júnior. A senha anterior deixou de funcionar.`;
   return sendOrThrow({
     to: email,
@@ -182,15 +189,15 @@ export async function enviarSenhaFornecedor(
 
         <p style="color:#5B5F6B;margin:0 0 14px;line-height:1.6;font-size:14px"><strong>No primeiro acesso</strong> você será solicitado a criar uma <strong>senha pessoal</strong>. A senha provisória acima só serve para essa primeira entrada.</p>
 
-        <a href="${SITE}/admin/login?fornecedor=1" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin:6px 0 22px">Entrar no Portal do Fornecedor →</a>
+        <a href="${SITE}/intranet" style="display:inline-block;background:#C41E3A;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin:6px 0 22px">Acessar a Intranet →</a>
 
         <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:16px 20px;margin-bottom:20px">
           <div style="font-weight:700;color:#2D2F36;font-size:14px;margin-bottom:8px">Como acessar</div>
           <ol style="color:#5B5F6B;font-size:13.5px;line-height:1.7;padding-left:20px;margin:0">
-            <li>Clique no botão acima (ou abra <a href="${SITE}/admin/login?fornecedor=1" style="color:#C41E3A">${site}/admin/login</a>).</li>
+            <li>Abra <a href="${SITE}/intranet" style="color:#C41E3A">${site}/intranet</a> e clique em <strong>Portal do Fornecedor</strong>.</li>
             <li>Entre com o <strong>e-mail</strong> e a <strong>senha provisória</strong> acima.</li>
             <li>Crie sua <strong>senha pessoal</strong> quando for solicitado.</li>
-            <li>Pronto: consulte e baixe os documentos liberados para você — e, se preferir, selecione vários e receba todos no seu e-mail.</li>
+            <li>Pronto: consulte e baixe os <strong>Documentos da Empresa</strong> e <strong>Extratos Bancários</strong>.</li>
           </ol>
         </div>
 
@@ -204,7 +211,7 @@ export async function enviarSenhaFornecedor(
 }
 
 function ADMIN_EMAIL(): string {
-  return import.meta.env.ADMIN_NOTIFICATION_EMAIL || "adriana@costajr.com.br";
+  return envVar("ADMIN_NOTIFICATION_EMAIL") || "adriana@costajr.com.br";
 }
 
 function htmlGenerico(args: {

@@ -202,7 +202,11 @@ const CAMPOS_CALCULADOS = [
 const CAT_TRANSF_SAIDA = 22896755;   // Transferência entre Contas (despesa)
 const CAT_TRANSF_ENTRADA = 22957008; // Transferência entre Contas (receita)
 const CC_TRANSF = 26522;             // centro de custo TRANSFERENCIA ENTRE CONTAS
-const FORN_CJR = 665913;             // COSTA JUNIOR ENGENHARIA E CONS. LTDA
+const FORN_CJR = 665913;             // COSTA JUNIOR ENGENHARIA E CONS. LTDA (fornecedor)
+// A própria empresa no cadastro de CLIENTES. Há seis registros parecidos na base
+// (incluindo o sócio JOSE FERREIRA DA COSTA JUNIOR, que NÃO é a empresa); este é
+// o da pessoa jurídica. Se a Adriana consolidar os duplicados, trocar aqui.
+const CLIENTE_CJR = 235768;          // COSTA JUNIOR ENGENHARIA E CONSTRUCOES
 const ID_EMPRESA = 96840;
 const ID_ENTIDADE = "04afa8bd-6159-44d0-95e4-e23bda31c8ae";
 
@@ -223,8 +227,21 @@ const ID_ENTIDADE = "04afa8bd-6159-44d0-95e4-e23bda31c8ae";
  */
 export async function criarTransferenciaEntreContas(opcoes: {
   origem: number; destino: number; valor: number; data: string; autor?: string;
+  /**
+   * Retomada de meia transferência: a saída já foi gravada numa tentativa
+   * anterior e só falta a entrada. Sem isto, tentar de novo gravaria a saída
+   * PELA SEGUNDA VEZ e o dinheiro sairia duas vezes da conta de origem.
+   */
+  idSaidaExistente?: string;
 }): Promise<{ ok: boolean; idSaida?: string; idEntrada?: string; erro?: string }> {
   const { origem, destino, valor, data } = opcoes;
+
+  // Guardas de sanidade ANTES de escrever. O botão já impede escolher a mesma
+  // conta dos dois lados, mas quem garante o livro é o servidor, não a tela.
+  if (!(valor > 0)) return { ok: false, erro: "valor inválido para uma transferência" };
+  if (origem === destino) return { ok: false, erro: "origem e destino são a mesma conta" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return { ok: false, erro: `data inválida: ${data}` };
+
   const nome = `${nomeDaConta(origem)} - ${nomeDaConta(destino)}`.toUpperCase();
   const nota =
     `Transferencia entre contas da propria empresa: ${nomeDaConta(origem)} -> ${nomeDaConta(destino)}, ` +
@@ -244,7 +261,11 @@ export async function criarTransferenciaEntreContas(opcoes: {
       annotation: nota, isRecurrence: false, recurrenceId: null, interval: 0,
       frequency: null, lastRecurrenceDate: null, installments: [parcela],
     };
+    // Regra da casa: fornecedor/cliente nunca fica em branco. Numa transferência
+    // entre contas próprias, os dois lados são a própria empresa — a despesa usa
+    // a CJR como fornecedor e a receita usa a CJR como cliente.
     if (billType === "expense") corpo.idSupplier = FORN_CJR;
+    else corpo.idCompanyCustomer = CLIENTE_CJR;
 
     const criado = await vPost("/payment", corpo);
     const id = criado?.id;
@@ -267,13 +288,15 @@ export async function criarTransferenciaEntreContas(opcoes: {
     const p = ps[0];
     const bom = ps.length === 1 && p && Math.abs(num(p.price) - valor) < 0.01 &&
       p.idPaymentBankAccount === conta && p.idInstallmentStatus === 2;
-    if (!bom) throw new Error(`a parcela nao ficou como devia (${ps.length} parcela(s))`);
+    // O id vai JUNTO no erro: sem ele, um lançamento meio-criado fica na Vobi
+    // sem ninguém saber o que procurar para apagar.
+    if (!bom) throw new Error(`a parcela nao ficou como devia (${ps.length} parcela(s)) — lancamento ${id}`);
     return id as string;
   };
 
-  let idSaida: string | undefined;
+  let idSaida = opcoes.idSaidaExistente;
   try {
-    idSaida = await criar(origem, "expense", CAT_TRANSF_SAIDA);
+    if (!idSaida) idSaida = await criar(origem, "expense", CAT_TRANSF_SAIDA);
     const idEntrada = await criar(destino, "income", CAT_TRANSF_ENTRADA);
     return { ok: true, idSaida, idEntrada };
   } catch (e: any) {

@@ -21,6 +21,7 @@
 // tempo no grupo sem uma atrapalhar a outra.
 
 import { escTg } from "./telegram";
+import { ehAPropriaCJR } from "./identidadeCJR";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
 import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 import {
@@ -109,6 +110,9 @@ type EstadoBaixa = {
   /** banco que o comprovante citou, so para marcar o botao provavel */
   transfBancoOrigem?: string;
   transfBancoDestino?: string;
+  /** id da SAÍDA já gravada, quando a entrada falhou — "tentar de novo" grava
+   *  só a ponta que falta, para o dinheiro não sair duas vezes */
+  transfIdSaida?: string;
   etapa: string;
   /** o que a pessoa (ou o comprovante) deu como nome do fornecedor — guardado
    *  para o "🔄 Tentar de novo" refazer a busca sem pedir o comprovante de novo */
@@ -424,10 +428,8 @@ function conferirDecomposicao(total: number, nominal: unknown, encargos: unknown
   return { valorConta: Math.round(n * 100) / 100, juros: enc };
 }
 
-/** A Costa Júnior é sempre a PAGADORA — se a leitura devolver ela, está errada. */
-function ehAPropriaCJR(nome: string): boolean {
-  return /costa\s*j(u|ú)nior|costajr|costa\s*jr/i.test(nome);
-}
+// ehAPropriaCJR vive em identidadeCJR.ts: e usada dos dois lados (pagamento,
+// recebimento e transferencia) e precisa ser testavel sem arrastar o resto.
 
 /**
  * Lê o comprovante em CAMADAS, igual ao bot de documentos:
@@ -903,6 +905,17 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   // "🔄 Tentar de novo" depois de a Vobi recusar: retoma de onde parou, sem
   // pedir o comprovante de novo.
   if (acao === "fbretry") {
+    // Num estado de transferência, "tentar de novo" NÃO pode virar busca de
+    // fornecedor (o nome está vazio) — retoma a transferência de onde parou.
+    if (String(estado.etapa || "").startsWith("transf_")) {
+      if (estado.transfOrigem && estado.transfDestino) {
+        return await onCallbackFinanceiro(db, B, cq, chatId, `fbtretry:${token}`);
+      }
+      const lado = estado.transfOrigem ? "destino" : "origem";
+      estado.etapa = lado === "origem" ? "transf_origem" : "transf_destino";
+      await salvarEstado(db, token, estado);
+      return await pedirContaTransf(B, token, estado, chatId, lado, true);
+    }
     if (estado.fornecedor) return await mostrarParcelas(db, B, token, estado, chatId);
     await enviar(B, chatId, `🔎 Procurando <b>${escTg(estado.nomeBusca || "")}</b> — ${brl(estado.valorPago)}…`);
     return await buscarFornecedorEContinuar(db, B, token, estado, chatId);
@@ -911,6 +924,10 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   // ── "não é nenhum desses": procura pelo VALOR, em qualquer fornecedor ──
   // ── transferência entre contas próprias: de onde saiu ──
   if (acao === "fbtde") {
+    if (estado.etapa === "transf_gravando") {
+      await enviar(B, chatId, "⏳ Já estou lançando essa transferência — só um instante.");
+      return;
+    }
     estado.transfOrigem = Number(arg);
     estado.etapa = "transf_destino";
     await salvarEstado(db, token, estado);
@@ -918,31 +935,61 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   }
 
   // ── ...e para onde foi: grava as DUAS pontas ──
-  if (acao === "fbtpara") {
-    estado.transfDestino = Number(arg);
+  if (acao === "fbtpara" || acao === "fbtretry") {
+    // TRAVA: dois toques no botão (ou duas pessoas no grupo ao mesmo tempo)
+    // lançariam a transferência DUAS VEZES — dinheiro em dobro na Vobi. Mesmo
+    // padrão do "✅ Sim" da baixa.
+    if (estado.etapa === "transf_gravando") {
+      await enviar(B, chatId, "⏳ Já estou lançando essa transferência — só um instante.");
+      return;
+    }
+    if (acao === "fbtpara") estado.transfDestino = Number(arg);
+    if (!estado.transfOrigem || !estado.transfDestino) {
+      await enviar(B, chatId, "Faltou escolher as contas. Mande o comprovante de novo. 👍");
+      return;
+    }
     estado.etapa = "transf_gravando";
     await salvarEstado(db, token, estado);
+
     const de = nomeDaConta(estado.transfOrigem);
     const para = nomeDaConta(estado.transfDestino);
-    await enviar(B, chatId, `🔁 Lançando ${brl(estado.valorPago)}: <b>${escTg(de)}</b> → <b>${escTg(para)}</b>…`);
+    const retomando = !!estado.transfIdSaida;
+    await enviar(
+      B, chatId,
+      retomando
+        ? `🔁 Retomando: a saída de <b>${escTg(de)}</b> já está gravada, falta a entrada em <b>${escTg(para)}</b>…`
+        : `🔁 Lançando ${brl(estado.valorPago)}: <b>${escTg(de)}</b> → <b>${escTg(para)}</b>…`,
+    );
 
     const r: any = await criarTransferenciaEntreContas({
-      origem: estado.transfOrigem!,
-      destino: estado.transfDestino!,
+      origem: estado.transfOrigem,
+      destino: estado.transfDestino,
       valor: estado.valorPago,
       data: estado.dataPagamento,
       autor: estado.autor,
+      idSaidaExistente: estado.transfIdSaida,
     }).catch((e: any) => ({ ok: false, erro: String(e?.message || e) }));
 
     if (!r.ok) {
-      // meia transferencia e pior que nenhuma — a pessoa PRECISA saber
+      // Meia transferência é pior que nenhuma: o dinheiro sai de uma conta e não
+      // entra na outra. Guardamos o id da saída para que "tentar de novo" grave
+      // SÓ a entrada que falta — nunca a saída outra vez.
+      estado.transfIdSaida = r.idSaida;
+      estado.etapa = r.idSaida ? "transf_meia" : "transf_falhou";
+      await salvarEstado(db, token, estado);
       const meia = r.idSaida
-        ? `\n\n⚠️ <b>A saída foi gravada e a entrada não.</b> Apague a saída de ` +
-          `${escTg(de)} na Vobi antes de tentar de novo, senão o dinheiro some do caixa.`
+        ? `\n\n⚠️ <b>A saída de ${escTg(de)} foi gravada; a entrada em ${escTg(para)} não.</b>\n` +
+          `Enquanto ficar assim, o dinheiro some do caixa. Toque em <b>Tentar de novo</b> — ` +
+          `eu gravo só a entrada que falta, sem repetir a saída.`
         : "";
-      await enviar(B, chatId,
-        `❌ Não consegui lançar a transferência.\n<i>${escTg(String(r.erro || "").slice(0, 160))}</i>${meia}`,
-        inline([[{ text: "❌ Encerrar", callback_data: `fbnao:${token}` }]]));
+      await enviar(
+        B, chatId,
+        `❌ Não consegui lançar a transferência.\n<i>${escTg(String(r.erro || "").slice(0, 200))}</i>${meia}`,
+        inline([
+          [{ text: "🔄 Tentar de novo", callback_data: `fbtretry:${token}` }],
+          [{ text: "❌ Encerrar", callback_data: `fbnao:${token}` }],
+        ]),
+      );
       return;
     }
 

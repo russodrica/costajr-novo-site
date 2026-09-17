@@ -46,7 +46,11 @@ const DIA = 86_400_000;
  * constante com a data. Nao e para crescer esta lista sem medir.
  */
 const CORRECAO: Record<number, { valor: number; medidoEm: string }> = {
-  24582: { valor: -1915.86, medidoEm: "2026-09-17" }, // tela mostrava R$ 152,22
+  // Medido contra a tela (R$ 152,22) em 17/09/2026. O valor original era
+  // −1.915,86; quando a regra de status passou a aceitar 2..11, a parcela do
+  // MICROSOFT 365 (R$ 431,34, baixada pelo bot às 13:20 daquele dia, status 4)
+  // entrou na conta — então a correção encolheu na mesma medida.
+  24582: { valor: -1484.52, medidoEm: "2026-09-17" },
 };
 
 /** As contas que a Adriana considera caixa. As demais estão congeladas. */
@@ -107,7 +111,12 @@ export async function saldoDaConta(id: number, nome = ""): Promise<SaldoConta> {
 
   let s = 0;
   for (const p of achadas.values()) {
-    if (p.idInstallmentStatus !== 2) continue; // só o que foi pago move o saldo
+    // Só o que foi pago move o saldo. ATENÇÃO ao intervalo: na Vobi, 1 é
+    // "previsto" e 12 é "cancelado"; TUDO entre 2 e 11 é alguma forma de pago.
+    // A regra antiga aceitava só o 2 e por isso ignorava todas as baixas feitas
+    // pelo bot, que grava 4 ("pago manual") — em 17/09/2026 eram três parcelas,
+    // R$ 2.770,82 que já tinham saído do Santander e ainda contavam como caixa.
+    if (!(p.idInstallmentStatus >= 2 && p.idInstallmentStatus <= 11)) continue;
     const bt = p.payment?.billType;
     // rateio: a fatia aparece em `price`, mas o banco pagou o valor cheio
     const cheio = Number(p.totalSplitPrice);
