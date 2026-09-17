@@ -24,7 +24,7 @@ import { escTg } from "./telegram";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
 import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 import {
-  buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelasAbertasPorValor, fornecedoresComContaEmAberto, parcelaPorId, darBaixa,
+  buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelasAbertasPorValor, fornecedoresComContaEmAberto, parcelasAbertasDeFornecedores, parcelaPorId, darBaixa,
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
   CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO, CARTOES,
   CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
@@ -306,13 +306,41 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
     return await mostrarParcelas(db, B, token, estado, chatId);
   }
 
-  estado.etapa = "esc_fornecedor";
+  // Mostra a CONTA, nao o fornecedor: so o nome nao diz se e aquela despesa.
+  let contas: ParcelaAberta[] = [];
+  try {
+    contas = await parcelasAbertasDeFornecedores(achados.map((f) => f.id), estado.valorPago, 8);
+  } catch { contas = []; }
+  if (!contas.length) {
+    estado.fornecedor = { id: achados[0].id, nome: achados[0].nome || achados[0].razao };
+    await salvarEstado(db, token, estado);
+    return await mostrarParcelas(db, B, token, estado, chatId);
+  }
+  estado.candidatas = contas.map((c) => ({
+    ...c,
+    diferenca: Math.round((estado.valorPago - c.valor) * 100) / 100,
+    exata: Math.round(c.valor * 100) === Math.round(estado.valorPago * 100),
+  }));
+  estado.etapa = "esc_parcela";
   await salvarEstado(db, token, estado);
-  const botoes = achados.map((f) => [{ text: (f.nome || f.razao).slice(0, 55), callback_data: `fbforn:${token}:${f.id}` }]);
-  // saida obrigatoria: o favorecido do comprovante pode nao ser o fornecedor
-  botoes.push([{ text: "🔎 Não é nenhum desses", callback_data: `fbvalor:${token}` }]);
-  botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
-  await enviar(B, chatId, `Achei <b>${achados.length}</b> fornecedores com “${escTg(nome)}”. Qual é?`, inline(botoes));
+  const linhas = contas.map((c, i) => {
+    const quem = c.fornecedor ? escTg(c.fornecedor) : "<i>sem fornecedor</i>";
+    const atraso = c.diasAtraso > 0 ? ` · <i>${c.diasAtraso}d em atraso</i>` : "";
+    const igual = Math.round(c.valor * 100) === Math.round(estado.valorPago * 100) ? " ✅" : "";
+    return `${i + 1}. <b>${dataBR(c.vencimento)}</b> — <b>${brl(c.valor)}</b>${igual}${atraso}\n    ${quem}\n    <i>${escTg(c.descricao.slice(0, 46))}</i>`;
+  }).join("\n");
+  const bts = contas.map((c) => [{
+    text: `${dataBR(c.vencimento).slice(0, 5)} · ${brl(c.valor)} · ${(c.fornecedor || c.descricao).slice(0, 20)}`.slice(0, 60),
+    callback_data: `fbparc:${token}:${c.id}`,
+  }]);
+  bts.push([{ text: "🔎 Não é nenhuma dessas", callback_data: `fbvalor:${token}` }]);
+  bts.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+  await enviar(
+    B,
+    chatId,
+    `Contas em aberto que combinam com <b>${escTg(nome)}</b>:\n\n${linhas}\n\n<i>Qual delas?</i>`,
+    inline(bts),
+  );
 }
 
 // ───────────────────── entrada: COMPROVANTE (foto/PDF) ─────────────────────

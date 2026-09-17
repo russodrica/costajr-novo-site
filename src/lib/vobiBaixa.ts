@@ -457,26 +457,54 @@ export async function vencimentosNoPeriodo(de: string, ate: string): Promise<Par
 }
 
 /**
- * Os fornecedores que TEM conta a pagar em aberto.
+ * Todas as contas a pagar EM ABERTO, em cache de 10 minutos.
  *
- * O cadastro tem 2.540 fornecedores e a maioria nao deve nada. Procurar o
- * favorecido de um comprovante no cadastro inteiro devolve homonimo que nunca
- * vai ser a resposta — foi o que aconteceu com um deposito judicial, que
- * ofereceu quatro empresas com "caixa" no nome e nenhuma com conta aberta.
- * Cache de 10 minutos: a lista muda pouco dentro de uma conversa.
+ * Tres perguntas diferentes precisam da mesma lista — quem deve, quanto deve e
+ * o que vence — entao busca-se uma vez so. Sao ~1.300 linhas, 3 paginas.
  */
-let _comAberto: { ids: Set<number>; ate: number } | null = null;
-export async function fornecedoresComContaEmAberto(): Promise<Set<number>> {
-  if (_comAberto && Date.now() < _comAberto.ate) return _comAberto.ids;
-  const rows = await vGetAll(
+let _abertas: { linhas: any[]; ate: number } | null = null;
+async function todasAbertas(): Promise<any[]> {
+  if (_abertas && Date.now() < _abertas.ate) return _abertas.linhas;
+  const linhas = await vGetAll(
     "installment",
     `&where[idInstallmentStatus]=1&where[$payment.billType$]=expense`,
     8,
   );
+  _abertas = { linhas, ate: Date.now() + 10 * 60_000 };
+  return linhas;
+}
+
+/** Os fornecedores que TEM conta a pagar em aberto (92 dos 2.540 do cadastro). */
+export async function fornecedoresComContaEmAberto(): Promise<Set<number>> {
   const ids = new Set<number>();
-  for (const i of rows) { const s = Number((i.payment || {}).idSupplier); if (s) ids.add(s); }
-  _comAberto = { ids, ate: Date.now() + 10 * 60_000 };
+  for (const i of await todasAbertas()) { const s = Number((i.payment || {}).idSupplier); if (s) ids.add(s); }
   return ids;
+}
+
+/** Contas em aberto DESTES fornecedores, a mais parecida com o valor pago primeiro. */
+export async function parcelasAbertasDeFornecedores(ids: number[], valorPago: number, limite = 8): Promise<ParcelaAberta[]> {
+  const alvo = new Set(ids);
+  const linhas = (await todasAbertas()).filter((i: any) => alvo.has(Number((i.payment || {}).idSupplier)));
+  const nomes = await mapaFornecedores(linhas);
+  const todas = linhas
+    .map((i: any) => montarParcela(i, nomes[(i.payment || {}).idSupplier] ?? null))
+    .sort((a, b) => Math.abs(a.valor - valorPago) - Math.abs(b.valor - valorPago) || a.vencimento.localeCompare(b.vencimento));
+
+  // Serie mensal (aluguel, parcelamento) vira 8 linhas identicas e nao ajuda a
+  // escolher. Colapsa por fornecedor+valor, ficando a mais proxima de vencer —
+  // EXCETO quando o valor bate exatamente com o pago: ai todas interessam, porque
+  // a duvida passa a ser QUAL parcela da serie foi paga.
+  const exata = (c: ParcelaAberta) => Math.round(c.valor * 100) === Math.round(valorPago * 100);
+  if (todas.some(exata)) return todas.filter(exata).slice(0, limite);
+  const vistos = new Set<string>();
+  const unicas: ParcelaAberta[] = [];
+  for (const c of todas) {
+    const chave = `${c.idFornecedor ?? c.fornecedor}|${Math.round(c.valor * 100)}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    unicas.push(c);
+  }
+  return unicas.slice(0, limite);
 }
 
 /**
@@ -489,11 +517,7 @@ export async function fornecedoresComContaEmAberto(): Promise<Set<number>> {
  * intermediario. Nesses casos so o VALOR liga o comprovante a conta.
  */
 export async function parcelasAbertasPorValor(valor: number, limite = 8): Promise<ParcelaAberta[]> {
-  const rows = await vGetAll(
-    "installment",
-    `&where[idInstallmentStatus]=1&where[$payment.billType$]=expense`,
-    8,
-  );
+  const rows = await todasAbertas();
   const centavos = (v: number) => Math.round(v * 100);
   const alvo = centavos(valor);
   const perto = rows.filter((i: any) => Math.abs(centavos(num(i.price)) - alvo) <= 100); // ate 1 real de folga
