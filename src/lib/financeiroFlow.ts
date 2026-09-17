@@ -93,6 +93,8 @@ type EstadoBaixa = {
   forma: number;
   /** a forma veio escrita no comprovante — não precisa perguntar "como foi pago?" */
   formaDoComprovante?: boolean;
+  /** a conta de origem veio do comprovante (e não do padrão) */
+  contaDoComprovante?: boolean;
   conta: number;
   cartao?: { id: number; nome: string };
   /**
@@ -231,7 +233,7 @@ function autorDe(msg: any): string {
 async function iniciar(
   db: any, B: Bot, chatId: number, autor: string, valor: number, nome: string, dataPag?: string,
   /** o que o comprovante já entregou pronto (forma, valor da conta, encargos) */
-  lido?: { forma?: number; valorConta?: number; juros?: number },
+  lido?: { forma?: number; valorConta?: number; juros?: number; conta?: number },
 ) {
   const token = novoToken();
   const estado: EstadoBaixa = {
@@ -241,7 +243,11 @@ async function iniciar(
     dataPagamento: dataPag || hojeISO(),
     forma: lido?.forma ?? FORMA_PADRAO,
     formaDoComprovante: lido?.forma != null,
-    conta: CONTA_PADRAO, // no cartão, entrarNoCartao troca pela conta do cartão
+    // A conta de onde o dinheiro saiu: a que o comprovante disse, senão o
+    // Santander (81% das baixas). Assumir sem avisar foi o que pôs o acordo do
+    // Lysnor, pago pelo Villela, na conta errada.
+    conta: lido?.conta ?? CONTA_PADRAO,
+    contaDoComprovante: lido?.conta != null,
     valorConta: lido?.valorConta,
     juros: lido?.juros,
     nomeBusca: nome,
@@ -655,6 +661,7 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
     await enviar(B, chatId, txt);
 
     await iniciar(db, B, chatId, autorDe(msg), vTotal, alvo, data, {
+      conta: contaPorTexto(bancoOrigem) ?? undefined,
       forma: forma ?? undefined,
       valorConta: dec?.valorConta,
       juros: dec?.juros,
@@ -922,7 +929,7 @@ function resumoBaixa(e: EstadoBaixa): string {
   const valorConta = contaDe(e);
   const juros = jurosDe(e);
   const desconto = descontoDe(e);
-  const contaNome = CONTAS_PRINCIPAIS.find((c) => c.id === e.conta)?.nome || `conta ${e.conta}`;
+  const contaNome = nomeDaConta(e.conta);
   const formaNome = FORMAS_PAGAMENTO.find((f) => f.id === e.forma)?.nome || "—";
   const d = Math.round((Date.parse(e.dataPagamento) - Date.parse(p.vencimento)) / 86400000);
   const atraso = d > 0 ? ` · <b>${d} dia(s) de atraso</b>` : "";
@@ -938,7 +945,10 @@ function resumoBaixa(e: EstadoBaixa): string {
   if (desconto > 0) txt += `<b>Desconto:</b> ${brl(desconto)}\n`;
   txt += `<b>Valor pago:</b> ${brl(e.valorPago)}\n`;
   txt += `<b>Pago em:</b> ${dataBR(e.dataPagamento)}\n`;
-  txt += `<b>Saiu de:</b> ${escTg(contaNome)} · ${escTg(formaNome)}\n`;
+  // Quando a conta é só o padrão, avisa: foi assim que o acordo do Lysnor, pago
+  // pelo Villela, acabou lançado no Santander sem ninguém perceber.
+  const aviso = e.contaDoComprovante ? "" : " <i>(padrão — confira)</i>";
+  txt += `<b>Saiu de:</b> ${escTg(contaNome)}${aviso} · ${escTg(formaNome)}\n`;
   return txt;
 }
 
@@ -1044,7 +1054,9 @@ async function aplicarForma(db: any, B: Bot, token: string, estado: EstadoBaixa,
   }
   // não é cartão → conta padrão. Se o pago não bate com a Vobi, PERGUNTA
   // antes: pode ser juros, ou a conta ter mudado de valor.
-  estado.conta = CONTA_PADRAO;
+  // Só cai no padrão quando o comprovante não disse de onde saiu — senão
+  // sobrescreveria a conta certa que já tinha sido lida.
+  if (!estado.contaDoComprovante) estado.conta = CONTA_PADRAO;
   if (precisaResolverDiferenca(estado)) {
     return await perguntarDiferenca(db, B, token, estado, chatId);
   }
@@ -1351,9 +1363,11 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   if (acao === "fbdesp") {
     estado.tipo = "despesa";
     await salvarEstado(db, token, estado);
+    // O comprovante do Banco Villela não traz nome nenhum — e é de lá que sai
+    // boa parte dos pagamentos. Sem nome para procurar, o que liga é o VALOR;
+    // pedir para digitar o fornecedor seria trabalho à toa.
     if (!estado.nomeBusca) {
-      await enviar(B, chatId, `Qual o fornecedor? Me manda: <code>${brl(estado.valorPago).replace("R$ ", "")} nome do fornecedor</code>`);
-      return;
+      return await onCallbackFinanceiro(db, B, cq, chatId, `fbvalor:${token}`);
     }
     await enviar(B, chatId, `🔎 Procurando <b>${escTg(estado.nomeBusca)}</b> — ${brl(estado.valorPago)}…`);
     return await buscarFornecedorEContinuar(db, B, token, estado, chatId);
@@ -1390,6 +1404,29 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   if (acao === "fbrconf") {
     await salvarEstado(db, token, estado);
     return await conferirValorRecebido(db, B, token, estado, chatId);
+  }
+
+  // ── trocar a conta de onde o dinheiro saiu ──
+  if (acao === "fbaltb") {
+    estado.etapa = "esc_conta";
+    await salvarEstado(db, token, estado);
+    const linhas: any[] = [];
+    for (let i = 0; i < CONTAS_TRANSFERENCIA.length; i += 2) {
+      linhas.push(CONTAS_TRANSFERENCIA.slice(i, i + 2).map((c) => ({
+        text: (c.id === estado.conta ? "• " : "") + c.nome,
+        callback_data: `fbconta:${token}:${c.id}`,
+      })));
+    }
+    linhas.push([{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }]);
+    await enviar(B, chatId, "🏦 <i>De qual conta o dinheiro saiu?</i>", inline(linhas));
+    return;
+  }
+
+  if (acao === "fbconta") {
+    estado.conta = Number(arg);
+    estado.contaDoComprovante = true; // escolha explícita vence o padrão
+    await salvarEstado(db, token, estado);
+    return await irParaConfirmacao(db, B, token, estado, chatId);
   }
 
   if (acao === "fbtde") {
@@ -1605,7 +1642,10 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
             { text: "📈 Juros/multa", callback_data: `fbaltj:${token}` },
             { text: "📅 Vencimento", callback_data: `fbaltd:${token}` },
           ],
-          [{ text: "🔁 Forma de pagamento", callback_data: `fbaltf:${token}` }],
+          [
+            { text: "🔁 Forma de pagamento", callback_data: `fbaltf:${token}` },
+            { text: "🏦 Conta de onde saiu", callback_data: `fbaltb:${token}` },
+          ],
           [{ text: "⬅️ Voltar", callback_data: `fbvolta:${token}` }],
         ];
     await enviar(B, chatId, "✏️ O que você quer alterar?", inline(opcoes));
