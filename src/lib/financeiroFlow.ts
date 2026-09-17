@@ -29,6 +29,7 @@ import {
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
   CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO, CARTOES,
   CONTAS_TRANSFERENCIA, contaPorTexto, nomeDaConta, criarTransferenciaEntreContas,
+  receitasAbertasPorValor, parcelaEmAberto,
   CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
   type Candidata, type Fornecedor, type ParcelaAberta,
 } from "./vobiBaixa";
@@ -113,6 +114,12 @@ type EstadoBaixa = {
   /** id da SAÍDA já gravada, quando a entrada falhou — "tentar de novo" grava
    *  só a ponta que falta, para o dinheiro não sair duas vezes */
   transfIdSaida?: string;
+
+  /** "despesa" (o padrão, dinheiro saindo) ou "receita" (cliente pagando). O
+   *  fluxo, as perguntas e o significado da diferença de valor mudam por aqui. */
+  tipo?: "despesa" | "receita";
+  /** por que o cliente pagou menos — vira o rótulo do desconto na Vobi */
+  recMotivo?: string;
   etapa: string;
   /** o que a pessoa (ou o comprovante) deu como nome do fornecedor — guardado
    *  para o "🔄 Tentar de novo" refazer a busca sem pedir o comprovante de novo */
@@ -866,6 +873,124 @@ async function pedirJurosCartao(db: any, B: Bot, token: string, estado: EstadoBa
     ]));
 }
 
+// ─────────────────────── recebimento (lado receita) ───────────────────────
+//
+// Espelha a baixa de despesa, com três diferenças que vêm do negócio:
+//  1. o outro lado é CLIENTE, não fornecedor;
+//  2. o bot NUNCA pré-confirma o valor cheio — conferir quanto entrou de fato
+//     é o motivo de a Adriana ter pedido isto ("verificar se não houve nenhum
+//     desconto indevido");
+//  3. a conta de entrada é PERGUNTADA. Assumir o Santander poria dinheiro na
+//     conta errada toda vez que o cliente depositasse em outro banco.
+
+/** Motivos de um cliente pagar menos, na ordem do que mais acontece. */
+const MOTIVOS_A_MENOS: Array<{ cod: string; texto: string; baixa: boolean; rotulo: string }> = [
+  { cod: "imp", texto: "🧾 Retenção de imposto", baixa: true, rotulo: "retenção de imposto na fonte" },
+  { cod: "desc", texto: "🤝 Desconto combinado", baixa: true, rotulo: "desconto combinado" },
+  { cod: "tar", texto: "🏦 Tarifa do banco", baixa: true, rotulo: "tarifa bancária" },
+  { cod: "par", texto: "⏳ Pagou só uma parte", baixa: false, rotulo: "pagamento parcial" },
+  { cod: "err", texto: "❗ Pagou errado", baixa: false, rotulo: "valor errado do cliente" },
+];
+
+/** Contas onde o dinheiro pode ter entrado (os bancos de verdade). */
+async function perguntarContaEntrada(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  estado.etapa = "rec_conta";
+  await salvarEstado(db, token, estado);
+  const linhas: any[] = [];
+  for (let i = 0; i < CONTAS_TRANSFERENCIA.length; i += 2) {
+    linhas.push(CONTAS_TRANSFERENCIA.slice(i, i + 2).map((c) => ({
+      text: c.nome, callback_data: `fbrconta:${token}:${c.id}`,
+    })));
+  }
+  linhas.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+  await enviar(B, chatId, `<i>Em qual conta o dinheiro entrou?</i>`, inline(linhas));
+}
+
+/** Compara o que entrou com o que a receita valia e decide o próximo passo. */
+async function conferirValorRecebido(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const p = estado.parcela!;
+  const dif = Math.round((p.valor - estado.valorPago) * 100) / 100; // >0 = veio menos
+
+  if (Math.abs(dif) < 0.005) return await perguntarContaEntrada(db, B, token, estado, chatId);
+
+  if (dif < 0) {
+    // entrou MAIS que a conta: juros/multa que o cliente pagou por atraso
+    estado.juros = Math.abs(dif);
+    await enviar(
+      B, chatId,
+      `📈 Entrou <b>${brl(Math.abs(dif))} a mais</b> que a conta (${brl(p.valor)}).\n` +
+        `<i>Vou lançar como juros recebidos.</i>`,
+    );
+    return await perguntarContaEntrada(db, B, token, estado, chatId);
+  }
+
+  // entrou MENOS: é exatamente o que a Adriana quer flagrar
+  const pct = ((dif / p.valor) * 100).toFixed(1).replace(".", ",");
+  estado.etapa = "rec_motivo";
+  await salvarEstado(db, token, estado);
+  const botoes = MOTIVOS_A_MENOS.map((m) => [{ text: m.texto, callback_data: `fbrmot:${token}:${m.cod}` }]);
+  botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+  await enviar(
+    B, chatId,
+    `⚠️ <b>Entrou ${brl(dif)} A MENOS</b> (${pct}% da conta).\n\n` +
+      `<b>A receita era:</b> ${brl(p.valor)}\n<b>Entrou:</b> ${brl(estado.valorPago)}\n\n` +
+      `<i>Por quê? Só dou baixa depois que você disser — diferença sem explicação é desconto indevido.</i>`,
+    inline(botoes),
+  );
+}
+
+/** Grava o recebimento na Vobi e confere relendo. */
+async function executarRecebimento(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const p = estado.parcela!;
+
+  // idempotência: o botão do lembrete de ontem continua clicável, e dois toques
+  // reescreveriam a baixa (apagando o desconto/juros já gravados)
+  const aberta = await parcelaEmAberto(p.id).catch(() => true); // na dúvida, segue
+  if (!aberta) {
+    await apagarEstado(db, token);
+    await enviar(B, chatId, `✅ Essa receita já não está em aberto — alguém já deu baixa. Nada foi alterado.`);
+    return;
+  }
+
+  await enviar(B, chatId, "⏳ Dando baixa no recebimento…");
+  const desconto = Math.max(0, Math.round((p.valor - estado.valorPago) * 100) / 100);
+  let r;
+  try {
+    r = await darBaixa({
+      idInstallment: p.id,
+      valorPago: estado.valorPago,
+      // o valor que a RECEITA valia continua sendo o da Vobi: a diferença é
+      // desconto/retenção, não mudança do valor da conta. Corrigir o valor aqui
+      // apagaria a prova de que entrou menos.
+      valorConta: p.valor,
+      dataPagamento: estado.dataPagamento,
+      idPaymentBankAccount: estado.conta,
+      idPaymentType: estado.forma,
+      juros: estado.juros ?? 0,
+      desconto,
+      observacao: estado.recMotivo ? `Recebido a menos: ${estado.recMotivo}.` : undefined,
+    });
+  } catch (e: any) {
+    await enviar(B, chatId, "❌ Erro ao dar baixa: " + escTg(String(e?.message || e)) + "\n<i>Nada confirmado — confira na Vobi.</i>");
+    return;
+  }
+
+  await apagarEstado(db, token);
+  if (!r.ok) {
+    await enviar(B, chatId, `⚠️ <b>NÃO consegui confirmar o recebimento.</b>\n${escTg(r.mensagem)}\n\n<i>Não considere recebido — confira na Vobi.</i>`);
+    return;
+  }
+
+  let txt = `✅ <b>Recebimento lançado na Vobi!</b>\n\n`;
+  txt += `${escTg(p.fornecedor || "")} — ${escTg(p.descricao.slice(0, 45))}\n`;
+  txt += `Venc. ${dataBR(p.vencimento)} · <b>${brl(estado.valorPago)}</b> em ${dataBR(estado.dataPagamento)}\n`;
+  txt += `Entrou em: ${escTg(nomeDaConta(estado.conta))}\n`;
+  if (desconto > 0) txt += `\n⚠️ <b>${brl(desconto)} a menos</b> — ${escTg(estado.recMotivo || "sem motivo informado")}\n`;
+  if ((estado.juros ?? 0) > 0) txt += `\n📈 ${brl(estado.juros!)} de juros recebidos\n`;
+  txt += `\n<i>Lançado por ${escTg(estado.autor)}.</i>`;
+  await enviar(B, chatId, txt);
+}
+
 // ───────────────────────── callbacks (botões) ─────────────────────────
 
 export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: number, data: string) {
@@ -893,6 +1018,43 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     return await escolherParcela(db, B, tk, estado, chatId, {
       ...p, diferenca: 0, exata: true,
     } as Candidata);
+  }
+
+  // ── "📥 Recebi" no lembrete de receitas ──
+  if (data.startsWith("fbrec:")) {
+    const idInst = data.slice("fbrec:".length);
+    const p = await parcelaPorId(idInst).catch(() => null);
+    if (!p) {
+      await enviar(B, chatId, "Não encontrei essa receita em aberto — talvez já tenha sido baixada. 👍");
+      return;
+    }
+    const tk = novoToken();
+    const estado: EstadoBaixa = {
+      chat_id: chatId,
+      autor: `${cq.from?.first_name || ""} ${cq.from?.last_name || ""}`.trim() || "alguém",
+      valorPago: p.valor,
+      dataPagamento: hojeISO(),
+      forma: FORMA_PADRAO,
+      conta: CONTA_PADRAO,
+      tipo: "receita",
+      parcela: { id: p.id, descricao: p.descricao, valor: p.valor, vencimento: p.vencimento, fornecedor: p.fornecedor },
+      etapa: "rec_valor",
+    };
+    await salvarEstado(db, tk, estado);
+    const atraso = p.diasAtraso > 0 ? ` · <i>${p.diasAtraso} dias em atraso</i>` : "";
+    await enviar(
+      B, chatId,
+      `📥 <b>Recebimento</b>\n${escTg(p.fornecedor || "sem cliente")}\n` +
+        `<i>${escTg(p.descricao.slice(0, 45))}</i>\n` +
+        `Venc. ${dataBR(p.vencimento)}${atraso}\n<b>A receita é de ${brl(p.valor)}</b>\n\n` +
+        `<i>Quanto entrou de verdade na conta?</i>`,
+      inline([
+        [{ text: `✅ Entrou ${brl(p.valor)} (valor cheio)`, callback_data: `fbrcheio:${tk}` }],
+        [{ text: "✏️ Entrou outro valor", callback_data: `fbroutro:${tk}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${tk}` }],
+      ]),
+    );
+    return;
   }
 
   const [acao, token, arg] = data.split(":");
@@ -923,6 +1085,61 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
   // ── "não é nenhum desses": procura pelo VALOR, em qualquer fornecedor ──
   // ── transferência entre contas próprias: de onde saiu ──
+  // ── recebimento: entrou o valor cheio ──
+  if (acao === "fbrcheio") {
+    estado.valorPago = estado.parcela!.valor;
+    estado.juros = 0;
+    await salvarEstado(db, token, estado);
+    return await perguntarContaEntrada(db, B, token, estado, chatId);
+  }
+
+  // ── recebimento: vou digitar quanto entrou ──
+  if (acao === "fbroutro") {
+    estado.etapa = "rec_aguarda_valor";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, `Quanto entrou na conta? <i>(só o número, ex.: ${brl(estado.parcela!.valor).replace("R$ ", "")})</i>`, BOTOES_CANCELA(token));
+    return;
+  }
+
+  // ── recebimento: por que veio menos ──
+  if (acao === "fbrmot") {
+    const m = MOTIVOS_A_MENOS.find((x) => x.cod === arg);
+    if (!m) { await enviar(B, chatId, "Não entendi o motivo. Toque de novo."); return; }
+    estado.recMotivo = m.rotulo;
+    await salvarEstado(db, token, estado);
+    if (!m.baixa) {
+      // Decisão da Adriana: em pagamento parcial (ou erro do cliente) o bot NÃO
+      // mexe na parcela. Dividir um recebível na Vobi reescreve o lançamento
+      // inteiro e troca os IDs, inclusive das parcelas irmãs do mesmo contrato.
+      const p = estado.parcela!;
+      const falta = Math.round((p.valor - estado.valorPago) * 100) / 100;
+      await apagarEstado(db, token);
+      await enviar(
+        B, chatId,
+        `⏳ <b>Não dei baixa</b> — ${escTg(m.rotulo)}.\n\n` +
+          `${escTg(p.fornecedor || "")} — ${escTg(p.descricao.slice(0, 40))}\n` +
+          `<b>A receita é:</b> ${brl(p.valor)}\n<b>Entrou:</b> ${brl(estado.valorPago)}\n` +
+          `<b>Falta:</b> ${brl(falta)}\n\n` +
+          `<i>A receita segue em aberto pelo valor cheio. Ajuste na Vobi como preferir — ` +
+          `partir a parcela por aqui reescreveria o lançamento e trocaria os IDs.</i>`,
+      );
+      return;
+    }
+    return await perguntarContaEntrada(db, B, token, estado, chatId);
+  }
+
+  // ── recebimento: em qual conta entrou (e grava) ──
+  if (acao === "fbrconta") {
+    if (estado.etapa === "rec_gravando") {
+      await enviar(B, chatId, "⏳ Já estou lançando esse recebimento — só um instante.");
+      return;
+    }
+    estado.conta = Number(arg);
+    estado.etapa = "rec_gravando";
+    await salvarEstado(db, token, estado);
+    return await executarRecebimento(db, B, token, estado, chatId);
+  }
+
   if (acao === "fbtde") {
     if (estado.etapa === "transf_gravando") {
       await enviar(B, chatId, "⏳ Já estou lançando essa transferência — só um instante.");
@@ -1301,7 +1518,7 @@ async function pendenteEsperandoNumero(db: any, chatId: number) {
     .select("telegram_user_id, dados, estado")
     .like("telegram_user_id", "fb:%")
     .eq("chat_id", String(chatId))
-    .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros"])
+    .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros", "rec_aguarda_valor"])
     .order("telegram_user_id", { ascending: false })
     .limit(1);
   const linha = (data || [])[0];
@@ -1332,6 +1549,19 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
   if (novo === null) return false;
 
   // ── juros informados: o valor da conta passa a ser o pago menos os juros ──
+  // ── quanto entrou de verdade no recebimento ──
+  if (etapa === "rec_aguarda_valor") {
+    if (novo <= 0) {
+      await enviar(B, chatId, "O valor recebido precisa ser maior que zero.", BOTOES_CANCELA(token));
+      return true;
+    }
+    estado.valorPago = novo;
+    estado.juros = 0;
+    await salvarEstado(db, token, estado);
+    await conferirValorRecebido(db, B, token, estado, chatId);
+    return true;
+  }
+
   if (etapa === "aguarda_juros") {
     if (estado.forma !== FORMA_CARTAO && novo > estado.valorPago + 0.001) {
       await enviar(B, chatId,

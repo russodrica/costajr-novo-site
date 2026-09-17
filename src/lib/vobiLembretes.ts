@@ -10,7 +10,7 @@
 // existem — padrão do projeto é fazer piggyback).
 
 import { enviarTelegram, escTg } from "./telegram";
-import { vencimentosNoPeriodo, recebimentosNoPeriodo, vobiBaixaConfigurada, type ParcelaAberta } from "./vobiBaixa";
+import { vencimentosNoPeriodo, recebimentosNoPeriodo, recebimentosAtrasados, ehAluguelPessoal, vobiBaixaConfigurada, type ParcelaAberta } from "./vobiBaixa";
 import { separarPrioridades, classificarPrioridade, ICONE, ROTULO, ORDEM, ehEntradaDeCaixa } from "./prioridades";
 import { caixaDisponivel } from "./saldoContas";
 
@@ -52,6 +52,48 @@ function linhaParcela(p: ParcelaAberta, comData = false): string {
   const tipo = classificarPrioridade(p);
   const marca = tipo ? ICONE[tipo] : `•`;
   return `${marca} ${data}${quem}${desc}\n   ${brl(p.valor)}`;
+}
+
+/**
+ * Uma linha de RECEITA. Não reusa linhaParcela() de propósito: aquela marca a
+ * conta com o ícone de prioridade de caixa (judicial, FGTS, pessoal), que só
+ * faz sentido em despesa — numa receita o ícone sairia errado e confundiria.
+ */
+function linhaReceita(p: ParcelaAberta, comData = false): string {
+  const quem = p.fornecedor ? escTg(p.fornecedor) : "<i>sem cliente</i>";
+  const desc = p.descricao && p.descricao !== quem ? ` — ${escTg(p.descricao.slice(0, 42))}` : "";
+  const data = comData ? `<b>${dataBR(p.vencimento)}</b> · ` : "";
+  const marca = ehAluguelPessoal(p) ? "🏠" : "•";
+  return `${marca} ${data}${quem}${desc}\n   ${brl(p.valor)}`;
+}
+
+function listaReceitas(lista: ParcelaAberta[], comData: boolean, maximo = 20): string {
+  const txt = lista.slice(0, maximo).map((p) => linhaReceita(p, comData)).join("\n");
+  if (lista.length <= maximo) return txt;
+  const resto = lista.slice(maximo);
+  return txt + `\n\n<i>… e mais ${resto.length}, somando ${brl(total(resto))}.</i>`;
+}
+
+/** Total só do que é da operação — o aluguel do apartamento é receita pessoal
+ *  e some no meio se for somado junto (decisão da Adriana). */
+function totalOperacional(lista: ParcelaAberta[]): number {
+  return total(lista.filter((p) => !ehAluguelPessoal(p)));
+}
+
+/**
+ * Um botão "Recebi" por receita. O prefixo TEM de começar com `fb`: o
+ * roteador do bot só manda para o fluxo financeiro o que casa com
+ * /^fb[a-z0-9]+:/ — um prefixo novo nasceria morto, como já aconteceu antes.
+ */
+function botoesRecebi(lista: ParcelaAberta[], maximo = 6) {
+  const uteis = lista.slice(0, maximo);
+  if (!uteis.length) return undefined;
+  return {
+    inline_keyboard: uteis.map((p) => [{
+      text: `📥 Recebi: ${(p.fornecedor || p.descricao).slice(0, 22)} · ${brl(p.valor)}`.slice(0, 60),
+      callback_data: `fbrec:${p.id}`,
+    }]),
+  };
 }
 
 /** Agrupa por dia (para o resumo da semana). */
@@ -373,16 +415,112 @@ export async function enviarPrioridadesDoDia(dataRef?: string): Promise<{ enviou
 }
 
 /**
+ * RECEITAS QUE VENCEM HOJE.
+ *
+ * SILENCIOSO quando não há nada. A carteira de recebíveis da CJR é pequena —
+ * 13 parcelas a vencer no total, ZERO nos próximos sete dias quando isto foi
+ * escrito — então um aviso diário obrigatório diria "nenhuma receita vence
+ * hoje" quase todo dia e treinaria o grupo a ignorar as mensagens. Mesma regra
+ * do alerta de prioridades.
+ */
+export async function enviarRecebimentosDoDia(): Promise<{ enviou: boolean; qtd: number; motivo?: string }> {
+  if (!vobiBaixaConfigurada()) return { enviou: false, qtd: 0, motivo: "sem credenciais da Vobi" };
+  const hojeIso = iso(hojeSP());
+
+  let lista: ParcelaAberta[];
+  try {
+    lista = await recebimentosNoPeriodo(hojeIso, hojeIso);
+  } catch (e: any) {
+    return await avisarFalhaVobi(e, "as receitas de hoje");
+  }
+  if (!lista.length) return { enviou: false, qtd: 0, motivo: "nenhuma receita vence hoje" };
+
+  const texto =
+    `💰 <b>A RECEBER HOJE — ${lista.length} · ${brl(totalOperacional(lista))}</b>\n` +
+    `<i>${dataBR(hojeIso)}</i>\n\n` +
+    listaReceitas(lista, false) +
+    `\n\n<i>Caiu na conta? Toque no botão — ou mande o comprovante do recebimento.</i>`;
+
+  const r = await enviarTelegram(texto, { canal: CANAL, teclado: botoesRecebi(lista) });
+  return { enviou: !!r?.ok, qtd: lista.length, motivo: r?.ok ? undefined : r?.motivo };
+}
+
+/**
+ * SEGUNDA-FEIRA: o que entra na semana e o que ficou para trás.
+ *
+ * O bloco de ATRASADAS foi decisão da Adriana em 17/09/2026. São R$ 13.488,01
+ * em 10 receitas quando isto foi escrito, quatro delas de 2025 — dinheiro de
+ * cliente parado há mais de um ano que ninguém estava olhando. Fica só na
+ * segunda para não virar ruído diário.
+ */
+export async function enviarRecebimentosDaSemana(): Promise<{ enviou: boolean; qtd: number; motivo?: string }> {
+  if (!vobiBaixaConfigurada()) return { enviou: false, qtd: 0, motivo: "sem credenciais da Vobi" };
+  const hoje = hojeSP();
+  const hojeIso = iso(hoje);
+  const fim = iso(somarDias(hoje, 6));
+
+  let semana: ParcelaAberta[];
+  let atrasadas: ParcelaAberta[];
+  try {
+    semana = await recebimentosNoPeriodo(hojeIso, fim);
+    atrasadas = await recebimentosAtrasados(hojeIso);
+  } catch (e: any) {
+    return await avisarFalhaVobi(e, "as receitas da semana");
+  }
+  if (!semana.length && !atrasadas.length) {
+    return { enviou: false, qtd: 0, motivo: "nada a receber nem atrasado" };
+  }
+
+  let txt = `💰 <b>A RECEBER — semana de ${dataBR(hojeIso)} a ${dataBR(fim)}</b>\n\n`;
+  if (semana.length) {
+    txt += `<b>${semana.length} conta(s) · ${brl(totalOperacional(semana))}</b>\n`;
+    for (const [dia, ps] of porDia(semana)) {
+      txt += `\n<b>${DIA_SEMANA[new Date(dia + "T12:00:00Z").getUTCDay()]}, ${dataBR(dia)}</b>\n`;
+      txt += listaReceitas(ps, false, 8) + "\n";
+    }
+  } else {
+    txt += `<i>Nenhuma receita vence nesta semana.</i>\n`;
+  }
+
+  if (atrasadas.length) {
+    txt +=
+      `\n⏰ <b>ATRASADO E NÃO RECEBIDO — ${atrasadas.length} · ${brl(total(atrasadas))}</b>\n` +
+      atrasadas
+        .slice(0, 12)
+        .map((p) => {
+          const quem = p.fornecedor ? escTg(p.fornecedor) : "<i>sem cliente</i>";
+          const quanto = p.diasAtraso > 60 ? `${Math.round(p.diasAtraso / 30)} meses` : `${p.diasAtraso} dias`;
+          // com o ano quando é de outro ano: metade das atrasadas é de 2025, e
+          // "vencia 26/05" sozinho faz parecer que venceu há três meses
+          const ano = p.vencimento.slice(0, 4);
+          const quando = ano === String(hojeSP().getUTCFullYear())
+            ? dataBR(p.vencimento)
+            : `${dataBR(p.vencimento)}/${ano.slice(2)}`;
+          return `• ${quem} — ${brl(p.valor)}\n   <i>vencia ${quando}, há ${quanto}</i>`;
+        })
+        .join("\n") +
+      (atrasadas.length > 12 ? `\n\n<i>… e mais ${atrasadas.length - 12}.</i>` : "");
+  }
+
+  // botões só para o que vence na semana: atrasada costuma exigir conversa com
+  // o cliente antes, e o botão convida a baixar o que não entrou
+  const r = await enviarTelegram(txt, { canal: CANAL, teclado: botoesRecebi(semana) });
+  return { enviou: !!r?.ok, qtd: semana.length + atrasadas.length, motivo: r?.ok ? undefined : r?.motivo };
+}
+
+/**
  * Chamada única do cron diário: manda o do dia sempre e, se for segunda-feira,
  * manda também a agenda da semana e as prioridades dos próximos 30 dias.
  */
-export async function enviarLembretesFinanceiros(): Promise<{ alerta?: any; dia: any; semana?: any; prioridades?: any }> {
+export async function enviarLembretesFinanceiros(): Promise<Record<string, any>> {
   // o alerta do dia sai ANTES da lista geral: e o que nao pode passar batido
   const alerta = await enviarPrioridadesDoDia();
   const dia = await enviarVencimentosDoDia();
+  const receitasDia = await enviarRecebimentosDoDia();
   const ehSegunda = hojeSP().getUTCDay() === 1;
-  if (!ehSegunda) return { alerta, dia };
+  if (!ehSegunda) return { alerta, dia, receitasDia };
   const semana = await enviarVencimentosDaSemana();
   const prioridades = await enviarPrioridades(30);
-  return { alerta, dia, semana, prioridades };
+  const receitasSemana = await enviarRecebimentosDaSemana();
+  return { alerta, dia, semana, prioridades, receitasDia, receitasSemana };
 }

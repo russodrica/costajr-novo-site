@@ -111,8 +111,13 @@ export async function saldoDaConta(id: number, nome = ""): Promise<SaldoConta> {
 
   let s = 0;
   for (const p of achadas.values()) {
-    // Só o que foi pago move o saldo. ATENÇÃO ao intervalo: na Vobi, 1 é
-    // "previsto" e 12 é "cancelado"; TUDO entre 2 e 11 é alguma forma de pago.
+    // Só o que foi pago move o saldo. O intervalo 2..11 NÃO é chute: é a regra
+    // da própria Vobi, escrita no spec (InstallmentStatusEnum) — "Status 2 a 11
+    // são considerados 'parcela paga' para fins de cálculo". 1 é aguardando e
+    // 12 é cancelado. Os intermediários (5 em análise, 6 estornado, 9-11
+    // chargeback) parecem estranhos de contar como caixa, mas a TELA da Vobi os
+    // conta, e o que este arquivo reproduz é a tela — divergir daqui faria o
+    // número do aviso nunca bater com o que a Adriana vê.
     // A regra antiga aceitava só o 2 e por isso ignorava todas as baixas feitas
     // pelo bot, que grava 4 ("pago manual") — em 17/09/2026 eram três parcelas,
     // R$ 2.770,82 que já tinham saído do Santander e ainda contavam como caixa.

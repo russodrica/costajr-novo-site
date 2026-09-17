@@ -354,6 +354,75 @@ export async function contasBancarias(): Promise<Record<number, string>> {
   return dados;
 }
 
+// ───────────────────────────── clientes ─────────────────────────────
+//
+// Espelha o cache de fornecedores, mas e MUITO mais barato: sao 465 clientes
+// numa unica pagina (contra 2.540 fornecedores em 6). O endpoint e
+// /company-customer e o campo na parcela e payment.idCompanyCustomer.
+
+export type Cliente = { id: number; nome: string; razao: string };
+
+let _cliCache: { at: number; lista: Cliente[] } | null = null;
+const CHAVE_CLI = "clientes";
+
+async function clientesSalvos(): Promise<{ lista: Cliente[]; at: number } | null> {
+  try {
+    const { data } = await supabaseAdmin()
+      .from("vobi_cache").select("dados, atualizado_em").eq("chave", CHAVE_CLI).maybeSingle();
+    const lista = data?.dados as Cliente[] | undefined;
+    if (!Array.isArray(lista) || !lista.length) return null;
+    return { lista, at: new Date(data!.atualizado_em).getTime() };
+  } catch { return null; }
+}
+
+/** Lista de clientes, em cache: memória (1h) → banco (24h) → Vobi (1 requisição). */
+export async function clientes(): Promise<Cliente[]> {
+  if (_cliCache && Date.now() - _cliCache.at < FORN_TTL_MEM) return _cliCache.lista;
+
+  const salvo = await clientesSalvos();
+  if (salvo && Date.now() - salvo.at < FORN_TTL_DB) {
+    _cliCache = { at: Date.now(), lista: salvo.lista };
+    return salvo.lista;
+  }
+
+  let rows: any[];
+  try {
+    rows = await vGetAll("company-customer", "", 3);
+  } catch (e) {
+    if (salvo) { _cliCache = { at: Date.now(), lista: salvo.lista }; return salvo.lista; }
+    throw e;
+  }
+
+  const lista = rows
+    .map((c: any) => ({
+      id: c.id,
+      nome: String(c.name || c.legalName || "").trim(),
+      razao: String(c.legalName || "").trim(),
+    }))
+    .filter((c) => c.id && (c.nome || c.razao));
+  if (!lista.length && salvo) return salvo.lista;
+
+  _cliCache = { at: Date.now(), lista };
+  try {
+    await supabaseAdmin().from("vobi_cache").upsert(
+      { chave: CHAVE_CLI, dados: lista, atualizado_em: new Date().toISOString() },
+      { onConflict: "chave" },
+    );
+  } catch { /* cache é otimização; sem a tabela, só não persiste */ }
+  return lista;
+}
+
+/** Mapa id -> nome, só para os clientes que aparecem nestas linhas. */
+async function mapaClientes(linhas: any[]): Promise<Record<number, string>> {
+  const ids = new Set<number>();
+  for (const i of linhas) { const c = Number((i.payment || {}).idCompanyCustomer); if (c) ids.add(c); }
+  if (!ids.size) return {};
+  const lista = await clientes().catch(() => [] as Cliente[]);
+  const mapa: Record<number, string> = {};
+  for (const c of lista) if (ids.has(c.id)) mapa[c.id] = c.nome || c.razao;
+  return mapa;
+}
+
 // ──────────────────────────── fornecedores ────────────────────────────
 
 export type Fornecedor = { id: number; nome: string; razao: string };
@@ -505,6 +574,10 @@ export type ParcelaAberta = {
   // categoria financeira do pagamento (payment.idFinancialCategory) — e por
   // ela que as prioridades de caixa sao reconhecidas (ver lib/prioridades.ts)
   idCategoria: number | null;
+  /** "despesa" (billType expense) ou "receita" (income). Decide TUDO: quem e o
+   *  outro lado (fornecedor x cliente), como o valor diferente e interpretado e
+   *  que lista pode ser baixada. Nunca inferir pelo contexto — vem da parcela. */
+  tipo: "despesa" | "receita";
   parcela: string; // "2/3" quando houver
 };
 
@@ -525,23 +598,34 @@ function diasEntre(dataISO: string, refISO: string): number {
   return Math.round((b - a) / 86400000);
 }
 
-function montarParcela(i: any, nomeFornecedor?: string | null): ParcelaAberta {
+/**
+ * Normaliza uma parcela da Vobi.
+ *
+ * O `outro` e o nome do outro lado do lancamento: FORNECEDOR numa despesa,
+ * CLIENTE numa receita. Sao campos diferentes na Vobi (idSupplier x
+ * idCompanyCustomer) e ate 17/09/2026 o codigo so sabia ler o de despesa —
+ * toda receita saia sem nome nenhum no lembrete.
+ */
+function montarParcela(i: any, outro?: string | null): ParcelaAberta {
   const pay = i.payment || {};
   const venc = String(i.dueDate || "").slice(0, 10);
   return {
     id: i.id,
     idPayment: i.idPayment,
     descricao: String(pay.name || i.description || "Lançamento").trim(),
-    fornecedor: nomeFornecedor ?? null,
+    fornecedor: outro ?? null,
     // guardado para o botão "Paguei" do lembrete: sem o id do fornecedor não dá
     // para reabrir a lista de vencimentos daquele lançamento
-    idFornecedor: Number(pay.idSupplier) || null,
+    // numa receita o "outro lado" e o CLIENTE (idCompanyCustomer); guardado
+    // para o botao do lembrete conseguir reabrir os lancamentos daquele lado
+    idFornecedor: Number(pay.idSupplier) || Number(pay.idCompanyCustomer) || null,
     idCategoria: Number(pay.idFinancialCategory) || null,
     valor: num(i.price),
     valorOriginal: num(i.originalValue) || num(i.price),
     vencimento: venc,
     diasAtraso: venc ? diasEntre(venc, hojeISO()) : 0,
     parcela: i.number ? String(i.number) : "",
+    tipo: (i.payment || {}).billType === "income" ? "receita" : "despesa",
   };
 }
 
@@ -695,20 +779,93 @@ export async function parcelasAbertasPorValor(valor: number, limite = 8): Promis
 
 /** Parcelas de RECEITA em aberto que vencem no intervalo [de, ate].
  *  Usado pelo lembrete de prioridades para responder "o que entra ate la?". */
-export async function recebimentosNoPeriodo(de: string, ate: string): Promise<ParcelaAberta[]> {
+/**
+ * Categorias de receita que NÃO são cliente pagando.
+ *
+ * Decisão da Adriana em 17/09/2026 ("só cliente pagando"): "Outras Receitas"
+ * guarda as duas provisões de fim de ano — 001_IMPOSTOS ENGENHARIA
+ * (R$ 364.557,67, com o INSS no lugar do cliente) e 002_LEILAO_MMM
+ * (R$ 300.000, vencendo em 2027). Somá-las faria o "a receber" passar de
+ * R$ 700 mil e esconder o que de fato vai entrar.
+ */
+const CAT_RECEITA_NAO_OPERACIONAL = new Set<number>([
+  21796616, // Outras Receitas (as provisões de 31/12)
+  21657983, // Outras Receitas e Entradas
+  22957008, // Transferência entre Contas (receita) — dinheiro nosso, não do cliente
+  21796618, // Ajuste Caixa
+]);
+
+/** Aluguel do apartamento: receita PESSOAL da Adriana, não da operação. Entra
+ *  nos lembretes marcada e fora do total (decisão dela em 17/09/2026). */
+export const CAT_ALUGUEL_PESSOAL = 21796622;
+
+/**
+ * É cliente pagando? Exclui provisão, transferência e o que está sem cliente
+ * (a "DEVOLUCAO BLOQUEIO JUDICIAL_SISBAJUD" não tem cliente nenhum — é
+ * devolução de bloqueio, não recebível).
+ */
+export function ehReceitaDeCliente(p: ParcelaAberta): boolean {
+  if (CAT_RECEITA_NAO_OPERACIONAL.has(p.idCategoria ?? 0)) return false;
+  if (!p.idFornecedor) return false; // em receita este campo carrega o cliente
+  return !/TRANSFER[ÊE]NCIA ENTRE CONTAS|AJUSTE DE CAIXA|DEVOLUCAO BLOQUEIO/i.test(p.descricao || "");
+}
+
+/** É o aluguel pessoal? Mostrado com 🏠 e somado à parte. */
+export const ehAluguelPessoal = (p: ParcelaAberta) => p.idCategoria === CAT_ALUGUEL_PESSOAL;
+
+/**
+ * TODAS as receitas em aberto, com o nome do cliente resolvido.
+ *
+ * São só 23 hoje (contra ~1.335 de despesa), então cabem numa página e o custo
+ * é UMA requisição — dá para chamar à vontade. Cache curto porque o lembrete e
+ * a busca por valor pedem a mesma lista na mesma execução.
+ */
+let _receitas: { linhas: ParcelaAberta[]; ate: number } | null = null;
+export async function receitasAbertas(): Promise<ParcelaAberta[]> {
+  if (_receitas && Date.now() < _receitas.ate) return _receitas.linhas;
   const rows = await vGetAll(
     "installment",
-    `&where[idInstallmentStatus]=1&where[$payment.billType$]=income` +
-      `&where[dueDate][gte]=${de}&where[dueDate][lte]=${ate}`,
-    10,
+    `&where[idInstallmentStatus]=1&where[$payment.billType$]=income`,
+    4,
   );
-  const dentro = rows.filter((i: any) => {
-    const d = String(i.dueDate || "").slice(0, 10);
-    return d >= de && d <= ate;
-  });
-  return dentro
-    .map((i: any) => montarParcela(i, null))
+  const nomes = await mapaClientes(rows);
+  const linhas = rows
+    .map((i: any) => montarParcela(i, nomes[(i.payment || {}).idCompanyCustomer] ?? null))
     .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+  _receitas = { linhas, ate: Date.now() + 10 * 60_000 };
+  return linhas;
+}
+
+/** Receitas de CLIENTE que vencem no intervalo. */
+export async function recebimentosNoPeriodo(de: string, ate: string): Promise<ParcelaAberta[]> {
+  return (await receitasAbertas())
+    .filter((p) => p.vencimento >= de && p.vencimento <= ate)
+    .filter(ehReceitaDeCliente);
+}
+
+/** Receitas de CLIENTE já vencidas e não recebidas — a inadimplência. */
+export async function recebimentosAtrasados(hoje: string): Promise<ParcelaAberta[]> {
+  return (await receitasAbertas())
+    .filter((p) => p.vencimento && p.vencimento < hoje)
+    .filter(ehReceitaDeCliente);
+}
+
+/**
+ * Receitas em aberto com um valor parecido com o recebido.
+ *
+ * A tolerância é MAIOR que a da despesa de propósito. Em despesa paga-se o
+ * valor ou mais (juros), então ±R$ 1,00 basta. Em recebimento o cliente paga
+ * A MENOS — retenção de imposto tira 1,5% a 5% — e é justamente essa diferença
+ * que a Adriana quer flagrar. Aceitamos até 8% a menos e R$ 1,00 a mais.
+ */
+export async function receitasAbertasPorValor(valor: number, limite = 8): Promise<ParcelaAberta[]> {
+  const perto = (await receitasAbertas()).filter((p) => {
+    const dif = p.valor - valor; // >0 = recebeu menos que a conta
+    return dif >= -1 && dif <= p.valor * 0.08 + 0.01;
+  });
+  return perto
+    .sort((a, b) => Math.abs(a.valor - valor) - Math.abs(b.valor - valor) || a.vencimento.localeCompare(b.vencimento))
+    .slice(0, limite);
 }
 
 /** Resolve idSupplier -> nome para um conjunto de parcelas (usa o cache global). */
@@ -729,8 +886,28 @@ export async function parcelaPorId(idInstallment: string): Promise<ParcelaAberta
   const j = await vGet(`/installment?limit=1&where[id]=${encodeURIComponent(idInstallment)}`);
   const i = (j?.rows || [])[0];
   if (!i) return null;
-  const nomes = await mapaFornecedores([i]);
-  return montarParcela(i, nomes[(i.payment || {}).idSupplier] ?? null);
+  // O outro lado do lançamento muda com o tipo: fornecedor na despesa, CLIENTE
+  // na receita. Buscar fornecedor numa receita não só devolve nada como, nos
+  // poucos lançamentos de receita que têm idSupplier preenchido por engano,
+  // carimbaria um nome de fornecedor onde deveria estar o do cliente.
+  const ehReceita = (i.payment || {}).billType === "income";
+  const nomes = ehReceita ? await mapaClientes([i]) : await mapaFornecedores([i]);
+  const chave = ehReceita ? (i.payment || {}).idCompanyCustomer : (i.payment || {}).idSupplier;
+  return montarParcela(i, nomes[chave] ?? null);
+}
+
+/**
+ * A parcela ainda está EM ABERTO?
+ *
+ * `parcelaPorId` devolve a parcela em qualquer status — e o botão do lembrete de
+ * ontem continua clicável no Telegram para sempre. Sem esta checagem, um toque
+ * repetido reescreveria uma baixa já feita, apagando o desconto e os juros que
+ * já estavam gravados.
+ */
+export async function parcelaEmAberto(idInstallment: string): Promise<boolean> {
+  const j = await vGet(`/installment?limit=1&where[id]=${encodeURIComponent(idInstallment)}`);
+  const i = (j?.rows || [])[0];
+  return !!i && Number(i.idInstallmentStatus) === 1;
 }
 
 // ─────────────────────────────── a baixa ───────────────────────────────
