@@ -24,11 +24,11 @@ import { escTg } from "./telegram";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
 import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 import {
-  buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelaPorId, darBaixa,
+  buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelasAbertasPorValor, fornecedoresComContaEmAberto, parcelaPorId, darBaixa,
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
   CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO, CARTOES,
   CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
-  type Candidata, type Fornecedor,
+  type Candidata, type Fornecedor, type ParcelaAberta,
 } from "./vobiBaixa";
 
 const CHAVE_GRUPO = "grupo_financeiro";
@@ -103,6 +103,9 @@ type EstadoBaixa = {
   juros?: number;
   vencimentoFatura?: string;
   etapa: string;
+  /** o que a pessoa (ou o comprovante) deu como nome do fornecedor — guardado
+   *  para o "🔄 Tentar de novo" refazer a busca sem pedir o comprovante de novo */
+  nomeBusca?: string;
   /** para não deixar um passo esquecido capturando mensagens do grupo o dia todo */
   atualizadoEm?: string;
 
@@ -223,21 +226,77 @@ async function iniciar(
     conta: CONTA_PADRAO, // no cartão, entrarNoCartao troca pela conta do cartão
     valorConta: lido?.valorConta,
     juros: lido?.juros,
+    nomeBusca: nome,
     etapa: "buscando",
   };
 
   await enviar(B, chatId, `🔎 Procurando <b>${escTg(nome)}</b> — ${brl(valor)}…`);
+  await buscarFornecedorEContinuar(db, B, token, estado, chatId);
+}
+
+/**
+ * A Vobi recusou (cota de 1000 req/h estourada, ou fora do ar). NÃO perdemos o
+ * que já foi lido: guardamos o estado e oferecemos "Tentar de novo" — ler o
+ * comprovante de novo custa uma chamada de IA e o tempo da pessoa.
+ */
+async function falhaDaVobi(
+  db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, e: any, oQue: string,
+) {
+  estado.etapa = "retry";
+  await salvarEstado(db, token, estado);
+
+  const cota = !!e?.cota;
+  const espera = cota && e?.esperaSeg ? ` Ela volta em ~<b>${Math.ceil(e.esperaSeg / 60)} min</b>.` : "";
+  const cabeca = cota
+    ? `⏳ A Vobi bateu o limite de consultas da hora, então não consegui ${oQue}.${espera}`
+    : `❌ Não consegui ${oQue}: ` + escTg(String(e?.message || e));
+
+  await enviar(
+    B, chatId,
+    `${cabeca}
+
+<b>Não precisa mandar o comprovante de novo</b> — já anotei ${brl(estado.valorPago)}` +
+      `${estado.fornecedor ? " para " + escTg(estado.fornecedor.nome) : estado.nomeBusca ? " para " + escTg(estado.nomeBusca) : ""}.` +
+      ` É só tocar em <b>Tentar de novo</b>.`,
+    inline([
+      [{ text: "🔄 Tentar de novo", callback_data: `fbretry:${token}` }],
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ]),
+  );
+}
+
+/** Busca o fornecedor pelo nome guardado no estado e segue o fluxo. */
+async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const nome = estado.nomeBusca || "";
 
   let achados: Fornecedor[];
   try {
-    achados = await buscarFornecedoresAproximado(nome, 6);
+    achados = await buscarFornecedoresAproximado(nome, 30);
   } catch (e: any) {
-    await enviar(B, chatId, "❌ Não consegui consultar a Vobi agora: " + escTg(String(e?.message || e)));
-    return;
+    return await falhaDaVobi(db, B, token, estado, chatId, e, "consultar a Vobi");
+  }
+
+  // Regra da Adriana: comprovante so procura em quem tem conta EM ABERTO. Sem
+  // isso a lista enche de homonimo que nao deve nada.
+  try {
+    const devendo = await fornecedoresComContaEmAberto();
+    const comConta = achados.filter((f) => devendo.has(f.id));
+    if (comConta.length) achados = comConta.slice(0, 6);
+    else achados = [];
+  } catch {
+    achados = achados.slice(0, 6); // sem a lista de devedores, segue com o que veio
   }
 
   if (!achados.length) {
-    await enviar(B, chatId, `❌ Não achei nenhum fornecedor com <b>${escTg(nome)}</b> na Vobi.\nTente outro pedaço do nome.`);
+    await enviar(
+      B,
+      chatId,
+      `❌ Nenhum fornecedor com <b>${escTg(nome)}</b> tem conta em aberto.\n\n<i>Num depósito judicial ou guia de imposto o favorecido do comprovante é o tribunal ou o órgão, não o fornecedor — nesses casos o que liga é o valor.</i>`,
+      inline([
+        [{ text: `🔎 Procurar contas de ${brl(estado.valorPago)}`, callback_data: `fbvalor:${token}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]),
+    );
     return;
   }
 
@@ -250,6 +309,8 @@ async function iniciar(
   estado.etapa = "esc_fornecedor";
   await salvarEstado(db, token, estado);
   const botoes = achados.map((f) => [{ text: (f.nome || f.razao).slice(0, 55), callback_data: `fbforn:${token}:${f.id}` }]);
+  // saida obrigatoria: o favorecido do comprovante pode nao ser o fornecedor
+  botoes.push([{ text: "🔎 Não é nenhum desses", callback_data: `fbvalor:${token}` }]);
   botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
   await enviar(B, chatId, `Achei <b>${achados.length}</b> fornecedores com “${escTg(nome)}”. Qual é?`, inline(botoes));
 }
@@ -444,8 +505,7 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   try {
     cands = await parcelasCandidatas(f.id, estado.valorPago, f.nome, 6);
   } catch (e: any) {
-    await enviar(B, chatId, "❌ Falha ao buscar as parcelas: " + escTg(String(e?.message || e)));
-    return;
+    return await falhaDaVobi(db, B, token, estado, chatId, e, "buscar as parcelas em aberto");
   }
 
   if (!cands.length) {
@@ -719,6 +779,57 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   const estado = await lerEstado(db, token);
   if (!estado) {
     await enviar(B, chatId, "Esse lançamento já foi tratado ou expirou. Mande o valor e o fornecedor de novo. 👍");
+    return;
+  }
+
+  // "🔄 Tentar de novo" depois de a Vobi recusar: retoma de onde parou, sem
+  // pedir o comprovante de novo.
+  if (acao === "fbretry") {
+    if (estado.fornecedor) return await mostrarParcelas(db, B, token, estado, chatId);
+    await enviar(B, chatId, `🔎 Procurando <b>${escTg(estado.nomeBusca || "")}</b> — ${brl(estado.valorPago)}…`);
+    return await buscarFornecedorEContinuar(db, B, token, estado, chatId);
+  }
+
+  // ── "não é nenhum desses": procura pelo VALOR, em qualquer fornecedor ──
+  if (acao === "fbvalor") {
+    let achadas: ParcelaAberta[];
+    try {
+      achadas = await parcelasAbertasPorValor(estado.valorPago, 8);
+    } catch (e: any) {
+      return await falhaDaVobi(db, B, token, estado, chatId, e, "procurar pelo valor");
+    }
+    if (!achadas.length) {
+      await enviar(
+        B,
+        chatId,
+        `❌ Não achei nenhuma conta em aberto de <b>${brl(estado.valorPago)}</b>.\n\n<i>Pode ser que a conta ainda não esteja lançada, ou que o valor pago seja diferente do valor da conta (juros, desconto). Lance na Vobi e me mande o comprovante de novo.</i>`,
+      );
+      return;
+    }
+    // Candidata = ParcelaAberta + a diferenca para o valor pago (juros/desconto)
+    estado.candidatas = achadas.map((c) => ({
+      ...c,
+      diferenca: Math.round((estado.valorPago - c.valor) * 100) / 100,
+      exata: Math.round(c.valor * 100) === Math.round(estado.valorPago * 100),
+    }));
+    estado.etapa = "esc_parcela";
+    await salvarEstado(db, token, estado);
+    const linhas = achadas.map((c, i) => {
+      const quem = c.fornecedor ? escTg(c.fornecedor) : "<i>sem fornecedor</i>";
+      const atraso = c.diasAtraso > 0 ? ` · ${c.diasAtraso}d em atraso` : "";
+      return `${i + 1}. <b>${dataBR(c.vencimento)}</b> — ${brl(c.valor)}${atraso}\n    ${quem}\n    <i>${escTg(c.descricao.slice(0, 44))}</i>`;
+    }).join("\n");
+    const bts = achadas.map((c) => [{
+      text: `${dataBR(c.vencimento).slice(0, 5)} · ${brl(c.valor)} · ${(c.fornecedor || c.descricao).slice(0, 22)}`.slice(0, 60),
+      callback_data: `fbparc:${token}:${c.id}`,
+    }]);
+    bts.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+    await enviar(
+      B,
+      chatId,
+      `🔎 Contas em aberto de <b>${brl(estado.valorPago)}</b>, de qualquer fornecedor:\n\n${linhas}\n\n<i>Qual delas?</i>`,
+      inline(bts),
+    );
     return;
   }
 

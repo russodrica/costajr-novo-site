@@ -5,7 +5,10 @@
 // ════════════════════════════════════════════════════════════════════════
 
 function envVar(name: string): string {
-  return (import.meta.env as any)[name] || (process.env as any)[name] || "";
+  // import.meta.env so existe sob o Vite; fora dele (script de teste, cron
+  // rodado por node) e undefined e o acesso direto quebraria.
+  const meta = (import.meta as any)?.env;
+  return (meta && meta[name]) || (process.env as any)[name] || "";
 }
 const TOKEN_PADRAO = envVar("TELEGRAM_BOT_TOKEN");
 const CHAT_PADRAO = envVar("TELEGRAM_CHAT_ID");

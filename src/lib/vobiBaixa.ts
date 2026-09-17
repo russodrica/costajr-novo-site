@@ -16,11 +16,16 @@
 // (ver vobiEscrita.ts). Toda baixa aqui RELÊ a parcela depois e só reporta
 // sucesso se o status realmente virou pago. Nunca dizer "pago" sem conferir.
 
+import { supabaseAdmin } from "./supabase";
+
 const VOBI = "https://api.vobi.com.br/v2";
 
 function creds() {
-  const uuid = process.env.VOBI_UUID ?? import.meta.env.VOBI_UUID;
-  const secret = process.env.VOBI_SECRET ?? import.meta.env.VOBI_SECRET;
+  // import.meta.env so existe sob o Vite; fora dele (script, cron por node) e
+  // undefined e o acesso direto quebra.
+  const meta = (import.meta as any)?.env ?? {};
+  const uuid = process.env.VOBI_UUID ?? meta.VOBI_UUID;
+  const secret = process.env.VOBI_SECRET ?? meta.VOBI_SECRET;
   return { uuid, secret };
 }
 
@@ -46,8 +51,36 @@ async function token(): Promise<string> {
   return _token;
 }
 
+/**
+ * Erro de cota da Vobi. A API libera 1000 requisições por hora
+ * (`ratelimit-policy: 1000;w=3600`) para a integração INTEIRA — bot, telas
+ * /admin/vobi-*, lembretes e o Excel financeiro diário (~600 num run às 07:00).
+ * Quando estoura, não adianta repetir na hora: a janela é de até 1h.
+ */
+export class VobiCotaError extends Error {
+  readonly cota = true;
+  /** segundos até a cota voltar, quando a Vobi informa */
+  readonly esperaSeg: number | null;
+  constructor(esperaSeg: number | null) {
+    super(
+      "A Vobi bloqueou temporariamente as consultas (cota de 1000 por hora)." +
+        (esperaSeg ? ` Ela volta em ~${Math.ceil(esperaSeg / 60)} min.` : ""),
+    );
+    this.esperaSeg = esperaSeg;
+  }
+}
+
+/** Lê quanto falta para a cota voltar: `retry-after` ou o `reset=` do `ratelimit`. */
+function esperaDoHeader(h: Headers): number | null {
+  const ra = Number(h.get("retry-after"));
+  if (Number.isFinite(ra) && ra > 0) return ra;
+  const m = /reset=(\d+)/.exec(h.get("ratelimit") || "");
+  return m ? Number(m[1]) : null;
+}
+
 async function vGet(path: string): Promise<any> {
   const r = await fetch(`${VOBI}${path}`, { headers: { authorization: `Bearer ${await token()}` } });
+  if (r.status === 429) throw new VobiCotaError(esperaDoHeader(r.headers));
   if (!r.ok) throw new Error(`Vobi GET ${path}: HTTP ${r.status}`);
   return r.json();
 }
@@ -58,6 +91,7 @@ async function vPut(path: string, body: any): Promise<any> {
     headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (r.status === 429) throw new VobiCotaError(esperaDoHeader(r.headers));
   if (!r.ok) throw new Error(`Vobi PUT ${path}: HTTP ${r.status} ${(await r.text()).slice(0, 300)}`);
   return r.json().catch(() => ({}));
 }
@@ -161,19 +195,69 @@ export type Fornecedor = { id: number; nome: string; razao: string };
 
 let _fornCache: { at: number; lista: Fornecedor[] } | null = null;
 
+const CHAVE_FORN = "fornecedores";
+const FORN_TTL_MEM = 60 * 60 * 1000; // 1h na memória da instância
+const FORN_TTL_DB = 24 * 60 * 60 * 1000; // 24h no banco antes de buscar de novo
+
+/** Lê a cópia salva no banco. Nunca lança: sem tabela/sem banco, só não tem cache. */
+async function fornecedoresSalvos(): Promise<{ lista: Fornecedor[]; at: number } | null> {
+  try {
+    const { data } = await supabaseAdmin()
+      .from("vobi_cache").select("dados, atualizado_em").eq("chave", CHAVE_FORN).maybeSingle();
+    const lista = data?.dados as Fornecedor[] | undefined;
+    if (!Array.isArray(lista) || !lista.length) return null;
+    return { lista, at: new Date(data!.atualizado_em).getTime() };
+  } catch { return null; }
+}
+
+async function salvarFornecedores(lista: Fornecedor[]): Promise<void> {
+  try {
+    await supabaseAdmin().from("vobi_cache").upsert(
+      { chave: CHAVE_FORN, dados: lista, atualizado_em: new Date().toISOString() },
+      { onConflict: "chave" },
+    );
+  } catch { /* cache é otimização, nunca pode derrubar a baixa */ }
+}
+
 /**
- * Lista de fornecedores (~2.540), em cache de 1h.
+ * Lista de fornecedores (~2.540), em cache de 3 camadas: memória → banco → Vobi.
  *
  * Por que baixar tudo: a API da Vobi NÃO tem busca por texto — operadores como
  * [$iLike] devolvem 400 e `where[name]` exige o nome EXATO. Então a busca por
- * pedaço do nome é feita aqui, em memória (6 chamadas, ~1,5s, só 1x por hora).
+ * pedaço do nome é feita aqui, em memória (6 chamadas, ~1,5s).
+ *
+ * POR QUE O CACHE NO BANCO (17/09/2026): a cota da Vobi é de 1000 req/h para a
+ * integração inteira, e na Vercel cada cold start zera o cache de memória — ou
+ * seja, quase toda baixa de pagamento rebaixava as 6 páginas. Estourou a cota e
+ * o bot devolveu "HTTP 429" no meio de um comprovante que já tinha lido certo.
+ * Agora a lista sobrevive entre invocações e, se a Vobi recusar, usamos a última
+ * cópia salva (mesmo velha) — nome de fornecedor quase não muda, e uma lista de
+ * ontem é infinitamente melhor que um erro.
  *
  * NÃO filtrar por isActive: o LEROY MERLIN que concentra 152 parcelas em aberto
  * está cadastrado como isActive=false.
  */
 export async function fornecedores(): Promise<Fornecedor[]> {
-  if (_fornCache && Date.now() - _fornCache.at < 60 * 60 * 1000) return _fornCache.lista;
-  const rows = await vGetAll("supplier");
+  if (_fornCache && Date.now() - _fornCache.at < FORN_TTL_MEM) return _fornCache.lista;
+
+  const salvo = await fornecedoresSalvos();
+  if (salvo && Date.now() - salvo.at < FORN_TTL_DB) {
+    _fornCache = { at: Date.now(), lista: salvo.lista };
+    return salvo.lista;
+  }
+
+  let rows: any[];
+  try {
+    rows = await vGetAll("supplier");
+  } catch (e) {
+    // Vobi fora do ar ou cota estourada: a cópia velha salva o lançamento.
+    if (salvo) {
+      _fornCache = { at: Date.now(), lista: salvo.lista };
+      return salvo.lista;
+    }
+    throw e;
+  }
+
   const lista = rows
     .map((f: any) => ({
       id: f.id,
@@ -181,7 +265,12 @@ export async function fornecedores(): Promise<Fornecedor[]> {
       razao: String(f.legalName || "").trim(),
     }))
     .filter((f) => f.id && (f.nome || f.razao));
+
+  // lista vazia = resposta estranha da Vobi; não vale sobrescrever o cache bom
+  if (!lista.length && salvo) return salvo.lista;
+
   _fornCache = { at: Date.now(), lista };
+  await salvarFornecedores(lista);
   return lista;
 }
 
@@ -248,6 +337,9 @@ export type ParcelaAberta = {
   valorOriginal: number;
   vencimento: string; // AAAA-MM-DD
   diasAtraso: number; // >0 = vencida
+  // categoria financeira do pagamento (payment.idFinancialCategory) — e por
+  // ela que as prioridades de caixa sao reconhecidas (ver lib/prioridades.ts)
+  idCategoria: number | null;
   parcela: string; // "2/3" quando houver
 };
 
@@ -279,6 +371,7 @@ function montarParcela(i: any, nomeFornecedor?: string | null): ParcelaAberta {
     // guardado para o botão "Paguei" do lembrete: sem o id do fornecedor não dá
     // para reabrir a lista de vencimentos daquele lançamento
     idFornecedor: Number(pay.idSupplier) || null,
+    idCategoria: Number(pay.idFinancialCategory) || null,
     valor: num(i.price),
     valorOriginal: num(i.originalValue) || num(i.price),
     vencimento: venc,
@@ -361,6 +454,72 @@ export async function vencimentosNoPeriodo(de: string, ate: string): Promise<Par
   return dentro
     .map((i: any) => montarParcela(i, nomes[(i.payment || {}).idSupplier] ?? null))
     .sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor);
+}
+
+/**
+ * Os fornecedores que TEM conta a pagar em aberto.
+ *
+ * O cadastro tem 2.540 fornecedores e a maioria nao deve nada. Procurar o
+ * favorecido de um comprovante no cadastro inteiro devolve homonimo que nunca
+ * vai ser a resposta — foi o que aconteceu com um deposito judicial, que
+ * ofereceu quatro empresas com "caixa" no nome e nenhuma com conta aberta.
+ * Cache de 10 minutos: a lista muda pouco dentro de uma conversa.
+ */
+let _comAberto: { ids: Set<number>; ate: number } | null = null;
+export async function fornecedoresComContaEmAberto(): Promise<Set<number>> {
+  if (_comAberto && Date.now() < _comAberto.ate) return _comAberto.ids;
+  const rows = await vGetAll(
+    "installment",
+    `&where[idInstallmentStatus]=1&where[$payment.billType$]=expense`,
+    8,
+  );
+  const ids = new Set<number>();
+  for (const i of rows) { const s = Number((i.payment || {}).idSupplier); if (s) ids.add(s); }
+  _comAberto = { ids, ate: Date.now() + 10 * 60_000 };
+  return ids;
+}
+
+/**
+ * Parcelas de DESPESA em aberto com um valor especifico, de QUALQUER fornecedor.
+ *
+ * Existe porque o favorecido do comprovante nem sempre e o fornecedor do
+ * lancamento: em deposito judicial o boleto sai no nome do tribunal (ex.:
+ * "CAIXA ECONOMICA FEDERAL - TRT02" para o acordo trabalhista), em guia de
+ * imposto sai no nome do orgao, e em pagamento por intermediario sai no nome do
+ * intermediario. Nesses casos so o VALOR liga o comprovante a conta.
+ */
+export async function parcelasAbertasPorValor(valor: number, limite = 8): Promise<ParcelaAberta[]> {
+  const rows = await vGetAll(
+    "installment",
+    `&where[idInstallmentStatus]=1&where[$payment.billType$]=expense`,
+    8,
+  );
+  const centavos = (v: number) => Math.round(v * 100);
+  const alvo = centavos(valor);
+  const perto = rows.filter((i: any) => Math.abs(centavos(num(i.price)) - alvo) <= 100); // ate 1 real de folga
+  const nomes = await mapaFornecedores(perto);
+  return perto
+    .map((i: any) => montarParcela(i, nomes[(i.payment || {}).idSupplier] ?? null))
+    .sort((a, b) => Math.abs(a.valor - valor) - Math.abs(b.valor - valor) || a.vencimento.localeCompare(b.vencimento))
+    .slice(0, limite);
+}
+
+/** Parcelas de RECEITA em aberto que vencem no intervalo [de, ate].
+ *  Usado pelo lembrete de prioridades para responder "o que entra ate la?". */
+export async function recebimentosNoPeriodo(de: string, ate: string): Promise<ParcelaAberta[]> {
+  const rows = await vGetAll(
+    "installment",
+    `&where[idInstallmentStatus]=1&where[$payment.billType$]=income` +
+      `&where[dueDate][gte]=${de}&where[dueDate][lte]=${ate}`,
+    10,
+  );
+  const dentro = rows.filter((i: any) => {
+    const d = String(i.dueDate || "").slice(0, 10);
+    return d >= de && d <= ate;
+  });
+  return dentro
+    .map((i: any) => montarParcela(i, null))
+    .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
 }
 
 /** Resolve idSupplier -> nome para um conjunto de parcelas (usa o cache global). */
