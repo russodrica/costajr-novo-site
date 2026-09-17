@@ -78,7 +78,11 @@ const RX_JUDICIAL =
  * Despesas Administrativas, e nenhuma regra de judicial/pessoal/FGTS o pegaria.
  */
 const NUNCA_ATRASA: Array<{ rx: RegExp; tipo: TipoPrioridade }> = [
-  { rx: /\bFGTS\b/i, tipo: "fgts" },
+  // Sem \b: em regex o sublinhado é caractere de palavra, então /\bFGTS\b/ NÃO
+  // casa com "FGTS_08/2026" — que é exatamente como a guia é nomeada na Vobi.
+  // Foi por isso que a guia de 18/09 ficou de fora da primeira lista. "FGTS" não
+  // é pedaço de nenhuma palavra do português, então buscar a sigla solta é seguro.
+  { rx: /FGTS/i, tipo: "fgts" },
   { rx: /ACORDO TRABALH[A-Z]*[_ ]*LYSNOR|LYSNOR/i, tipo: "judicial" },
   { rx: /ALUGUEL[_ ]*IM[OÓ]VEL[_ ]*NOVO[_ ]*DEPOSITO[_ ]*QG|ALUGUEL.*DEPOSITO[_ ]*QG/i, tipo: "fixas" },
   { rx: /NEGOCIA[ÇC][AÃ]O PARC RESCIS[AÃ]O/i, tipo: "pessoas" },
@@ -107,7 +111,7 @@ export function classificarPrioridade(p: ParcelaAberta): TipoPrioridade | null {
   const cat = p.idCategoria ?? 0;
   const texto = `${p.descricao || ""} ${p.fornecedor || ""}`;
   if (CAT_JUDICIAL.has(cat) || RX_JUDICIAL.test(texto)) return "judicial";
-  if (cat === CAT_FGTS || /\bFGTS\b/i.test(texto)) return "fgts";
+  if (cat === CAT_FGTS || /FGTS/i.test(texto)) return "fgts";
   if (CAT_PESSOAS.has(cat)) return "pessoas";
   return null;
 }

@@ -85,6 +85,17 @@ async function vGet(path: string): Promise<any> {
   return r.json();
 }
 
+async function vPost(path: string, body: any): Promise<any> {
+  const r = await fetch(`${VOBI}${path}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (r.status === 429) throw new VobiCotaError(esperaDoHeader(r.headers));
+  if (!r.ok) throw new Error(`Vobi POST ${path}: HTTP ${r.status} ${(await r.text()).slice(0, 300)}`);
+  return r.json().catch(() => ({}));
+}
+
 async function vPut(path: string, body: any): Promise<any> {
   const r = await fetch(`${VOBI}${path}`, {
     method: "PUT",
@@ -139,6 +150,137 @@ export const CONTAS_PRINCIPAIS = [
   { id: 24607, nome: "Bradesco Empresa" },
   { id: 24608, nome: "Sicoob Empresa" },
 ];
+
+/**
+ * Contas ATIVAS que podem ser ponta de uma transferencia — conferidas contra
+ * /bank-account em 17/09/2026. Ficam de fora os cartoes de credito (pedido da
+ * Adriana: transferencia nao sai de cartao), o BAIXA_VOBI e o EMPRESTIMOS, que
+ * sao contas de ajuste e nao banco de verdade.
+ *
+ * O `rx` serve para MARCAR com uma estrela o banco que o comprovante mencionou —
+ * a pessoa ainda escolhe. Caixa Pessoal fica sem `rx` de proposito: divide o nome
+ * com a Caixa Empresa, e palpite errado atrapalha mais do que ajuda.
+ */
+export const CONTAS_TRANSFERENCIA: Array<{ id: number; nome: string; rx?: RegExp }> = [
+  { id: 30168, nome: "Banco Villela", rx: /vil?lela/i },
+  { id: 24582, nome: "Santander", rx: /santander/i },
+  { id: 24596, nome: "Banco do Brasil", rx: /banco do brasil/i },
+  { id: 24609, nome: "Itaú", rx: /ita(u|ú)/i },
+  { id: 24607, nome: "Bradesco", rx: /bradesco/i },
+  { id: 24608, nome: "Sicoob", rx: /sicoob/i },
+  { id: 24610, nome: "Caixa Empresa", rx: /caixa econ[oô]mica|caixa federal|\bcef\b/i },
+  { id: 24611, nome: "Nubank", rx: /nubank|nu pagamentos/i },
+  { id: 24613, nome: "Caixa Pessoal" },
+  { id: 24668, nome: "Vobi Pay", rx: /vobi\s*pay/i },
+];
+
+/** Qual conta o comprovante sugere, pelo texto do banco. null se nao der para dizer. */
+export function contaPorTexto(texto?: string | null): number | null {
+  const t = String(texto || "").trim();
+  if (t.length < 3) return null;
+  for (const c of CONTAS_TRANSFERENCIA) if (c.rx && c.rx.test(t)) return c.id;
+  return null;
+}
+
+export const nomeDaConta = (id?: number | null) =>
+  CONTAS_TRANSFERENCIA.find((c) => c.id === id)?.nome ||
+  CONTAS_PRINCIPAIS.find((c) => c.id === id)?.nome ||
+  `conta ${id}`;
+
+/** Campos que a Vobi CALCULA — reenviar num PUT faz o payload ser recusado. */
+const CAMPOS_CALCULADOS = [
+  "id", "createdAt", "updatedAt", "deletedAt", "installments", "total", "liquidTotal",
+  "paidValue", "paidSplitValue", "cancelledValue", "openAmount", "openSplitAmount",
+  "totalIsValid", "allDueDateDiscount", "allSplitDueDateDiscount", "allInterest",
+  "allSplitInterest", "suggestionData", "countFile", "viewedBy", "createdBy", "isSplit",
+  "splitId", "splitQuantity", "percentageSplitValue", "totalSplitValue", "isMainSplit",
+  "transferId", "transferType", "paymentItems", "files",
+];
+
+// Constantes da transferencia entre contas proprias, conferidas na Vobi em
+// 17/09/2026 ao lancar a quitacao da tarifa do Banco do Brasil.
+const CAT_TRANSF_SAIDA = 22896755;   // Transferência entre Contas (despesa)
+const CAT_TRANSF_ENTRADA = 22957008; // Transferência entre Contas (receita)
+const CC_TRANSF = 26522;             // centro de custo TRANSFERENCIA ENTRE CONTAS
+const FORN_CJR = 665913;             // COSTA JUNIOR ENGENHARIA E CONS. LTDA
+const ID_EMPRESA = 96840;
+const ID_ENTIDADE = "04afa8bd-6159-44d0-95e4-e23bda31c8ae";
+
+/**
+ * Grava uma transferencia entre contas da propria empresa: a SAIDA na conta de
+ * origem e a ENTRADA na de destino. Sao dois lancamentos — a Vobi nao tem
+ * endpoint que faca os dois de uma vez.
+ *
+ * Cuidados que vieram de erro real ao lancar isto na mao:
+ *  - sem idCompany/idCompanyEntity o POST responde 400 "Empresa nao informada";
+ *  - o POST as vezes cria o pagamento SEM as parcelas, e ai e preciso um PUT com
+ *    os campos de recorrencia zerados (senao volta 400 falando de idPaymentType,
+ *    mensagem que nao tem nada a ver com a causa);
+ *  - a Vobi ja respondeu 200 sem gravar, entao conferimos a parcela antes de
+ *    dizer que deu certo;
+ *  - se a saida gravar e a entrada falhar, devolvemos o id da saida. Meia
+ *    transferencia e pior que nenhuma: o dinheiro some do caixa.
+ */
+export async function criarTransferenciaEntreContas(opcoes: {
+  origem: number; destino: number; valor: number; data: string; autor?: string;
+}): Promise<{ ok: boolean; idSaida?: string; idEntrada?: string; erro?: string }> {
+  const { origem, destino, valor, data } = opcoes;
+  const nome = `${nomeDaConta(origem)} - ${nomeDaConta(destino)}`.toUpperCase();
+  const nota =
+    `Transferencia entre contas da propria empresa: ${nomeDaConta(origem)} -> ${nomeDaConta(destino)}, ` +
+    `${valor.toFixed(2)} em ${data}. Lancada pelo comprovante enviado no Telegram` +
+    `${opcoes.autor ? " por " + opcoes.autor : ""}.`;
+
+  const criar = async (conta: number, billType: string, cat: number) => {
+    const parcela = {
+      price: valor, percentage: 100, number: 1, dueDate: data,
+      idInstallmentStatus: 2, paidDate: data, paidValue: valor,
+      idPaymentBankAccount: conta, idPaymentType: 5, description: nome,
+    };
+    const corpo: any = {
+      name: nome, billType, value: valor, subTotal: valor, billingDate: data,
+      idPaymentBankAccount: conta, idFinancialCategory: cat, idPaymentCostCenter: CC_TRANSF,
+      ownBusiness: true, idCompany: ID_EMPRESA, idCompanyEntity: ID_ENTIDADE, idPaymentStatus: 3,
+      annotation: nota, isRecurrence: false, recurrenceId: null, interval: 0,
+      frequency: null, lastRecurrenceDate: null, installments: [parcela],
+    };
+    if (billType === "expense") corpo.idSupplier = FORN_CJR;
+
+    const criado = await vPost("/payment", corpo);
+    const id = criado?.id;
+    if (!id) throw new Error("a Vobi nao devolveu o id do lancamento");
+
+    const parcelasDo = async () =>
+      ((await vGet(`/installment?limit=20&where[idPayment]=${id}`))?.rows || [])
+        .filter((i: any) => i.idPayment === id);
+    let ps = await parcelasDo();
+    if (!ps.length) {
+      const atual: any = { ...(await vGet(`/payment/${id}`)) };
+      for (const k of CAMPOS_CALCULADOS) delete atual[k];
+      atual.installments = [parcela];
+      atual.isRecurrence = false; atual.recurrenceId = null;
+      atual.interval = 0; atual.frequency = null; atual.lastRecurrenceDate = null;
+      await vPut(`/payment/${id}`, atual);
+      ps = await parcelasDo();
+    }
+
+    const p = ps[0];
+    const bom = ps.length === 1 && p && Math.abs(num(p.price) - valor) < 0.01 &&
+      p.idPaymentBankAccount === conta && p.idInstallmentStatus === 2;
+    if (!bom) throw new Error(`a parcela nao ficou como devia (${ps.length} parcela(s))`);
+    return id as string;
+  };
+
+  let idSaida: string | undefined;
+  try {
+    idSaida = await criar(origem, "expense", CAT_TRANSF_SAIDA);
+    const idEntrada = await criar(destino, "income", CAT_TRANSF_ENTRADA);
+    return { ok: true, idSaida, idEntrada };
+  } catch (e: any) {
+    return { ok: false, idSaida, erro: String(e?.message || e) };
+  }
+}
+
 
 export const FORMAS_PAGAMENTO = [
   { id: 1, nome: "PIX" },

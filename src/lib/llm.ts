@@ -12,10 +12,14 @@ const MODELO_GROQ = "openai/gpt-oss-120b";
 const MODELO_NVIDIA = "openai/gpt-oss-120b";
 const MODELO_CLAUDE = "claude-haiku-4-5";
 
-const envGroq = () => process.env.GROQ_API_KEY ?? import.meta.env.GROQ_API_KEY;
-const envGemini = () => process.env.GEMINI_API_KEY ?? import.meta.env.GEMINI_API_KEY;
-const envNvidia = () => process.env.NVIDIA_API_KEY ?? import.meta.env.NVIDIA_API_KEY;
-const envClaude = () => process.env.ANTHROPIC_API_KEY ?? import.meta.env.ANTHROPIC_API_KEY;
+// import.meta.env so existe sob o Vite; fora dele (script, cron por node) e
+// undefined e o acesso direto quebra.
+const envVar = (n: string): string | undefined => process.env[n] ?? ((import.meta as any)?.env ?? {})[n];
+
+const envGroq = () => envVar("GROQ_API_KEY");
+const envGemini = () => envVar("GEMINI_API_KEY");
+const envNvidia = () => envVar("NVIDIA_API_KEY");
+const envClaude = () => envVar("ANTHROPIC_API_KEY");
 
 export function llmConfigurado(): boolean {
   return !!(envGroq() || envGemini() || envNvidia() || envClaude());

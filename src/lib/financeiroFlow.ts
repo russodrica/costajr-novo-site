@@ -27,6 +27,7 @@ import {
   buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelasAbertasPorValor, fornecedoresComContaEmAberto, parcelasAbertasDeFornecedores, parcelaPorId, darBaixa,
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
   CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO, CARTOES,
+  CONTAS_TRANSFERENCIA, contaPorTexto, nomeDaConta, criarTransferenciaEntreContas,
   CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
   type Candidata, type Fornecedor, type ParcelaAberta,
 } from "./vobiBaixa";
@@ -102,6 +103,12 @@ type EstadoBaixa = {
   /** Juros/multa (ou juros do cartão) informados pela pessoa. */
   juros?: number;
   vencimentoFatura?: string;
+  // transferencia entre contas da propria empresa
+  transfOrigem?: number;
+  transfDestino?: number;
+  /** banco que o comprovante citou, so para marcar o botao provavel */
+  transfBancoOrigem?: string;
+  transfBancoDestino?: string;
   etapa: string;
   /** o que a pessoa (ou o comprovante) deu como nome do fornecedor — guardado
    *  para o "🔄 Tentar de novo" refazer a busca sem pedir o comprovante de novo */
@@ -360,6 +367,13 @@ const PEDIDO_COMPROVANTE = `Devolva JSON com as chaves:
  "favorecido": string (nome de quem RECEBEU o dinheiro — a empresa/pessoa beneficiária.
    NUNCA o pagador: a pagadora é sempre a COSTA JUNIOR ENGENHARIA. Se aparecerem os dois,
    devolva o OUTRO, não a Costa Júnior),
+ "banco_origem": string (instituição de ONDE saiu o dinheiro — o banco da conta
+   debitada, do pagador. null se não disser),
+ "banco_destino": string (instituição para ONDE foi — o banco da conta creditada,
+   do favorecido. null se não disser),
+ "entre_contas_proprias": true SE o pagador e o favorecido forem a MESMA empresa
+   (Costa Júnior Engenharia, CNPJ 07.132.942/0001-72) — dinheiro andando entre as
+   contas dela. false nos outros casos,
  "data": "AAAA-MM-DD" (data do pagamento)}
 Se não achar algum campo, use null.`;
 
@@ -440,6 +454,11 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   let comoLi = "";
   let forma: number | null = null;
   let bruta: any = null; // o JSON da melhor leitura, p/ tirar valor_nominal/encargos
+  // A CJR aparecendo dos DOIS lados quer dizer dinheiro andando entre as contas
+  // dela, nao pagamento a fornecedor.
+  let entreContas = false;
+  let bancoOrigem = "";
+  let bancoDestino = "";
 
   // ── CAMADA 1: legenda digitada junto com o arquivo ──
   const legenda = String(msg.caption || "").trim();
@@ -454,6 +473,10 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
     if (!j) return;
     if (!valor) valor = Number(j.valor) || null;
     const f = String(j.favorecido || "").trim();
+    if (f && ehAPropriaCJR(f)) entreContas = true;
+    if (j.entre_contas_proprias === true) entreContas = true;
+    if (!bancoOrigem) bancoOrigem = String(j.banco_origem || "").trim();
+    if (!bancoDestino) bancoDestino = String(j.banco_destino || "").trim();
     if (!favorecido && f && !ehAPropriaCJR(f)) favorecido = f;
     if (!data && /^\d{4}-\d{2}-\d{2}$/.test(String(j.data || ""))) data = String(j.data);
     if (forma == null) forma = formaDoTexto(j.forma);
@@ -489,6 +512,27 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   }
 
   if (!data) data = hojeISO();
+
+  // Sem favorecido mas COM valor: pode ser transferencia entre as contas da
+  // propria CJR. A Adriana: "o comprovante da Villela nao vem com o nome da
+  // Villela — sempre que vier sem nome, me deixe escolher o banco".
+  if (valor && !favorecido) {
+    const token = novoToken();
+    const estado: EstadoBaixa = {
+      chat_id: chatId,
+      autor: autorDe(msg),
+      valorPago: valor,
+      dataPagamento: data,
+      forma: 5, // Transferência
+      formaDoComprovante: true,
+      conta: CONTA_PADRAO,
+      transfBancoOrigem: bancoOrigem,
+      transfBancoDestino: bancoDestino,
+      etapa: "transf_origem",
+    };
+    await salvarEstado(db, token, estado);
+    return await pedirContaTransf(B, token, estado, chatId, "origem", entreContas);
+  }
 
   if (!valor || !favorecido) {
     const falta = !valor && !favorecido ? "o valor nem o favorecido" : !valor ? "o valor" : "o favorecido";
@@ -526,6 +570,52 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
 }
 
 // ───────────────────────── escolha da parcela ─────────────────────────
+
+/**
+ * Desenha a lista de bancos para a pessoa dizer de onde saiu / para onde foi.
+ * Marca o que o comprovante sugeriu, mas quem decide e ela.
+ */
+async function pedirContaTransf(
+  B: Bot, token: string, estado: EstadoBaixa, chatId: number, lado: "origem" | "destino", auto = false,
+) {
+  const dica = lado === "origem" ? estado.transfBancoOrigem : estado.transfBancoDestino;
+  const provavel = contaPorTexto(dica);
+  const acao = lado === "origem" ? "fbtde" : "fbtpara";
+  const fora = lado === "destino" ? estado.transfOrigem : null; // ninguem transfere para si mesma
+
+  const linhas: any[] = [];
+  const contas = CONTAS_TRANSFERENCIA.filter((c) => c.id !== fora);
+  for (let i = 0; i < contas.length; i += 2) {
+    linhas.push(contas.slice(i, i + 2).map((c) => ({
+      text: (c.id === provavel ? "⭐ " : "") + c.nome,
+      callback_data: `${acao}:${token}:${c.id}`,
+    })));
+  }
+
+  let txt: string;
+  if (lado === "destino") {
+    txt =
+      `🔁 Saiu de <b>${escTg(nomeDaConta(estado.transfOrigem))}</b> — ${brl(estado.valorPago)}` +
+      `\n\n<i>Para qual conta ENTROU?</i>`;
+  } else if (auto) {
+    txt =
+      `🔁 <b>Transferência entre contas da Costa Júnior</b>\n` +
+      `<b>Valor:</b> ${brl(estado.valorPago)}\n<b>Data:</b> ${dataBR(estado.dataPagamento)}\n\n` +
+      `<i>De qual conta SAIU?</i>`;
+  } else {
+    txt =
+      `🤔 Esse comprovante veio <b>sem o nome do favorecido</b>.\n` +
+      `<b>Valor:</b> ${brl(estado.valorPago)}\n<b>Data:</b> ${dataBR(estado.dataPagamento)}\n\n` +
+      `<i>O comprovante do Banco Villela é assim. Se foi dinheiro andando entre as `+
+      `contas da Costa Júnior, me diga de qual conta SAIU:</i>`;
+    linhas.push([{
+      text: `🔎 Não é transferência — procurar conta de ${brl(estado.valorPago)}`,
+      callback_data: `fbvalor:${token}`,
+    }]);
+  }
+  linhas.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+  await enviar(B, chatId, txt, inline(linhas));
+}
 
 async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
   const f = estado.fornecedor!;
@@ -819,6 +909,51 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   }
 
   // ── "não é nenhum desses": procura pelo VALOR, em qualquer fornecedor ──
+  // ── transferência entre contas próprias: de onde saiu ──
+  if (acao === "fbtde") {
+    estado.transfOrigem = Number(arg);
+    estado.etapa = "transf_destino";
+    await salvarEstado(db, token, estado);
+    return await pedirContaTransf(B, token, estado, chatId, "destino");
+  }
+
+  // ── ...e para onde foi: grava as DUAS pontas ──
+  if (acao === "fbtpara") {
+    estado.transfDestino = Number(arg);
+    estado.etapa = "transf_gravando";
+    await salvarEstado(db, token, estado);
+    const de = nomeDaConta(estado.transfOrigem);
+    const para = nomeDaConta(estado.transfDestino);
+    await enviar(B, chatId, `🔁 Lançando ${brl(estado.valorPago)}: <b>${escTg(de)}</b> → <b>${escTg(para)}</b>…`);
+
+    const r: any = await criarTransferenciaEntreContas({
+      origem: estado.transfOrigem!,
+      destino: estado.transfDestino!,
+      valor: estado.valorPago,
+      data: estado.dataPagamento,
+      autor: estado.autor,
+    }).catch((e: any) => ({ ok: false, erro: String(e?.message || e) }));
+
+    if (!r.ok) {
+      // meia transferencia e pior que nenhuma — a pessoa PRECISA saber
+      const meia = r.idSaida
+        ? `\n\n⚠️ <b>A saída foi gravada e a entrada não.</b> Apague a saída de ` +
+          `${escTg(de)} na Vobi antes de tentar de novo, senão o dinheiro some do caixa.`
+        : "";
+      await enviar(B, chatId,
+        `❌ Não consegui lançar a transferência.\n<i>${escTg(String(r.erro || "").slice(0, 160))}</i>${meia}`,
+        inline([[{ text: "❌ Encerrar", callback_data: `fbnao:${token}` }]]));
+      return;
+    }
+
+    await apagarEstado(db, token);
+    await enviar(B, chatId,
+      `✅ <b>Transferência lançada</b>\n${brl(estado.valorPago)} · ${dataBR(estado.dataPagamento)}\n` +
+      `<b>Saiu de:</b> ${escTg(de)}\n<b>Entrou em:</b> ${escTg(para)}\n\n` +
+      `<i>As duas pontas foram gravadas, então o saldo das duas contas já está certo.</i>`);
+    return;
+  }
+
   if (acao === "fbvalor") {
     let achadas: ParcelaAberta[];
     try {
