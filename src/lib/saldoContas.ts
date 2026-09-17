@@ -50,6 +50,12 @@ const CORRECAO: Record<number, { valor: number; medidoEm: string }> = {
   // −1.915,86; quando a regra de status passou a aceitar 2..11, a parcela do
   // MICROSOFT 365 (R$ 431,34, baixada pelo bot às 13:20 daquele dia, status 4)
   // entrou na conta — então a correção encolheu na mesma medida.
+  //
+  // CONFERIDA PELA ADRIANA no fim daquele dia, depois de o acordo do Lysnor ser
+  // movido para a conta certa: Santander R$ 0,00 e Villela R$ 4.919,26, que foi
+  // o que ela viu no banco ("saldo correto"). Ou seja, este número não é mais um
+  // remendo sem prova — bate com uma leitura real. O resíduo em si continua sem
+  // explicação (é de dado antigo), mas o efeito está aferido.
   24582: { valor: -1484.52, medidoEm: "2026-09-17" },
 };
 
@@ -154,7 +160,14 @@ export async function caixaDisponivel(): Promise<Caixa> {
 
 // AVISO honesto sobre a precisão:
 // Villela e Itaú fecham na vírgula com a tela. No Santander sobra um resíduo de
-// cerca de R$ 1.9 mil (sobre ~R$ 20 milhões de movimento histórico) que não
+// cerca de R$ 1,5 mil (sobre ~R$ 20 milhões de movimento histórico) que não
 // consegui atribuir — tentei rateio por grupo, transferências e datas de corte.
-// Para decidir "dá ou não dá para pagar as prioridades" isso é irrelevante, mas
-// este número NÃO serve para conciliação bancária. Para conciliar, use a tela.
+// Ele é absorvido pela CORRECAO acima, que foi AFERIDA contra um saldo que a
+// Adriana conferiu no banco em 17/09/2026. Para decidir "dá ou não dá para pagar
+// as prioridades", serve.
+//
+// O QUE ESTE NÚMERO NÃO É: um extrato. Ele só enxerga o que está LANÇADO na
+// Vobi. Dinheiro que entrou ou saiu do banco e ninguém lançou não aparece aqui —
+// e lançamento na conta ERRADA some de uma conta e sobra na outra, mantendo o
+// total certo e a divisão errada. Foi assim que o acordo do Lysnor, pago pelo
+// Villela, apareceu no Santander em 17/09/2026. Para conciliar, use a tela.
