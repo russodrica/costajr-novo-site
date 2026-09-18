@@ -1134,6 +1134,39 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
     return;
   }
 
+  // ── trocar EXTRATO <-> FATURA (a detecção pelo conteúdo do PDF pode errar) ──
+  // Opera na sessão gbanc: — TEM que ficar ANTES do guarda de gdoc abaixo, senão
+  // cai em "já foi tratado" (o card bancário não cria sessão gdoc).
+  if (acao === "gbanctp") {
+    const { data: pb } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gbanc:" + token).maybeSingle();
+    const dB = pb?.dados;
+    if (!dB) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
+    const novoTipo = dB.tipo === "fatura" ? "extrato" : "fatura";
+    await db.from("telegram_sessoes").update({ dados: { ...dB, tipo: novoTipo } }).eq("telegram_user_id", "gbanc:" + token);
+    await cardBancario(B, chatId, token, { ...dB, tipo: novoTipo });
+    return;
+  }
+
+  // ── NÃO é banco: é Documento da Empresa (ex.: balancete que cita contas de banco) ──
+  // A detecção viu um nome de banco no corpo e chutou extrato. Converte a sessão
+  // bancária de volta em sessão de DOCUMENTO e reencaminha pro fluxo Jurídico/Contábil,
+  // que casa um cadastro ou arquiva na categoria certa (Documentos Contábeis, etc.).
+  // Também opera em gbanc: → ANTES do guarda de gdoc.
+  if (acao === "gbancnb") {
+    const { data: pb } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gbanc:" + token).maybeSingle();
+    const dB = pb?.dados;
+    if (!dB) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
+    const slot = slotPorKey("outro")!;
+    const dados = {
+      doc_path: dB.doc_path, doc_nome: dB.doc_nome, ct: dB.ct, ia_nome: "", autor: dB.autor,
+      sug_colab_id: null, sug_colab_nome: null,
+      sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade, sug_validade: null, ia: false,
+    };
+    await salvarSessao(db, { telegram_user_id: "gdoc:" + token, chat_id: String(chatId), estado: "pendente", dados });
+    await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gbanc:" + token);
+    return await onCallbackGrupo(db, B, cq, chatId, "gemp:" + token);
+  }
+
   const { data: pend } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gdoc:" + token).maybeSingle();
   const d = pend?.dados;
   if (!d) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
@@ -1211,36 +1244,6 @@ async function onCallbackGrupo(db: any, B: Bot, cq: any, chatId: number, data: s
       inline([[{ text: "🔁 Escolher o local", callback_data: "gempl:" + token }], [{ text: "❌ Descartar", callback_data: "gcancel:" + token }]]));
     return;
   }
-  // ── trocar EXTRATO <-> FATURA (a detecção pelo conteúdo do PDF pode errar) ──
-  if (acao === "gbanctp") {
-    const { data: pb } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gbanc:" + token).maybeSingle();
-    const dB = pb?.dados;
-    if (!dB) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
-    const novoTipo = dB.tipo === "fatura" ? "extrato" : "fatura";
-    await db.from("telegram_sessoes").update({ dados: { ...dB, tipo: novoTipo } }).eq("telegram_user_id", "gbanc:" + token);
-    await cardBancario(B, chatId, token, { ...dB, tipo: novoTipo });
-    return;
-  }
-
-  // ── NÃO é banco: é Documento da Empresa (ex.: balancete que cita contas de banco) ──
-  // A detecção viu um nome de banco no corpo e chutou extrato. Converte a sessão
-  // bancária de volta em sessão de DOCUMENTO e reencaminha pro fluxo Jurídico/Contábil,
-  // que casa um cadastro ou arquiva na categoria certa (Documentos Contábeis, etc.).
-  if (acao === "gbancnb") {
-    const { data: pb } = await db.from("telegram_sessoes").select("dados").eq("telegram_user_id", "gbanc:" + token).maybeSingle();
-    const dB = pb?.dados;
-    if (!dB) { await enviar(B, chatId, "Esse documento já foi tratado. 👍"); return; }
-    const slot = slotPorKey("outro")!;
-    const dados = {
-      doc_path: dB.doc_path, doc_nome: dB.doc_nome, ct: dB.ct, ia_nome: "", autor: dB.autor,
-      sug_colab_id: null, sug_colab_nome: null,
-      sug_slot: slot.key, sug_slot_label: slot.label, sug_tem_validade: slot.validade, sug_validade: null, ia: false,
-    };
-    await salvarSessao(db, { telegram_user_id: "gdoc:" + token, chat_id: String(chatId), estado: "pendente", dados });
-    await db.from("telegram_sessoes").delete().eq("telegram_user_id", "gbanc:" + token);
-    return await onCallbackGrupo(db, B, cq, chatId, "gemp:" + token);
-  }
-
   // ── converter em EXTRATO/FATURA bancária (quando a detecção automática não pegou) ──
   if (acao === "gbancb") {
     const linhas = BANCOS_TG.map((b, i) => [{ text: `🏦 ${b}`, callback_data: `gbancbk:${token}:${i}` }]);
