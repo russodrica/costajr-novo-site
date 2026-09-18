@@ -217,10 +217,16 @@ export function tipoDocBancario(texto: string): "extrato" | "fatura" | null {
  * traz "Caixa Econômica Federal" e uma data — e o bot arquivava a certidão como
  * extrato bancário de agosto. Vale para certidão, guia, boleto, comprovante
  * avulso e afins.
+ *
+ * Também barra DOCUMENTOS CONTÁBEIS (balancete, DRE, balanço, razão, livro
+ * diário, SPED, ECF): um balancete LISTA as contas de banco da empresa no corpo
+ * ("Caixa Econômica Federal", "Banco do Brasil"…), então caía como extrato.
+ * São termos que um extrato/fatura de banco de verdade nunca carrega — ficam de
+ * fora "fluxo de caixa"/"faturamento" (ambíguos, aparecem em resumo bancário).
  */
 export function pareceNaoBancario(texto: string): boolean {
   const t = norm(texto);
-  return /\bcnd\b|\bcrf\b|certidao|certidoes|negativa de debito|regularidade (do|de) (fgts|empregador|contribuinte)|consulta regularidade|situacao fiscal|\bpgdas\b|\bdefis\b|\bdarf\b|\bdctf\b|\bgfip\b|\bfgts\b|guia de recolhimento|guia (de )?(inss|fgts|gfip)|alvara|contrato social|cartao cnpj|procuracao|inscricao estadual|divida ativa|nota fiscal|\bnfe\b|\bnfse\b/.test(t);
+  return /\bcnd\b|\bcrf\b|certidao|certidoes|negativa de debito|regularidade (do|de) (fgts|empregador|contribuinte)|consulta regularidade|situacao fiscal|\bpgdas\b|\bdefis\b|\bdarf\b|\bdctf\b|\bgfip\b|\bfgts\b|guia de recolhimento|guia (de )?(inss|fgts|gfip)|alvara|contrato social|cartao cnpj|procuracao|inscricao estadual|divida ativa|nota fiscal|\bnfe\b|\bnfse\b|\bbalancete\b|balanco patrimonial|\bdre\b|demonstrac|razao contabil|livro (caixa|diario)|\bsped\b|\becf\b|plano de contas|patrimonio liquido/.test(t);
 }
 
 export function detectarExtratoBancario(texto: string, legenda = "", nomeArquivo = ""): { banco: string; mes: number; ano: number; tipo: "extrato" | "fatura" } | null {
