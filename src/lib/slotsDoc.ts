@@ -60,7 +60,7 @@ export function detectarSlotPorTexto(texto: string): string | null {
   if (/comprovante|residencia|endereco/.test(t)) return "comprovante_residencia";
   if (/ficha de registro|\bregistro\b/.test(t)) return "ficha_registro";
   if (/personalidade|teste disc|eneagrama/.test(t)) return "teste";
-  if (/ordem de servico|\bos\b/.test(t)) return "os";
+  if (/ordem de servico/.test(t)) return "os";  // NÃO casar \bos\b sozinho: o artigo "os" (pt) está em quase todo texto
   if (/advertencia/.test(t)) return "advertencia";
   if (/suspensao/.test(t)) return "suspensao";
   if (/contrato|\btermo\b|admiss/.test(t)) return "contrato";

@@ -574,17 +574,24 @@ async function onDocumentoRecebido(db: any, B: Bot, sessao: Sessao, chatId: numb
   let slotKey = detectarSlotPorTexto(nome);
   let validade = detectarValidade(nome);
   let match = casarColaborador(nome, lista);
-  // CAMADA 2 — legenda da mensagem + camada de texto do PDF (unpdf, sem IA)
+  // CAMADA 2 — LEGENDA da mensagem (texto digitado junto) + camada de texto do PDF (unpdf, sem IA)
+  const legenda = (msg.caption || "").trim();
   const textoConteudo = await extrairTextoConteudo(buf, ctL, nome);
-  const textoExtra = [(msg.caption || "").trim(), textoConteudo].filter(Boolean).join("  ");
-  if (textoExtra) {
-    if (!slotKey) slotKey = detectarSlotPorTexto(textoExtra);
-    if (!validade) validade = detectarValidade(textoExtra);
-    const m2 = casarColaborador(textoExtra, lista);
-    if (m2 && (!match || m2.score > match.score)) match = m2; // melhora palpite fraco do nome
-  }
+  const textoExtra = [legenda, textoConteudo].filter(Boolean).join("  ");
+  // TIPO: só de texto humano e curto (nome do arquivo + legenda). O CORPO do PDF NÃO
+  // entra na detecção ingênua — o artigo "os" virava "Ordem de Serviço"; o corpo fica p/ a IA.
+  const slotLeg = legenda ? detectarSlotPorTexto(legenda) : null;
+  const querOutros = /\bem outros?\b/.test(legenda.toLowerCase());   // "salvar em outros"
+  if (querOutros) slotKey = "outro";
+  else if (slotLeg) slotKey = slotLeg;
+  const tipoDaLegenda = querOutros || !!slotLeg;
+  if (!validade) validade = detectarValidade(legenda) || detectarValidade(textoConteudo);
+  // PESSOA: a LEGENDA manda (dono do documento), mesmo que o corpo cite quem assinou/enviou.
+  const mLeg = legenda ? casarColaborador(legenda, lista) : null;
+  if (mLeg) match = mLeg;
+  else if (textoConteudo) { const mb = casarColaborador(textoConteudo, lista); if (mb && (!match || mb.score > match.score)) match = mb; }
   // CAMADA 3 — LER o documento (Gemini/visão): fallback p/ escaneado (sem texto) ou quando
-  // ainda falta identificar. PDF com texto já foi resolvido na camada 2 (evita custo/latência).
+  // ainda falta identificar. NÃO sobrescreve o que a LEGENDA já fixou (pessoa/tipo).
   let ia = false;
   const precisaLer = !textoConteudo || !match || !slotKey;
   if (precisaLer && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
@@ -594,9 +601,9 @@ async function onDocumentoRecebido(db: any, B: Bot, sessao: Sessao, chatId: numb
       const o = raw ? extrairJson(raw) : null;
       if (o) {
         ia = true;
-        const si = detectarSlotPorTexto(String(o.tipo || "")); if (si) slotKey = si;
+        if (!tipoDaLegenda) { const si = detectarSlotPorTexto(String(o.tipo || "")); if (si) slotKey = si; }
         if (o.validade && /^\d{4}-\d{2}-\d{2}$/.test(String(o.validade).trim())) validade = String(o.validade).trim();
-        if (o.nome_pessoa) { const m2 = casarColaborador(String(o.nome_pessoa), lista); if (m2 && (!match || m2.score >= match.score)) match = m2; }
+        if (o.nome_pessoa && !mLeg) { const m2 = casarColaborador(String(o.nome_pessoa), lista); if (m2 && (!match || m2.score >= match.score)) match = m2; }
       }
     } catch { /* IA falhou → segue pela heurística do nome */ }
   }
@@ -912,16 +919,27 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
   let slotKey = detectarSlotPorTexto(nome);
   let validade = detectarValidade(nome);
   let match = casarColaborador(nome, lista);
-  // CAMADA 2 — legenda + camada de texto do PDF (unpdf, sem IA)
+  // CAMADA 2 — LEGENDA (o texto digitado junto) + camada de texto do PDF (unpdf, sem IA)
+  const legenda = (msg.caption || "").trim();
   const textoConteudo = await extrairTextoConteudo(buf, ctL, nome);
-  const textoExtra = [(msg.caption || "").trim(), textoConteudo].filter(Boolean).join("  ");
-  if (textoExtra) {
-    if (!slotKey) slotKey = detectarSlotPorTexto(textoExtra);
-    if (!validade) validade = detectarValidade(textoExtra);
-    const m2 = casarColaborador(textoExtra, lista);
-    if (m2 && (!match || m2.score > match.score)) match = m2; // melhora palpite fraco do nome
-  }
-  // CAMADA 3 — LER o documento (Gemini/visão): fallback p/ escaneado ou identificação incompleta
+  const textoExtra = [legenda, textoConteudo].filter(Boolean).join("  ");
+  // TIPO: só de texto humano e curto (nome do arquivo + legenda). O CORPO do PDF NÃO
+  // entra na detecção ingênua por palavra-chave — o artigo "os" virava "Ordem de
+  // Serviço" e nomes citados no corpo erravam; o corpo fica para a IA (camada 3).
+  const slotLeg = legenda ? detectarSlotPorTexto(legenda) : null;
+  const querOutros = /\bem outros?\b/.test(legenda.toLowerCase());   // "salvar em outros"
+  if (querOutros) slotKey = "outro";
+  else if (slotLeg) slotKey = slotLeg;
+  const tipoDaLegenda = querOutros || !!slotLeg;
+  if (!validade) validade = detectarValidade(legenda) || detectarValidade(textoConteudo);
+  // PESSOA: a LEGENDA manda. Se ela nomeia o dono ("Crispim Pereira da Silva - ..."),
+  // é ele — mesmo que o CORPO cite quem assinou/enviou (ex.: a coordenadora Renata).
+  // Ordem: legenda > nome do arquivo (camada 1) > corpo do PDF.
+  const mLeg = legenda ? casarColaborador(legenda, lista) : null;
+  if (mLeg) match = mLeg;
+  else if (textoConteudo) { const mb = casarColaborador(textoConteudo, lista); if (mb && (!match || mb.score > match.score)) match = mb; }
+  // CAMADA 3 — LER o documento (Gemini/visão): fallback p/ escaneado ou identificação
+  // incompleta. NÃO sobrescreve o que a LEGENDA já fixou (pessoa/tipo).
   let ia = false, iaNome = "";
   const precisaLer = !textoConteudo || !match || !slotKey;
   if (precisaLer && geminiConfigurado() && (ctL === "application/pdf" || ctL.startsWith("image/"))) {
@@ -930,9 +948,9 @@ async function onDocGrupo(db: any, B: Bot, msg: any, chatId: number) {
       const o = raw ? extrairJson(raw) : null;
       if (o) {
         ia = true;
-        const si = detectarSlotPorTexto(String(o.tipo || "")); if (si) slotKey = si;
+        if (!tipoDaLegenda) { const si = detectarSlotPorTexto(String(o.tipo || "")); if (si) slotKey = si; }
         if (o.validade && /^\d{4}-\d{2}-\d{2}$/.test(String(o.validade).trim())) validade = String(o.validade).trim();
-        if (o.nome_pessoa) { iaNome = String(o.nome_pessoa); const m2 = casarColaborador(iaNome, lista); if (m2 && (!match || m2.score >= match.score)) match = m2; }
+        if (o.nome_pessoa && !mLeg) { iaNome = String(o.nome_pessoa); const m2 = casarColaborador(iaNome, lista); if (m2 && (!match || m2.score >= match.score)) match = m2; }
       }
     } catch { /* segue pela heurística do nome */ }
   }
