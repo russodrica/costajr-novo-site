@@ -2525,3 +2525,33 @@ alguns libs leem no topo (epi.ts) -> TypeError. Solucao: loader ESM via
 `register()` com hook `load` que troca `import.meta.env` por `process.env` no fonte, e
 rodar `npx tsx --import ./TEMP-reg.mjs ./TEMP-e2e.mts` **de dentro da pasta do projeto**
 (caminho do Windows em $TEMP quebra o ESM loader: "protocol 'c:'").
+
+## Atualizacao 21/09/2026 (parte 2) — ARMADILHA: OneDrive faz o git ver exclusao FANTASMA
+
+**O que aconteceu:** ao investigar um "erro ao publicar", o `git status` mostrava **40
+arquivos APAGADOS** (15 migrations `*_vendas_*`/`*_fornecedor_*` 080..116, 2 workflows,
+4 telas `admin/vendas/*`, libs e APIs) + 38 modificados. Nada disso tinha sido apagado:
+o **OneDrive estava sincronizando** e os arquivos ficaram temporariamente indisponiveis
+no disco — o git le ausencia como DELETE. Minutos depois **voltaram sozinhos** (status
+caiu para 3 M) e o conteudo bateu com o HEAD. Nenhuma perda.
+
+**O PERIGO REAL:** se alguem rodar **`git add -A`** ou **`git commit -a`** durante uma
+janela dessas, as exclusoes fantasma viram commit e os arquivos somem DE VERDADE do
+repositorio (e as telas somem do site no proximo deploy). Ja ha registro de que
+**`.git` nao deveria ficar no OneDrive** (memoria vobi_baixa_pagamento).
+
+**REGRA desta pasta:** commitar SEMPRE por caminho explicito
+(`git add src/lib/x.ts src/lib/y.ts`), nunca `-A`/`-a`. Antes de commitar, olhar
+`git status --porcelain | grep "^ D"` — se aparecer exclusao que voce nao fez, **PARE**
+e espere o OneDrive terminar; nao restaure nem commite. (`git restore` resolveria, mas
+restaurar PASTA inteira tambem descarta modificacoes nao commitadas dentro dela — se
+precisar, restaurar arquivo a arquivo pela lista dos `^ D`.)
+
+**PUBLICAR.cmd SO FAZ `git push origin main` — NAO commita.** Mandar a Adriana "rodar o
+PUBLICAR" sem ter commitado nao publica nada (diz "Everything up-to-date") e da a falsa
+impressao de que subiu. Commitar primeiro, sempre. **E no PowerShell o comando e
+`.\PUBLICAR.cmd`** (sem o `.\` da "nao e reconhecido como cmdlet" — o PS nao executa
+programa da pasta atual).
+
+**Heredoc:** `@'...'@` e PowerShell. No Bash tool isso entra LITERAL na mensagem do
+commit (subject virou "@"). No Bash usar `git commit -F arquivo` ou heredoc `<<'EOF'`.
