@@ -32,7 +32,11 @@ export const GET: APIRoute = async ({ request, url }) => {
     .in("status", ["pendente", "atrasado"])
     .gte("data_vencimento", dia(-4))
     .lte("data_vencimento", dia(4));
-  if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+  // NAO abortar aqui: os lembretes financeiros ("bom dia" do grupo CJR_ADM) sao
+  // enviados no fim desta mesma rota, e ja ficaram um dia inteiro sem sair
+  // porque uma falha nesta consulta devolvia 500 antes de chegar la. A regua e
+  // os lembretes sao independentes — se uma cai, a outra tem de seguir.
+  const erroRegua = error ? error.message : null;
 
   let enviados = 0, pulados = 0, falhas = 0;
   for (const p of pagamentos || []) {
@@ -75,7 +79,7 @@ export const GET: APIRoute = async ({ request, url }) => {
   }
 
   return new Response(
-    JSON.stringify({ ok: true, enviados, pulados, falhas, analisados: pagamentos?.length || 0, financeiro }),
+    JSON.stringify({ ok: true, enviados, pulados, falhas, analisados: pagamentos?.length || 0, erroRegua, financeiro }),
     { headers: { "content-type": "application/json" } },
   );
 };

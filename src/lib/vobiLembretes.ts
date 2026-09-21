@@ -415,13 +415,13 @@ export async function enviarPrioridadesDoDia(dataRef?: string): Promise<{ enviou
 }
 
 /**
- * RECEITAS QUE VENCEM HOJE.
+ * RECEITAS QUE VENCEM HOJE — segunda mensagem do "bom dia".
  *
- * SILENCIOSO quando não há nada. A carteira de recebíveis da CJR é pequena —
- * 13 parcelas a vencer no total, ZERO nos próximos sete dias quando isto foi
- * escrito — então um aviso diário obrigatório diria "nenhuma receita vence
- * hoje" quase todo dia e treinaria o grupo a ignorar as mensagens. Mesma regra
- * do alerta de prioridades.
+ * SEMPRE manda, inclusive quando não há nada (pedido da Adriana, 18/09/2026).
+ * Antes era silenciosa no dia vazio, para não virar ruído — mas o silêncio é
+ * ambíguo: não dá para distinguir "não há receita hoje" de "o robô falhou".
+ * Dizer "nenhuma receita vence hoje" fecha a dupla despesas→receitas todo dia,
+ * e a ausência da mensagem passa a ser sinal de problema, não de dia vazio.
  */
 export async function enviarRecebimentosDoDia(): Promise<{ enviou: boolean; qtd: number; motivo?: string }> {
   if (!vobiBaixaConfigurada()) return { enviou: false, qtd: 0, motivo: "sem credenciais da Vobi" };
@@ -433,13 +433,13 @@ export async function enviarRecebimentosDoDia(): Promise<{ enviou: boolean; qtd:
   } catch (e: any) {
     return await avisarFalhaVobi(e, "as receitas de hoje");
   }
-  if (!lista.length) return { enviou: false, qtd: 0, motivo: "nenhuma receita vence hoje" };
 
-  const texto =
-    `💰 <b>A RECEBER HOJE — ${lista.length} · ${brl(totalOperacional(lista))}</b>\n` +
-    `<i>${dataBR(hojeIso)}</i>\n\n` +
-    listaReceitas(lista, false) +
-    `\n\n<i>Caiu na conta? Toque no botão — ou mande o comprovante do recebimento.</i>`;
+  const texto = !lista.length
+    ? `💰 <b>A RECEBER HOJE</b>\n<i>${dataBR(hojeIso)}</i>\n\n✅ <b>Nenhuma receita vence hoje.</b>`
+    : `💰 <b>A RECEBER HOJE — ${lista.length} · ${brl(totalOperacional(lista))}</b>\n` +
+      `<i>${dataBR(hojeIso)}</i>\n\n` +
+      listaReceitas(lista, false) +
+      `\n\n<i>Caiu na conta? Toque no botão — ou mande o comprovante do recebimento.</i>`;
 
   const r = await enviarTelegram(texto, { canal: CANAL, teclado: botoesRecebi(lista) });
   return { enviou: !!r?.ok, qtd: lista.length, motivo: r?.ok ? undefined : r?.motivo };
@@ -509,18 +509,41 @@ export async function enviarRecebimentosDaSemana(): Promise<{ enviou: boolean; q
 }
 
 /**
- * Chamada única do cron diário: manda o do dia sempre e, se for segunda-feira,
- * manda também a agenda da semana e as prioridades dos próximos 30 dias.
+ * Um passo que explode NÃO pode calar os outros. Antes era `await` direto: se a
+ * lista de despesas lançasse, o cron caía no catch lá de cima e as receitas
+ * nunca saíam — o grupo ficava sem nenhuma mensagem, sem saber por quê.
+ */
+async function passo(nome: string, fn: () => Promise<any>): Promise<any> {
+  try {
+    return await fn();
+  } catch (e: any) {
+    return { enviou: false, qtd: 0, motivo: `erro em ${nome}: ${e?.message || e}` };
+  }
+}
+
+/**
+ * Chamada única do cron diário.
+ *
+ * ORDEM FIXA do "bom dia" (pedido da Adriana, 18/09/2026):
+ *   1º  DESPESAS que vencem hoje — sempre, mesmo que não haja nenhuma
+ *   2º  RECEITAS que vencem hoje — sempre, mesmo que não haja nenhuma
+ *
+ * O alerta de PRIORIDADES ("não pode atrasar") continua saindo, mas DEPOIS da
+ * dupla: ele é um destaque de algumas despesas do dia, não a abertura. Assim a
+ * primeira mensagem do dia é sempre o panorama completo das despesas.
+ *
+ * Na segunda-feira vêm também a agenda da semana e as prioridades de 30 dias.
  */
 export async function enviarLembretesFinanceiros(): Promise<Record<string, any>> {
-  // o alerta do dia sai ANTES da lista geral: e o que nao pode passar batido
-  const alerta = await enviarPrioridadesDoDia();
-  const dia = await enviarVencimentosDoDia();
-  const receitasDia = await enviarRecebimentosDoDia();
+  const dia = await passo("despesas do dia", () => enviarVencimentosDoDia());
+  const receitasDia = await passo("receitas do dia", () => enviarRecebimentosDoDia());
+  const alerta = await passo("prioridades do dia", () => enviarPrioridadesDoDia());
+
   const ehSegunda = hojeSP().getUTCDay() === 1;
-  if (!ehSegunda) return { alerta, dia, receitasDia };
-  const semana = await enviarVencimentosDaSemana();
-  const prioridades = await enviarPrioridades(30);
-  const receitasSemana = await enviarRecebimentosDaSemana();
-  return { alerta, dia, semana, prioridades, receitasDia, receitasSemana };
+  if (!ehSegunda) return { dia, receitasDia, alerta };
+
+  const semana = await passo("despesas da semana", () => enviarVencimentosDaSemana());
+  const prioridades = await passo("prioridades 30 dias", () => enviarPrioridades(30));
+  const receitasSemana = await passo("receitas da semana", () => enviarRecebimentosDaSemana());
+  return { dia, receitasDia, alerta, semana, prioridades, receitasSemana };
 }

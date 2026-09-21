@@ -2397,3 +2397,131 @@ relogar (token novo com roles) — ou migrar p/ temPerfilFresco se aparecer o me
 - Quando o usuario disser "atualize a memoria", edite as secoes deste arquivo.
 - Quando descobrir algo novo importante (decisao de arquitetura, padrao, blocker), proponha adicionar aqui.
 - Nao referencie mais `forum-cjr`, `portal Manus` ou `Wix` como opcoes ativas - sao historico.
+## Atualizacao 17/09/2026 — "o bot nao reconheceu o comprovante" era COTA da Vobi (429)
+
+**Sintoma:** no CJR_ADM a Adriana mandou o comprovante da TD SYNNEX (R$ 431,34) e o
+bot respondeu `Vobi GET /supplier?...: HTTP 429`. **O bot LEU o comprovante certo**
+(favorecido, R$ 431,20 + R$ 0,14 de juros, 16/09/2026, boleto) — quem falhou foi a
+consulta seguinte na Vobi. A mensagem crua com a URL fazia parecer erro de leitura.
+
+**CAUSA RAIZ — a Vobi libera 1000 requisicoes/hora para a integracao INTEIRA**
+(header `ratelimit-policy: 1000;w=3600`; a resposta traz `ratelimit: limit=1000,
+remaining=N, reset=<seg>`). Dividem esse balde: bot do Telegram, telas
+`/admin/vobi-*`, lembretes e o **Excel financeiro diario** (repo
+`costajunior-financeiro-diario`, GitHub Actions seg-sab 07:00), que sozinho gasta
+~600 num run. Agravante nosso: `fornecedores()` (2.540 itens, 6 paginas) so tinha
+cache EM MEMORIA — e cada cold start da Vercel zera isso, entao quase toda baixa
+de pagamento rebaixava as 6 paginas de `/supplier`.
+
+**Corrigido (src/lib/vobiBaixa.ts + src/lib/financeiroFlow.ts):**
+- **Migration 109_vobi_cache** (tabela `vobi_cache`: chave/dados jsonb/atualizado_em,
+  RLS ligado, service-role only). Aplicada pelo workflow `db-migrate.yml` no push.
+- `fornecedores()` virou cache de **3 camadas**: memoria (1h) -> `vobi_cache` (24h)
+  -> API Vobi. Quando a Vobi recusa, usa a **ultima copia salva mesmo velha** (nome
+  de fornecedor quase nao muda; lista de ontem >> erro). Tudo em try/catch: sem a
+  tabela, degrada para o comportamento antigo em vez de quebrar.
+- `VobiCotaError` (exportada) no `vGet`/`vPut` quando vem 429, ja com os segundos de
+  espera lidos de `retry-after` ou do `reset=` do `ratelimit`.
+- No Telegram, `falhaDaVobi()` troca o erro cru por: "A Vobi bateu o limite de
+  consultas da hora... Ela volta em ~X min. **Nao precisa mandar o comprovante de
+  novo** — ja anotei R$ X para FULANO" + botao **🔄 Tentar de novo** (`fbretry`), que
+  retoma de onde parou (estado salvo em `telegram_sessoes` com o novo campo
+  `nomeBusca`). Ler o comprovante de novo custa chamada de IA e o tempo dela.
+
+**REGRA:** nao adianta repetir na hora — a janela e de ate 1h. E nao rodar varredura
+grande na Vobi na mesma hora do run das 07:00 do Excel.
+
+**Verificado:** `fornecedores()` traz 2.540 e "TD SYNNEX" resolve para 1 fornecedor
+(665977 TD SYNNEX BRASIL LTDA) — ou seja, o comprovante estava 100% entendido; 2a
+chamada usa cache (0 requisicoes); 429 simulado produz a mensagem amigavel com o
+tempo certo. tsc e astro build limpos. O fallback "Vobi 429 + copia salva no banco"
+so fica ativo depois que a migration 109 rodar no push.
+
+## Atualizacao 18/09/2026 — "Bom dia" do CJR_ADM: ordem fixa despesas -> receitas
+
+**Pedido da Adriana:** o bom dia nao chegou; e ele precisa informar PRIMEIRO as
+despesas que vencem no dia (ou que nao ha) e DEPOIS as receitas do dia (ou que nao ha).
+
+**Mudancas (src/lib/vobiLembretes.ts + src/pages/api/cron/regua-cobranca.ts):**
+- `enviarRecebimentosDoDia` deixou de ser SILENCIOSA no dia vazio — agora sempre
+  manda, com "✅ Nenhuma receita vence hoje." (REVERTE a decisao anterior de 16/09,
+  que era evitar ruido). RAZAO: silencio e ambiguo — nao dava pra distinguir "nao ha
+  receita" de "o robo falhou". Com as duas mensagens diarias garantidas, a AUSENCIA
+  passa a ser sinal de problema.
+- `enviarLembretesFinanceiros` com ORDEM FIXA: (1) despesas do dia, (2) receitas do
+  dia, (3) alerta de prioridades. O alerta 🚨 saia ANTES; virou destaque pos-panorama.
+- Novo helper `passo(nome, fn)`: cada etapa em try/catch proprio. Antes, se as
+  despesas lancassem, o cron caia no catch e as receitas NUNCA saiam.
+- **regua-cobranca.ts nao aborta mais com 500** quando a consulta de
+  `manut_pagamentos` falha (`erroRegua` no retorno). Aquele `return` matava o bom dia,
+  que e enviado no FIM da mesma rota. Regua e lembretes sao independentes.
+
+**ONDE O BOM DIA MORA (nao procurar em e-mail):** e TELEGRAM, grupo CJR_ADM, via
+`enviarLembretesFinanceiros()` pendurado no cron **`/api/cron/regua-cobranca`**
+(`0 12 * * *` = **09:00 BRT**). O outro cron (cashback-renovacao, 9 UTC = 06:00 BRT)
+leva os avisos de RH/ferias/EPI. Vercel Hobby so permite 2 crons — por isso piggyback.
+
+**Diagnostico do dia 18/09 (nao chegou):** conferi um a um e TUDO a jusante estava
+funcionando — Vobi respondendo (2 despesas hoje: DARF INSS 1.655,70 e DARF COFINS
+27,80; 0 receitas), a consulta da regua OK (0 linhas, sem erro), o endpoint do cron
+vivo (403 sem secret), producao no commit certo, e o @cjr_adm_bot alcancando o grupo
+CJR_ADM (getMe + getChat ok). Ou seja: a falha foi no DISPARO do cron (ou transitoria)
+— confirmar exige os Registros da Vercel (conta da Adriana). **Disparo manual:**
+`GET /api/cron/regua-cobranca?secret=<CRON_SECRET>` envia as mensagens na hora.
+
+**TECNICA util (ensaio sem postar no grupo):** monkeypatch de `globalThis.fetch`
+interceptando `api.telegram.org` -> imprime o texto em vez de enviar. Cuidado: o
+`reply_markup` vai como OBJETO aninhado (telegram.ts linha ~51), nao string — dar
+`JSON.parse` nele quebra o ensaio e faz parecer que o envio falhou (falso positivo).
+
+## Atualizacao 21/09/2026 — Comprovante caiu no fornecedor ERRADO (busca por prefixo de 4 letras)
+
+**Sintoma (Adriana):** comprovante "CONSTRUTIVO BPO" R$ 1.542,79 -> o bot leu certo
+(conta 1.400,00 + juros 142,79, 21/09, boleto) mas atribuiu ao fornecedor
+**OBRAMAX_BMB MATERIAL DE CONSTRUCAO** e listou 5 vencimentos alheios. E **nao havia
+opcao "nao e nenhum desses"** — so Cancelar.
+
+**CAUSA RAIZ — `buscarFornecedoresAproximado` casava pelos 4 PRIMEIROS caracteres.**
+"CONSTRUTIVO BPO" -> `cons` -> casava com **144 fornecedores** (construcao, consultoria,
+consorcio...) e devolvia 6 ARBITRARIOS (ordem da lista). O filtro seguinte ("so quem tem
+conta em aberto") reduziu a 1 = OBRAMAX -> **auto-selecionado** (ramo achados.length===1).
+O certo, CONSTRUTIVO CONTABIL LTDA (id 716251), nem entrava nos 6. A busca EXATA tambem
+falha porque "CONSTRUTIVO BPO" nao e substring de "CONSTRUTIVO CONTABIL LTDA".
+
+**Corrigido (src/lib/vobiBaixa.ts):** a aproximada agora pontua por PALAVRA, nao por
+prefixo. `PALAVRAS_VAZIAS` (ltda/me/sa/comercio/material/construcao/servicos/...) sao
+ignoradas — sem isso "MATERIAL DE CONSTRUCAO" casa com todo mundo. `pontuarFornecedor`:
++100 termo inteiro como substring; +len*5+15 palavra inteira; +len*4 pedaco de palavra;
++len*2 erro de digitacao (Levenshtein <=2, palavra >=5 letras — mantem o caso D4SING/
+D4SIGN). Corte `PONTOS_MINIMOS=20` => coincidencia de letras nao passa. Ordena por pontos.
+**Verificado na base real:** "CONSTRUTIVO BPO"->CONSTRUTIVO CONTABIL (1 com conta aberta);
+"TD SYNNEX"->TD SYNNEX; "D4SING"->D4SING; "LEROY"->LEROY MERLIN; "OBRAMAX"->OBRAMAX;
+"XPTO INEXISTENTE"->0. **A conta certa era 15/09/2026 R$ 1.400,00 "PLANO VIP BPO
+FINANCEIRO CONTABILIDADE"** (+142,79 de juros por 6 dias = os 1.542,79 do comprovante).
+
+**Escape hatch (src/lib/financeiroFlow.ts):** a lista de vencimentos ganhou
+**"🤷 Não é nenhum desses"** (`fbmais`) -> mostra TODAS as outras contas em aberto do
+fornecedor (ate 12, viram estado.candidatas p/ o botao fbparc achar o id) + **"🔄 É de
+outro fornecedor"** (`fbtrocaforn`) + "🔎 Procurar contas de R$ X" (fbvalor, ja existia).
+`fbtrocaforn` limpa fornecedor/candidatas/parcela e poe etapa **`aguarda_fornecedor`**.
+- **Passo de TEXTO (o unico):** `onTextoDuranteBaixa` so engolia mensagem que fosse SO
+  NUMERO (`ehSoNumero`) p/ nao capturar conversa do grupo. Agora `aguarda_fornecedor`
+  aceita texto, com 3 travas: so nos primeiros **10 minutos**, so 2..40 chars, e nao pode
+  comecar com "/". `aguarda_fornecedor` tambem foi adicionada ao `.in("estado",[...])` de
+  `pendenteEsperandoNumero` — sem isso o estado nem era encontrado.
+  RESSALVA HONESTA: nesses 10 min, uma frase curta qualquer no grupo vira busca de
+  fornecedor (responde "nenhum fornecedor com X tem conta em aberto" + botoes). Aceito.
+- Prefixos novos passam no roteador do bot (`/^fb[a-z0-9]+:/` em telegramBot.ts:370) —
+  SEMPRE conferir isso ao criar callback novo (prefixo fora do padrao nasce morto).
+
+**E2E VERIFICADO (sem postar no grupo):** ensaio com `globalThis.fetch` interceptando
+api.telegram.org + banco real: comprovante->CONSTRUTIVO CONTABIL com a conta certa em 1o;
+"Nao e nenhum desses"->3 contas restantes; "E de outro fornecedor"->pede o nome; digitar
+"leroy"->acha LEROY MERLIN; conversa do grupo fora do passo NAO e engolida. Sessao de
+teste apagada. tsc + astro build limpos.
+
+**TECNICA (rodar libs do Astro no node):** `import.meta.env` e undefined fora do Astro e
+alguns libs leem no topo (epi.ts) -> TypeError. Solucao: loader ESM via
+`register()` com hook `load` que troca `import.meta.env` por `process.env` no fonte, e
+rodar `npx tsx --import ./TEMP-reg.mjs ./TEMP-e2e.mts` **de dentro da pasta do projeto**
+(caminho do Windows em $TEMP quebra o ESM loader: "protocol 'c:'").

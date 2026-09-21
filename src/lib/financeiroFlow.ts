@@ -25,7 +25,7 @@ import { ehAPropriaCJR, identificarLado, type LadoCJR } from "./identidadeCJR";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
 import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
 import {
-  buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelasAbertasPorValor, fornecedoresComContaEmAberto, parcelasAbertasDeFornecedores, parcelaPorId, darBaixa,
+  buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelasAbertasPorValor, fornecedoresComContaEmAberto, parcelasAbertasDeFornecedores, parcelasAbertasDoFornecedor, parcelaPorId, darBaixa,
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
   CONTAS_PRINCIPAIS, FORMAS_PAGAMENTO, CARTOES,
   CONTAS_TRANSFERENCIA, contaPorTexto, nomeDaConta, criarTransferenciaEntreContas,
@@ -869,6 +869,10 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
     // botão de uma lista ANTIGA, o índice apontaria para outra conta
     return [{ text: `${dataBR(c.vencimento).slice(0, 5)} · ${brl(c.valor)}${atraso}`.slice(0, 60), callback_data: `fbparc:${token}:${c.id}` }];
   });
+  // SEM SAIDA nao pode: a lista mostra so as 6 mais provaveis, e o fornecedor
+  // pode ate ser o errado (o comprovante traz apelido). Antes so havia
+  // "Cancelar" — quem nao reconhecia nenhum vencimento perdia o comprovante.
+  botoes.push([{ text: "🤷 Não é nenhum desses", callback_data: `fbmais:${token}` }]);
   botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
 
   const linhas = cands.map((c, i) => {
@@ -1285,6 +1289,81 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
   // "🔄 Tentar de novo" depois de a Vobi recusar: retoma de onde parou, sem
   // pedir o comprovante de novo.
+  // "Não é nenhum desses": a lista curta (6 mais prováveis) não serviu. Mostra
+  // TODAS as contas em aberto do fornecedor e deixa trocar de fornecedor —
+  // sem isto o único caminho era cancelar e mandar o comprovante de novo.
+  if (acao === "fbmais") {
+    const f = estado.fornecedor;
+    if (!f) {
+      estado.etapa = "aguarda_fornecedor";
+      await salvarEstado(db, token, estado);
+      await enviar(B, chatId, "Me diga o <b>nome do fornecedor</b> (pode ser só um pedaço).", BOTOES_CANCELA(token));
+      return;
+    }
+
+    let todas: ParcelaAberta[];
+    try {
+      todas = await parcelasAbertasDoFornecedor(f.id, f.nome);
+    } catch (e: any) {
+      return await falhaDaVobi(db, B, token, estado, chatId, e, "listar as contas em aberto");
+    }
+
+    const jaVistas = new Set((estado.candidatas || []).map((c) => c.id));
+    const restantes = todas.filter((p) => !jaVistas.has(p.id));
+
+    const outroForn = [{ text: "🔄 É de outro fornecedor", callback_data: `fbtrocaforn:${token}` }];
+    const porValor = [{ text: `🔎 Procurar contas de ${brl(estado.valorPago)}`, callback_data: `fbvalor:${token}` }];
+
+    if (!restantes.length) {
+      await enviar(B, chatId,
+        `<b>${escTg(f.nome)}</b> não tem outra conta em aberto além das que já mostrei.\n\n` +
+        `Então o pagamento é de <b>outro fornecedor</b> — ou a conta ainda não foi lançada na Vobi.`,
+        inline([outroForn, porValor, [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]]));
+      return;
+    }
+
+    // as restantes viram as candidatas do estado: o botão fbparc procura o id aqui
+    const comoCand = restantes.map((p) => ({
+      ...p,
+      diferenca: Math.round((estado.valorPago - p.valor) * 100) / 100,
+      exata: Math.round(p.valor * 100) === Math.round(estado.valorPago * 100),
+    })) as Candidata[];
+    estado.candidatas = comoCand.slice(0, 12);
+    estado.etapa = "esc_parcela";
+    await salvarEstado(db, token, estado);
+
+    const botoes = estado.candidatas.map((c) => [{
+      text: `${dataBR(c.vencimento).slice(0, 5)} · ${brl(c.valor)}`.slice(0, 60),
+      callback_data: `fbparc:${token}:${c.id}`,
+    }]);
+    botoes.push(outroForn, porValor, [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+
+    const linhas = estado.candidatas.map((c, i) =>
+      `${i + 1}. <b>${dataBR(c.vencimento)}</b> — ${brl(c.valor)}\n    <i>${escTg(c.descricao.slice(0, 45))}</i>`,
+    ).join("\n");
+
+    await enviar(B, chatId,
+      `📋 <b>${escTg(f.nome)}</b> — outras contas em aberto` +
+        (comoCand.length > 12 ? ` (as 12 primeiras de ${comoCand.length})` : "") +
+        `:\n\n${linhas}`,
+      inline(botoes));
+    return;
+  }
+
+  // Trocar o fornecedor sem perder o que o comprovante já disse.
+  if (acao === "fbtrocaforn") {
+    estado.fornecedor = undefined;
+    estado.candidatas = undefined;
+    estado.parcela = undefined;
+    estado.etapa = "aguarda_fornecedor";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `Qual é o fornecedor de <b>${brl(estado.valorPago)}</b>?\n\n` +
+      `<i>Escreva o nome (ou um pedaço dele) aqui no grupo.</i>`,
+      BOTOES_CANCELA(token));
+    return;
+  }
+
   if (acao === "fbretry") {
     // Num estado de transferência, "tentar de novo" NÃO pode virar busca de
     // fornecedor (o nome está vazio) — retoma a transferência de onde parou.
@@ -1810,7 +1889,7 @@ async function pendenteEsperandoNumero(db: any, chatId: number) {
     .select("telegram_user_id, dados, estado")
     .like("telegram_user_id", "fb:%")
     .eq("chat_id", String(chatId))
-    .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros", "rec_aguarda_valor"])
+    .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros", "rec_aguarda_valor", "aguarda_fornecedor"])
     .order("telegram_user_id", { ascending: false })
     .limit(1);
   const linha = (data || [])[0];
@@ -1833,6 +1912,23 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
   const p = await pendenteEsperandoNumero(db, chatId);
   if (!p) return false;
   const { token, estado, etapa } = p;
+
+  // ÚNICO passo que espera TEXTO e não número: o nome do fornecedor, depois de
+  // "É de outro fornecedor". Como aqui não dá para exigir que seja um número,
+  // a proteção contra engolir conversa do grupo é outra: só vale nos primeiros
+  // 10 minutos, e só para uma mensagem curta que não seja comando.
+  if (etapa === "aguarda_fornecedor") {
+    const desde = Date.parse(String((estado as any).atualizadoEm || ""));
+    if (Number.isFinite(desde) && Date.now() - desde > 10 * 60 * 1000) return false;
+    const nome = texto.trim();
+    if (nome.startsWith("/") || nome.length < 2 || nome.length > 40) return false;
+    estado.nomeBusca = nome;
+    estado.etapa = "buscando";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, `🔎 Procurando <b>${escTg(nome)}</b> — ${brl(estado.valorPago)}…`);
+    await buscarFornecedorEContinuar(db, B, token, estado, chatId);
+    return true;
+  }
 
   // No GRUPO as pessoas conversam. Só engolimos a mensagem quando ela é
   // claramente a resposta do passo — ou seja, um número e nada mais.

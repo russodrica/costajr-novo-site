@@ -540,23 +540,87 @@ export async function buscarFornecedores(termo: string, limite = 8): Promise<For
 }
 
 /**
- * Quando a busca literal não acha nada (o cadastro da Vobi tem erros de
- * digitação — "D4SING" no lugar de "D4SIGN"), tenta uma aproximação simples:
- * casa quem compartilha um prefixo de 4+ letras com o termo.
+ * Palavras que aparecem em meio mundo de fornecedor e não identificam ninguém.
+ * Sem esta lista, "MATERIAL DE CONSTRUÇÃO" casaria com qualquer coisa.
+ */
+const PALAVRAS_VAZIAS = new Set([
+  "ltda", "me", "epp", "eireli", "sa", "cia", "comercio", "comercial",
+  "industria", "industrial", "servicos", "servico", "material", "materiais",
+  "construcao", "construcoes", "distribuidora", "distribuicao", "empresa",
+  "grupo", "do", "da", "de", "dos", "das", "e", "em", "para", "por", "com",
+]);
+
+function palavrasDoTermo(termo: string): string[] {
+  return normalizar(termo)
+    .split(/[^a-z0-9]+/)
+    .filter((p) => p.length >= 3 && !PALAVRAS_VAZIAS.has(p));
+}
+
+/** Levenshtein com corte — só para perdoar erro de digitação do cadastro. */
+function distancia(a: string, b: string, max = 2): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let linha = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let ant = linha[0];
+    linha[0] = i;
+    let melhor = linha[0];
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = linha[j];
+      linha[j] = Math.min(linha[j] + 1, linha[j - 1] + 1, ant + (a[i - 1] === b[j - 1] ? 0 : 1));
+      ant = tmp;
+      if (linha[j] < melhor) melhor = linha[j];
+    }
+    if (melhor > max) return max + 1;
+  }
+  return linha[b.length];
+}
+
+/**
+ * Quanto este fornecedor "parece" com o termo procurado. 0 = não parece nada.
+ *
+ * Pontua por PALAVRA, não por prefixo. O prefixo de 4 letras que existia aqui
+ * antes era desastroso: "CONSTRUTIVO BPO" virava "cons" e casava com 144
+ * fornecedores (construção, consultoria, consórcio…), devolvendo 6 aleatórios
+ * — foi assim que um pagamento do CONSTRUTIVO CONTÁBIL foi parar no OBRAMAX.
+ */
+function pontuarFornecedor(f: Fornecedor, termoTodo: string, palavras: string[]): number {
+  const alvo = normalizar(`${f.nome} ${f.razao}`);
+  if (!alvo) return 0;
+  const palavrasAlvo = alvo.split(/[^a-z0-9]+/).filter(Boolean);
+  let pontos = 0;
+  if (termoTodo.length >= 3 && alvo.includes(termoTodo)) pontos += 100;
+  for (const p of palavras) {
+    if (palavrasAlvo.includes(p)) pontos += p.length * 5 + 15;        // palavra inteira
+    else if (alvo.includes(p)) pontos += p.length * 4;                 // pedaço de palavra
+    else if (p.length >= 5 && palavrasAlvo.some((a) => a.length >= 5 && distancia(p, a) <= 2))
+      pontos += p.length * 2;                                          // erro de digitação
+  }
+  return pontos;
+}
+
+/** Abaixo disto é coincidência de letras, não fornecedor parecido. */
+const PONTOS_MINIMOS = 20;
+
+/**
+ * Busca tolerante: usada quando a busca literal não acha nada — seja porque o
+ * comprovante traz um apelido ("CONSTRUTIVO BPO" para CONSTRUTIVO CONTÁBIL),
+ * seja porque o cadastro da Vobi tem erro de digitação ("D4SING" / "D4SIGN").
+ * Devolve ordenado pelo quanto casa, e NADA quando nada casa de verdade.
  */
 export async function buscarFornecedoresAproximado(termo: string, limite = 6): Promise<Fornecedor[]> {
   const exatos = await buscarFornecedores(termo, limite);
   if (exatos.length) return exatos;
-  const t = normalizar(termo).replace(/\s+/g, "");
-  if (t.length < 4) return [];
-  const pref = t.slice(0, 4);
+
+  const termoTodo = normalizar(termo);
+  const palavras = palavrasDoTermo(termo);
+  if (!palavras.length) return [];
+
   return (await fornecedores())
-    .filter((f) => {
-      const n = normalizar(f.nome).replace(/\s+/g, "");
-      const r = normalizar(f.razao).replace(/\s+/g, "");
-      return n.includes(pref) || r.includes(pref);
-    })
-    .slice(0, limite);
+    .map((f) => ({ f, pontos: pontuarFornecedor(f, termoTodo, palavras) }))
+    .filter((x) => x.pontos >= PONTOS_MINIMOS)
+    .sort((a, b) => b.pontos - a.pontos || a.f.nome.length - b.f.nome.length)
+    .slice(0, limite)
+    .map((x) => x.f);
 }
 
 // ───────────────────────── parcelas em aberto ─────────────────────────
