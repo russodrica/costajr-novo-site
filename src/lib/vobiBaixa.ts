@@ -895,6 +895,77 @@ export async function parcelasAbertasDoFornecedor(idSupplier: number, nome?: str
     .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
 }
 
+/**
+ * Quais parcelas em aberto, SOMADAS, dão exatamente o valor pago.
+ *
+ * Caso real (Adriana, 23/09/2026): um PIX de R$ 620,00 para a TECSYSTEM era
+ * 425,00 + 195,00 — duas parcelas do mesmo fornecedor. Antes o bot oferecia uma
+ * ou outra e ainda mostrava "(+R$ 195,00)" como se fosse juros, quando na
+ * verdade era o valor da OUTRA parcela.
+ *
+ * Trabalha em CENTAVOS (inteiro) — somar float dá 619,9999999.
+ * Combinações de 2 e de 3 parcelas; acima disso a chance de coincidência boba
+ * cresce mais que a utilidade. Devolve as melhores primeiro: menos parcelas,
+ * depois vencimento mais antigo.
+ */
+export function combinacoesQueSomam(
+  parcelas: ParcelaAberta[],
+  alvo: number,
+  maxCombos = 3,
+): ParcelaAberta[][] {
+  const cent = (v: number) => Math.round(v * 100);
+  const alvoC = cent(alvo);
+  if (alvoC <= 0 || parcelas.length < 2) return [];
+
+  // só interessa quem cabe dentro do alvo
+  const itens = parcelas.filter((p) => cent(p.valor) > 0 && cent(p.valor) < alvoC);
+  if (itens.length < 2) return [];
+
+  const achadas: ParcelaAberta[][] = [];
+  const vistas = new Set<string>();
+  const chave = (c: ParcelaAberta[]) => c.map((p) => p.id).sort().join("|");
+  const guardar = (c: ParcelaAberta[]) => {
+    const k = chave(c);
+    if (vistas.has(k)) return;
+    vistas.add(k);
+    achadas.push([...c].sort((a, b) => a.vencimento.localeCompare(b.vencimento)));
+  };
+
+  // ── 2 parcelas: índice por valor, O(n) ──
+  const porValor = new Map<number, ParcelaAberta[]>();
+  for (const p of itens) {
+    const v = cent(p.valor);
+    if (!porValor.has(v)) porValor.set(v, []);
+    porValor.get(v)!.push(p);
+  }
+  for (const p of itens) {
+    const falta = alvoC - cent(p.valor);
+    for (const q of porValor.get(falta) || []) {
+      if (q.id === p.id) continue;
+      guardar([p, q]);
+    }
+  }
+
+  // ── 3 parcelas: O(n²) com o mesmo índice. Limitado para não travar em
+  //    fornecedor com centenas de parcelas em aberto (o Leroy tem 150+). ──
+  if (achadas.length < maxCombos && itens.length <= 120) {
+    for (let i = 0; i < itens.length && achadas.length < maxCombos * 3; i++) {
+      for (let j = i + 1; j < itens.length && achadas.length < maxCombos * 3; j++) {
+        const falta = alvoC - cent(itens[i].valor) - cent(itens[j].valor);
+        if (falta <= 0) continue;
+        for (const r of porValor.get(falta) || []) {
+          if (r.id === itens[i].id || r.id === itens[j].id) continue;
+          guardar([itens[i], itens[j], r]);
+        }
+      }
+    }
+  }
+
+  return achadas
+    .sort((a, b) => a.length - b.length || a[0].vencimento.localeCompare(b[0].vencimento))
+    .slice(0, maxCombos);
+}
+
 export type Candidata = ParcelaAberta & {
   diferenca: number; // valorPago - valor da parcela (positivo = juros/multa)
   exata: boolean;
@@ -917,6 +988,19 @@ export async function parcelasCandidatas(
   limite = 6,
 ): Promise<Candidata[]> {
   const todas = await parcelasAbertasDoFornecedor(idSupplier, nome);
+  return ranquearCandidatas(todas, valorPago, limite);
+}
+
+/**
+ * A ordenação, separada da busca: quem já tem a lista completa em mãos (para
+ * procurar combinações que somam o valor pago) não precisa gastar OUTRA
+ * requisição na Vobi — a cota é de 1000/hora para a integração inteira.
+ */
+export function ranquearCandidatas(
+  todas: ParcelaAberta[],
+  valorPago: number,
+  limite = 6,
+): Candidata[] {
   const centavos = (v: number) => Math.round(v * 100);
   const pago = centavos(valorPago);
 

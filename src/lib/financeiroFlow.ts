@@ -32,6 +32,7 @@ import {
   receitasAbertasPorValor, parcelaEmAberto, receitasAbertas, ehReceitaDeCliente,
   CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
   centrosDeCusto, categoriasFinanceiras, buscarNoCatalogo, criarFornecedor, criarLancamento,
+  parcelasAbertasDoFornecedor as todasAbertasDoFornecedor, ranquearCandidatas, combinacoesQueSomam,
   usoAnteriorDoFornecedor,
   type ItemCatalogo,
   type Candidata, type Fornecedor, type ParcelaAberta,
@@ -129,6 +130,10 @@ type EstadoBaixa = {
   /** o que a pessoa (ou o comprovante) deu como nome do fornecedor — guardado
    *  para o "🔄 Tentar de novo" refazer a busca sem pedir o comprovante de novo */
   nomeBusca?: string;
+  /** combinações de parcelas que somam o valor pago (pagamento agrupado) */
+  lotes?: { id: string; valor: number; vencimento: string; descricao: string }[][];
+  /** o lote escolhido, esperando confirmação */
+  loteEscolhido?: number;
   /** lançamento sendo CADASTRADO do zero (fluxo "Lançar") */
   novo?: NovoLanc;
   /** para não deixar um passo esquecido capturando mensagens do grupo o dia todo */
@@ -1168,11 +1173,21 @@ async function pedirContaTransf(
 async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
   const f = estado.fornecedor!;
   let cands: Candidata[];
+  let todas: ParcelaAberta[] = [];
   try {
-    cands = await parcelasCandidatas(f.id, estado.valorPago, f.nome, 6);
+    todas = await todasAbertasDoFornecedor(f.id, f.nome);
+    cands = ranquearCandidatas(todas, estado.valorPago, 6);
   } catch (e: any) {
     return await falhaDaVobi(db, B, token, estado, chatId, e, "buscar as parcelas em aberto");
   }
+
+  // UM pagamento pode quitar VÁRIAS parcelas (PIX de 620 = 425 + 195). Se a
+  // soma bate exatamente, oferece o lote ANTES da lista solta — senão ela baixa
+  // uma só e a diferença vira "juros" que nunca existiram.
+  const combos = combinacoesQueSomam(todas, estado.valorPago, 3);
+  estado.lotes = combos.map((c) => c.map((p) => ({
+    id: p.id, valor: p.valor, vencimento: p.vencimento, descricao: p.descricao,
+  })));
 
   if (!cands.length) {
     // NAO apaga o estado: daqui ela ainda pode cadastrar o lancamento do zero.
@@ -1193,9 +1208,15 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   estado.etapa = "esc_parcela";
   await salvarEstado(db, token, estado);
 
-  if (cands.length === 1 || (cands[0].exata && !cands[1]?.exata)) {
+  // com lote possível NÃO decide sozinho: ela precisa ver as duas opções
+  if (!combos.length && (cands.length === 1 || (cands[0].exata && !cands[1]?.exata))) {
     return await escolherParcela(db, B, token, estado, chatId, cands[0]);
   }
+
+  const botoesLote = (estado.lotes || []).map((l, i) => [{
+    text: `📦 As ${l.length} juntas: ${l.map((x) => brl(x.valor)).join(" + ")}`.slice(0, 60),
+    callback_data: `fblote:${token}:${i}`,
+  }]);
 
   const botoes = cands.map((c, i) => {
     const atraso = c.diasAtraso > 0 ? ` (${c.diasAtraso}d atraso)` : "";
@@ -1206,6 +1227,7 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   // SEM SAIDA nao pode: a lista mostra so as 6 mais provaveis, e o fornecedor
   // pode ate ser o errado (o comprovante traz apelido). Antes so havia
   // "Cancelar" — quem nao reconhecia nenhum vencimento perdia o comprovante.
+  botoes.unshift(...botoesLote);
   botoes.push([{ text: "🤷 Não é nenhum desses", callback_data: `fbmais:${token}` }]);
   botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
 
@@ -1215,8 +1237,19 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
     return `${i + 1}. <b>${dataBR(c.vencimento)}</b> — ${brl(c.valor)}${marca}${atraso}\n    <i>${escTg(c.descricao.slice(0, 45))}</i>`;
   }).join("\n");
 
+  const avisoLote = estado.lotes?.length
+    ? `
+
+💡 <i>Esse valor é exatamente a soma de ${estado.lotes[0].length} parcelas — ` +
+      `se o pagamento quitou todas, use o botão 📦 lá em cima.</i>`
+    : "";
+
   await enviar(B, chatId,
-    `📋 <b>${escTg(f.nome)}</b> — pagamento de ${brl(estado.valorPago)}.\nA qual vencimento se refere?\n\n${linhas}`,
+    `📋 <b>${escTg(f.nome)}</b> — pagamento de ${brl(estado.valorPago)}.
+` +
+    `A qual vencimento se refere?${avisoLote}
+
+${linhas}`,
     inline(botoes));
 }
 
@@ -1698,6 +1731,84 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       `Qual é o fornecedor de <b>${brl(estado.valorPago)}</b>?\n\n` +
       `<i>Escreva o nome (ou um pedaço dele) aqui no grupo.</i>`,
       BOTOES_CANCELA(token));
+    return;
+  }
+
+  // ───────── PAGAMENTO AGRUPADO (uma transferência, várias parcelas) ─────────
+  if (acao === "fblote") {
+    const i = Number(arg);
+    const lote = estado.lotes?.[i];
+    if (!lote?.length) {
+      await enviar(B, chatId, "Essa opção é de uma lista antiga. Mande o comprovante de novo.");
+      return;
+    }
+    estado.loteEscolhido = i;
+    estado.etapa = "lote_confirma";
+    await salvarEstado(db, token, estado);
+
+    const soma = lote.reduce((t, p) => t + p.valor, 0);
+    const linhas = lote.map((p, k) =>
+      `${k + 1}. <b>${dataBR(p.vencimento)}</b> — ${brl(p.valor)}\n    <i>${escTg(p.descricao.slice(0, 45))}</i>`,
+    ).join("\n");
+
+    await enviar(B, chatId,
+      `📦 <b>Baixar ${lote.length} parcelas com esse pagamento</b>\n\n${linhas}\n\n` +
+      `<b>Soma:</b> ${brl(soma)}\n<b>Pago:</b> ${brl(estado.valorPago)} em ${dataBR(estado.dataPagamento)}\n` +
+      `<b>Conta:</b> ${escTg(nomeDaConta(estado.conta))}\n\n` +
+      `<i>Cada parcela é baixada pelo valor dela — sem juros, porque a soma fecha exata.</i>`,
+      inline([
+        [{ text: `✅ Baixar as ${lote.length}`, callback_data: `fbloteok:${token}` }],
+        [{ text: "⬅️ Ver as parcelas uma a uma", callback_data: `fbvolta:${token}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]));
+    return;
+  }
+
+  if (acao === "fbloteok") {
+    const lote = estado.lotes?.[estado.loteEscolhido ?? -1];
+    if (!lote?.length) { await enviar(B, chatId, "Não achei o lote. Mande o comprovante de novo."); return; }
+
+    if (estado.etapa === "lote_gravando") {
+      await enviar(B, chatId, "⏳ Já estou baixando essas — só um instante.");
+      return;
+    }
+    estado.etapa = "lote_gravando";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, `⏳ Dando baixa nas ${lote.length} parcelas…`);
+
+    // Uma a uma, cada qual pelo SEU valor. Se uma falhar, as outras já baixadas
+    // continuam baixadas — por isso o relatório no fim diz exatamente quais.
+    const ok: string[] = [];
+    const falhou: string[] = [];
+    for (const p of lote) {
+      try {
+        const r = await darBaixa({
+          idInstallment: p.id,
+          valorPago: p.valor,
+          valorConta: p.valor, // soma exata => nao ha juros para distribuir
+          dataPagamento: estado.dataPagamento,
+          idPaymentBankAccount: estado.conta,
+          idPaymentType: estado.forma,
+        });
+        if (r.ok) ok.push(`${dataBR(p.vencimento)} · ${brl(p.valor)}`);
+        else falhou.push(`${dataBR(p.vencimento)} · ${brl(p.valor)} — ${r.mensagem}`);
+      } catch (e: any) {
+        falhou.push(`${dataBR(p.vencimento)} · ${brl(p.valor)} — ${String(e?.message || e).slice(0, 90)}`);
+      }
+    }
+
+    await apagarEstado(db, token);
+    let txt = falhou.length
+      ? `⚠️ <b>Baixei ${ok.length} de ${lote.length}.</b>\n`
+      : `✅ <b>Baixadas as ${ok.length} parcelas!</b>\n`;
+    if (ok.length) txt += `\n${ok.map((x) => `✅ ${escTg(x)}`).join("\n")}\n`;
+    if (falhou.length) {
+      txt += `\n${falhou.map((x) => `❌ ${escTg(x)}`).join("\n")}\n\n` +
+             `<i>As que falharam continuam em aberto — confira na Vobi.</i>`;
+    } else {
+      txt += `\n<b>${escTg(estado.fornecedor?.nome || "")}</b> — total ${brl(lote.reduce((t, p) => t + p.valor, 0))}`;
+    }
+    await enviar(B, chatId, txt);
     return;
   }
 
