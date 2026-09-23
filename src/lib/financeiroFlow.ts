@@ -31,6 +31,9 @@ import {
   CONTAS_TRANSFERENCIA, contaPorTexto, nomeDaConta, criarTransferenciaEntreContas,
   receitasAbertasPorValor, parcelaEmAberto, receitasAbertas, ehReceitaDeCliente,
   CONTA_PADRAO, FORMA_PADRAO, FORMA_CARTAO, vobiBaixaConfigurada,
+  centrosDeCusto, categoriasFinanceiras, buscarNoCatalogo, criarFornecedor, criarLancamento,
+  usoAnteriorDoFornecedor,
+  type ItemCatalogo,
   type Candidata, type Fornecedor, type ParcelaAberta,
 } from "./vobiBaixa";
 
@@ -126,6 +129,8 @@ type EstadoBaixa = {
   /** o que a pessoa (ou o comprovante) deu como nome do fornecedor — guardado
    *  para o "🔄 Tentar de novo" refazer a busca sem pedir o comprovante de novo */
   nomeBusca?: string;
+  /** lançamento sendo CADASTRADO do zero (fluxo "Lançar") */
+  novo?: NovoLanc;
   /** para não deixar um passo esquecido capturando mensagens do grupo o dia todo */
   atualizadoEm?: string;
 
@@ -312,11 +317,17 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
   }
 
   if (!achados.length) {
+    // O estado PRECISA estar salvo aqui: os botoes abaixo (cadastrar, recebimento,
+    // transferencia, procurar por valor) carregam o token e sem a sessao gravada
+    // todos respondem "esse lancamento ja foi tratado ou expirou".
+    estado.etapa = "sem_fornecedor";
+    await salvarEstado(db, token, estado);
     await enviar(
       B,
       chatId,
       `❌ Nenhum fornecedor com <b>${escTg(nome)}</b> tem conta em aberto.\n\n<i>Num depósito judicial ou guia de imposto o favorecido do comprovante é o tribunal ou o órgão, não o fornecedor — nesses casos o que liga é o valor.</i>`,
       inline([
+        [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
         [{ text: "💰 Na verdade foi um RECEBIMENTO", callback_data: `fbreceb:${token}` }],
         [{ text: "🔁 Transferência entre nossas contas", callback_data: `fbtransf:${token}` }],
         [{ text: `🔎 Procurar contas de ${brl(estado.valorPago)}`, callback_data: `fbvalor:${token}` }],
@@ -367,6 +378,298 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
     `Contas em aberto que combinam com <b>${escTg(nome)}</b>:\n\n${linhas}\n\n<i>Qual delas?</i>`,
     inline(bts),
   );
+}
+
+// ═══════════════════════ NOVO LANÇAMENTO (cadastrar) ═══════════════════════
+//
+// Pedido da Adriana (23/09/2026): compra no cartão quase nunca está lançada na
+// Vobi, então o bot precisa CADASTRAR, não só dar baixa. O gatilho é a legenda
+// do comprovante começando com "Lançar":
+//
+//   Lançar - Chip Vivo - Cartão de crédito Nubank - CC Operação
+//   └ comando   └ descrição   └ conta/cartão        └ centro de custo
+//
+// O que a legenda não disser, o bot pergunta com botões. Decisões dela:
+// "já paguei / ainda vai vencer" é perguntado, e fornecedor novo só é criado
+// depois de ela ver os parecidos e tocar em "criar".
+
+type NovoLanc = {
+  nome: string;
+  valor: number;
+  data: string;
+  forma: number | null;
+  conta: number | null;
+  idSupplier?: number;
+  fornecedorNome?: string;
+  /** o que procurar no cadastro de fornecedores (estabelecimento do comprovante) */
+  buscaForn?: string;
+  idCategoria?: number;
+  categoriaNome?: string;
+  idCentroCusto?: number;
+  ccNome?: string;
+  pago?: boolean;
+};
+
+function normalizarTxt(s: string): string {
+  return String(s || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+/**
+ * Qual conta a legenda indica. Um "cartão" NÃO pode cair na conta corrente de
+ * mesmo nome: "Cartão de crédito Nubank" é o cartão 24624, não a conta Nubank
+ * (24611) — foi o primeiro erro que apareceu no teste.
+ */
+function contaDaLegenda(texto: string): { conta: number | null; forma: number | null } {
+  const t = normalizarTxt(texto);
+  if (!t) return { conta: null, forma: null };
+  if (/cart/.test(t)) {
+    const c = CARTOES.find((x) =>
+      normalizarTxt(x.nome).split(/\s+/).some((w) => w.length >= 3 && t.includes(w)));
+    if (c) return { conta: c.id, forma: FORMA_CARTAO };
+    if (CARTOES.length === 1) return { conta: CARTOES[0].id, forma: FORMA_CARTAO };
+  }
+  return { conta: contaPorTexto(texto), forma: null };
+}
+
+/** A legenda é um comando "Lançar - ..."? Devolve os pedaços já separados. */
+export function lerComandoLancar(legenda: string): { descricao: string; conta: string; cc: string } | null {
+  const t = String(legenda || "").trim();
+  if (!/^lan[çc]ar\b/i.test(t)) return null;
+
+  const partes = t.split(/\s+[-–—]\s+|\s*\n+\s*/).map((x) => x.trim()).filter(Boolean);
+  partes.shift(); // tira o "Lançar"
+
+  let descricao = "", conta = "", cc = "";
+  for (const p of partes) {
+    const mcc = p.match(/^(?:cc|centro de custo)\s*[:\-]?\s*(.+)$/i);
+    if (mcc) { cc = cc || mcc[1].trim(); continue; }
+    if (!conta && contaDaLegenda(p).conta) { conta = p; continue; }
+    if (!descricao) { descricao = p; continue; }
+    if (!cc) cc = p; // sobra sem rótulo no fim: trata como centro de custo
+  }
+  // "Lançar Chip Vivo" (sem hífen) também vale: o resto do texto é a descrição
+  if (!descricao && !conta && !cc) descricao = t.replace(/^lan[çc]ar\b[\s:\-]*/i, "").trim();
+  return { descricao, conta, cc };
+}
+
+/** Ponto de entrada: comprovante com legenda "Lançar", ou o botão "Cadastrar". */
+export async function iniciarNovoLancamento(
+  db: any, B: Bot, chatId: number, autor: string,
+  d: { valor: number; data: string; forma?: number | null; descricao?: string; conta?: string; cc?: string; estabelecimento?: string },
+  tokenExistente?: string,
+) {
+  const daLegenda = contaDaLegenda(d.conta || "");
+  const novo: NovoLanc = {
+    nome: (d.descricao || d.estabelecimento || "").trim(),
+    valor: d.valor,
+    data: d.data,
+    forma: daLegenda.forma ?? d.forma ?? null,
+    conta: daLegenda.conta,
+    buscaForn: (d.estabelecimento || d.descricao || "").trim(),
+  };
+
+  // centro de custo pedido na legenda ("CC Operação") já resolve sozinho
+  if (d.cc) {
+    try {
+      const achados = buscarNoCatalogo(await centrosDeCusto(), d.cc, 1);
+      if (achados[0]) { novo.idCentroCusto = achados[0].id; novo.ccNome = achados[0].nome.trim(); }
+    } catch { /* se a Vobi não responder, pergunta adiante */ }
+  }
+
+  const token = tokenExistente || novoToken();
+  const estado: EstadoBaixa = {
+    chat_id: chatId, autor,
+    valorPago: d.valor, dataPagamento: d.data,
+    forma: novo.forma ?? FORMA_PADRAO, conta: novo.conta ?? CONTA_PADRAO,
+    etapa: "novo", novo,
+  };
+  await salvarEstado(db, token, estado);
+
+  await enviar(B, chatId,
+    `➕ <b>Novo lançamento</b> — ${brl(d.valor)} em ${dataBR(d.data)}` +
+    (novo.nome ? `\n<b>O quê:</b> ${escTg(novo.nome)}` : "") +
+    (novo.conta ? `\n<b>Conta:</b> ${escTg(nomeDaConta(novo.conta))}` : "") +
+    (novo.ccNome ? `\n<b>Centro de custo:</b> ${escTg(novo.ccNome)}` : ""));
+  return await proximoPassoNovo(db, B, token, estado, chatId);
+}
+
+/** Pede o próximo dado que falta; com tudo preenchido, mostra o resumo. */
+async function proximoPassoNovo(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const n = estado.novo!;
+  try {
+    if (!n.idSupplier) return await pedirFornecedorNovo(db, B, token, estado, chatId);
+    if (!n.idCategoria) return await pedirCategoriaNovo(db, B, token, estado, chatId);
+    if (!n.idCentroCusto) return await pedirCentroCustoNovo(db, B, token, estado, chatId);
+    if (!n.conta) return await pedirContaNovo(db, B, token, estado, chatId);
+    if (n.pago === undefined) return await pedirPagoNovo(db, B, token, estado, chatId);
+  } catch (e: any) {
+    return await falhaDaVobi(db, B, token, estado, chatId, e, "montar o lançamento");
+  }
+  return await resumoNovo(db, B, token, estado, chatId);
+}
+
+async function pedirFornecedorNovo(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const n = estado.novo!;
+  const termo = (n.buscaForn || n.nome || "").trim();
+  const achados = termo.length >= 2 ? await buscarFornecedoresAproximado(termo, 5) : [];
+
+  estado.etapa = "novo_forn";
+  await salvarEstado(db, token, estado);
+
+  const botoes = achados.map((f) => [{
+    text: (f.nome || f.razao).slice(0, 55), callback_data: `fbnfor:${token}:${f.id}`,
+  }]);
+  if (termo.length >= 2) {
+    botoes.push([{ text: `➕ Criar "${termo.slice(0, 28)}"`, callback_data: `fbnforcriar:${token}` }]);
+  }
+  botoes.push([{ text: "🔎 Procurar outro nome", callback_data: `fbnforbusca:${token}` }]);
+  botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+
+  await enviar(B, chatId,
+    achados.length
+      ? `👤 <b>Qual é o fornecedor?</b>\n<i>Parecidos com “${escTg(termo)}”:</i>`
+      : `👤 <b>Qual é o fornecedor?</b>\n<i>Não achei ninguém parecido com “${escTg(termo)}”.</i>`,
+    inline(botoes));
+}
+
+/** A IA escolhe entre as categorias REAIS da Vobi — nunca inventa uma. */
+async function sugerirCategoria(
+  descricao: string, fornecedor: string, idSupplier?: number,
+): Promise<ItemCatalogo[]> {
+  const lista = await categoriasFinanceiras();
+
+  // 1º o HISTÓRICO do próprio fornecedor — sinal mais forte que qualquer chute.
+  if (idSupplier) {
+    const uso = await usoAnteriorDoFornecedor(idSupplier);
+    const hist = uso.categorias.map((id) => lista.find((c) => c.id === id)).filter(Boolean) as ItemCatalogo[];
+    if (hist.length) return hist.slice(0, 3);
+  }
+
+  const porPalavra = buscarNoCatalogo(lista, `${descricao} ${fornecedor}`, 3);
+  if (porPalavra.length || !llmConfigurado()) return porPalavra;
+  try {
+    const resp = await gerarTextoLLM(
+      "Você classifica despesas de uma construtora. Responde SÓ um JSON.",
+      [{ role: "user", content:
+          `Despesa: "${descricao}" — fornecedor "${fornecedor}".\n` +
+          `Escolha as 3 categorias MAIS provaveis desta lista (copie o texto exato):\n` +
+          lista.map((c) => c.nome).join("\n") +
+          `\n\nResponda {"categorias":["...","...","..."]}` }],
+    );
+    const j = extrairJson(resp || "");
+    const nomes: string[] = Array.isArray(j?.categorias) ? j.categorias : [];
+    const out: ItemCatalogo[] = [];
+    for (const nm of nomes) {
+      const achou = lista.find((c) => normalizarTxt(c.nome) === normalizarTxt(String(nm)));
+      if (achou && !out.some((o) => o.id === achou.id)) out.push(achou);
+    }
+    return out.slice(0, 3);
+  } catch { return []; }
+}
+
+async function pedirCategoriaNovo(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const n = estado.novo!;
+  const sug = await sugerirCategoria(n.nome, n.fornecedorNome || "", n.idSupplier);
+  estado.etapa = "novo_cat";
+  await salvarEstado(db, token, estado);
+
+  const botoes = sug.map((c) => [{ text: c.nome.trim().slice(0, 55), callback_data: `fbncat:${token}:${c.id}` }]);
+  botoes.push([{ text: "🔎 Procurar outra categoria", callback_data: `fbncatbusca:${token}` }]);
+  botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+  await enviar(B, chatId,
+    sug.length
+      ? `🗂 <b>Qual categoria?</b>`
+      : `🗂 <b>Qual categoria?</b>\n<i>Toque em procurar e escreva um pedaço do nome.</i>`,
+    inline(botoes));
+}
+
+async function pedirCentroCustoNovo(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  estado.etapa = "novo_cc";
+  await salvarEstado(db, token, estado);
+  await enviar(B, chatId,
+    `🏗 <b>Qual centro de custo?</b>\n<i>Escreva um pedaço (ex.: “operação”, “capital de giro”, o nome da obra).</i>`,
+    BOTOES_CANCELA(token));
+}
+
+async function pedirContaNovo(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  estado.etapa = "novo_conta";
+  await salvarEstado(db, token, estado);
+  const botoes = [
+    ...CARTOES.map((c) => [{ text: `💳 ${c.nome}`, callback_data: `fbnconta:${token}:${c.id}` }]),
+    ...CONTAS_PRINCIPAIS.map((c) => [{ text: `🏦 ${c.nome}`, callback_data: `fbnconta:${token}:${c.id}` }]),
+    [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+  ];
+  await enviar(B, chatId, `🏦 <b>Saiu de qual conta?</b>`, inline(botoes));
+}
+
+async function pedirPagoNovo(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  estado.etapa = "novo_pago";
+  await salvarEstado(db, token, estado);
+  await enviar(B, chatId, `💰 <b>Essa conta já foi paga?</b>`, inline([
+    [{ text: "✅ Já paguei", callback_data: `fbnpago:${token}:1` }],
+    [{ text: "📅 Ainda vai vencer", callback_data: `fbnpago:${token}:0` }],
+    [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+  ]));
+}
+
+async function resumoNovo(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const n = estado.novo!;
+  estado.etapa = "novo_confirma";
+  await salvarEstado(db, token, estado);
+  const forma = FORMAS_PAGAMENTO.find((f) => f.id === n.forma)?.nome || "—";
+  await enviar(B, chatId,
+    `➕ <b>Conferir o lançamento</b>\n\n` +
+    `<b>O quê:</b> ${escTg((n.nome || "").toUpperCase())}\n` +
+    `<b>Fornecedor:</b> ${escTg(n.fornecedorNome || "—")}\n` +
+    `<b>Valor:</b> ${brl(n.valor)}\n` +
+    `<b>${n.pago ? "Pago em" : "Vence em"}:</b> ${dataBR(n.data)}\n` +
+    `<b>Conta:</b> ${escTg(nomeDaConta(n.conta))}\n` +
+    `<b>Forma:</b> ${escTg(forma)}\n` +
+    `<b>Categoria:</b> ${escTg(n.categoriaNome || "—")}\n` +
+    `<b>Centro de custo:</b> ${escTg(n.ccNome || "—")}\n\n` +
+    `<i>Confirma que pode lançar na Vobi?</i>`,
+    inline([
+      [{ text: "✅ Lançar na Vobi", callback_data: `fbnok:${token}` }],
+      [{ text: "✏️ Categoria", callback_data: `fbncatbusca:${token}` },
+       { text: "✏️ Centro de custo", callback_data: `fbnccbusca:${token}` }],
+      [{ text: "✏️ Conta", callback_data: `fbncontatroca:${token}` },
+       { text: "✏️ Fornecedor", callback_data: `fbnforbusca:${token}` }],
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ]));
+}
+
+async function gravarNovoLancamento(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  const n = estado.novo!;
+  if (estado.etapa === "novo_gravando") {
+    await enviar(B, chatId, "⏳ Já estou lançando esse — só um instante.");
+    return;
+  }
+  estado.etapa = "novo_gravando";
+  await salvarEstado(db, token, estado);
+
+  try {
+    const r = await criarLancamento({
+      nome: n.nome, valor: n.valor, data: n.data,
+      idSupplier: n.idSupplier!, idCategoria: n.idCategoria!, idCentroCusto: n.idCentroCusto!,
+      conta: n.conta!, forma: n.forma ?? FORMA_PADRAO,
+      pago: !!n.pago, autor: estado.autor,
+    });
+    await apagarEstado(db, token);
+    await enviar(B, chatId,
+      `✅ <b>Lançado na Vobi!</b>\n\n` +
+      `${escTg((n.nome || "").toUpperCase())} — ${brl(n.valor)}\n` +
+      `${n.pago ? "Pago" : "Vence"} em ${dataBR(n.data)} · ${escTg(nomeDaConta(n.conta))}\n` +
+      `${escTg(n.categoriaNome || "")} · ${escTg(n.ccNome || "")}` +
+      (r.conferido ? "" : `\n\n⚠️ <i>Gravei, mas não consegui reler a parcela para conferir — vale olhar na Vobi.</i>`));
+  } catch (e: any) {
+    estado.etapa = "novo_confirma";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `❌ <b>Não consegui lançar:</b> ${escTg(String(e?.message || e).slice(0, 200))}\n\n` +
+      `<i>Nada foi gravado. Pode tentar de novo.</i>`,
+      inline([[{ text: "🔄 Tentar de novo", callback_data: `fbnok:${token}` }],
+              [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]]));
+  }
 }
 
 // ───────────────────── entrada: COMPROVANTE (foto/PDF) ─────────────────────
@@ -490,8 +793,13 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   let bancoDestino = "";
 
   // ── CAMADA 1: legenda digitada junto com o arquivo ──
+  // ATENÇÃO: "Lançar - Chip Vivo - Cartão Nubank - CC Operação" é um COMANDO,
+  // não o nome de quem recebeu. Antes a legenda inteira virava o favorecido e
+  // o bot saía procurando uma empresa chamada "Lançar - Chip Vivo - ..." — foi
+  // exatamente o que a Adriana viu em 23/09/2026.
   const legenda = String(msg.caption || "").trim();
-  if (legenda) {
+  const cmdLancar = lerComandoLancar(legenda);
+  if (legenda && !cmdLancar) {
     valor = extrairValor(legenda);
     const n = extrairNome(legenda);
     if (n.length >= 2) favorecido = n;
@@ -557,6 +865,23 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
 
   // ── quem está de cada lado? ──
   const vTotal = valor; // já conferido acima; fixa o tipo para as closures abaixo
+
+  // "Lançar" é ordem explícita: NÃO passa pela matriz pagador × favorecido nem
+  // procura conta em aberto — vai direto cadastrar na Vobi.
+  if (cmdLancar) {
+    await enviar(B, chatId,
+      `📄 <b>Li do comprovante</b> <i>(${comoLi || "lendo o arquivo"})</i>:
+` +
+      `<b>Estabelecimento:</b> ${escTg(favorecido || "—")}
+` +
+      `<b>Valor:</b> ${brl(vTotal)}
+<b>Data:</b> ${dataBR(data)}`);
+    return await iniciarNovoLancamento(db, B, chatId, autorDe(msg), {
+      valor: vTotal, data, forma,
+      descricao: cmdLancar.descricao, conta: cmdLancar.conta, cc: cmdLancar.cc,
+      estabelecimento: favorecido,
+    });
+  }
 
   const idP = identificarLado(pagador, pagadorDoc);
   const idF = identificarLado(favorecido, favorecidoDoc);
@@ -850,8 +1175,17 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   }
 
   if (!cands.length) {
-    await enviar(B, chatId, `❌ <b>${escTg(f.nome)}</b> não tem nenhuma parcela em aberto na Vobi.\n\nPode já estar baixada, ou o lançamento estar em outro fornecedor.`);
-    await apagarEstado(db, token);
+    // NAO apaga o estado: daqui ela ainda pode cadastrar o lancamento do zero.
+    await enviar(B, chatId,
+      `❌ <b>${escTg(f.nome)}</b> não tem nenhuma parcela em aberto na Vobi.
+
+` +
+      `Pode já estar baixada, ser de outro fornecedor — ou ainda não ter sido lançada.`,
+      inline([
+        [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
+        [{ text: "🔄 É de outro fornecedor", callback_data: `fbtrocaforn:${token}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]));
     return;
   }
 
@@ -1318,7 +1652,10 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       await enviar(B, chatId,
         `<b>${escTg(f.nome)}</b> não tem outra conta em aberto além das que já mostrei.\n\n` +
         `Então o pagamento é de <b>outro fornecedor</b> — ou a conta ainda não foi lançada na Vobi.`,
-        inline([outroForn, porValor, [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]]));
+        inline([
+          [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
+          outroForn, porValor, [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+        ]));
       return;
     }
 
@@ -1362,6 +1699,103 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       `<i>Escreva o nome (ou um pedaço dele) aqui no grupo.</i>`,
       BOTOES_CANCELA(token));
     return;
+  }
+
+  // ───────── botoes do fluxo de NOVO LANCAMENTO ─────────
+  if (acao === "fbnovo") {
+    // veio de um beco sem saida da baixa: reaproveita valor/data ja lidos
+    return await iniciarNovoLancamento(db, B, chatId, estado.autor, {
+      valor: estado.valorPago, data: estado.dataPagamento,
+      forma: estado.forma, estabelecimento: estado.nomeBusca || estado.fornecedor?.nome,
+    }, token);
+  }
+
+  if (acao === "fbnfor") {
+    const id = Number(arg);
+    const f = (await fornecedores().catch(() => [])).find((x) => x.id === id);
+    estado.novo!.idSupplier = id;
+    estado.novo!.fornecedorNome = f ? (f.nome || f.razao) : `fornecedor ${id}`;
+    return await proximoPassoNovo(db, B, token, estado, chatId);
+  }
+
+  if (acao === "fbnforcriar") {
+    const termo = (estado.novo?.buscaForn || estado.novo?.nome || "").trim();
+    try {
+      const f = await criarFornecedor(termo);
+      estado.novo!.idSupplier = f.id;
+      estado.novo!.fornecedorNome = f.nome;
+      await enviar(B, chatId, `✅ Fornecedor <b>${escTg(f.nome)}</b> cadastrado na Vobi.`);
+    } catch (e: any) {
+      await enviar(B, chatId, `❌ Não consegui criar o fornecedor: ${escTg(String(e?.message || e).slice(0, 160))}`);
+      return await pedirFornecedorNovo(db, B, token, estado, chatId);
+    }
+    return await proximoPassoNovo(db, B, token, estado, chatId);
+  }
+
+  if (acao === "fbnforbusca") {
+    estado.etapa = "novo_busca_forn";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, "👤 Escreva o <b>nome do fornecedor</b> (ou um pedaço).", BOTOES_CANCELA(token));
+    return;
+  }
+
+  if (acao === "fbncat") {
+    const id = Number(arg);
+    const c = (await categoriasFinanceiras().catch(() => [])).find((x) => x.id === id);
+    estado.novo!.idCategoria = id;
+    estado.novo!.categoriaNome = c ? c.nome.trim() : `categoria ${id}`;
+    return await proximoPassoNovo(db, B, token, estado, chatId);
+  }
+
+  if (acao === "fbncatbusca") {
+    estado.etapa = "novo_busca_cat";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, "🗂 Escreva um pedaço do nome da <b>categoria</b>.", BOTOES_CANCELA(token));
+    return;
+  }
+
+  if (acao === "fbncc") {
+    const id = Number(arg);
+    const c = (await centrosDeCusto().catch(() => [])).find((x) => x.id === id);
+    estado.novo!.idCentroCusto = id;
+    estado.novo!.ccNome = c ? c.nome.trim() : `centro ${id}`;
+    return await proximoPassoNovo(db, B, token, estado, chatId);
+  }
+
+  if (acao === "fbnccbusca") {
+    estado.etapa = "novo_busca_cc";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, "🏗 Escreva um pedaço do <b>centro de custo</b>.", BOTOES_CANCELA(token));
+    return;
+  }
+
+  if (acao === "fbnconta") {
+    const id = Number(arg);
+    estado.novo!.conta = id;
+    // cartao de credito manda na forma; conta corrente mantem o que veio do comprovante
+    if (CARTOES.some((c) => c.id === id)) estado.novo!.forma = FORMA_CARTAO;
+    return await proximoPassoNovo(db, B, token, estado, chatId);
+  }
+
+  if (acao === "fbncontatroca") {
+    return await pedirContaNovo(db, B, token, estado, chatId);
+  }
+
+  if (acao === "fbnpago") {
+    estado.novo!.pago = arg === "1";
+    if (!estado.novo!.pago) {
+      estado.etapa = "novo_venc";
+      await salvarEstado(db, token, estado);
+      await enviar(B, chatId,
+        `📅 <b>Quando vence?</b>\nEscreva a data — <code>05/10</code> ou <code>05/10/2026</code>.`,
+        BOTOES_CANCELA(token));
+      return;
+    }
+    return await proximoPassoNovo(db, B, token, estado, chatId);
+  }
+
+  if (acao === "fbnok") {
+    return await gravarNovoLancamento(db, B, token, estado, chatId);
   }
 
   if (acao === "fbretry") {
@@ -1889,7 +2323,8 @@ async function pendenteEsperandoNumero(db: any, chatId: number) {
     .select("telegram_user_id, dados, estado")
     .like("telegram_user_id", "fb:%")
     .eq("chat_id", String(chatId))
-    .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros", "rec_aguarda_valor", "aguarda_fornecedor"])
+    .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros", "rec_aguarda_valor", "aguarda_fornecedor",
+      "novo_busca_forn", "novo_busca_cat", "novo_busca_cc", "novo_cc", "novo_venc"])
     .order("telegram_user_id", { ascending: false })
     .limit(1);
   const linha = (data || [])[0];
@@ -1899,6 +2334,20 @@ async function pendenteEsperandoNumero(db: any, chatId: number) {
   const quando = Date.parse(String((linha.dados as any)?.atualizadoEm || ""));
   if (Number.isFinite(quando) && Date.now() - quando > 2 * 60 * 60 * 1000) return null;
   return { token: String(linha.telegram_user_id).slice(3), estado: linha.dados as EstadoBaixa, etapa: linha.estado as string };
+}
+
+/** "05/10" ou "05/10/2026" -> AAAA-MM-DD. Sem ano, assume o ano corrente. */
+function dataDoTexto(t: string): string | null {
+  const m = t.trim().match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
+  if (!m) return null;
+  const dia = Number(m[1]), mes = Number(m[2]);
+  let ano = m[3] ? Number(m[3]) : Number(hojeISO().slice(0, 4));
+  if (ano < 100) ano += 2000;
+  if (dia < 1 || dia > 31 || mes < 1 || mes > 12) return null;
+  const iso = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+  const d = new Date(iso + "T12:00:00Z");
+  if (Number.isNaN(d.getTime()) || d.getUTCDate() !== dia) return null; // 31/02 etc
+  return iso;
 }
 
 /** A mensagem é SÓ um número? ("35,90", "R$ 1.400,00"). Se não for, é conversa
@@ -1927,6 +2376,58 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
     await salvarEstado(db, token, estado);
     await enviar(B, chatId, `🔎 Procurando <b>${escTg(nome)}</b> — ${brl(estado.valorPago)}…`);
     await buscarFornecedorEContinuar(db, B, token, estado, chatId);
+    return true;
+  }
+
+  // ── passos de TEXTO do cadastro de lançamento ──
+  // Mesmas travas do aguarda_fornecedor: janela curta, texto curto, sem comando.
+  if (etapa.startsWith("novo_")) {
+    const desde = Date.parse(String((estado as any).atualizadoEm || ""));
+    if (Number.isFinite(desde) && Date.now() - desde > 10 * 60 * 1000) return false;
+    const t = texto.trim();
+    if (t.startsWith("/") || t.length < 2 || t.length > 40) return false;
+    if (!estado.novo) return false;
+
+    if (etapa === "novo_venc") {
+      const d = dataDoTexto(t);
+      if (!d) {
+        await enviar(B, chatId, "Não entendi a data. Escreva <code>05/10</code> ou <code>05/10/2026</code>.", BOTOES_CANCELA(token));
+        return true;
+      }
+      estado.novo.data = d;
+      await salvarEstado(db, token, estado);
+      await proximoPassoNovo(db, B, token, estado, chatId);
+      return true;
+    }
+
+    if (etapa === "novo_busca_forn") {
+      estado.novo.buscaForn = t;
+      estado.novo.idSupplier = undefined;
+      await salvarEstado(db, token, estado);
+      await pedirFornecedorNovo(db, B, token, estado, chatId);
+      return true;
+    }
+
+    // categoria e centro de custo: mesma mecânica, catálogos diferentes
+    const ehCat = etapa === "novo_busca_cat";
+    let achados: ItemCatalogo[] = [];
+    try {
+      achados = buscarNoCatalogo(ehCat ? await categoriasFinanceiras() : await centrosDeCusto(), t, 6);
+    } catch (e: any) {
+      await falhaDaVobi(db, B, token, estado, chatId, e, ehCat ? "listar as categorias" : "listar os centros de custo");
+      return true;
+    }
+    if (!achados.length) {
+      await enviar(B, chatId,
+        `Não achei ${ehCat ? "categoria" : "centro de custo"} com “${escTg(t)}”. Tente outra palavra.`,
+        BOTOES_CANCELA(token));
+      return true;
+    }
+    const pre = ehCat ? "fbncat" : "fbncc";
+    await enviar(B, chatId, `Achei ${achados.length}. Qual é?`, inline([
+      ...achados.map((c) => [{ text: c.nome.trim().slice(0, 55), callback_data: `${pre}:${token}:${c.id}` }]),
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ]));
     return true;
   }
 

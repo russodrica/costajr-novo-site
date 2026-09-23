@@ -584,7 +584,12 @@ function distancia(a: string, b: string, max = 2): number {
  * — foi assim que um pagamento do CONSTRUTIVO CONTÁBIL foi parar no OBRAMAX.
  */
 function pontuarFornecedor(f: Fornecedor, termoTodo: string, palavras: string[]): number {
-  const alvo = normalizar(`${f.nome} ${f.razao}`);
+  return pontuarNome(`${f.nome} ${f.razao}`, termoTodo, palavras);
+}
+
+/** O mesmo criterio, sobre um nome solto — serve p/ centro de custo e categoria. */
+function pontuarNome(cru: string, termoTodo: string, palavras: string[]): number {
+  const alvo = normalizar(cru);
   if (!alvo) return 0;
   const palavrasAlvo = alvo.split(/[^a-z0-9]+/).filter(Boolean);
   let pontos = 0;
@@ -621,6 +626,190 @@ export async function buscarFornecedoresAproximado(termo: string, limite = 6): P
     .sort((a, b) => b.pontos - a.pontos || a.f.nome.length - b.f.nome.length)
     .slice(0, limite)
     .map((x) => x.f);
+}
+
+// ═══════════════════ NOVO LANÇAMENTO (cadastrar do zero) ═══════════════════
+//
+// Até aqui o bot só dava BAIXA em conta que já existia na Vobi. A Adriana pediu
+// (23/09/2026) para também CADASTRAR: manda o comprovante com a legenda
+// "Lançar - Chip Vivo - Cartão de crédito Nubank - CC Operação" e o lançamento
+// nasce na Vobi. Compra no cartão quase nunca está lançada antes.
+
+export type ItemCatalogo = { id: number; nome: string };
+
+const _catMem = new Map<string, { at: number; lista: ItemCatalogo[] }>();
+
+/**
+ * Catálogo da Vobi em cache de 3 camadas (memória 1h → vobi_cache 24h → API),
+ * igual aos fornecedores e pelo mesmo motivo: a cota é de 1000 req/h para a
+ * integração inteira e cada cold start da Vercel zera a memória.
+ */
+async function catalogo(chave: string, endpoint: string): Promise<ItemCatalogo[]> {
+  const mem = _catMem.get(chave);
+  if (mem && Date.now() - mem.at < FORN_TTL_MEM) return mem.lista;
+
+  let salvo: { lista: ItemCatalogo[]; at: number } | null = null;
+  try {
+    const { data } = await supabaseAdmin()
+      .from("vobi_cache").select("dados, atualizado_em").eq("chave", chave).maybeSingle();
+    const l = data?.dados as ItemCatalogo[] | undefined;
+    if (Array.isArray(l) && l.length) salvo = { lista: l, at: new Date(data!.atualizado_em).getTime() };
+  } catch { /* sem cache é só mais lento */ }
+
+  if (salvo && Date.now() - salvo.at < FORN_TTL_DB) {
+    _catMem.set(chave, { at: Date.now(), lista: salvo.lista });
+    return salvo.lista;
+  }
+
+  let lista: ItemCatalogo[];
+  try {
+    lista = (await vGetAll(endpoint))
+      .map((x: any) => ({ id: Number(x.id), nome: String(x.name || "").trim() }))
+      .filter((x) => x.id && x.nome);
+  } catch (e) {
+    if (salvo) { _catMem.set(chave, { at: Date.now(), lista: salvo.lista }); return salvo.lista; }
+    throw e;
+  }
+  if (!lista.length && salvo) return salvo.lista;
+
+  _catMem.set(chave, { at: Date.now(), lista });
+  try {
+    await supabaseAdmin().from("vobi_cache").upsert(
+      { chave, dados: lista, atualizado_em: new Date().toISOString() }, { onConflict: "chave" },
+    );
+  } catch { /* idem */ }
+  return lista;
+}
+
+/** Centros de custo (686: obras + OPERAÇÃO, CAPITAL DE GIRO, Projetos…). */
+export const centrosDeCusto = () => catalogo("centros_custo", "payment-cost-center");
+/** Categorias financeiras (120: Telefonia e Internet, Despesa de pessoal…). */
+export const categoriasFinanceiras = () => catalogo("categorias_financeiras", "financial-category");
+
+/** Busca por palavra dentro de um catálogo — mesmo criterio do fornecedor. */
+export function buscarNoCatalogo(lista: ItemCatalogo[], termo: string, limite = 6): ItemCatalogo[] {
+  const termoTodo = normalizar(termo);
+  const palavras = palavrasDoTermo(termo);
+  if (!palavras.length) return [];
+  return lista
+    .map((c) => ({ c, pontos: pontuarNome(c.nome, termoTodo, palavras) }))
+    .filter((x) => x.pontos >= PONTOS_MINIMOS)
+    .sort((a, b) => b.pontos - a.pontos || a.c.nome.length - b.c.nome.length)
+    .slice(0, limite)
+    .map((x) => x.c);
+}
+
+/**
+ * Cadastra um fornecedor novo. `POST /supplier` exige só `name` (conferido na
+ * spec da API). Invalida o cache para o novo aparecer na busca imediatamente.
+ */
+export async function criarFornecedor(nome: string): Promise<Fornecedor> {
+  const limpo = nome.trim().toUpperCase().slice(0, 120);
+  if (limpo.length < 2) throw new Error("nome de fornecedor muito curto");
+  const criado = await vPost("/supplier", { name: limpo });
+  const id = Number(criado?.id);
+  if (!id) throw new Error("a Vobi nao devolveu o id do fornecedor");
+  const novo: Fornecedor = { id, nome: limpo, razao: "" };
+  _fornCache = _fornCache ? { at: _fornCache.at, lista: [..._fornCache.lista, novo] } : null;
+  try {
+    await supabaseAdmin().from("vobi_cache").delete().eq("chave", CHAVE_FORN);
+  } catch { /* o cache expira sozinho em 24h de qualquer forma */ }
+  return novo;
+}
+
+/**
+ * O que esse fornecedor costuma usar de categoria e centro de custo.
+ *
+ * É o melhor palpite que existe e custa UMA requisição: a VIVO, por exemplo,
+ * tem os 10 últimos lançamentos todos em "Telefonia e Internet". Vale mais que
+ * o chute da IA — e funciona mesmo com a IA fora do ar.
+ */
+export async function usoAnteriorDoFornecedor(
+  idSupplier: number,
+): Promise<{ categorias: number[]; centros: number[] }> {
+  try {
+    const j = await vGet(
+      `/payment?limit=10&where[idSupplier]=${idSupplier}&order[0][0]=id&order[0][1]=DESC`,
+    );
+    const rows: any[] = j?.rows || [];
+    const porFrequencia = (campo: string) => {
+      const c = new Map<number, number>();
+      for (const r of rows) {
+        const v = Number(r?.[campo]);
+        if (v) c.set(v, (c.get(v) || 0) + 1);
+      }
+      return [...c.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+    };
+    return { categorias: porFrequencia("idFinancialCategory"), centros: porFrequencia("idPaymentCostCenter") };
+  } catch {
+    return { categorias: [], centros: [] };
+  }
+}
+
+export type NovoLancamento = {
+  nome: string;              // vai em CAIXA ALTA (padrão da casa)
+  valor: number;
+  idSupplier: number;
+  idCategoria: number;
+  idCentroCusto: number;
+  conta: number;             // conta bancária / cartão
+  forma: number;             // idPaymentType
+  /** true = já quitado (data = pagamento); false = em aberto (data = vencimento) */
+  pago: boolean;
+  data: string;              // AAAA-MM-DD
+  autor?: string;
+};
+
+/**
+ * Cria o lançamento na Vobi e CONFERE relendo — a API tem bug conhecido de
+ * responder 200 sem persistir (ver vobiEscrita.ts), então nunca dizer "lancei"
+ * sem ter visto a parcela existir.
+ *
+ * Status conferidos na base em 23/09/2026:
+ *   em aberto → payment.idPaymentStatus 2 + installment.idInstallmentStatus 1
+ *   quitado   → payment.idPaymentStatus 3 + installment.idInstallmentStatus 2
+ */
+export async function criarLancamento(d: NovoLancamento): Promise<{ id: string; conferido: boolean }> {
+  if (!(d.valor > 0)) throw new Error("valor inválido");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.data)) throw new Error(`data inválida: ${d.data}`);
+  if (!d.idSupplier || !d.idCategoria || !d.idCentroCusto) {
+    // Regra da casa (memória vobi_padrao_lancamento): fornecedor, categoria e
+    // centro de custo NUNCA ficam em branco — é o que faz a planilha agrupar.
+    throw new Error("fornecedor, categoria e centro de custo são obrigatórios");
+  }
+
+  const nome = d.nome.trim().toUpperCase().slice(0, 120) || "LANCAMENTO";
+  const parcela: any = {
+    price: d.valor, percentage: 100, number: 1, dueDate: d.data,
+    idInstallmentStatus: d.pago ? 2 : 1,
+    idPaymentBankAccount: d.conta, idPaymentType: d.forma, description: nome,
+  };
+  if (d.pago) { parcela.paidDate = d.data; parcela.paidValue = d.valor; }
+
+  const corpo: any = {
+    name: nome, billType: "expense", value: d.valor, subTotal: d.valor, billingDate: d.data,
+    idPaymentBankAccount: d.conta, idFinancialCategory: d.idCategoria,
+    idPaymentCostCenter: d.idCentroCusto, idSupplier: d.idSupplier,
+    ownBusiness: true, idCompany: ID_EMPRESA, idCompanyEntity: ID_ENTIDADE,
+    idPaymentStatus: d.pago ? 3 : 2,
+    annotation: `Lancado pelo comprovante enviado no Telegram${d.autor ? " por " + d.autor : ""}.`,
+    isRecurrence: false, recurrenceId: null, interval: 0,
+    frequency: null, lastRecurrenceDate: null, installments: [parcela],
+  };
+
+  const criado = await vPost("/payment", corpo);
+  const id = criado?.id;
+  if (!id) throw new Error("a Vobi nao devolveu o id do lancamento");
+
+  // RELÊ: sem parcela, o lançamento não existe para nenhuma listagem.
+  const ps = ((await vGet(`/installment?limit=20&where[idPayment]=${id}`))?.rows || [])
+    .filter((i: any) => i.idPayment === id);
+  const p = ps[0];
+  const conferido = ps.length === 1 && !!p &&
+    Math.abs(num(p.price) - d.valor) < 0.01 &&
+    p.idInstallmentStatus === (d.pago ? 2 : 1);
+
+  return { id: String(id), conferido };
 }
 
 // ───────────────────────── parcelas em aberto ─────────────────────────
