@@ -2600,3 +2600,35 @@ template literal faz `\n` virar QUEBRA DE LINHA de verdade no arquivo. Dentro de
 template literal nao quebra nada, mas dentro de `"..."` vira erro TS1002. Para
 emitir codigo, usar heredoc `<<'EOF'` para um arquivo .txt e inserir com node
 lendo esse arquivo — nunca montar o codigo dentro do proprio script.
+
+## Atualizacao 25/09/2026 (parte 2) — o PONTO CEGO da API mordeu de novo (TOKIO)
+
+Eu afirmei que a parcela 3/6 do SEGURO TOKIO MARINE nao estava lancada. **Estava** —
+a Adriana mandou o print: as SEIS parcelas existem (1/6 e 2/6 pagas no cartao,
+3/6 a 6/6 em aberto, R$ 1.632,63 vencendo 20/09, 20/10, 20/11 e 20/12). Elas nao
+vem em NENHUMA listagem da API (nem por fornecedor, nem por vencimento, nem por
+valor, nem `where[name]` exato) — e o pagamento e justamente o **#1b8c8e67
+"SEGURO TOKIO MARINE, 6x1.632,63"** ja registrado como fantasma na memoria
+(armadilhas 42/47/53: rateio com `isMainSplit:false` e projeto administrativo).
+
+**Consequencia:** conferencia por listagem SEMPRE tem esse ponto cego — a minha e
+a do bot. O unico jeito de alcancar essas parcelas e por `GET /installment/{id}`
+com o id que a TELA mostra em "Detalhes da parcela" (ou o export CSV de Despesas).
+
+**Feito (commit 1a3f228):** a fatura ganhou **"🔍 Incluir parcela pelo ID"**. Cola-se
+o id, o bot acha por `parcelaPorId` e pergunta **quanto a fatura cobrou** — porque
+boleto pago no credito chega com IOF+juros por cima (TOKIO: conta 1.632,63, fatura
+1.875,47). O `cobrado` vira `valorPago` e o `valor` vira `valorConta` na `darBaixa`,
+entao a diferenca e gravada como JUROS pelo caminho normal. A linha mostra
+"conta R$ 1.632,63 + R$ 242,84 de encargos do cartao". Travas do passo de texto:
+so UUID, so 10 min, nao engole conversa do grupo (verificado).
+
+**CHECKSUM que fechou a conferencia da fatura 02/10:** visivel 4.360,35 + TOKIO
+fantasma 1.632,63 = 5.992,98; fatura 6.281,14; diferenca 288,16 = encargos do
+TOKIO (242,84) + os 5 itens pequenos que faltam (45,28) + 0,04 de centavos.
+Quando a diferenca fecha ao centavo assim, e sinal de que nao ha mais nada oculto.
+
+**REGRA:** antes de dizer "nao esta lancado", lembrar que a API nao ve tudo —
+dizer "nao apareceu na busca" e pedir confirmacao na tela. O valor da fatura NAO
+serve de chave de busca quando o boleto foi pago no credito (a fatura mostra
+face + IOF + juros; a Vobi guarda a face).
