@@ -35,6 +35,7 @@ import {
   centrosDeCusto, categoriasFinanceiras, buscarNoCatalogo, criarFornecedor, criarLancamento,
   parcelasAbertasDoFornecedor as todasAbertasDoFornecedor, ranquearCandidatas, combinacoesQueSomam,
   usoAnteriorDoFornecedor,
+  faturasEmAberto, CONTA_CARTAO, nomeDoPagamentoDaFatura,
   type ItemCatalogo,
   type Candidata, type Fornecedor, type ParcelaAberta,
 } from "./vobiBaixa";
@@ -137,6 +138,13 @@ type EstadoBaixa = {
   loteEscolhido?: number;
   /** lançamento sendo CADASTRADO do zero (fluxo "Lançar") */
   novo?: NovoLanc;
+  /** pagamento da FATURA do cartão: as compras que ela cobre */
+  fatura?: {
+    vencimento: string;
+    itens: { id: string; valor: number; vencimento: string; descricao: string }[];
+    /** outros vencimentos de fatura com parcela em aberto (botão "outra fatura") */
+    opcoes?: string[];
+  };
   /** para não deixar um passo esquecido capturando mensagens do grupo o dia todo */
   atualizadoEm?: string;
 
@@ -226,6 +234,19 @@ export async function ativarGrupoFinanceiro(db: any, chatId: number, titulo: str
     { onConflict: "telegram_user_id" },
   );
 }
+
+/**
+ * O favorecido do comprovante é o próprio cartão?
+ *
+ * A fatura do Nubank é paga por PIX para NU PAGAMENTOS SA — que não é
+ * fornecedor nenhum, então o bot caía em "nenhum fornecedor com conta em
+ * aberto" sem oferecer o caminho certo.
+ */
+export function ehPagamentoDeFatura(texto?: string | null): boolean {
+  return /NUs*PAGAMENTOS|NUBANK|FATURA (DO )?CART/i.test(String(texto || ""));
+}
+
+const BTN_FATURA = (token: string) => [{ text: "💳 É a FATURA do cartão", callback_data: `fbfat:${token}` }];
 
 /** Todo passo que espera um número digitado precisa ter saída. */
 const BOTOES_CANCELA = (token: string) => inline([
@@ -328,6 +349,117 @@ async function falhaDaVobi(
   );
 }
 
+// ───────────────────── FATURA DO CARTÃO DE CRÉDITO ─────────────────────
+//
+// "São muitas despesas" (Adriana, 25/09/2026): uma fatura junta dezenas de
+// compras, então não dá para tratar como uma conta só. O bot monta a fatura
+// inteira, CONFERE a soma contra o valor pago e, num toque, faz as duas pernas
+// do modelo da casa:
+//
+//   • baixa cada compra NA CONTA DO CARTÃO (conta = Cartão 1405_Nubank,
+//     forma = cartão de crédito, data = a do pagamento da fatura);
+//   • lança o pagamento como transferência Santander → cartão, com o nome de
+//     casa "SANTANDER - CARTAO 1405_NUBANK_PAGAMENTO FATURA <venc>".
+//
+// O que sobra no saldo do cartão é exatamente o que a fatura cobrou e não está
+// lançado na Vobi — por isso a diferença aparece em destaque, nunca escondida.
+
+const MAX_LINHAS_FATURA = 22;
+
+async function mostrarFatura(
+  db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number, venc?: string,
+) {
+  let faturas;
+  try {
+    faturas = await faturasEmAberto(estado.dataPagamento);
+  } catch (e: any) {
+    return await falhaDaVobi(db, B, token, estado, chatId, e, "listar as compras do cartão");
+  }
+
+  const alvo = venc || proximoVencimentoCartao(estado.dataPagamento);
+  const escolhida =
+    faturas.find((f) => f.vencimento === alvo) ||
+    faturas.find((f) => f.vencimento >= alvo) ||
+    faturas[faturas.length - 1];
+
+  if (!escolhida) {
+    estado.etapa = "sem_fornecedor";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `❌ Não achei nenhuma compra de cartão em aberto na Vobi.
+
+` +
+      `<i>As compras da fatura precisam estar lançadas antes — é nelas que a baixa acontece.</i>`,
+      inline([
+        [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
+        [{ text: "🔁 Transferência entre nossas contas", callback_data: `fbtransf:${token}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]));
+    return;
+  }
+
+  estado.fatura = {
+    vencimento: escolhida.vencimento,
+    itens: escolhida.itens.map((p) => ({
+      id: p.id, valor: p.valor, vencimento: p.vencimento, descricao: p.descricao,
+    })),
+    opcoes: faturas.map((f) => f.vencimento),
+  };
+  return await renderFatura(db, B, token, estado, chatId);
+}
+
+/** Desenha a fatura a partir do ESTADO — sem consultar a Vobi de novo (tirar
+ *  uma compra da lista não pode custar outra varredura na cota). */
+async function renderFatura(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  if (!estado.fatura) return;
+  estado.etapa = "fatura_confirma";
+  await salvarEstado(db, token, estado);
+
+  const itens = estado.fatura.itens;
+  const soma = Math.round(itens.reduce((t, p) => t + p.valor, 0) * 100) / 100;
+  const dif = Math.round((estado.valorPago - soma) * 100) / 100;
+
+  const linhas = itens.slice(0, MAX_LINHAS_FATURA).map((p, i) =>
+    `${String(i + 1).padStart(2)}. ${brl(p.valor)} — <i>${escTg(p.descricao.slice(0, 38))}</i>`,
+  ).join("\n");
+  const resto = itens.length > MAX_LINHAS_FATURA
+    ? `
+<i>… e mais ${itens.length - MAX_LINHAS_FATURA} compras</i>` : "";
+
+  const veredito = Math.abs(dif) < 0.01
+    ? `
+✅ <b>Bate exato com a fatura.</b>`
+    : dif > 0
+      ? `
+⚠️ <b>Faltam ${brl(dif)}</b> — compras que a fatura cobrou e <b>não estão lançadas</b> na Vobi.
+` +
+        `<i>Pode baixar assim mesmo: esse valor fica como saldo no cartão até você lançar o que falta.</i>`
+      : `
+⚠️ <b>Sobram ${brl(-dif)}</b> — o lançado é MAIOR que a fatura paga.
+` +
+        `<i>Provavelmente alguma compra não é desta fatura. Use "Tirar uma compra" ou troque a fatura.</i>`;
+
+  await enviar(B, chatId,
+    `💳 <b>Fatura do ${escTg(nomeDaConta(CONTA_CARTAO))}</b> — vence ${dataBR(estado.fatura.vencimento)}
+` +
+    `Pago ${brl(estado.valorPago)} em ${dataBR(estado.dataPagamento)} pelo ${escTg(nomeDaConta(estado.conta))}.
+
+` +
+    `<b>Compras lançadas (${itens.length}):</b>
+${linhas}${resto}
+
+` +
+    `<b>Soma lançada:</b> ${brl(soma)}
+<b>Fatura paga:</b> ${brl(estado.valorPago)}${veredito}`,
+    inline([
+      [{ text: `✅ Baixar as ${itens.length} e lançar a fatura`, callback_data: `fbfatok:${token}` }],
+      [{ text: "➖ Tirar uma compra", callback_data: `fbfatrm:${token}` }],
+      ...((estado.fatura.opcoes || []).length > 1
+        ? [[{ text: "📅 Outra fatura", callback_data: `fbfatd:${token}` }]] : []),
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ]));
+}
+
 /** Busca o fornecedor pelo nome guardado no estado e segue o fluxo. */
 async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
   const nome = estado.nomeBusca || "";
@@ -356,17 +488,28 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
     // todos respondem "esse lancamento ja foi tratado ou expirou".
     estado.etapa = "sem_fornecedor";
     await salvarEstado(db, token, estado);
+    // O favorecido ser NU PAGAMENTOS quer dizer FATURA DO CARTÃO: o pagamento
+    // não é de um fornecedor, é do cartão inteiro. Nesse caso o caminho certo
+    // vem primeiro, com o texto explicando o que ele faz.
+    const ehFatura = ehPagamentoDeFatura(nome);
+    const botoes = [
+      [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
+      [{ text: "💰 Na verdade foi um RECEBIMENTO", callback_data: `fbreceb:${token}` }],
+      [{ text: "🔁 Transferência entre nossas contas", callback_data: `fbtransf:${token}` }],
+      [{ text: `🔎 Procurar contas de ${brl(estado.valorPago)}`, callback_data: `fbvalor:${token}` }],
+      [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+    ];
+    if (ehFatura) botoes.unshift(BTN_FATURA(token));
+    else botoes.splice(3, 0, BTN_FATURA(token));
+
     await enviar(
       B,
       chatId,
-      `❌ Nenhum fornecedor com <b>${escTg(nome)}</b> tem conta em aberto.\n\n<i>Num depósito judicial ou guia de imposto o favorecido do comprovante é o tribunal ou o órgão, não o fornecedor — nesses casos o que liga é o valor.</i>`,
-      inline([
-        [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
-        [{ text: "💰 Na verdade foi um RECEBIMENTO", callback_data: `fbreceb:${token}` }],
-        [{ text: "🔁 Transferência entre nossas contas", callback_data: `fbtransf:${token}` }],
-        [{ text: `🔎 Procurar contas de ${brl(estado.valorPago)}`, callback_data: `fbvalor:${token}` }],
-        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
-      ]),
+      ehFatura
+        ? `💳 <b>${escTg(nome)}</b> é o cartão, não um fornecedor — esse pagamento de <b>${brl(estado.valorPago)}</b> parece a <b>fatura</b>.\n\n` +
+          `<i>Na fatura eu baixo TODAS as compras do cartão de uma vez e lanço a saída do banco. Toque no botão que eu monto a conferência.</i>`
+        : `❌ Nenhum fornecedor com <b>${escTg(nome)}</b> tem conta em aberto.\n\n<i>Num depósito judicial ou guia de imposto o favorecido do comprovante é o tribunal ou o órgão, não o fornecedor — nesses casos o que liga é o valor.</i>`,
+      inline(botoes),
     );
     return;
   }
@@ -1259,8 +1402,11 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
     return await escolherParcela(db, B, token, estado, chatId, cands[0]);
   }
 
+  // O VENCIMENTO vai no botão porque duas parcelas do mesmo valor dão combos
+  // diferentes com o texto igual — na RENATA apareceram três botões "As 2
+  // juntas: R$ 3.300,00 + R$ 3.300,00" e não dava para saber qual era qual.
   const botoesLote = (estado.lotes || []).map((l, i) => [{
-    text: `📦 As ${l.length} juntas: ${l.map((x) => brl(x.valor)).join(" + ")}`.slice(0, 60),
+    text: `📦 As ${l.length} juntas (${l.map((x) => dataBR(x.vencimento).slice(0, 5)).join(" + ")}): ${brl(l.reduce((t, x) => t + x.valor, 0))}`.slice(0, 60),
     callback_data: `fblote:${token}:${i}`,
   }]);
 
@@ -1275,6 +1421,7 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   // "Cancelar" — quem nao reconhecia nenhum vencimento perdia o comprovante.
   botoes.unshift(...botoesLote);
   botoes.push([{ text: "🤷 Não é nenhum desses", callback_data: `fbmais:${token}` }]);
+  if (ehPagamentoDeFatura(estado.nomeBusca || f.nome)) botoes.push(BTN_FATURA(token));
   botoes.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
 
   const linhas = cands.map((c, i) => {
@@ -1783,6 +1930,137 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       `Qual é o fornecedor de <b>${brl(estado.valorPago)}</b>?\n\n` +
       `<i>Escreva o nome (ou um pedaço dele) aqui no grupo.</i>`,
       BOTOES_CANCELA(token));
+    return;
+  }
+
+  // ───────── FATURA DO CARTÃO (uma fatura, dezenas de compras) ─────────
+  if (acao === "fbfat") {
+    return await mostrarFatura(db, B, token, estado, chatId, arg || undefined);
+  }
+
+  if (acao === "fbfatd") {
+    const opcoes = estado.fatura?.opcoes || [];
+    if (arg) return await mostrarFatura(db, B, token, estado, chatId, opcoes[Number(arg)]);
+    if (!opcoes.length) return await mostrarFatura(db, B, token, estado, chatId);
+    await enviar(B, chatId,
+      `📅 <b>Qual fatura esse pagamento quitou?</b>\n\n` +
+      `<i>Ela costuma pagar antes de fechar — a que vence dia 02 é paga no fim do mês anterior.</i>`,
+      inline([
+        ...opcoes.map((v, i) => [{ text: `Vencimento ${dataBR(v)}`, callback_data: `fbfatd:${token}:${i}` }]),
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]));
+    return;
+  }
+
+  // Tirar da fatura uma compra que não é dela (ou que ela não quer baixar
+  // agora). Só mexe no estado — nada de nova varredura na Vobi.
+  if (acao === "fbfatrm") {
+    const itens = estado.fatura?.itens || [];
+    if (!itens.length) return await mostrarFatura(db, B, token, estado, chatId);
+
+    if (arg) {
+      const i = Number(arg);
+      const fora = itens[i];
+      if (!fora) return await renderFatura(db, B, token, estado, chatId);
+      estado.fatura!.itens = itens.filter((_, k) => k !== i);
+      await salvarEstado(db, token, estado);
+      await enviar(B, chatId, `➖ Tirei <b>${escTg(fora.descricao.slice(0, 40))}</b> (${brl(fora.valor)}) da fatura.`);
+      return await renderFatura(db, B, token, estado, chatId);
+    }
+
+    await enviar(B, chatId,
+      `Qual compra <b>não</b> é desta fatura?\n\n<i>Ela continua em aberto na Vobi — só sai desta baixa.</i>`,
+      inline([
+        ...itens.slice(0, 30).map((p, i) => [{
+          text: `${brl(p.valor)} · ${p.descricao.slice(0, 32)}`.slice(0, 60),
+          callback_data: `fbfatrm:${token}:${i}`,
+        }]),
+        [{ text: "⬅️ Voltar", callback_data: `fbfat:${token}:${estado.fatura?.vencimento || ""}` }],
+      ]));
+    return;
+  }
+
+  if (acao === "fbfatok") {
+    const fat = estado.fatura;
+    if (!fat?.itens.length) { await enviar(B, chatId, "Não achei a fatura. Mande o comprovante de novo."); return; }
+    if (estado.etapa === "fatura_gravando") {
+      await enviar(B, chatId, "⏳ Já estou lançando essa fatura — só um instante.");
+      return;
+    }
+    if (estado.conta === CONTA_CARTAO) {
+      await enviar(B, chatId, "❌ A conta de onde saiu o dinheiro não pode ser o próprio cartão. Use ✏️ Alterar para corrigir.");
+      return;
+    }
+    estado.etapa = "fatura_gravando";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId, `⏳ Baixando ${fat.itens.length} compras e lançando o pagamento da fatura…`);
+
+    // 1) cada compra é baixada NA CONTA DO CARTÃO — é isso que tira a despesa
+    //    de "a pagar" e deixa o cartão com o saldo da fatura.
+    const ok: string[] = [];
+    const falhou: string[] = [];
+    for (const p of fat.itens) {
+      try {
+        const r = await darBaixa({
+          idInstallment: p.id,
+          valorPago: p.valor,
+          valorConta: p.valor, // a compra é pelo valor dela; juros do cartão já estão embutidos
+          dataPagamento: estado.dataPagamento,
+          idPaymentBankAccount: CONTA_CARTAO,
+          idPaymentType: FORMA_CARTAO,
+        });
+        await logVobi(db, estado.autor, {
+          acao: "editar", entidade: "vobi_baixa", registro_id: p.id, ok: r.ok,
+          descricao: `fatura ${dataBR(fat.vencimento)} — ${p.descricao.slice(0, 40)} · ${brl(p.valor)}`
+            + (r.ok ? "" : ` — ${r.mensagem.slice(0, 120)}`),
+          dados: { valor: p.valor, fatura: fat.vencimento, conta: CONTA_CARTAO },
+        });
+        if (r.ok) ok.push(`${brl(p.valor)} · ${p.descricao.slice(0, 32)}`);
+        else falhou.push(`${brl(p.valor)} · ${p.descricao.slice(0, 26)} — ${r.mensagem}`);
+      } catch (e: any) {
+        falhou.push(`${brl(p.valor)} · ${p.descricao.slice(0, 26)} — ${String(e?.message || e).slice(0, 90)}`);
+      }
+    }
+
+    // 2) o PAGAMENTO da fatura: sai do banco, entra no cartão (modelo da casa)
+    const nomeFatura = nomeDoPagamentoDaFatura(estado.conta, fat.vencimento);
+    let transf: { ok: boolean; erro?: string; idSaida?: string } = { ok: false, erro: "não tentado" };
+    try {
+      transf = await criarTransferenciaEntreContas({
+        origem: estado.conta, destino: CONTA_CARTAO, valor: estado.valorPago,
+        data: estado.dataPagamento, autor: estado.autor, nome: nomeFatura,
+      });
+    } catch (e: any) {
+      transf = { ok: false, erro: String(e?.message || e).slice(0, 120) };
+    }
+    await logVobi(db, estado.autor, {
+      acao: "criar", entidade: "vobi_lancamento", registro_id: transf.idSaida ?? null, ok: transf.ok,
+      descricao: `${nomeFatura} · ${brl(estado.valorPago)}` + (transf.ok ? "" : ` — ${transf.erro || ""}`),
+      dados: { valor: estado.valorPago, origem: estado.conta, destino: CONTA_CARTAO, fatura: fat.vencimento },
+    });
+
+    await apagarEstado(db, token);
+
+    const soma = Math.round(fat.itens.reduce((t, p) => t + p.valor, 0) * 100) / 100;
+    const sobra = Math.round((estado.valorPago - soma) * 100) / 100;
+    let txt = falhou.length
+      ? `⚠️ <b>Baixei ${ok.length} de ${fat.itens.length} compras.</b>\n`
+      : `✅ <b>Baixadas as ${ok.length} compras da fatura!</b>\n`;
+    if (falhou.length) {
+      txt += `\n${falhou.map((x) => `❌ ${escTg(x)}`).join("\n")}\n` +
+             `<i>Essas continuam em aberto.</i>\n`;
+    }
+    txt += transf.ok
+      ? `\n💳 <b>Pagamento da fatura lançado:</b> ${brl(estado.valorPago)}\n<i>${escTg(nomeFatura)}</i>\n`
+      : `\n❗ <b>NÃO consegui lançar o pagamento da fatura</b> (${escTg(transf.erro || "erro")}).\n` +
+        `<i>As compras foram baixadas, mas a saída do banco ainda não está na Vobi — lance à mão.</i>\n`;
+    if (Math.abs(sobra) >= 0.01) {
+      txt += sobra > 0
+        ? `\n⚠️ Sobraram <b>${brl(sobra)}</b> no saldo do cartão: é o que a fatura cobrou e ainda não está lançado. ` +
+          `<i>Mande essas compras (ou a fatura) que eu lanço.</i>`
+        : `\n⚠️ O lançado passou a fatura em <b>${brl(-sobra)}</b> — o cartão fica com saldo negativo. Confira na Vobi.`;
+    }
+    await enviar(B, chatId, txt);
     return;
   }
 

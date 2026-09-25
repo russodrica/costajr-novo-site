@@ -233,6 +233,10 @@ export async function criarTransferenciaEntreContas(opcoes: {
    * PELA SEGUNDA VEZ e o dinheiro sairia duas vezes da conta de origem.
    */
   idSaidaExistente?: string;
+  /** nome do lançamento, quando não é o "ORIGEM - DESTINO" padrão (o pagamento
+   *  da fatura do cartão tem nome de casa: "SANTANDER - CARTAO 1405_NUBANK_
+   *  PAGAMENTO FATURA 02/10/2026"). */
+  nome?: string;
 }): Promise<{ ok: boolean; idSaida?: string; idEntrada?: string; erro?: string }> {
   const { origem, destino, valor, data } = opcoes;
 
@@ -242,7 +246,7 @@ export async function criarTransferenciaEntreContas(opcoes: {
   if (origem === destino) return { ok: false, erro: "origem e destino são a mesma conta" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return { ok: false, erro: `data inválida: ${data}` };
 
-  const nome = `${nomeDaConta(origem)} - ${nomeDaConta(destino)}`.toUpperCase();
+  const nome = (opcoes.nome || `${nomeDaConta(origem)} - ${nomeDaConta(destino)}`).toUpperCase();
   const nota =
     `Transferencia entre contas da propria empresa: ${nomeDaConta(origem)} -> ${nomeDaConta(destino)}, ` +
     `${valor.toFixed(2)} em ${data}. Lancada pelo comprovante enviado no Telegram` +
@@ -853,6 +857,9 @@ export type ParcelaAberta = {
    *  outro lado (fornecedor x cliente), como o valor diferente e interpretado e
    *  que lista pode ser baixada. Nunca inferir pelo contexto — vem da parcela. */
   tipo: "despesa" | "receita";
+  /** conta bancária da PARCELA (idPaymentBankAccount) — é ela que manda no
+   *  saldo, não a do cabeçalho do pagamento. */
+  conta: number | null;
   parcela: string; // "2/3" quando houver
 };
 
@@ -900,6 +907,7 @@ function montarParcela(i: any, outro?: string | null): ParcelaAberta {
     vencimento: venc,
     diasAtraso: venc ? diasEntre(venc, hojeISO()) : 0,
     parcela: i.number ? String(i.number) : "",
+    conta: Number(i.idPaymentBankAccount) || null,
     tipo: (i.payment || {}).billType === "income" ? "receita" : "despesa",
   };
 }
@@ -1062,6 +1070,87 @@ export async function vencimentosNoPeriodo(de: string, ate: string): Promise<Par
   return dentro
     .map((i: any) => montarParcela(i, nomes[(i.payment || {}).idSupplier] ?? null))
     .sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor);
+}
+
+// ───────────────────── FATURA DO CARTÃO DE CRÉDITO ─────────────────────
+//
+// O modelo da casa (lido da própria base em 25/09/2026, fatura 02/09 paga em
+// 24/08) tem DUAS pernas:
+//
+//   1. cada COMPRA do cartão é uma parcela em aberto que vence no dia 02 da
+//      fatura — seja ela lançada direto na conta do cartão (Uber, Apple) ou
+//      rolada pelo bot quando um boleto foi pago no crédito;
+//   2. o PAGAMENTO DA FATURA é uma transferência
+//      "SANTANDER - CARTAO 1405_NUBANK_PAGAMENTO FATURA <venc>": sai do
+//      Santander e entra na conta do cartão.
+//
+// Dando baixa nas compras COM a conta do cartão, o que sobra no cartão é
+// exatamente o que a fatura cobrou e não está lançado na Vobi. O saldo do
+// cartão vira, assim, o termômetro do que falta lançar.
+
+/** A conta "Cartão 1405_Nubank" — único cartão em uso (decisão da Adriana). */
+export const CONTA_CARTAO = CARTOES[0].id;
+
+function semAcento(t: string): string {
+  return t.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+function dataBRcurta(iso: string): string {
+  const [a, m, d] = String(iso).slice(0, 10).split("-");
+  return `${d}/${m}/${a}`;
+}
+
+/**
+ * O nome de casa do lançamento que paga a fatura — igual ao que a Aline já
+ * usava: "SANTANDER - CARTAO 1405_NUBANK_PAGAMENTO FATURA 02/09/2026".
+ * O nome do cartão vem fixo daqui (e não de nomeDaConta) para o padrão não
+ * mudar se alguém renomear a conta na lista do bot.
+ */
+const NOME_CARTAO_NA_VOBI = "CARTAO 1405_NUBANK";
+
+export function nomeDoPagamentoDaFatura(origem: number, venc: string): string {
+  const banco = semAcento(nomeDaConta(origem)).toUpperCase();
+  return `${banco} - ${NOME_CARTAO_NA_VOBI}_PAGAMENTO FATURA ${dataBRcurta(venc)}`;
+}
+
+/** Primeiro dia do mês, `meses` meses antes/depois de uma data ISO. */
+function mesRelativo(iso: string, meses: number): string {
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00Z");
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + meses, 1)).toISOString().slice(0, 10);
+}
+
+/** As parcelas que compõem a fatura que vence em `venc`. */
+export async function parcelasDaFatura(venc: string): Promise<ParcelaAberta[]> {
+  const linhas = await vencimentosNoPeriodo(mesRelativo(venc, -2), venc);
+  return linhas
+    .filter((p) => p.vencimento === venc || p.conta === CONTA_CARTAO)
+    .sort((a, b) => b.valor - a.valor);
+}
+
+/**
+ * Faturas que ainda têm parcela em aberto, da mais próxima do pagamento para
+ * a mais distante. Serve para a pessoa trocar de fatura quando o bot chuta a
+ * errada (ela costuma pagar antes de fechar — a de 02/10 foi paga em 25/09).
+ */
+export type FaturaCartao = { vencimento: string; itens: ParcelaAberta[]; total: number };
+
+export async function faturasEmAberto(ref?: string): Promise<FaturaCartao[]> {
+  const base = ref || hojeISO();
+  const linhas = await vencimentosNoPeriodo(mesRelativo(base, -2), mesRelativo(base, 3));
+  const fim = `-${String(DIA_VENCIMENTO_FATURA).padStart(2, "0")}`;
+  const dias = new Set(linhas.filter((p) => p.vencimento.endsWith(fim)).map((p) => p.vencimento));
+  // compra lançada direto na conta do cartão (com a data da compra) entra na
+  // primeira fatura que vier depois dela
+  for (const p of linhas) {
+    if (p.conta !== CONTA_CARTAO || p.vencimento.endsWith(fim)) continue;
+    if (![...dias].some((d) => d >= p.vencimento)) dias.add(proximoVencimentoCartao(p.vencimento));
+  }
+  return [...dias].sort().map((venc) => {
+    const itens = linhas
+      .filter((p) => p.vencimento === venc || (p.conta === CONTA_CARTAO && p.vencimento <= venc))
+      .sort((a, b) => b.valor - a.valor);
+    return { vencimento: venc, itens, total: Math.round(itens.reduce((t, p) => t + p.valor, 0) * 100) / 100 };
+  }).filter((f) => f.itens.length > 0);
 }
 
 /**
