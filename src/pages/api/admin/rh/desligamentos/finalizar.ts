@@ -39,9 +39,12 @@ export const POST: APIRoute = async ({ request }) => {
     const marc: Record<string, any> = {};
     for (const it of (checklist.itens || [])) marc[`${it.tipo}:${it.id}`] = it;
 
+    // Um item deixa de ser pendência se foi DEVOLVIDO em perfeito estado OU marcado
+    // como NÃO DEVOLVIDO / não recuperável (colaborador sumiu → item vira extraviado).
+    const okItem = (m: any) => m && (m.nao_recuperado || (m.devolvido && m.estado_ok));
     const pendentes: string[] = [];
-    for (const a of ativos) { const m = marc[`ativo:${a.id}`]; if (!m || !m.devolvido || !m.estado_ok) pendentes.push(`Ativo: ${a.descricao || a.patrimonio || a.id}`); }
-    for (const e of epiPend) { const m = marc[`epi:${e.id}`]; if (!m || !m.devolvido || !m.estado_ok) pendentes.push(`EPI/Uniforme: ${e.epi}`); }
+    for (const a of ativos) { if (!okItem(marc[`ativo:${a.id}`])) pendentes.push(`Ativo: ${a.descricao || a.patrimonio || a.id}`); }
+    for (const e of epiPend) { if (!okItem(marc[`epi:${e.id}`])) pendentes.push(`EPI/Uniforme: ${e.epi}`); }
 
     // 2) Passos por regime
     if (colab.regime === "clt") {
@@ -58,12 +61,24 @@ export const POST: APIRoute = async ({ request }) => {
     // 3) Tudo OK → devolve EPIs e ativos, conclui desligamento e desliga.
     const hoje = new Date().toISOString().slice(0, 10);
     for (const e of epiPend) await db.from("epi_entregas").update({ status: "devolvido", data_devolucao: hoje }).eq("id", e.id);
+    let ativosDevolvidos = 0, ativosExtraviados = 0;
     for (const a of ativos) {
-      await db.from("ativos").update({ status: "em_estoque", alocado_para_tipo: null, alocado_para_id: null, alocado_para_nome: null }).eq("id", a.id);
-      await db.from("ativos_movimentos").insert({ ativo_id: a.id, tipo: "devolucao", descricao: `Devolução no desligamento de ${colab.nome}`, status_anterior: "alocado", status_novo: "em_estoque", feito_por: admin.email });
+      const m = marc[`ativo:${a.id}`];
+      if (m && m.nao_recuperado) {
+        // Colaborador NÃO entregou o item → marca EXTRAVIADO (sai do estoque disponível),
+        // mantendo alocado_para_nome p/ registrar COM QUEM sumiu. Reversível se aparecer.
+        await db.from("ativos").update({ status: "extraviado" }).eq("id", a.id);
+        await db.from("ativos_movimentos").insert({ ativo_id: a.id, tipo: "ocorrencia", descricao: `NÃO devolvido no desligamento de ${colab.nome} — marcado como extraviado`, status_anterior: "alocado", status_novo: "extraviado", feito_por: admin.email });
+        ativosExtraviados++;
+      } else {
+        await db.from("ativos").update({ status: "em_estoque", alocado_para_tipo: null, alocado_para_id: null, alocado_para_nome: null }).eq("id", a.id);
+        await db.from("ativos_movimentos").insert({ ativo_id: a.id, tipo: "devolucao", descricao: `Devolução no desligamento de ${colab.nome}`, status_anterior: "alocado", status_novo: "em_estoque", feito_por: admin.email });
+        ativosDevolvidos++;
+      }
     }
     if (ativos.length) {
-      enviarTelegram(`↩️ <b>Devolução no desligamento</b>\n${escTg(colab.nome)} devolveu ${ativos.length} ativo(s) ao estoque.\nPor ${escTg(admin.email)}`).catch(() => { /* best-effort */ });
+      const partes = [ativosDevolvidos ? `${ativosDevolvidos} devolvido(s)` : "", ativosExtraviados ? `${ativosExtraviados} NÃO devolvido(s)/extraviado(s)` : ""].filter(Boolean).join(" · ");
+      enviarTelegram(`↩️ <b>Desligamento — itens</b>\n${escTg(colab.nome)}: ${escTg(partes)}.\nPor ${escTg(admin.email)}`).catch(() => { /* best-effort */ });
     }
 
     // Revoga os acessos a sistemas que ainda estavam ativos (mantém histórico) e
@@ -89,9 +104,10 @@ export const POST: APIRoute = async ({ request }) => {
       await invalidarSessoesPortal(colab.profile_id); // mata o JWT já emitido na hora
     }
 
-    await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "rh_colaboradores", registro_id: colaborador_id, descricao: `Desligou "${colab.nome}" (devolução conferida, ${ativos.length} ativo(s) + ${epiPend.length} EPI(s))`, dados: { desligamento_id: desl.id } });
+    const resumoItens = `${ativosDevolvidos} ativo(s) devolvido(s)${ativosExtraviados ? `, ${ativosExtraviados} NÃO devolvido(s)/extraviado(s)` : ""} + ${epiPend.length} EPI(s)`;
+    await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "rh_colaboradores", registro_id: colaborador_id, descricao: `Desligou "${colab.nome}" (${resumoItens})`, dados: { desligamento_id: desl.id, ativos_extraviados: ativosExtraviados } });
 
-    enviarTelegram(`👋 <b>Desligamento concluído</b>\n${escTg(colab.nome)}${tipo ? ` · ${escTg(tipo)}` : ""}\n${ativos.length} ativo(s) + ${epiPend.length} EPI(s) devolvidos.`, { canal: "ADM" }).catch(() => { /* best-effort */ });
+    enviarTelegram(`👋 <b>Desligamento concluído</b>\n${escTg(colab.nome)}${tipo ? ` · ${escTg(tipo)}` : ""}\n${escTg(resumoItens)}.`, { canal: "ADM" }).catch(() => { /* best-effort */ });
 
     // ── Automação: e-mail com o checklist de cancelamentos (do board RH/DP) ──
     try {

@@ -804,7 +804,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="ck_docs" /> Documentos de rescisão entregues</label>
           <label style="display:flex;gap:8px;align-items:center;color:#16A34A"><input type="checkbox" checked disabled /> Acesso ao portal revogado (automático ao concluir)</label>
         </div>
-        <p style="font-size:12px;color:#B45309;margin-top:8px">⚠ O desligamento só é concluído quando <strong>todos os itens forem devolvidos em perfeito estado</strong> e os passos do regime estiverem cumpridos.</p>
+        <p style="font-size:12px;color:#B45309;margin-top:8px">⚠ O desligamento só é concluído quando cada item for <strong>devolvido em perfeito estado</strong> — ou marcado como <strong>🚫 Não devolvido</strong> (quando o colaborador sumiu com ele; o item vira <strong>extraviado</strong>, com registro de quem estava) — e os passos do regime estiverem cumpridos.</p>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharModal('modalDesligamento')">Cancelar</button>
           <button type="button" class="btn btn-danger" onclick="confirmarDesligamento()">Concluir desligamento</button>
@@ -2197,9 +2197,11 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         let h = itens.length
           ? itens.map((it: any) => `<div data-it-tipo="${escD(it.tipo)}" data-it-id="${escD(it.id)}" style="display:flex;align-items:center;gap:10px;border:1px solid #ECEFF3;border-radius:8px;padding:8px 10px;margin-bottom:6px;flex-wrap:wrap">
               <span style="flex:1;min-width:140px;font-size:13px"><strong>${escD(it.nome)}</strong> <span style="color:#9CA3AF;font-size:11px">${escD(it.categoria || it.tipo)}</span></span>
-              <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" class="it-dev" /> Devolvido</label>
+              <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" class="it-dev" onchange="deslItemDevolvido(this)" /> Devolvido</label>
               <label style="font-size:12.5px;display:flex;gap:5px;align-items:center"><input type="checkbox" class="it-ok" /> Perfeito estado</label>
+              <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;color:#B91C1C"><input type="checkbox" class="it-perdido" onchange="deslItemPerdido(this)" /> 🚫 Não devolvido</label>
             </div>`).join("")
+            + `<button type="button" class="btn btn-light btn-sm" onclick="deslMarcarPerdidoTudo()" style="margin-top:2px">🚫 Colaborador sumiu — marcar tudo como não devolvido</button>`
           : '<p style="font-size:13px;color:#16A34A">✅ Nada pendente em posse (Ativos/EPIs).</p>';
         if (acessos.length) {
           h += `<div style="margin-top:12px;border-top:1px dashed #E5E7EB;padding-top:10px">
@@ -2234,6 +2236,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         tipo: (el as any).dataset.itTipo, id: (el as any).dataset.itId,
         devolvido: (el.querySelector(".it-dev") as HTMLInputElement).checked,
         estado_ok: (el.querySelector(".it-ok") as HTMLInputElement).checked,
+        nao_recuperado: (el.querySelector(".it-perdido") as HTMLInputElement | null)?.checked || false,
       }));
       const checklist: any = { itens, documentos: fd.get("ck_docs") === "on" };
       if (c.regime === "clt") { checklist.exame_demissional = !!qs("#ck_aso")?.checked; checklist.exame_emocional = !!qs("#ck_emoc")?.checked; checklist.aviso_previo = qs("#ck_aviso")?.value || ""; checklist.termo_encerramento = !!qs("#ck_termo")?.checked; }
@@ -2244,6 +2247,27 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       const d = await res.json().catch(() => ({}));
       msg.innerHTML = `<div class="alert alert-error" style="white-space:pre-line">${(d as any).error || "Erro ao concluir"}</div>`;
     }
+    // "Devolvido" e "Não devolvido" são mutuamente exclusivos por item.
+    function deslItemPerdido(cb: HTMLInputElement) {
+      if (!cb.checked) return;
+      const row = cb.closest("[data-it-id]"); if (!row) return;
+      (row.querySelector(".it-dev") as HTMLInputElement).checked = false;
+      (row.querySelector(".it-ok") as HTMLInputElement).checked = false;
+    }
+    function deslItemDevolvido(cb: HTMLInputElement) {
+      if (!cb.checked) return;
+      const row = cb.closest("[data-it-id]"); if (row) (row.querySelector(".it-perdido") as HTMLInputElement).checked = false;
+    }
+    function deslMarcarPerdidoTudo() {
+      document.querySelectorAll("#deslPosse [data-it-id]").forEach((el) => {
+        (el.querySelector(".it-perdido") as HTMLInputElement).checked = true;
+        (el.querySelector(".it-dev") as HTMLInputElement).checked = false;
+        (el.querySelector(".it-ok") as HTMLInputElement).checked = false;
+      });
+    }
+    (window as any).deslItemPerdido = deslItemPerdido;
+    (window as any).deslItemDevolvido = deslItemDevolvido;
+    (window as any).deslMarcarPerdidoTudo = deslMarcarPerdidoTudo;
     (window as any).confirmarDesligamento = confirmarDesligamento;
 
     // campos obrigatórios da ficha (exceto diaristas, que são esporádicos)
