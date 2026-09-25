@@ -21,6 +21,7 @@
 // tempo no grupo sem uma atrapalhar a outra.
 
 import { escTg } from "./telegram";
+import { registrarAcao } from "./auditoria";
 import { ehAPropriaCJR, identificarLado, type LadoCJR } from "./identidadeCJR";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
 import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
@@ -143,6 +144,34 @@ type EstadoBaixa = {
   jurosCartao?: number;
   valorContaCartao?: number;
 };
+
+/**
+ * REGISTRO de tudo que o bot escreve na Vobi — deu certo ou não.
+ *
+ * Nasceu de um problema real (25/09/2026): a Adriana disse "mandei várias no
+ * Telegram e nada foi baixado" e não havia COMO saber o que tinha sido tentado.
+ * Tive que deduzir por sessão pendurada. Agora cada tentativa vira uma linha em
+ * /admin/logs, com o motivo do erro quando falha.
+ *
+ * Best-effort: registrarAcao é todo try/catch, então log nenhum derruba baixa.
+ */
+async function logVobi(
+  db: any,
+  autor: string,
+  p: { acao: "criar" | "editar"; entidade: string; registro_id?: string | null; ok: boolean; descricao: string; dados?: any },
+) {
+  await registrarAcao(
+    db,
+    { req: undefined, admin: { email: `${autor || "alguém"} (via Telegram)` } } as any,
+    {
+      acao: p.acao,
+      entidade: p.entidade,
+      registro_id: p.registro_id ?? null,
+      descricao: `${p.ok ? "✅" : "❌"} ${p.descricao}`,
+      dados: { ok: p.ok, ...(p.dados || {}) },
+    },
+  );
+}
 
 /** Valor da conta em si: o corrigido, senão o que está na Vobi. */
 function contaDe(e: EstadoBaixa): number {
@@ -659,14 +688,31 @@ async function gravarNovoLancamento(db: any, B: Bot, token: string, estado: Esta
       conta: n.conta!, forma: n.forma ?? FORMA_PADRAO,
       pago: !!n.pago, autor: estado.autor,
     });
+    await logVobi(db, estado.autor, {
+      acao: "criar", entidade: "vobi_lancamento", registro_id: r.id, ok: r.conferido,
+      descricao: `${(n.nome || "").toUpperCase()} — ${brl(n.valor)} ${n.pago ? "pago" : "vence"} em ${dataBR(n.data)}`
+        + (r.conferido ? "" : " (SEM PARCELA — conferir na Vobi)"),
+      dados: { valor: n.valor, data: n.data, fornecedor: n.fornecedorNome, categoria: n.categoriaNome, centro_custo: n.ccNome, conta: n.conta, pago: !!n.pago },
+    });
     await apagarEstado(db, token);
     await enviar(B, chatId,
       `✅ <b>Lançado na Vobi!</b>\n\n` +
       `${escTg((n.nome || "").toUpperCase())} — ${brl(n.valor)}\n` +
       `${n.pago ? "Pago" : "Vence"} em ${dataBR(n.data)} · ${escTg(nomeDaConta(n.conta))}\n` +
       `${escTg(n.categoriaNome || "")} · ${escTg(n.ccNome || "")}` +
-      (r.conferido ? "" : `\n\n⚠️ <i>Gravei, mas não consegui reler a parcela para conferir — vale olhar na Vobi.</i>`));
+      (r.conferido
+        ? ""
+        : `
+
+⚠️ <b>ATENÇÃO:</b> o lançamento foi criado mas <b>ficou sem parcela</b> — ` +
+          `assim ele NÃO aparece em contas a pagar nem no fluxo de caixa. ` +
+          `<i>Abra na Vobi e confira antes de considerar lançado.</i>`));
   } catch (e: any) {
+    await logVobi(db, estado.autor, {
+      acao: "criar", entidade: "vobi_lancamento", ok: false,
+      descricao: `${(n.nome || "").toUpperCase()} — ${brl(n.valor)}: ${String(e?.message || e).slice(0, 140)}`,
+      dados: { valor: n.valor, data: n.data, fornecedor: n.fornecedorNome },
+    });
     estado.etapa = "novo_confirma";
     await salvarEstado(db, token, estado);
     await enviar(B, chatId,
@@ -1565,6 +1611,12 @@ async function executarRecebimento(db: any, B: Bot, token: string, estado: Estad
     return;
   }
 
+  await logVobi(db, estado.autor, {
+    acao: "editar", entidade: "vobi_recebimento", registro_id: estado.parcela?.id ?? null, ok: r.ok,
+    descricao: `${estado.parcela?.fornecedor || "—"} — recebido ${brl(estado.valorPago)}`
+      + (r.ok ? "" : ` — ${String(r.mensagem).slice(0, 120)}`),
+    dados: { valor: estado.valorPago, conta: estado.conta },
+  });
   await apagarEstado(db, token);
   if (!r.ok) {
     await enviar(B, chatId, `⚠️ <b>NÃO consegui confirmar o recebimento.</b>\n${escTg(r.mensagem)}\n\n<i>Não considere recebido — confira na Vobi.</i>`);
@@ -1789,6 +1841,12 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
           dataPagamento: estado.dataPagamento,
           idPaymentBankAccount: estado.conta,
           idPaymentType: estado.forma,
+        });
+        await logVobi(db, estado.autor, {
+          acao: "editar", entidade: "vobi_baixa", registro_id: p.id, ok: r.ok,
+          descricao: `lote — ${p.descricao.slice(0, 40)} venc ${dataBR(p.vencimento)} · ${brl(p.valor)}`
+            + (r.ok ? "" : ` — ${r.mensagem.slice(0, 120)}`),
+          dados: { valor: p.valor, vencimento: p.vencimento, lote: lote.length, conta: estado.conta },
         });
         if (r.ok) ok.push(`${dataBR(p.vencimento)} · ${brl(p.valor)}`);
         else falhou.push(`${dataBR(p.vencimento)} · ${brl(p.valor)} — ${r.mensagem}`);
@@ -2100,6 +2158,12 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       idSaidaExistente: estado.transfIdSaida,
     }).catch((e: any) => ({ ok: false, erro: String(e?.message || e) }));
 
+    await logVobi(db, estado.autor, {
+      acao: "criar", entidade: "vobi_transferencia", registro_id: r?.idSaida ?? null, ok: !!r?.ok,
+      descricao: `${nomeDaConta(estado.transfOrigem)} → ${nomeDaConta(estado.transfDestino)} — ${brl(estado.valorPago)}`
+        + (r?.ok ? "" : ` — ${String(r?.erro || r?.mensagem || "").slice(0, 120)}`),
+      dados: { valor: estado.valorPago, origem: estado.transfOrigem, destino: estado.transfDestino, data: estado.dataPagamento },
+    });
     if (!r.ok) {
       // Meia transferência é pior que nenhuma: o dinheiro sai de uma conta e não
       // entra na outra. Guardamos o id da saída para que "tentar de novo" grave
@@ -2405,6 +2469,13 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       return;
     }
 
+    await logVobi(db, estado.autor, {
+      acao: "editar", entidade: "vobi_baixa", registro_id: estado.parcela?.id ?? null, ok: r.ok,
+      descricao: `${estado.fornecedor?.nome || estado.parcela?.fornecedor || "—"} — ${brl(estado.valorPago)}`
+        + ` venc ${dataBR(estado.parcela?.vencimento || estado.dataPagamento)}`
+        + (r.ok ? "" : ` — ${String(r.mensagem).slice(0, 120)}`),
+      dados: { valor: estado.valorPago, conta: estado.conta, forma: estado.forma, juros: jurosDe(estado) },
+    });
     await apagarEstado(db, token);
 
     if (!r.ok) {

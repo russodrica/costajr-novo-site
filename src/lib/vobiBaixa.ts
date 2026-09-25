@@ -801,9 +801,31 @@ export async function criarLancamento(d: NovoLancamento): Promise<{ id: string; 
   const id = criado?.id;
   if (!id) throw new Error("a Vobi nao devolveu o id do lancamento");
 
-  // RELÊ: sem parcela, o lançamento não existe para nenhuma listagem.
-  const ps = ((await vGet(`/installment?limit=20&where[idPayment]=${id}`))?.rows || [])
-    .filter((i: any) => i.idPayment === id);
+  // RELÊ: sem parcela, o lançamento não existe para nenhuma listagem — não
+  // aparece em contas a pagar nem no fluxo de caixa. É um "fantasma".
+  const parcelasDo = async () =>
+    ((await vGet(`/installment?limit=20&where[idPayment]=${id}`))?.rows || [])
+      .filter((i: any) => i.idPayment === id);
+
+  let ps = await parcelasDo();
+
+  // O POST /payment às vezes cria o cabeçalho e ENGOLE a parcela (aconteceu com
+  // os 3 primeiros lançamentos reais: CHIP VIVO, TRANSPORTE DE MATERIAL e
+  // CÉSAR MIGUEL, 23-24/09/2026 — ficaram sem parcela nenhuma). A transferência
+  // entre contas já tratava isso; aqui faltava. O PUT com a parcela SEM id a
+  // cria (ver memória: "parcelas SEM id são criadas; com id são ignoradas").
+  if (!ps.length) {
+    try {
+      const atual: any = { ...(await vGet(`/payment/${id}`)) };
+      for (const k of CAMPOS_CALCULADOS) delete atual[k];
+      atual.installments = [parcela];
+      atual.isRecurrence = false; atual.recurrenceId = null;
+      atual.interval = 0; atual.frequency = null; atual.lastRecurrenceDate = null;
+      await vPut(`/payment/${id}`, atual);
+      ps = await parcelasDo();
+    } catch { /* segue e reporta conferido=false */ }
+  }
+
   const p = ps[0];
   const conferido = ps.length === 1 && !!p &&
     Math.abs(num(p.price) - d.valor) < 0.01 &&
