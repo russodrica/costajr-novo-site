@@ -2555,3 +2555,48 @@ programa da pasta atual).
 
 **Heredoc:** `@'...'@` e PowerShell. No Bash tool isso entra LITERAL na mensagem do
 commit (subject virou "@"). No Bash usar `git commit -F arquivo` ou heredoc `<<'EOF'`.
+
+## Atualizacao 25/09/2026 — FATURA DO CARTAO no Telegram (baixa em lote + conferencia)
+
+**Pedido da Adriana:** "como vamos rodar a baixa do cartao de credito, pois sao
+muitas despesas. precisa ver se bate com todos os lancamentos do cartao."
+
+**O MODELO DA CASA (lido da propria base, nao inventado):** a fatura tem DUAS pernas.
+1. cada COMPRA e uma parcela que vence dia 02 e e baixada **na conta do cartao**
+   (`Cartao 1405_Nubank` = 24624), forma 3, na data em que a FATURA foi paga;
+2. o PAGAMENTO da fatura e uma transferencia banco -> cartao com o nome
+   `SANTANDER - CARTAO 1405_NUBANK_PAGAMENTO FATURA 02/09/2026` (despesa no
+   Santander cat 22896755 + receita no cartao; foi assim em 30/04, 29/05, 06/07,
+   28/07 e 24/08). **O saldo que sobra no cartao = o que a fatura cobrou e NAO
+   esta lancado na Vobi** — vira o termometro do que falta lancar.
+   A conta da parcela so e gravada NA BAIXA, entao nao importa que a parcela
+   rolada pelo bot fique no Santander enquanto esta em aberto.
+
+**Feito (commit fb93e2d):** `vobiBaixa.ts` ganhou `CONTA_CARTAO`, `parcelasDaFatura`,
+`faturasEmAberto` (agrupa por vencimento dia 02 + o que esta solto na conta do
+cartao), `nomeDoPagamentoDaFatura` e `conta` na `ParcelaAberta`;
+`criarTransferenciaEntreContas` aceita `nome`. No `financeiroFlow.ts`:
+`ehPagamentoDeFatura` (NU PAGAMENTOS/NUBANK => e o cartao, nao um fornecedor),
+botao **"💳 E a FATURA do cartao"** no beco sem saida, `mostrarFatura`/`renderFatura`
+e os callbacks `fbfat` / `fbfatd` (trocar de fatura) / `fbfatrm` (tirar uma compra,
+sem nova varredura) / `fbfatok` (baixa todas + lanca a fatura, com log em audit_log).
+Tambem: o botao do lote passou a mostrar os VENCIMENTOS — duas parcelas de mesmo
+valor davam botoes de texto identico (caso RENATA, 3x "As 2 juntas: 3.300 + 3.300").
+
+**Conferencia da fatura de 02/10/2026 (paga 25/09 por PIX, R$ 6.281,14):** 15 compras
+lancadas somam **R$ 4.360,35** — **faltam R$ 1.920,79** de compras que estao na fatura
+e nao na Vobi. O bot mostra essa diferenca em destaque e deixa baixar assim mesmo
+(a sobra fica no saldo do cartao ate ela lancar o que falta).
+
+**Ensaio sem postar no grupo (tecnica reusavel):** `TEMP-reg.mjs` (`register()` +
+`TEMP-hook.mjs` que troca `import.meta.env` por `process.env` DEPOIS do tsx) +
+`TEMP-e2e-fatura.mts` com db falso em memoria e `fetch` interceptando
+api.telegram.org. Roda com `npx tsx --import ./TEMP-reg.mjs ./TEMP-e2e-fatura.mts`
+de dentro da pasta do projeto. O hook TEM que chamar `next()` primeiro (senao o tsx
+nao transpila) — foi o que quebrou na primeira tentativa.
+
+**ARMADILHA DE EDICAO (mordeu de novo):** escrever codigo TS por script node com
+template literal faz `\n` virar QUEBRA DE LINHA de verdade no arquivo. Dentro de
+template literal nao quebra nada, mas dentro de `"..."` vira erro TS1002. Para
+emitir codigo, usar heredoc `<<'EOF'` para um arquivo .txt e inserir com node
+lendo esse arquivo — nunca montar o codigo dentro do proprio script.
