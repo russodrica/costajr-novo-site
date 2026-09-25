@@ -167,7 +167,7 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
                       <div class="cell" data-drop-ano={String(a)} data-drop-mes={String(m)} data-drop-banco={banco}>
                         <div class="cell-head"><b style="flex:1;font-size:13.5px">{banco}</b>{arqs.length > 0 ? <span class="badge badge-green" style="font-size:10.5px">✓ {arqs.length}</span> : <span class="badge badge-gray" style="font-size:10.5px">falta</span>}</div>
                         {arqs.map((x) => (
-                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={x.nome_arquivo || ''}>{sigEx(x) ? '🔒' : '📄'} {x.nome_arquivo || 'arquivo'}</span><a href={`/api/admin/doc-empresa/extratos/${x.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a>{!ehForn && <button onclick={`abrirAcessoExt('extrato','${x.id}',${JSON.stringify(x.nome_arquivo || 'extrato')})`} title={restEx(x) ? 'Escondido do contador (externo). Clique para mudar.' : 'Escolher quem de fora pode ver'} data-requer-edicao class="lixo">{restEx(x) ? '🙈' : '👤'}</button>}{!ehForn && <button onclick={`toggleSigilo('extrato','${x.id}',${x.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(banco)},this)`} title={sigEx(x) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(x) ? '🔒' : '🔓'}</button>}{!ehForn && <button onclick={`excluirItem('extratos','${x.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button>}</div>
+                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={x.nome_arquivo || ''}>{sigEx(x) ? '🔒' : '📄'} {x.nome_arquivo || 'arquivo'}</span><a href={`/api/admin/doc-empresa/extratos/${x.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a>{!ehForn && <button onclick={`abrirMover('extrato','${x.id}',${a},${m},${JSON.stringify(banco)})`} title="Mover para outro mês/banco" data-requer-edicao class="lixo">↔️</button>}{!ehForn && <button onclick={`abrirAcessoExt('extrato','${x.id}',${JSON.stringify(x.nome_arquivo || 'extrato')})`} title={restEx(x) ? 'Escondido do contador (externo). Clique para mudar.' : 'Escolher quem de fora pode ver'} data-requer-edicao class="lixo">{restEx(x) ? '🙈' : '👤'}</button>}{!ehForn && <button onclick={`toggleSigilo('extrato','${x.id}',${x.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(banco)},this)`} title={sigEx(x) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(x) ? '🔒' : '🔓'}</button>}{!ehForn && <button onclick={`excluirItem('extratos','${x.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button>}</div>
                         ))}
                         {!ehForn && <button class="btn btn-outline btn-sm" style="width:100%;margin-top:7px" data-requer-edicao onclick={`anexarCelula(${a},${m},${JSON.stringify(banco)})`}>📎 Anexar</button>}
                       </div>
@@ -205,7 +205,7 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
                       <div class="cell">
                         <div class="cell-head"><b style="flex:1;font-size:13.5px">💳 {cartao}</b>{cfts.length > 0 ? <span class="badge badge-green" style="font-size:10.5px">✓ {cfts.length}</span> : <span class="badge badge-gray" style="font-size:10.5px">falta</span>}</div>
                         {cfts.map((f) => (
-                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={f.nome_arquivo || ''}>{sigEx(f) ? '🔒' : '📄'} {f.valor != null ? brl(f.valor) : (f.nome_arquivo || 'fatura')}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''}</span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`abrirAcessoExt('fatura','${f.id}',${JSON.stringify(f.nome_arquivo || 'fatura')})`} title={restEx(f) ? 'Escondido do contador (externo). Clique para mudar.' : 'Escolher quem de fora pode ver'} data-requer-edicao class="lixo">{restEx(f) ? '🙈' : '👤'}</button><button onclick={`toggleSigilo('fatura','${f.id}',${f.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(f.cartao || cartao)},this)`} title={sigEx(f) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(f) ? '🔒' : '🔓'}</button><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
+                          <div class="cell-file"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={f.nome_arquivo || ''}>{sigEx(f) ? '🔒' : '📄'} {f.valor != null ? brl(f.valor) : (f.nome_arquivo || 'fatura')}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''}</span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`abrirMover('fatura','${f.id}',${a},${m},${JSON.stringify(f.cartao || cartao)})`} title="Mover para outro mês/cartão" data-requer-edicao class="lixo">↔️</button><button onclick={`abrirAcessoExt('fatura','${f.id}',${JSON.stringify(f.nome_arquivo || 'fatura')})`} title={restEx(f) ? 'Escondido do contador (externo). Clique para mudar.' : 'Escolher quem de fora pode ver'} data-requer-edicao class="lixo">{restEx(f) ? '🙈' : '👤'}</button><button onclick={`toggleSigilo('fatura','${f.id}',${f.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(f.cartao || cartao)},this)`} title={sigEx(f) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(f) ? '🔒' : '🔓'}</button><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
                         ))}
                         {!ehForn && <button class="btn btn-outline btn-sm" style="width:100%;margin-top:7px" data-requer-edicao onclick={`anexarFaturaCartao(${a},${m},${JSON.stringify(cartao)})`}>📎 Anexar</button>}
                       </div>
@@ -216,7 +216,7 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
                   <div style="padding:6px 14px 0">
                     <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px">Outros cartões</div>
                     {(mapaFtOutros[a][m]).map((f) => (
-                      <div class="cell-file" style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px"><span style="flex:1">{sigEx(f) ? '🔒 ' : ''}<b>{f.cartao}</b>{f.valor != null ? ` · ${brl(f.valor)}` : ''}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''} <span style="color:#9CA3AF;font-size:12px">{f.nome_arquivo || ''}</span></span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`toggleSigilo('fatura','${f.id}',${f.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(f.cartao || '')},this)`} title={sigEx(f) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(f) ? '🔒' : '🔓'}</button><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
+                      <div class="cell-file" style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px"><span style="flex:1">{sigEx(f) ? '🔒 ' : ''}<b>{f.cartao}</b>{f.valor != null ? ` · ${brl(f.valor)}` : ''}{f.vencimento ? ` · vence ${fdata(f.vencimento)}` : ''} <span style="color:#9CA3AF;font-size:12px">{f.nome_arquivo || ''}</span></span><a href={`/api/admin/doc-empresa/faturas/${f.id}`} target="_blank" rel="noopener" title="Ver" style="text-decoration:none">👁</a><button onclick={`abrirMover('fatura','${f.id}',${a},${m},${JSON.stringify(f.cartao || '')})`} title="Mover para outro mês/cartão" data-requer-edicao class="lixo">↔️</button><button onclick={`toggleSigilo('fatura','${f.id}',${f.nao_compartilhar ? 'true' : 'false'},${JSON.stringify(f.cartao || '')},this)`} title={sigEx(f) ? 'Sigiloso — não sai por e-mail/WhatsApp. Clique para liberar.' : 'Marcar como sigiloso (não compartilhar)'} data-requer-edicao class="lixo">{sigEx(f) ? '🔒' : '🔓'}</button><button onclick={`excluirItem('faturas','${f.id}', this)`} title="Excluir" data-requer-edicao class="lixo">🗑️</button></div>
                     ))}
                   </div>
                 )}
@@ -422,6 +422,22 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
         <label style="flex:1">Vencimento<br/><input id="ftVenc" type="date" class="inp" style="width:100%" /></label>
       </div>
       <button class="btn btn-primary" onclick="ftDoModal()">Escolher arquivo e enviar</button>
+    </div>
+  </div></div>
+
+  <!-- Modal: mover extrato/fatura para outro mês/banco/cartão -->
+  <div id="modalMover" class="modal-overlay" style="display:none"><div class="modal" style="max-width:440px">
+    <div class="modal-head"><h3 style="margin:0" id="movTitulo">↔️ Mover documento</h3><button class="modal-x" onclick="fecharM('modalMover')">×</button></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <input type="hidden" id="movTipo" /><input type="hidden" id="movId" />
+      <div style="display:flex;gap:10px">
+        <label style="flex:1">Ano<br/><input id="movAno" type="number" min="2015" max={anoVigente + 1} class="inp" style="width:100%" /></label>
+        <label style="flex:1">Mês<br/><select id="movMes" class="inp" style="width:100%">{MESES.map((nome, i) => <option value={i + 1}>{nome}</option>)}</select></label>
+      </div>
+      <label id="movBancoWrap">Banco<br/><select id="movBanco" class="inp" style="width:100%">{BANCOS.map((b) => <option value={b}>{b}</option>)}</select></label>
+      <label id="movCartaoWrap" style="display:none">Cartão<br/><input id="movCartao" class="inp" style="width:100%" placeholder="Ex.: Nubank, Itaú, Bradesco PJ…" /></label>
+      <div id="movMsg" style="font-size:12.5px"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-secondary" onclick="fecharM('modalMover')">Cancelar</button><button class="btn btn-primary" onclick="confirmarMover()">Mover</button></div>
     </div>
   </div></div>
 
@@ -1020,5 +1036,37 @@ const sigiloEstadoJson = JSON.stringify(BANCOS_SIGILO.map((b) => ({ banco: b, si
     if (res.ok) location.reload(); else { alert((await res.json().catch(() => ({}))).error || "Erro"); btn.disabled = false; }
   }
 
-  Object.assign(window, { abrirEnvioForn, fecharEnvioForn, envFornTodos, envFornCountUpd, enviarParaMeuEmail, setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, anexarFaturaCartao, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, enviarWhatsBanc, selecionarMesCompleto, abrirSigilo, fecharSigilo, salvarSigiloBanco, toggleSigilo, abrirAcessoExt, aeModoMudou, salvarAcessoExt, salvarRestritoBanco });
+  // ── Mover extrato/fatura para outro mês/banco/cartão ──
+  function abrirMover(tipo: string, id: string, ano: number, mes: number, destino: string) {
+    const ehExtrato = tipo === "extrato";
+    (document.getElementById("movTipo") as HTMLInputElement).value = tipo;
+    (document.getElementById("movId") as HTMLInputElement).value = id;
+    (document.getElementById("movAno") as HTMLInputElement).value = String(ano);
+    (document.getElementById("movMes") as HTMLSelectElement).value = String(mes);
+    document.getElementById("movMsg")!.textContent = "";
+    document.getElementById("movTitulo")!.textContent = ehExtrato ? "↔️ Mover extrato" : "↔️ Mover fatura";
+    (document.getElementById("movBancoWrap") as HTMLElement).style.display = ehExtrato ? "" : "none";
+    (document.getElementById("movCartaoWrap") as HTMLElement).style.display = ehExtrato ? "none" : "";
+    if (ehExtrato) { const sel = document.getElementById("movBanco") as HTMLSelectElement; sel.value = destino || sel.value; }
+    else (document.getElementById("movCartao") as HTMLInputElement).value = destino || "";
+    abrirM("modalMover");
+  }
+  async function confirmarMover() {
+    const tipo = (document.getElementById("movTipo") as HTMLInputElement).value;
+    const id = (document.getElementById("movId") as HTMLInputElement).value;
+    const ano = Number((document.getElementById("movAno") as HTMLInputElement).value);
+    const mes = Number((document.getElementById("movMes") as HTMLSelectElement).value);
+    const msg = document.getElementById("movMsg")!;
+    const body: any = { ano, mes };
+    if (tipo === "extrato") body.banco = (document.getElementById("movBanco") as HTMLSelectElement).value;
+    else body.cartao = (document.getElementById("movCartao") as HTMLInputElement).value.trim();
+    if (!ano || !mes || (tipo === "extrato" ? !body.banco : !body.cartao)) {
+      msg.innerHTML = `<span style="color:#B91C1C">Preencha ano, mês e ${tipo === "extrato" ? "banco" : "cartão"}.</span>`; return;
+    }
+    const path = tipo === "extrato" ? "extratos" : "faturas";
+    const res = await fetch(`/api/admin/doc-empresa/${path}/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) { location.reload(); return; }
+    msg.innerHTML = `<span style="color:#B91C1C">${(await res.json().catch(() => ({}))).error || "Erro ao mover"}</span>`;
+  }
+  Object.assign(window, { abrirEnvioForn, fecharEnvioForn, envFornTodos, envFornCountUpd, enviarParaMeuEmail, setTab, fecharM, abrirAnexarExtrato, extDoModal, anexarCelula, abrirAnexarFatura, anexarFaturaMes, anexarFaturaCartao, ftDoModal, abrirNovoEmp, editarEmp, salvarEmp, anexarContrato, excluirItem, abrirMover, confirmarMover, processarExt, processarFt, processarEmp, abrirEnviarDocs, fecharEnviarBanc, setBenvAba, benvCountUpd, filtrarEnvBanc, enviarDocsBanc, enviarWhatsBanc, selecionarMesCompleto, abrirSigilo, fecharSigilo, salvarSigiloBanco, toggleSigilo, abrirAcessoExt, aeModoMudou, salvarAcessoExt, salvarRestritoBanco });
 </script>

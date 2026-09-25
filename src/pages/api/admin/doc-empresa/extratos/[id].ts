@@ -66,3 +66,30 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
   }
 };
+
+// PATCH → MOVE o extrato p/ outro ano/mês/banco (corrige mês/banco detectado errado).
+// Só muda os metadados; o arquivo permanece no mesmo caminho do bucket (a tela lê do
+// registro, então já aparece no lugar certo). A trava read-only fica no middleware.
+export const PATCH: APIRoute = async ({ request, params }) => {
+  try {
+    const admin = await requireAdminCookie(request);
+    if (!temPerfil(admin, PERFIS)) return jsonErr(403, "Sem permissão");
+    const db = supabaseAdmin();
+    const { data: row } = await db.from("doc_extratos_bancarios").select("*").eq("id", params.id!).maybeSingle();
+    if (!row) return jsonErr(404, "Extrato não encontrado.");
+    const b = await request.json().catch(() => ({}));
+    const patch: any = {};
+    if (b.ano != null) { const ano = Number(b.ano); if (!Number.isInteger(ano) || ano < 2000 || ano > 2100) return jsonErr(400, "Ano inválido."); patch.ano = ano; }
+    if (b.mes != null) { const mes = Number(b.mes); if (!Number.isInteger(mes) || mes < 1 || mes > 12) return jsonErr(400, "Mês inválido."); patch.mes = mes; }
+    if (b.banco != null) { const banco = String(b.banco).trim(); if (!banco) return jsonErr(400, "Banco inválido."); patch.banco = banco; }
+    if (!Object.keys(patch).length) return jsonErr(400, "Nada para mover.");
+    const { error } = await db.from("doc_extratos_bancarios").update(patch).eq("id", params.id!);
+    if (error) return jsonErr(500, error.message);
+    const de = `${row.banco} ${String(row.mes).padStart(2, "0")}/${row.ano}`;
+    const para = `${patch.banco ?? row.banco} ${String(patch.mes ?? row.mes).padStart(2, "0")}/${patch.ano ?? row.ano}`;
+    await registrarAcao(db, { req: request, admin }, { acao: "editar", entidade: "doc_extratos_bancarios", registro_id: params.id!, descricao: `Moveu extrato: ${de} → ${para}`, dados: patch }).catch(() => {});
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+  } catch (e: any) {
+    return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
+  }
+};
