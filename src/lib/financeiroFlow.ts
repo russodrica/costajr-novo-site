@@ -141,9 +141,14 @@ type EstadoBaixa = {
   /** pagamento da FATURA do cartão: as compras que ela cobre */
   fatura?: {
     vencimento: string;
-    itens: { id: string; valor: number; vencimento: string; descricao: string }[];
+    /** `cobrado` = o que a FATURA cobrou, quando difere do valor da parcela
+     *  (boleto pago no crédito vem com IOF e juros por cima). A diferença vira
+     *  juros na baixa, como em qualquer pagamento com acréscimo. */
+    itens: { id: string; valor: number; vencimento: string; descricao: string; cobrado?: number }[];
     /** outros vencimentos de fatura com parcela em aberto (botão "outra fatura") */
     opcoes?: string[];
+    /** parcela adicionada pelo ID (a que a API não lista), esperando o valor */
+    idPendente?: { id: string; valor: number; vencimento: string; descricao: string };
   };
   /** para não deixar um passo esquecido capturando mensagens do grupo o dia todo */
   atualizadoEm?: string;
@@ -416,11 +421,14 @@ async function renderFatura(db: any, B: Bot, token: string, estado: EstadoBaixa,
   await salvarEstado(db, token, estado);
 
   const itens = estado.fatura.itens;
-  const soma = Math.round(itens.reduce((t, p) => t + p.valor, 0) * 100) / 100;
+  const cobradoDe = (p: { valor: number; cobrado?: number }) => p.cobrado ?? p.valor;
+  const soma = Math.round(itens.reduce((t, p) => t + cobradoDe(p), 0) * 100) / 100;
   const dif = Math.round((estado.valorPago - soma) * 100) / 100;
 
   const linhas = itens.slice(0, MAX_LINHAS_FATURA).map((p, i) =>
-    `${String(i + 1).padStart(2)}. ${brl(p.valor)} — <i>${escTg(p.descricao.slice(0, 38))}</i>`,
+    `${String(i + 1).padStart(2)}. ${brl(cobradoDe(p))} — <i>${escTg(p.descricao.slice(0, 38))}</i>` +
+    (p.cobrado != null && Math.abs(p.cobrado - p.valor) >= 0.01
+      ? `\n      <i>conta ${brl(p.valor)} + ${brl(p.cobrado - p.valor)} de encargos do cartão</i>` : ""),
   ).join("\n");
   const resto = itens.length > MAX_LINHAS_FATURA
     ? `
@@ -454,6 +462,10 @@ ${linhas}${resto}
     inline([
       [{ text: `✅ Baixar as ${itens.length} e lançar a fatura`, callback_data: `fbfatok:${token}` }],
       [{ text: "➖ Tirar uma compra", callback_data: `fbfatrm:${token}` }],
+      // A Vobi tem parcelas que NENHUMA listagem da API devolve (rateio e
+      // projeto administrativo — o seguro TOKIO é uma delas). Elas aparecem na
+      // tela, então o jeito de trazê-las para cá é pelo ID da parcela.
+      [{ text: "🔍 Incluir parcela pelo ID", callback_data: `fbfatid:${token}` }],
       ...((estado.fatura.opcoes || []).length > 1
         ? [[{ text: "📅 Outra fatura", callback_data: `fbfatd:${token}` }]] : []),
       [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
@@ -1972,12 +1984,37 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       `Qual compra <b>não</b> é desta fatura?\n\n<i>Ela continua em aberto na Vobi — só sai desta baixa.</i>`,
       inline([
         ...itens.slice(0, 30).map((p, i) => [{
-          text: `${brl(p.valor)} · ${p.descricao.slice(0, 32)}`.slice(0, 60),
+          text: `${brl(p.cobrado ?? p.valor)} · ${p.descricao.slice(0, 32)}`.slice(0, 60),
           callback_data: `fbfatrm:${token}:${i}`,
         }]),
         [{ text: "⬅️ Voltar", callback_data: `fbfat:${token}:${estado.fatura?.vencimento || ""}` }],
       ]));
     return;
+  }
+
+  // Parcela que a API não lista (rateio / projeto administrativo). A pessoa
+  // pega o ID na tela da Vobi, em "Detalhes da parcela", e cola aqui.
+  if (acao === "fbfatid") {
+    if (!estado.fatura) return await mostrarFatura(db, B, token, estado, chatId);
+    estado.etapa = "fatura_id";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `🔍 <b>Cole aqui o ID da parcela.</b>\n\n` +
+      `<i>Na Vobi, abra a parcela e copie o código do título (ex.: ` +
+      `<code>a3bcbaf6-b083-4d15-aa36-500b75bafb35</code>). Serve para as compras que ` +
+      `aparecem na tela e não vêm na busca — rateio e projeto administrativo.</i>`,
+      inline([[{ text: "⬅️ Voltar", callback_data: `fbfat:${token}:${estado.fatura.vencimento}` }]]));
+    return;
+  }
+
+  // "é o mesmo valor": a fatura cobrou exatamente o valor da parcela
+  if (acao === "fbfatidok") {
+    const pend = estado.fatura?.idPendente;
+    if (!pend) return await renderFatura(db, B, token, estado, chatId);
+    estado.fatura!.itens.push({ ...pend });
+    estado.fatura!.idPendente = undefined;
+    await salvarEstado(db, token, estado);
+    return await renderFatura(db, B, token, estado, chatId);
   }
 
   if (acao === "fbfatok") {
@@ -2001,10 +2038,13 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     const falhou: string[] = [];
     for (const p of fat.itens) {
       try {
+        // `cobrado` só existe quando a fatura cobrou mais que a conta (boleto
+        // pago no crédito): a diferença vira JUROS na baixa, como em qualquer
+        // pagamento com acréscimo. Sem ele, a compra é pelo valor dela.
         const r = await darBaixa({
           idInstallment: p.id,
-          valorPago: p.valor,
-          valorConta: p.valor, // a compra é pelo valor dela; juros do cartão já estão embutidos
+          valorPago: p.cobrado ?? p.valor,
+          valorConta: p.valor,
           dataPagamento: estado.dataPagamento,
           idPaymentBankAccount: CONTA_CARTAO,
           idPaymentType: FORMA_CARTAO,
@@ -2015,10 +2055,10 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
             + (r.ok ? "" : ` — ${r.mensagem.slice(0, 120)}`),
           dados: { valor: p.valor, fatura: fat.vencimento, conta: CONTA_CARTAO },
         });
-        if (r.ok) ok.push(`${brl(p.valor)} · ${p.descricao.slice(0, 32)}`);
-        else falhou.push(`${brl(p.valor)} · ${p.descricao.slice(0, 26)} — ${r.mensagem}`);
+        if (r.ok) ok.push(`${brl(p.cobrado ?? p.valor)} · ${p.descricao.slice(0, 32)}`);
+        else falhou.push(`${brl(p.cobrado ?? p.valor)} · ${p.descricao.slice(0, 26)} — ${r.mensagem}`);
       } catch (e: any) {
-        falhou.push(`${brl(p.valor)} · ${p.descricao.slice(0, 26)} — ${String(e?.message || e).slice(0, 90)}`);
+        falhou.push(`${brl(p.cobrado ?? p.valor)} · ${p.descricao.slice(0, 26)} — ${String(e?.message || e).slice(0, 90)}`);
       }
     }
 
@@ -2041,7 +2081,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
     await apagarEstado(db, token);
 
-    const soma = Math.round(fat.itens.reduce((t, p) => t + p.valor, 0) * 100) / 100;
+    const soma = Math.round(fat.itens.reduce((t, p) => t + (p.cobrado ?? p.valor), 0) * 100) / 100;
     const sobra = Math.round((estado.valorPago - soma) * 100) / 100;
     let txt = falhou.length
       ? `⚠️ <b>Baixei ${ok.length} de ${fat.itens.length} compras.</b>\n`
@@ -2784,7 +2824,8 @@ async function pendenteEsperandoNumero(db: any, chatId: number) {
     .like("telegram_user_id", "fb:%")
     .eq("chat_id", String(chatId))
     .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros", "rec_aguarda_valor", "aguarda_fornecedor",
-      "novo_busca_forn", "novo_busca_cat", "novo_busca_cc", "novo_cc", "novo_venc"])
+      "novo_busca_forn", "novo_busca_cat", "novo_busca_cc", "novo_cc", "novo_venc",
+      "fatura_id", "fatura_id_valor"])
     .order("telegram_user_id", { ascending: false })
     .limit(1);
   const linha = (data || [])[0];
@@ -2836,6 +2877,40 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
     await salvarEstado(db, token, estado);
     await enviar(B, chatId, `🔎 Procurando <b>${escTg(nome)}</b> — ${brl(estado.valorPago)}…`);
     await buscarFornecedorEContinuar(db, B, token, estado, chatId);
+    return true;
+  }
+
+  // ── ID de parcela colado na fatura do cartão ──
+  // Mesma trava do aguarda_fornecedor: janela curta e formato estrito (aqui o
+  // formato já protege sozinho — é um UUID).
+  if (etapa === "fatura_id") {
+    const desde = Date.parse(String((estado as any).atualizadoEm || ""));
+    if (Number.isFinite(desde) && Date.now() - desde > 10 * 60 * 1000) return false;
+    const id = (texto.trim().match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+    if (!id) return false; // não é ID: deixa passar como conversa do grupo
+
+    const p = await parcelaPorId(id).catch(() => null);
+    if (!p) {
+      await enviar(B, chatId, "❌ Não achei essa parcela na Vobi (ou ela já foi baixada). Confira o ID.", BOTOES_CANCELA(token));
+      return true;
+    }
+    if ((estado.fatura?.itens || []).some((x) => x.id === id)) {
+      await enviar(B, chatId, "Essa parcela já está na lista da fatura. 👍");
+      return true;
+    }
+    estado.fatura!.idPendente = { id, valor: p.valor, vencimento: p.vencimento, descricao: p.descricao };
+    estado.etapa = "fatura_id_valor";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `✅ Achei: <b>${escTg(p.descricao.slice(0, 45))}</b>\n` +
+      `Valor da conta: <b>${brl(p.valor)}</b> · vence ${dataBR(p.vencimento)}\n\n` +
+      `<b>Quanto a fatura cobrou por ela?</b>\n` +
+      `<i>Se o boleto foi pago no crédito, a fatura cobra mais (IOF + juros) — ` +
+      `digite o valor da fatura que a diferença entra como encargo.</i>`,
+      inline([
+        [{ text: `✅ Cobrou os mesmos ${brl(p.valor)}`, callback_data: `fbfatidok:${token}` }],
+        [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+      ]));
     return true;
   }
 
@@ -2896,6 +2971,24 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
   if (!ehSoNumero(texto)) return false;
   const novo = extrairValor(texto);
   if (novo === null) return false;
+
+  // ── quanto a fatura cobrou pela parcela incluída pelo ID ──
+  if (etapa === "fatura_id_valor") {
+    const pend = estado.fatura?.idPendente;
+    if (!pend) return false;
+    if (novo + 0.001 < pend.valor) {
+      await enviar(B, chatId,
+        `🤔 A fatura cobrou ${brl(novo)}, menos que a conta (${brl(pend.valor)}).\n` +
+        `Se for isso mesmo, toque em <b>Cobrou os mesmos ${brl(pend.valor)}</b> e ajuste na Vobi depois.`,
+        BOTOES_CANCELA(token));
+      return true;
+    }
+    estado.fatura!.itens.push({ ...pend, cobrado: novo });
+    estado.fatura!.idPendente = undefined;
+    await salvarEstado(db, token, estado);
+    await renderFatura(db, B, token, estado, chatId);
+    return true;
+  }
 
   // ── juros informados: o valor da conta passa a ser o pago menos os juros ──
   // ── quanto entrou de verdade no recebimento ──
