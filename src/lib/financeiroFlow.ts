@@ -191,6 +191,31 @@ function contaDe(e: EstadoBaixa): number {
   return e.valorConta ?? e.valorContaCartao ?? e.parcela?.valor ?? e.valorPago;
 }
 
+/**
+ * O valor que serve para ACHAR a conta na Vobi.
+ *
+ * Quando o comprovante SEPARA "Valor" de "Juros/IOF" (todo pagamento no
+ * cartão faz isso), quem está lançado na Vobi é o valor da CONTA — os
+ * encargos nascem no cartão e não existem na parcela. Procurar pelo total
+ * pago não acha nada: foi o que aconteceu com o seguro TOKIO em 28/09/2026
+ * (conta R$ 1.680,48 + R$ 219,84 = R$ 1.900,32; o bot procurou 1.900,32).
+ *
+ * Sem decomposição no papel, o total pago continua sendo a melhor chave.
+ * NÃO usar contaDe() aqui: ela cai no valor da parcela já escolhida, o que
+ * tornaria a busca circular.
+ */
+function valorBusca(e: EstadoBaixa): number {
+  return e.valorConta ?? e.valorPago;
+}
+
+/** "R$ 1.680,48" ou "R$ 1.680,48 (pago R$ 1.900,32 com encargos)". */
+function rotuloBusca(e: EstadoBaixa): string {
+  const v = valorBusca(e);
+  return Math.abs(v - e.valorPago) < 0.01
+    ? brl(v)
+    : `${brl(v)} <i>(pago ${brl(e.valorPago)} com encargos)</i>`;
+}
+
 /** Juros: o informado, senão o que sobra entre o pago e o valor da conta. */
 function jurosDe(e: EstadoBaixa): number {
   if (e.juros != null) return e.juros;
@@ -319,7 +344,7 @@ async function iniciar(
     etapa: "buscando",
   };
 
-  await enviar(B, chatId, `🔎 Procurando <b>${escTg(nome)}</b> — ${brl(valor)}…`);
+  await enviar(B, chatId, `🔎 Procurando <b>${escTg(nome)}</b> — ${rotuloBusca(estado)}…`);
   await buscarFornecedorEContinuar(db, B, token, estado, chatId);
 }
 
@@ -485,6 +510,11 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
 
   // Regra da Adriana: comprovante so procura em quem tem conta EM ABERTO. Sem
   // isso a lista enche de homonimo que nao deve nada.
+  // Guardado para o beco sem saída: o fornecedor pode EXISTIR e mesmo assim
+  // sumir daqui, porque as parcelas dele são invisíveis para a API (rateio /
+  // projeto administrativo). Dizer "nenhum fornecedor" nesse caso é mentira —
+  // foi o que aconteceu com o seguro TOKIO.
+  const nomeAchado = achados[0] ? (achados[0].nome || achados[0].razao) : "";
   try {
     const devendo = await fornecedoresComContaEmAberto();
     const comConta = achados.filter((f) => devendo.has(f.id));
@@ -508,7 +538,8 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
       [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
       [{ text: "💰 Na verdade foi um RECEBIMENTO", callback_data: `fbreceb:${token}` }],
       [{ text: "🔁 Transferência entre nossas contas", callback_data: `fbtransf:${token}` }],
-      [{ text: `🔎 Procurar contas de ${brl(estado.valorPago)}`, callback_data: `fbvalor:${token}` }],
+      [{ text: `🔎 Procurar contas de ${brl(valorBusca(estado))}`, callback_data: `fbvalor:${token}` }],
+      [{ text: "🔍 Tenho o ID da parcela", callback_data: `fbpid:${token}` }],
       [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
     ];
     if (ehFatura) botoes.unshift(BTN_FATURA(token));
@@ -520,6 +551,10 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
       ehFatura
         ? `💳 <b>${escTg(nome)}</b> é o cartão, não um fornecedor — esse pagamento de <b>${brl(estado.valorPago)}</b> parece a <b>fatura</b>.\n\n` +
           `<i>Na fatura eu baixo TODAS as compras do cartão de uma vez e lanço a saída do banco. Toque no botão que eu monto a conferência.</i>`
+        : nomeAchado
+        ? `⚠️ Achei o fornecedor <b>${escTg(nomeAchado)}</b>, mas ele <b>não tem conta em aberto</b> na busca da Vobi.
+
+<i>Ou a conta ainda não foi lançada, ou é uma daquelas parcelas que só aparecem na tela (rateio/administrativo) — nesse caso pegue o ID em “Detalhes da parcela”.</i>`
         : `❌ Nenhum fornecedor com <b>${escTg(nome)}</b> tem conta em aberto.\n\n<i>Num depósito judicial ou guia de imposto o favorecido do comprovante é o tribunal ou o órgão, não o fornecedor — nesses casos o que liga é o valor.</i>`,
       inline(botoes),
     );
@@ -535,7 +570,7 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
   // Mostra a CONTA, nao o fornecedor: so o nome nao diz se e aquela despesa.
   let contas: ParcelaAberta[] = [];
   try {
-    contas = await parcelasAbertasDeFornecedores(achados.map((f) => f.id), estado.valorPago, 8);
+    contas = await parcelasAbertasDeFornecedores(achados.map((f) => f.id), valorBusca(estado), 8);
   } catch { contas = []; }
   if (!contas.length) {
     estado.fornecedor = { id: achados[0].id, nome: achados[0].nome || achados[0].razao };
@@ -544,15 +579,15 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
   }
   estado.candidatas = contas.map((c) => ({
     ...c,
-    diferenca: Math.round((estado.valorPago - c.valor) * 100) / 100,
-    exata: Math.round(c.valor * 100) === Math.round(estado.valorPago * 100),
+    diferenca: Math.round((valorBusca(estado) - c.valor) * 100) / 100,
+    exata: Math.round(c.valor * 100) === Math.round(valorBusca(estado) * 100),
   }));
   estado.etapa = "esc_parcela";
   await salvarEstado(db, token, estado);
   const linhas = contas.map((c, i) => {
     const quem = c.fornecedor ? escTg(c.fornecedor) : "<i>sem fornecedor</i>";
     const atraso = c.diasAtraso > 0 ? ` · <i>${c.diasAtraso}d em atraso</i>` : "";
-    const igual = Math.round(c.valor * 100) === Math.round(estado.valorPago * 100) ? " ✅" : "";
+    const igual = Math.round(c.valor * 100) === Math.round(valorBusca(estado) * 100) ? " ✅" : "";
     return `${i + 1}. <b>${dataBR(c.vencimento)}</b> — <b>${brl(c.valor)}</b>${igual}${atraso}\n    ${quem}\n    <i>${escTg(c.descricao.slice(0, 46))}</i>`;
   }).join("\n");
   const bts = contas.map((c) => [{
@@ -1363,7 +1398,7 @@ async function pedirContaTransf(
       `<i>O comprovante do Banco Villela é assim. Se foi dinheiro andando entre as `+
       `contas da Costa Júnior, me diga de qual conta SAIU:</i>`;
     linhas.push([{
-      text: `🔎 Não é transferência — procurar conta de ${brl(estado.valorPago)}`,
+      text: `🔎 Não é transferência — procurar conta de ${brl(valorBusca(estado))}`,
       callback_data: `fbvalor:${token}`,
     }]);
   }
@@ -1377,7 +1412,7 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   let todas: ParcelaAberta[] = [];
   try {
     todas = await todasAbertasDoFornecedor(f.id, f.nome);
-    cands = ranquearCandidatas(todas, estado.valorPago, 6);
+    cands = ranquearCandidatas(todas, valorBusca(estado), 6);
   } catch (e: any) {
     return await falhaDaVobi(db, B, token, estado, chatId, e, "buscar as parcelas em aberto");
   }
@@ -1385,7 +1420,7 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
   // UM pagamento pode quitar VÁRIAS parcelas (PIX de 620 = 425 + 195). Se a
   // soma bate exatamente, oferece o lote ANTES da lista solta — senão ela baixa
   // uma só e a diferença vira "juros" que nunca existiram.
-  const combos = combinacoesQueSomam(todas, estado.valorPago, 3);
+  const combos = combinacoesQueSomam(todas, valorBusca(estado), 3);
   estado.lotes = combos.map((c) => c.map((p) => ({
     id: p.id, valor: p.valor, vencimento: p.vencimento, descricao: p.descricao,
   })));
@@ -1400,6 +1435,7 @@ async function mostrarParcelas(db: any, B: Bot, token: string, estado: EstadoBai
       inline([
         [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
         [{ text: "🔄 É de outro fornecedor", callback_data: `fbtrocaforn:${token}` }],
+        [{ text: "🔍 Tenho o ID da parcela", callback_data: `fbpid:${token}` }],
         [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
       ]));
     return;
@@ -1890,7 +1926,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     const restantes = todas.filter((p) => !jaVistas.has(p.id));
 
     const outroForn = [{ text: "🔄 É de outro fornecedor", callback_data: `fbtrocaforn:${token}` }];
-    const porValor = [{ text: `🔎 Procurar contas de ${brl(estado.valorPago)}`, callback_data: `fbvalor:${token}` }];
+    const porValor = [{ text: `🔎 Procurar contas de ${brl(valorBusca(estado))}`, callback_data: `fbvalor:${token}` }];
 
     if (!restantes.length) {
       await enviar(B, chatId,
@@ -1898,7 +1934,9 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
         `Então o pagamento é de <b>outro fornecedor</b> — ou a conta ainda não foi lançada na Vobi.`,
         inline([
           [{ text: "➕ Cadastrar como lançamento novo", callback_data: `fbnovo:${token}` }],
-          outroForn, porValor, [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+          outroForn, porValor,
+          [{ text: "🔍 Tenho o ID da parcela", callback_data: `fbpid:${token}` }],
+          [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
         ]));
       return;
     }
@@ -1906,8 +1944,8 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     // as restantes viram as candidatas do estado: o botão fbparc procura o id aqui
     const comoCand = restantes.map((p) => ({
       ...p,
-      diferenca: Math.round((estado.valorPago - p.valor) * 100) / 100,
-      exata: Math.round(p.valor * 100) === Math.round(estado.valorPago * 100),
+      diferenca: Math.round((valorBusca(estado) - p.valor) * 100) / 100,
+      exata: Math.round(p.valor * 100) === Math.round(valorBusca(estado) * 100),
     })) as Candidata[];
     estado.candidatas = comoCand.slice(0, 12);
     estado.etapa = "esc_parcela";
@@ -1941,6 +1979,21 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     await enviar(B, chatId,
       `Qual é o fornecedor de <b>${brl(estado.valorPago)}</b>?\n\n` +
       `<i>Escreva o nome (ou um pedaço dele) aqui no grupo.</i>`,
+      BOTOES_CANCELA(token));
+    return;
+  }
+
+  // A parcela existe na TELA da Vobi mas não vem em busca nenhuma (rateio e
+  // projeto administrativo — o seguro TOKIO é o caso clássico). O jeito de
+  // alcançá-la é pelo ID que a tela mostra em "Detalhes da parcela".
+  if (acao === "fbpid") {
+    estado.etapa = "aguarda_id_parcela";
+    await salvarEstado(db, token, estado);
+    await enviar(B, chatId,
+      `🔍 <b>Cole aqui o ID da parcela.</b>\n\n` +
+      `<i>Na Vobi, abra a parcela e copie o código do título (ex.: ` +
+      `<code>a3bcbaf6-b083-4d15-aa36-500b75bafb35</code>). Serve para as contas que ` +
+      `aparecem na tela e não vêm na busca.</i>`,
       BOTOES_CANCELA(token));
     return;
   }
@@ -2298,7 +2351,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       return await pedirContaTransf(B, token, estado, chatId, lado, true);
     }
     if (estado.fornecedor) return await mostrarParcelas(db, B, token, estado, chatId);
-    await enviar(B, chatId, `🔎 Procurando <b>${escTg(estado.nomeBusca || "")}</b> — ${brl(estado.valorPago)}…`);
+    await enviar(B, chatId, `🔎 Procurando <b>${escTg(estado.nomeBusca || "")}</b> — ${rotuloBusca(estado)}…`);
     return await buscarFornecedorEContinuar(db, B, token, estado, chatId);
   }
 
@@ -2369,7 +2422,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     if (!estado.nomeBusca) {
       return await onCallbackFinanceiro(db, B, cq, chatId, `fbvalor:${token}`);
     }
-    await enviar(B, chatId, `🔎 Procurando <b>${escTg(estado.nomeBusca)}</b> — ${brl(estado.valorPago)}…`);
+    await enviar(B, chatId, `🔎 Procurando <b>${escTg(estado.nomeBusca)}</b> — ${rotuloBusca(estado)}…`);
     return await buscarFornecedorEContinuar(db, B, token, estado, chatId);
   }
 
@@ -2516,7 +2569,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   if (acao === "fbvalor") {
     let achadas: ParcelaAberta[];
     try {
-      achadas = await parcelasAbertasPorValor(estado.valorPago, 8);
+      achadas = await parcelasAbertasPorValor(valorBusca(estado), 8);
     } catch (e: any) {
       return await falhaDaVobi(db, B, token, estado, chatId, e, "procurar pelo valor");
     }
@@ -2524,15 +2577,15 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       await enviar(
         B,
         chatId,
-        `❌ Não achei nenhuma conta em aberto de <b>${brl(estado.valorPago)}</b>.\n\n<i>Pode ser que a conta ainda não esteja lançada, ou que o valor pago seja diferente do valor da conta (juros, desconto). Lance na Vobi e me mande o comprovante de novo.</i>`,
+        `❌ Não achei nenhuma conta em aberto de <b>${brl(valorBusca(estado))}</b>.\n\n<i>Pode ser que a conta ainda não esteja lançada, ou que o valor pago seja diferente do valor da conta (juros, desconto). Também pode ser uma das parcelas que não aparecem na busca (rateio/administrativo) — nesse caso use “Tenho o ID da parcela”.</i>`,
       );
       return;
     }
     // Candidata = ParcelaAberta + a diferenca para o valor pago (juros/desconto)
     estado.candidatas = achadas.map((c) => ({
       ...c,
-      diferenca: Math.round((estado.valorPago - c.valor) * 100) / 100,
-      exata: Math.round(c.valor * 100) === Math.round(estado.valorPago * 100),
+      diferenca: Math.round((valorBusca(estado) - c.valor) * 100) / 100,
+      exata: Math.round(c.valor * 100) === Math.round(valorBusca(estado) * 100),
     }));
     estado.etapa = "esc_parcela";
     await salvarEstado(db, token, estado);
@@ -2549,7 +2602,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     await enviar(
       B,
       chatId,
-      `🔎 Contas em aberto de <b>${brl(estado.valorPago)}</b>, de qualquer fornecedor:\n\n${linhas}\n\n<i>Qual delas?</i>`,
+      `🔎 Contas em aberto de <b>${brl(valorBusca(estado))}</b>, de qualquer fornecedor:\n\n${linhas}\n\n<i>Qual delas?</i>`,
       inline(bts),
     );
     return;
@@ -2825,7 +2878,7 @@ async function pendenteEsperandoNumero(db: any, chatId: number) {
     .eq("chat_id", String(chatId))
     .in("estado", ["aguarda_valor", "aguarda_valor_conta", "aguarda_conta_resto", "aguarda_juros", "rec_aguarda_valor", "aguarda_fornecedor",
       "novo_busca_forn", "novo_busca_cat", "novo_busca_cc", "novo_cc", "novo_venc",
-      "fatura_id", "fatura_id_valor"])
+      "fatura_id", "fatura_id_valor", "aguarda_id_parcela"])
     .order("telegram_user_id", { ascending: false })
     .limit(1);
   const linha = (data || [])[0];
@@ -2875,8 +2928,45 @@ export async function onTextoDuranteBaixa(db: any, B: Bot, chatId: number, texto
     estado.nomeBusca = nome;
     estado.etapa = "buscando";
     await salvarEstado(db, token, estado);
-    await enviar(B, chatId, `🔎 Procurando <b>${escTg(nome)}</b> — ${brl(estado.valorPago)}…`);
+    await enviar(B, chatId, `🔎 Procurando <b>${escTg(nome)}</b> — ${rotuloBusca(estado)}…`);
     await buscarFornecedorEContinuar(db, B, token, estado, chatId);
+    return true;
+  }
+
+  // ── ID de parcela colado quando a busca não achou a conta ──
+  // Protegido pelo próprio formato (UUID) e pela janela de 10 minutos.
+  if (etapa === "aguarda_id_parcela") {
+    const desde = Date.parse(String((estado as any).atualizadoEm || ""));
+    if (Number.isFinite(desde) && Date.now() - desde > 10 * 60 * 1000) return false;
+    const id = (texto.trim().match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+    if (!id) return false; // não é ID: deixa passar como conversa do grupo
+
+    let p: ParcelaAberta | null = null;
+    try {
+      p = await parcelaPorId(id);
+    } catch (e: any) {
+      await falhaDaVobi(db, B, token, estado, chatId, e, "buscar a parcela pelo ID");
+      return true;
+    }
+    if (!p) {
+      await enviar(B, chatId, "❌ Não achei essa parcela na Vobi (ou ela já foi baixada). Confira o ID.", BOTOES_CANCELA(token));
+      return true;
+    }
+    if (p.tipo === "receita") {
+      await enviar(B, chatId, "Essa parcela é uma <b>receita</b>, não uma conta a pagar. Use “Na verdade foi um RECEBIMENTO”.", BOTOES_CANCELA(token));
+      return true;
+    }
+    await enviar(B, chatId,
+      `✅ Achei: <b>${escTg(p.descricao.slice(0, 45))}</b>\n` +
+      `${brl(p.valor)} · vence ${dataBR(p.vencimento)}${p.fornecedor ? " · " + escTg(p.fornecedor) : ""}`);
+    const c: Candidata = {
+      ...p,
+      diferenca: Math.round((valorBusca(estado) - p.valor) * 100) / 100,
+      exata: Math.round(p.valor * 100) === Math.round(valorBusca(estado) * 100),
+    };
+    estado.candidatas = [c];
+    await salvarEstado(db, token, estado);
+    await escolherParcela(db, B, token, estado, chatId, c);
     return true;
   }
 
