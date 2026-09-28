@@ -2673,3 +2673,24 @@ viram backspace/`d` literal (o regex `(?=\b\d{1,2} ...)` virou `(?=d{1,2} ...)` 
 devolveu 1 pedaco, sem erro nenhum). **Regras:** em script gerado por heredoc, usar SEMPRE
 regex literal (`/.../`), nunca `new RegExp` com escapes; e como ancora de busca/replace,
 escolher trechos SEM `\n`/`\` (pedaco de uma linha so).
+
+**Refinamento no mesmo dia (commits a685dbe/64064bc/e80cb14):**
+- **2a passada aproximada** no "Procurar contas de R$ X": boleto pago em atraso chega ao
+  comprovante com multa/juros embutidos, entao o valor do papel fica ACIMA do lancado e a
+  busca exata falha. `parcelasAbertasPorValor` ganhou `tolerancia` (reais, padrao 1,00); a
+  2a passada usa 8% (min R$ 20).
+- **MAS a aproximada so vale para o MESMO fornecedor** (a Adriana pegou): procurando o TOKIO
+  por 1.680,48, a folga trouxe OITO parcelas de 1.688,81 do PARCELAMENTO ADMINISTRATIVO da
+  PMSP — um toque errado baixaria conta alheia. `mesmoFornecedor(a,b)` (palavra, prefixo de
+  5 letras, sem acento) filtra. **No valor EXATO nao filtra** de proposito (guia de imposto e
+  deposito judicial saem no nome do orgao), mas ordena as do fornecedor conhecido primeiro.
+- "Cadastrar como lancamento novo" passou a usar o valor da CONTA (nao o total do cartao) e
+  avisa que os juros ficam de fora — senao a despesa do fornecedor nasce inflada pelo encargo.
+
+**SOBRE O TOKIO — esgotado pelo lado da API (28/09/2026):** tentei 6 caminhos e NENHUM
+devolve o lancamento de 6x1.632,63: `/payment?where[idSupplier]=666065` (20 linhas, todas
+antigas e pagas — e o filtro por fornecedor FUNCIONA, so nao tem o fantasma), idSupplier
+666891, `where[price]=1632.63`, `where[name]` exato, vencimento 20/10, varredura dos 1.226
+pagamentos em aberto e das 1.323 parcelas em aberto. **A correcao e no DADO, nao no bot:**
+abrir o lancamento na tela e tirar o RATEIO por projeto (a fatia nao-principal some de todas
+as listagens — armadilha 53). Feito isso, o bot acha sozinho as parcelas restantes.
