@@ -208,6 +208,25 @@ function valorBusca(e: EstadoBaixa): number {
   return e.valorConta ?? e.valorPago;
 }
 
+/**
+ * O nome do fornecedor da parcela parece o que veio no comprovante?
+ *
+ * Usado para NÃO oferecer conta alheia na busca aproximada: procurando o
+ * TOKIO por R$ 1.680,48, a folga de 8% trazia oito parcelas de R$ 1.688,81 do
+ * PARCELAMENTO ADMINISTRATIVO da PMSP — valor parecido, fornecedor nenhum a
+ * ver. Compara por palavra (prefixo de 5 letras, sem acento e sem o H de
+ * ANTHROPIC x ANTROPIC).
+ */
+function mesmoFornecedor(a?: string | null, b?: string | null): boolean {
+  const limpa = (s: unknown) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/H/g, "");
+  const chaves = (s: unknown) => new Set(limpa(s).split(/\s+/).filter((w) => w.length >= 5).map((w) => w.slice(0, 5)));
+  const A = chaves(a), B = chaves(b);
+  if (!A.size || !B.size) return false;
+  for (const w of A) if (B.has(w)) return true;
+  return false;
+}
+
 /** "R$ 1.680,48" ou "R$ 1.680,48 (pago R$ 1.900,32 com encargos)". */
 function rotuloBusca(e: EstadoBaixa): string {
   const v = valorBusca(e);
@@ -2585,17 +2604,38 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
         // 8% cobre a multa (2%) + juros de mora de alguns meses; mais que isso
         // enche a lista de conta alheia que so por acaso tem valor parecido.
         const folga = Math.max(20, Math.round(valorBusca(estado) * 0.08 * 100) / 100);
-        achadas = await parcelasAbertasPorValor(valorBusca(estado), 8, folga);
+        achadas = await parcelasAbertasPorValor(valorBusca(estado), 12, folga);
+        // valor PARECIDO só vale se for do MESMO fornecedor — senão é palpite
+        // perigoso (o certo seria baixar a conta de outra pessoa). No valor
+        // EXATO não filtramos: aí o valor é a prova (depósito judicial, guia).
+        const quem = estado.fornecedor?.nome || estado.nomeBusca;
+        if (quem) achadas = achadas.filter((c) => mesmoFornecedor(c.fornecedor, quem));
+        achadas = achadas.slice(0, 8);
         aproximada = achadas.length > 0;
       }
     } catch (e: any) {
       return await falhaDaVobi(db, B, token, estado, chatId, e, "procurar pelo valor");
     }
+    // Com fornecedor conhecido, as contas DELE vêm primeiro. No valor EXATO a
+    // conta de outro fornecedor CONTINUA na lista de propósito: guia de imposto
+    // e depósito judicial saem no nome do órgão, não do fornecedor — nesses
+    // casos o que liga é o valor.
+    const quemOrdem = estado.fornecedor?.nome || estado.nomeBusca;
+    if (quemOrdem) {
+      achadas = [...achadas].sort((a, b) =>
+        Number(mesmoFornecedor(b.fornecedor, quemOrdem)) - Number(mesmoFornecedor(a.fornecedor, quemOrdem)));
+    }
     if (!achadas.length) {
       await enviar(
         B,
         chatId,
-        `❌ Não achei nenhuma conta em aberto de <b>${brl(valorBusca(estado))}</b>.\n\n<i>Pode ser que a conta ainda não esteja lançada, ou que o valor pago seja diferente do valor da conta (juros, desconto). Também pode ser uma das parcelas que não aparecem na busca (rateio/administrativo) — nesse caso use “Tenho o ID da parcela”.</i>`,
+        `❌ Não achei nenhuma conta de <b>${brl(valorBusca(estado))}</b>` +
+        (estado.fornecedor?.nome || estado.nomeBusca
+          ? ` — nem parecida — em <b>${escTg(estado.fornecedor?.nome || estado.nomeBusca || "")}</b>.`
+          : ".") +
+        `
+
+<i>Ou a conta ainda não foi lançada, ou é uma das parcelas que a busca da Vobi não devolve (rateio por projeto) — essas só aparecem na tela.</i>`,
       );
       return;
     }
