@@ -2568,8 +2568,18 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
   if (acao === "fbvalor") {
     let achadas: ParcelaAberta[];
+    // 2a passada com folga larga: boleto pago em atraso chega ao comprovante com
+    // multa e juros embutidos, entao o valor NUNCA bate com o lancado.
+    let aproximada = false;
     try {
       achadas = await parcelasAbertasPorValor(valorBusca(estado), 8);
+      if (!achadas.length) {
+        // 8% cobre a multa (2%) + juros de mora de alguns meses; mais que isso
+        // enche a lista de conta alheia que so por acaso tem valor parecido.
+        const folga = Math.max(20, Math.round(valorBusca(estado) * 0.08 * 100) / 100);
+        achadas = await parcelasAbertasPorValor(valorBusca(estado), 8, folga);
+        aproximada = achadas.length > 0;
+      }
     } catch (e: any) {
       return await falhaDaVobi(db, B, token, estado, chatId, e, "procurar pelo valor");
     }
@@ -2602,7 +2612,17 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
     await enviar(
       B,
       chatId,
-      `🔎 Contas em aberto de <b>${brl(valorBusca(estado))}</b>, de qualquer fornecedor:\n\n${linhas}\n\n<i>Qual delas?</i>`,
+      (aproximada
+        ? `🔎 Nenhuma conta de <b>${brl(valorBusca(estado))}</b> exato — estas são as mais <b>próximas</b>:`
+        : `🔎 Contas em aberto de <b>${brl(valorBusca(estado))}</b>, de qualquer fornecedor:`) +
+        `
+
+${linhas}
+
+` +
+        (aproximada
+          ? `<i>A diferença costuma ser multa/juros do boleto pago em atraso — na baixa eu registro isso como encargo.</i>`
+          : `<i>Qual delas?</i>`),
       inline(bts),
     );
     return;

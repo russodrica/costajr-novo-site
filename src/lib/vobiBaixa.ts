@@ -1213,11 +1213,21 @@ export async function parcelasAbertasDeFornecedores(ids: number[], valorPago: nu
  * imposto sai no nome do orgao, e em pagamento por intermediario sai no nome do
  * intermediario. Nesses casos so o VALOR liga o comprovante a conta.
  */
-export async function parcelasAbertasPorValor(valor: number, limite = 8): Promise<ParcelaAberta[]> {
+/**
+ * Contas em aberto perto de um valor.
+ *
+ * `tolerancia` em REAIS (padrao 1,00 = "o mesmo valor"). O fluxo faz uma 2a
+ * passada com folga larga quando a exata nao acha nada: boleto pago em atraso
+ * chega ao comprovante ja com multa e juros embutidos, entao o valor pago fica
+ * ACIMA do que esta lancado (TOKIO 28/09/2026: parcela 1.632,63, comprovante
+ * 1.680,48 — 47,85 de encargos do boleto).
+ */
+export async function parcelasAbertasPorValor(valor: number, limite = 8, tolerancia = 1): Promise<ParcelaAberta[]> {
   const rows = await todasAbertas();
   const centavos = (v: number) => Math.round(v * 100);
   const alvo = centavos(valor);
-  const perto = rows.filter((i: any) => Math.abs(centavos(num(i.price)) - alvo) <= 100); // ate 1 real de folga
+  const folga = Math.max(1, Math.round(tolerancia * 100));
+  const perto = rows.filter((i: any) => Math.abs(centavos(num(i.price)) - alvo) <= folga);
   const nomes = await mapaFornecedores(perto);
   return perto
     .map((i: any) => montarParcela(i, nomes[(i.payment || {}).idSupplier] ?? null))
