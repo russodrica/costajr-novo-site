@@ -2243,9 +2243,17 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
   // ───────── botoes do fluxo de NOVO LANCAMENTO ─────────
   if (acao === "fbnovo") {
-    // veio de um beco sem saida da baixa: reaproveita valor/data ja lidos
+    // veio de um beco sem saida da baixa: reaproveita valor/data ja lidos.
+    // O valor do LANÇAMENTO é o da conta, não o total pago: os juros e o IOF
+    // do cartão são encargo, e misturá-los na despesa inflaria o custo do
+    // fornecedor (padrão da casa: a compra e os encargos vão separados).
+    if (estado.valorConta != null && estado.juros) {
+      await enviar(B, chatId,
+        `<i>Lançando pelo valor da conta (${brl(estado.valorConta)}). ` +
+        `Os ${brl(estado.juros)} de juros/IOF do cartão ficam de fora — eles são encargo, não despesa do fornecedor.</i>`);
+    }
     return await iniciarNovoLancamento(db, B, chatId, estado.autor, {
-      valor: estado.valorPago, data: estado.dataPagamento,
+      valor: valorBusca(estado), data: estado.dataPagamento,
       forma: estado.forma, estabelecimento: estado.nomeBusca || estado.fornecedor?.nome,
     }, token);
   }
