@@ -2632,3 +2632,44 @@ Quando a diferenca fecha ao centavo assim, e sinal de que nao ha mais nada ocult
 dizer "nao apareceu na busca" e pedir confirmacao na tela. O valor da fatura NAO
 serve de chave de busca quando o boleto foi pago no credito (a fatura mostra
 face + IOF + juros; a Vobi guarda a face).
+
+## Atualizacao 28/09/2026 — buscar pelo valor da CONTA, nao pelo total pago
+
+**A Adriana pegou:** comprovante do seguro TOKIO no cartao — conta R$ 1.680,48 + juros
+R$ 211,80 + IOF R$ 8,04 = **R$ 1.900,32 pago**. O bot LEU a decomposicao certa (mostrou
+as 3 linhas) e mesmo assim **procurou por 1.900,32** — valor que NAO existe na Vobi,
+porque os encargos nascem no cartao e nao estao na parcela.
+
+**Fix (commit c687f38):** `valorBusca(estado)` = `valorConta ?? valorPago`. Quando o
+comprovante SEPARA "Valor" de "Juros/IOF" (`conferirDecomposicao` valida), passam a usar
+o valor da CONTA: `parcelasAbertasDeFornecedores`, `ranquearCandidatas`,
+`combinacoesQueSomam`, `parcelasAbertasPorValor`, o "✅ valor exato", o `diferenca` das
+candidatas e o botao "Procurar contas de R$ X". Sem decomposicao no papel, nada muda
+(segue pelo total). As mensagens mostram os dois: `rotuloBusca()` -> "R$ 1.680,48
+(pago R$ 1.900,32 com encargos)". **NAO usar `contaDe()` como chave de busca** — ela cai
+no valor da parcela ja escolhida (circular); por isso o helper separado.
+
+**O caso tinha DOIS problemas — o segundo tambem foi corrigido:**
+- A mensagem "❌ Nenhum fornecedor com TOKIO tem conta em aberto" era **mentira**: o
+  fornecedor existe; as parcelas dele e que sao invisiveis (rateio/administrativo, o
+  ponto cego de 25/09). Agora, quando a busca acha o fornecedor e o filtro "so quem tem
+  conta em aberto" o remove, a mensagem diz "⚠️ Achei o fornecedor X, mas ele nao tem
+  conta em aberto na busca" e explica o porque (`nomeAchado` guardado ANTES do filtro).
+- **Botao "🔍 Tenho o ID da parcela"** (`fbpid`) nos TRES becos sem saida (sem fornecedor,
+  fornecedor sem outra conta, fornecedor sem nenhuma parcela). Cola-se o id de "Detalhes
+  da parcela" -> `parcelaPorId` -> vira Candidata -> `escolherParcela` -> fluxo normal.
+  Estado `aguarda_id_parcela` (registrado no `.in` do `pendenteEsperandoNumero`), so
+  UUID, janela de 10 min, recusa parcela de RECEITA. E o unico caminho para as parcelas
+  que nenhuma listagem devolve.
+
+**E2E (sem postar no grupo, sem escrever):** `TEMP-e2e-tokio.mts` com db falso + fetch
+interceptado — busca por 1.680,48; beco sem saida honesto; ID -> confirmacao do cartao
+com "1.680,48 + 219,84 de juros = 1.900,32"; conversa do grupo nao engolida; e o
+controle (TD SYNNEX, sem decomposicao) seguindo pelo total.
+
+**ARMADILHA DE EDICAO (de novo, agora medida):** o heredoc `cat > f <<'EOF'` **come uma
+barra** — `\n` no conteudo vira `\n` no arquivo, e `\b`/`\d` dentro de `new RegExp("...")`
+viram backspace/`d` literal (o regex `(?=\b\d{1,2} ...)` virou `(?=d{1,2} ...)` e o split
+devolveu 1 pedaco, sem erro nenhum). **Regras:** em script gerado por heredoc, usar SEMPRE
+regex literal (`/.../`), nunca `new RegExp` com escapes; e como ancora de busca/replace,
+escolher trechos SEM `\n`/`\` (pedaco de uma linha so).
