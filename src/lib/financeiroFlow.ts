@@ -20,7 +20,7 @@
 // o token viaja no callback_data, então várias pessoas podem lançar ao mesmo
 // tempo no grupo sem uma atrapalhar a outra.
 
-import { escTg } from "./telegram";
+import { escTg, enviarTelegram } from "./telegram";
 import { registrarAcao } from "./auditoria";
 import { ehAPropriaCJR, identificarLado, type LadoCJR } from "./identidadeCJR";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
@@ -1914,6 +1914,15 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
   }
 
   const [acao, token, arg] = data.split(":");
+
+  // "🗑 Descartar" do aviso de baixas pendentes. Vem ANTES de ler o estado
+  // porque é a única ação que faz sentido mesmo se a sessão já sumiu.
+  if (acao === "fbdesc") {
+    await apagarEstado(db, token);
+    await enviar(B, chatId, "🗑 Descartei essa baixa pendente. Se precisar, é só mandar o comprovante de novo.");
+    return;
+  }
+
   const estado = await lerEstado(db, token);
   if (!estado) {
     await enviar(B, chatId, "Esse lançamento já foi tratado ou expirou. Mande o valor e o fornecedor de novo. 👍");
@@ -3268,4 +3277,122 @@ export async function onPrintDuranteBaixa(db: any, B: Bot, msg: any, chatId: num
   await enviar(B, chatId, `📄 Li <b>${brl(juros)}</b> de juros.`);
   await irParaConfirmacao(db, B, p.token, p.estado, chatId);
   return true;
+}
+
+// ───────────────── baixas que começaram e não terminaram ─────────────────
+//
+// O bot NÃO erra valor nem conta — auditoria de 30/09/2026 em 177 baixas: zero
+// divergência aritmética, zero duplicata. Quando ele falha é por ABANDONO: a
+// conversa para num passo (escolher a parcela, confirmar, digitar o juros) e
+// ninguém fica sabendo. Havia 6 sessões assim, e uma delas era o empréstimo de
+// R$ 1.237,89 parado a UM CLIQUE do fim desde 25/09.
+//
+// Toda sessão "fb:" que ainda existe é, por definição, uma baixa não concluída
+// (o fluxo apaga o estado ao terminar). Só ignoramos as recentes, que podem ser
+// uma conversa em andamento agora.
+
+const HORAS_PARA_COBRAR = 3;
+
+export type BaixaPendente = {
+  token: string;
+  etapa: string;
+  autor: string;
+  valor: number;
+  nome: string;
+  horas: number;
+  chatId: number | null;
+};
+
+function nomeDoPendente(d: EstadoBaixa): string {
+  const doPapel = (d.nomeBusca || "").trim();
+  const escolhido = (d.fornecedor?.nome || "").trim();
+  if (!doPapel) return escolhido || "(sem fornecedor identificado)";
+  if (!escolhido) return doPapel;
+  const parecido = escolhido.toUpperCase().startsWith(doPapel.slice(0, 6).toUpperCase());
+  return parecido ? escolhido : `${doPapel} → ${escolhido}?`;
+}
+
+/** Lista as baixas paradas há mais de `horas`, da mais antiga para a mais nova. */
+export async function baixasPendentes(db: any, horas = HORAS_PARA_COBRAR): Promise<BaixaPendente[]> {
+  const { data } = await db
+    .from("telegram_sessoes")
+    .select("telegram_user_id, estado, dados, updated_at")
+    .like("telegram_user_id", "fb:%")
+    .limit(200);
+  const agora = Date.now();
+  const out: BaixaPendente[] = [];
+  for (const l of data || []) {
+    const d = (l.dados || {}) as EstadoBaixa;
+    // `atualizadoEm` é gravado pelo salvarEstado; updated_at é a rede de segurança.
+    const quando = Date.parse(String(d.atualizadoEm || l.updated_at || ""));
+    const h = Number.isFinite(quando) ? (agora - quando) / 36e5 : 999;
+    if (h < horas) continue;
+    out.push({
+      token: String(l.telegram_user_id).slice(3),
+      etapa: String(l.estado || d.etapa || "?"),
+      autor: d.autor || "alguém",
+      valor: Number(d.valorPago) || 0,
+      // O nome do COMPROVANTE vem na frente: é o que a pessoa reconhece. O
+      // fornecedor que o bot escolheu entra entre parênteses só quando difere
+      // — foi assim que apareceu o caso CONSTRUTIVO BPO casado com OBRAMAX.
+      nome: nomeDoPendente(d),
+      horas: Math.floor(h),
+      chatId: d.chat_id ?? null,
+    });
+  }
+  return out.sort((a, b) => b.horas - a.horas);
+}
+
+/** Em que passo parou, em português — é isso que diz à pessoa o que falta. */
+function rotuloEtapa(e: string): string {
+  const m: Record<string, string> = {
+    confirmar: "faltou só confirmar",
+    esc_parcela: "faltou escolher a conta",
+    esc_forma: "faltou escolher a forma de pagamento",
+    esc_tipo: "faltou dizer se é despesa, receita ou transferência",
+    sem_fornecedor: "não achei o fornecedor",
+    buscando: "parou na busca do fornecedor",
+    aguarda_valor: "esperando você digitar o valor",
+    aguarda_valor_conta: "esperando o valor da conta",
+    aguarda_juros: "esperando o valor dos juros",
+    aguarda_fornecedor: "esperando o nome do fornecedor",
+    aguarda_id_parcela: "esperando o ID da parcela",
+    fatura_id: "esperando o ID da parcela da fatura",
+    novo: "no cadastro de lançamento novo",
+  };
+  return m[e] || `parou em "${e}"`;
+}
+
+/**
+ * Manda no grupo o aviso das baixas pendentes, com botão para retomar cada uma.
+ *
+ * O "🔄 Retomar" reusa o `fbretry`, que já sabe voltar ao passo certo — o botão
+ * existia só para erro da Vobi e serve igual aqui.
+ */
+export async function avisarBaixasPendentes(db: any, horas = HORAS_PARA_COBRAR): Promise<{ n: number; enviado: boolean }> {
+  const lista = await baixasPendentes(db, horas);
+  if (!lista.length) return { n: 0, enviado: false };
+
+  const mostra = lista.slice(0, 8);
+  const linhas = mostra.map((p) => {
+    const quando = p.horas >= 48 ? `há ${Math.floor(p.horas / 24)} dias` : `há ${p.horas}h`;
+    return `• <b>${brl(p.valor)}</b> — ${escTg(p.nome)}\n   <i>${rotuloEtapa(p.etapa)} · ${quando} · ${escTg(p.autor)}</i>`;
+  });
+  const sobra = lista.length - mostra.length;
+  const texto =
+    `⚠️ <b>${lista.length} ${lista.length === 1 ? "baixa não concluída" : "baixas não concluídas"}</b>\n\n` +
+    linhas.join("\n") +
+    (sobra > 0 ? `\n\n<i>…e mais ${sobra}.</i>` : "") +
+    `\n\n<i>O dinheiro pode ter saído do banco sem a conta ficar baixada na Vobi. ` +
+    `Toque em retomar para continuar de onde parou.</i>`;
+
+  const teclado = {
+    inline_keyboard: mostra.map((p) => [
+      { text: `🔄 ${brl(p.valor)} ${p.nome.slice(0, 22)}`, callback_data: `fbretry:${p.token}` },
+      { text: "🗑", callback_data: `fbdesc:${p.token}` },
+    ]),
+  };
+
+  const r = await enviarTelegram(texto, { canal: "ADM", teclado });
+  return { n: lista.length, enviado: !!r.ok };
 }

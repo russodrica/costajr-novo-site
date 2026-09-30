@@ -13,6 +13,8 @@ import { enviarTelegram, escTg } from "./telegram";
 import { vencimentosNoPeriodo, recebimentosNoPeriodo, recebimentosAtrasados, ehAluguelPessoal, vobiBaixaConfigurada, type ParcelaAberta } from "./vobiBaixa";
 import { separarPrioridades, classificarPrioridade, ICONE, ROTULO, ORDEM, ehEntradaDeCaixa } from "./prioridades";
 import { caixaDisponivel } from "./saldoContas";
+import { supabaseAdmin } from "./supabase";
+import { avisarBaixasPendentes } from "./financeiroFlow";
 
 const CANAL = "ADM"; // grupo CJR_ADM
 
@@ -539,11 +541,16 @@ export async function enviarLembretesFinanceiros(): Promise<Record<string, any>>
   const receitasDia = await passo("receitas do dia", () => enviarRecebimentosDoDia());
   const alerta = await passo("prioridades do dia", () => enviarPrioridadesDoDia());
 
+  // Comprovante que foi mandado e a conversa parou no meio: o dinheiro saiu do
+  // banco e a conta continua aberta na Vobi, sem ninguém saber. Vai por último
+  // porque é cobrança, não panorama — a ordem despesas→receitas é da Adriana.
+  const pendentes = await passo("baixas não concluídas", () => avisarBaixasPendentes(supabaseAdmin()));
+
   const ehSegunda = hojeSP().getUTCDay() === 1;
-  if (!ehSegunda) return { dia, receitasDia, alerta };
+  if (!ehSegunda) return { dia, receitasDia, alerta, pendentes };
 
   const semana = await passo("despesas da semana", () => enviarVencimentosDaSemana());
   const prioridades = await passo("prioridades 30 dias", () => enviarPrioridades(30));
   const receitasSemana = await passo("receitas da semana", () => enviarRecebimentosDaSemana());
-  return { dia, receitasDia, alerta, semana, prioridades, receitasSemana };
+  return { dia, receitasDia, alerta, pendentes, semana, prioridades, receitasSemana };
 }
