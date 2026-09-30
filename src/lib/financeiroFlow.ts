@@ -268,8 +268,58 @@ async function lerEstado(db: any, token: string): Promise<EstadoBaixa | null> {
   return data?.dados || null;
 }
 
-async function apagarEstado(db: any, token: string) {
+/** Apaga SÓ esta conversa. Use quando as gêmeas não devem ir junto. */
+async function apagarSessao(db: any, token: string) {
   await db.from("telegram_sessoes").delete().eq("telegram_user_id", "fb:" + token);
+}
+
+async function apagarEstado(db: any, token: string) {
+  // Lê antes de apagar para saber de quem era: assim UMA edição aqui limpa as
+  // sessões irmãs em todos os ~10 pontos de saída do fluxo.
+  let irma: { chat: number; valor: number; nome: string } | null = null;
+  try {
+    const { data } = await db.from("telegram_sessoes")
+      .select("chat_id, dados").eq("telegram_user_id", "fb:" + token).maybeSingle();
+    const d = (data?.dados || {}) as EstadoBaixa;
+    const v = Number(d.valorPago);
+    if (data?.chat_id && Number.isFinite(v) && v > 0) {
+      irma = { chat: Number(data.chat_id), valor: v, nome: String(d.nomeBusca || "") };
+    }
+  } catch { /* segue e apaga a sessão de qualquer forma */ }
+  await db.from("telegram_sessoes").delete().eq("telegram_user_id", "fb:" + token);
+  if (irma) await apagarIrmas(db, token, irma.chat, irma.valor, irma.nome);
+}
+
+/**
+ * Apaga as sessões IRMÃS: mesmo grupo, mesmo valor pago, outra conversa.
+ *
+ * O mesmo comprovante às vezes abre duas sessões (a pessoa toca de novo, ou
+ * reenvia o print). Uma conclui a baixa e a outra fica órfã para sempre — foi
+ * o que aconteceu com o BPO do Construtivo em 21/09/2026: a conta foi baixada
+ * certinho e sobraram DUAS sessões de R$ 1.542,79 parecendo pendência.
+ *
+ * Exige valor E nome iguais: dois comprovantes diferentes de mesmo valor no
+ * mesmo dia existem (duas parcelas de R$ 250,00, por exemplo), e concluir um
+ * não pode apagar a conversa do outro.
+ */
+async function apagarIrmas(db: any, token: string, chatId: number, valorPago: number, nomeBusca: string) {
+  const chave = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().trim();
+  const alvo = chave(nomeBusca);
+  try {
+    const { data } = await db.from("telegram_sessoes")
+      .select("telegram_user_id, dados")
+      .like("telegram_user_id", "fb:%")
+      .eq("chat_id", String(chatId));
+    for (const l of data || []) {
+      const id = String(l.telegram_user_id);
+      if (id === "fb:" + token) continue;
+      const d = (l.dados || {}) as EstadoBaixa;
+      const v = Number(d.valorPago);
+      if (!Number.isFinite(v) || Math.abs(v - valorPago) >= 0.01) continue;
+      if (chave(String(d.nomeBusca || "")) !== alvo) continue;
+      await db.from("telegram_sessoes").delete().eq("telegram_user_id", id);
+    }
+  } catch { /* limpeza é best-effort: nunca derruba uma baixa que deu certo */ }
 }
 
 export async function getGrupoFinanceiro(db: any): Promise<string | null> {
@@ -3301,7 +3351,31 @@ export type BaixaPendente = {
   nome: string;
   horas: number;
   chatId: number | null;
+  /** parcelas que ESTA sessão ia baixar — se todas já estão pagas, não cobra */
+  idsProvaveis: string[];
 };
+
+/**
+ * Quais parcelas esta sessão estava a caminho de baixar.
+ *
+ * Se a pessoa já escolheu, é uma só. Se parou na lista, são as candidatas de
+ * valor exato (ou as duas mais próximas) — porque é uma delas que ela ia
+ * escolher. Serve para conferir na Vobi se a baixa já aconteceu por outro
+ * caminho, que é o caso que gerava alarme falso.
+ */
+function idsProvaveisDe(d: EstadoBaixa): string[] {
+  if (d.parcela?.id) return [d.parcela.id];
+  const lote = d.loteEscolhido != null ? d.lotes?.[d.loteEscolhido] : null;
+  if (lote?.length) return lote.map((i) => i.id).slice(0, 3);
+  if (d.fatura?.itens?.length) return d.fatura.itens.slice(0, 2).map((i) => i.id);
+  const cands = d.candidatas || [];
+  const exatas = cands.filter((c) => c.exata).map((c) => c.id);
+  if (exatas.length) return exatas.slice(0, 3);
+  return [...cands]
+    .sort((a, b) => Math.abs(a.diferenca) - Math.abs(b.diferenca))
+    .slice(0, 2)
+    .map((c) => c.id);
+}
 
 function nomeDoPendente(d: EstadoBaixa): string {
   const doPapel = (d.nomeBusca || "").trim();
@@ -3312,7 +3386,19 @@ function nomeDoPendente(d: EstadoBaixa): string {
   return parecido ? escolhido : `${doPapel} → ${escolhido}?`;
 }
 
-/** Lista as baixas paradas há mais de `horas`, da mais antiga para a mais nova. */
+/**
+ * Lista as baixas paradas há mais de `horas`, da mais antiga para a mais nova.
+ *
+ * SESSÃO PENDURADA NÃO É PROVA DE CONTA EM ABERTO. Em 21/09/2026 o BPO do
+ * Construtivo FOI baixado (R$ 1.542,79 na parcela de 15/09) e mesmo assim a
+ * sessão ficou lá — cobrar isso seria alarme falso, e foi o que quase
+ * aconteceu. Então, para toda sessão que já tem a parcela escolhida, a gente
+ * confere na Vobi: se já está paga, apaga a sessão e não cobra.
+ *
+ * A checagem é sempre POR ID, nunca por varredura: o listAll de /installment
+ * PULA linhas (foi assim que eu "não achei" a parcela do Construtivo) e o
+ * `where[idSupplier]` é ignorado silenciosamente pela API.
+ */
 export async function baixasPendentes(db: any, horas = HORAS_PARA_COBRAR): Promise<BaixaPendente[]> {
   const { data } = await db
     .from("telegram_sessoes")
@@ -3320,14 +3406,14 @@ export async function baixasPendentes(db: any, horas = HORAS_PARA_COBRAR): Promi
     .like("telegram_user_id", "fb:%")
     .limit(200);
   const agora = Date.now();
-  const out: BaixaPendente[] = [];
+  const out: { p: BaixaPendente; d: EstadoBaixa }[] = [];
   for (const l of data || []) {
     const d = (l.dados || {}) as EstadoBaixa;
     // `atualizadoEm` é gravado pelo salvarEstado; updated_at é a rede de segurança.
     const quando = Date.parse(String(d.atualizadoEm || l.updated_at || ""));
     const h = Number.isFinite(quando) ? (agora - quando) / 36e5 : 999;
     if (h < horas) continue;
-    out.push({
+    out.push({ d, p: {
       token: String(l.telegram_user_id).slice(3),
       etapa: String(l.estado || d.etapa || "?"),
       autor: d.autor || "alguém",
@@ -3338,9 +3424,115 @@ export async function baixasPendentes(db: any, horas = HORAS_PARA_COBRAR): Promi
       nome: nomeDoPendente(d),
       horas: Math.floor(h),
       chatId: d.chat_id ?? null,
-    });
+      idsProvaveis: idsProvaveisDe(d),
+    } });
   }
-  return out.sort((a, b) => b.horas - a.horas);
+  if (!out.length) return [];
+
+  // UM COMPROVANTE, UMA LINHA. Tocar duas vezes no print abre duas sessões, e
+  // aí o aviso cobrava a mesma coisa duas vezes (foi o que aconteceu com o BPO
+  // do Construtivo e com o seguro TOKIO). Fica a conversa MAIS RECENTE, que é
+  // onde a pessoa realmente parou; as gêmeas mais antigas vão embora.
+  const porComprovante = new Map<string, { p: BaixaPendente; d: EstadoBaixa }>();
+  const unicos: { p: BaixaPendente; d: EstadoBaixa }[] = [];
+  for (const item of [...out].sort((a, b) => a.p.horas - b.p.horas)) {
+    const nome = (item.d.nomeBusca || item.d.fornecedor?.nome || "")
+      .normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().trim();
+    const chave = `${(Number(item.d.valorPago) || 0).toFixed(2)}|${nome}`;
+    if (!nome || !porComprovante.has(chave)) {
+      if (nome) porComprovante.set(chave, item);
+      unicos.push(item);
+      continue;
+    }
+    // apagarSessao, NÃO apagarEstado: este limparia as irmãs pelo mesmo
+    // critério (valor + nome) e levaria embora a gêmea que eu quero manter.
+    await apagarSessao(db, item.p.token).catch(() => {});
+  }
+  out.length = 0;
+  out.push(...unicos);
+
+  // PROVA 1 (de graça): o log das baixas. Toda baixa que deu certo está aqui.
+  const desde = new Date(agora - 45 * 864e5).toISOString();
+  let logs: { registro_id: string | null; descricao: string; valor: number }[] = [];
+  try {
+    const { data: ls } = await db
+      .from("audit_log")
+      .select("registro_id, descricao, dados")
+      .in("entidade", ["vobi_baixa", "vobi_recebimento"])
+      .gte("created_at", desde)
+      .limit(1000);
+    logs = (ls || [])
+      .filter((r: any) => r?.dados?.ok === true)
+      .map((r: any) => ({
+        registro_id: r.registro_id ?? null,
+        descricao: String(r.descricao || ""),
+        valor: Number(r?.dados?.valor) || 0,
+      }));
+  } catch { /* sem log dá para seguir: a prova 2 ainda vale */ }
+
+  // PROVA 2 (custa cota): a parcela sumiu das abertas = foi paga.
+  // A Vobi libera 1000 chamadas/hora para a integração TODA (bots, telas, o
+  // Excel das 7h) — um aviso diário não pode comer isso.
+  let orcamento = 12;
+  const vivas: BaixaPendente[] = [];
+  for (const { p, d } of out.sort((a, b) => b.p.horas - a.p.horas)) {
+    const valores = [d.valorPago, d.valorConta, d.parcela?.valor]
+      .map(Number).filter((v) => Number.isFinite(v) && v > 0) as number[];
+    const nomes = [d.nomeBusca || "", d.fornecedor?.nome || "", d.parcela?.fornecedor || ""].filter(Boolean);
+    if (jaRegistradaNoLog(logs, p.idsProvaveis, valores, nomes)) {
+      await apagarEstado(db, p.token).catch(() => {});
+      continue;
+    }
+    if (!p.idsProvaveis.length || orcamento <= 0) { vivas.push(p); continue; }
+    let quitadas = 0;
+    let erro = false;
+    for (const id of p.idsProvaveis) {
+      if (orcamento <= 0) break;
+      orcamento--;
+      try {
+        // parcelaEmAberto, NÃO parcelaPorId: esta devolve a parcela em
+        // qualquer status, então usá-la aqui nunca acharia nada quitado.
+        if (!(await parcelaEmAberto(id))) quitadas++;
+      } catch { erro = true; } // Vobi fora do ar não apaga pendência
+    }
+    if (!erro && quitadas === p.idsProvaveis.length) {
+      await apagarEstado(db, p.token).catch(() => {});
+      continue;
+    }
+    vivas.push(p);
+  }
+  return vivas;
+}
+
+/**
+ * A baixa desta sessão já está REGISTRADA como feita?
+ *
+ * O `audit_log` é a prova mais forte que existe: toda baixa bem-sucedida passa
+ * pelo logVobi. E é de graça — nenhuma chamada na Vobi, que tem cota de 1000/h
+ * para a integração toda.
+ *
+ * Duas formas de casar, a primeira é certeza e a segunda é forte:
+ *  1. o `registro_id` do log é uma das parcelas que esta sessão ia baixar;
+ *  2. o valor bate E o nome do fornecedor aparece na descrição do log — evita
+ *     confundir com outra conta de mesmo valor no mesmo dia.
+ */
+function jaRegistradaNoLog(
+  logs: { registro_id: string | null; descricao: string; valor: number }[],
+  ids: string[],
+  valores: number[],
+  nomes: string[],
+): boolean {
+  const limpo = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  const pistas = nomes
+    .map((n) => limpo(n).replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length >= 5)[0])
+    .filter(Boolean) as string[];
+  for (const l of logs) {
+    if (l.registro_id && ids.includes(l.registro_id)) return true;
+    if (!valores.some((v) => Math.abs(v - l.valor) < 0.01)) continue;
+    const desc = limpo(l.descricao);
+    if (pistas.some((p) => desc.includes(p))) return true;
+  }
+  return false;
 }
 
 /** Em que passo parou, em português — é isso que diz à pessoa o que falta. */
