@@ -1,0 +1,184 @@
+---
+export const prerender = false;
+import { ESPECIALIDADES, TIPOS_CLIENTE } from "~/lib/manut/especialidades";
+const TURNOS = [
+  { key: "comercial", label: "Comercial (seg–sex, 8h–18h)" },
+  { key: "noite", label: "Noite (após 18h)" },
+  { key: "madrugada", label: "Madrugada / plantão" },
+  { key: "fim_semana", label: "Fins de semana e feriados" },
+];
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Seja um prestador — Manutenção Costa Júnior</title>
+  <meta name="theme-color" content="#C41E3A" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600;700&display=swap" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{--brand:#C41E3A;--brand-dark:#A01828;--ink:#2D2F36;--muted:#6B7280;--border:#E5E7EB;--bg:#F4F6FA}
+    body{margin:0;font-family:'Open Sans',sans-serif;background:var(--bg);color:var(--ink)}
+    .top{background:#1E2128;color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px}
+    .top img{height:30px;filter:brightness(0) invert(1)}
+    .top b{font-family:'Montserrat',sans-serif}
+    .wrap{max-width:720px;margin:0 auto;padding:22px 16px 60px}
+    .hero{text-align:center;margin:10px 0 22px}
+    .hero h1{font-family:'Montserrat',sans-serif;font-size:24px;margin:0 0 8px;color:var(--brand)}
+    .hero p{color:var(--muted);margin:0;font-size:15px}
+    .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px}
+    .sec-title{font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px;margin:0 0 4px}
+    .sec-sub{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+    label.f{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+    input.i,select.i,textarea.i{width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;outline:none}
+    input.i:focus,select.i:focus,textarea.i:focus{border-color:var(--brand)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+    .fg{margin-bottom:14px}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{display:flex;align-items:center;gap:7px;border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13.5px;cursor:pointer;user-select:none;background:#fff}
+    .chip input{accent-color:var(--brand);width:16px;height:16px}
+    .chip:has(input:checked){border-color:var(--brand);background:#FEF2F2}
+    .btn{width:100%;padding:14px;background:var(--brand);color:#fff;border:0;border-radius:10px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
+    .btn:hover{background:var(--brand-dark)}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .alert{padding:11px 14px;border-radius:8px;font-size:13.5px;margin-bottom:14px;background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+    .muted{color:var(--muted);font-size:12.5px}
+    .link{color:var(--muted);text-decoration:none}.link:hover{color:var(--brand)}
+    @media(max-width:560px){.grid,.grid-3{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="top"><img src="/logo-cjr.png" alt="Costa Júnior" /><b>Manutenção · Rede de prestadores</b></div>
+  <div class="wrap">
+    <div class="hero">
+      <h1>Cadastre-se para prestar serviços</h1>
+      <p>Preencha seus dados, escolha suas especialidades e faça uma avaliação técnica rápida. Quanto melhor seu resultado, mais clientes você atende.</p>
+    </div>
+
+    <div id="alert" class="alert" style="display:none"></div>
+
+    <form id="form">
+      <!-- DADOS -->
+      <div class="card">
+        <div class="sec-title">1. Seus dados</div>
+        <div class="sec-sub">Para o cliente te encontrar e a gente confirmar seu cadastro.</div>
+        <div class="fg"><label class="f">Nome completo *</label><input class="i" id="nome" required /></div>
+        <div class="grid">
+          <div class="fg"><label class="f">E-mail *</label><input class="i" type="email" id="email" required autocomplete="email" /></div>
+          <div class="fg"><label class="f">WhatsApp / telefone *</label><input class="i" id="telefone" required placeholder="(11) 90000-0000" /></div>
+        </div>
+        <div class="grid">
+          <div class="fg"><label class="f">Você é *</label><select class="i" id="tipo_pessoa"><option value="pf">Pessoa física / autônomo</option><option value="pj">MEI / empresa (PJ)</option></select></div>
+          <div class="fg"><label class="f" id="docLabel">CPF</label><input class="i" id="cpf_cnpj" /></div>
+        </div>
+        <div class="grid-3">
+          <div class="fg"><label class="f">Cidade *</label><input class="i" id="cidade" required /></div>
+          <div class="fg"><label class="f">UF *</label><input class="i" id="uf" maxlength="2" required placeholder="SP" /></div>
+          <div class="fg"><label class="f">Bairro</label><input class="i" id="bairro" /></div>
+        </div>
+        <div class="grid">
+          <div class="fg"><label class="f">Crie uma senha *</label><input class="i" type="password" id="senha" required autocomplete="new-password" placeholder="mín. 6 caracteres" /></div>
+          <div class="fg"><label class="f">Confirmar senha *</label><input class="i" type="password" id="senha2" required autocomplete="new-password" /></div>
+        </div>
+      </div>
+
+      <!-- ESPECIALIDADES -->
+      <div class="card">
+        <div class="sec-title">2. Suas especialidades *</div>
+        <div class="sec-sub">Marque o que você faz. Para cada uma, você fará uma avaliação técnica (logo após o cadastro).</div>
+        <div class="chips" id="especialidades">
+          {ESPECIALIDADES.map((e) => (
+            <label class="chip"><input type="checkbox" name="esp" value={e.key} />{e.icon} {e.label}</label>
+          ))}
+        </div>
+      </div>
+
+      <!-- ATENDIMENTO -->
+      <div class="card">
+        <div class="sec-title">3. Como você atende</div>
+        <div class="sec-sub">Isso define que tipo de cliente e chamado combina com você — temos muita demanda fora do horário comercial.</div>
+
+        <div class="fg">
+          <label class="f">Tipos de cliente que você atende</label>
+          <div class="chips">
+            {TIPOS_CLIENTE.map((t) => (<label class="chip"><input type="checkbox" name="tipo_cli" value={t.key} />{t.label}</label>))}
+          </div>
+        </div>
+
+        <div class="fg">
+          <label class="f">Disponibilidade (horários)</label>
+          <div class="chips">
+            {TURNOS.map((t) => (<label class="chip"><input type="checkbox" name="turno" value={t.key} />{t.label}</label>))}
+          </div>
+        </div>
+
+        <div class="fg">
+          <div class="chips">
+            <label class="chip"><input type="checkbox" id="tem_veiculo" />🚗 Tenho veículo próprio</label>
+            <label class="chip"><input type="checkbox" id="atende_urgencia" />⚡ Consigo me deslocar rápido (urgências)</label>
+            <label class="chip"><input type="checkbox" id="atende_fora_comercial" />🌙 Atendo fora do horário comercial</label>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="fg"><label class="f">Raio de deslocamento (km)</label><input class="i" type="number" id="raio_km" min="0" max="500" value="10" /></div>
+        </div>
+
+        <div class="fg"><label class="f">Conte sua experiência (opcional)</label><textarea class="i" id="bio" rows="3" placeholder="Ex.: 10 anos em manutenção predial, NR-10, atendo condomínios…"></textarea></div>
+      </div>
+
+      <button type="submit" class="btn" id="btn">Cadastrar e ir para a avaliação →</button>
+      <p class="muted" style="text-align:center;margin-top:14px">Já tem cadastro? <a class="link" href="/manutencao/prestador/login"><b>Entrar</b></a></p>
+      <p style="text-align:center;margin-top:8px"><a class="link" href="/">← Voltar ao site</a></p>
+    </form>
+  </div>
+
+  <script>
+    const TOKEN_KEY = "manut_prestador_token";
+    if (localStorage.getItem(TOKEN_KEY)) window.location.replace("/manutencao/prestador");
+
+    const tipoSel = document.getElementById("tipo_pessoa");
+    tipoSel.addEventListener("change", () => {
+      document.getElementById("docLabel").textContent = tipoSel.value === "pj" ? "CNPJ" : "CPF";
+    });
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const al = document.getElementById("alert");
+      const btn = document.getElementById("btn");
+      al.style.display = "none";
+      const val = (id) => (document.getElementById(id).value || "").trim();
+      const checks = (name) => Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((c) => c.value);
+      const especialidades = checks("esp");
+      if (!especialidades.length) { al.textContent = "Escolha ao menos uma especialidade."; al.style.display = ""; window.scrollTo(0,0); return; }
+      if (val("senha").length < 6) { al.textContent = "A senha deve ter ao menos 6 caracteres."; al.style.display = ""; window.scrollTo(0,0); return; }
+      if (val("senha") !== val("senha2")) { al.textContent = "As senhas não conferem."; al.style.display = ""; window.scrollTo(0,0); return; }
+      const body = {
+        nome: val("nome"), email: val("email"), telefone: val("telefone"), senha: val("senha"),
+        tipo_pessoa: tipoSel.value, cpf_cnpj: val("cpf_cnpj"), cidade: val("cidade"), uf: val("uf").toUpperCase(), bairro: val("bairro"),
+        especialidades, tipos_cliente: checks("tipo_cli"),
+        tem_veiculo: document.getElementById("tem_veiculo").checked,
+        atende_urgencia: document.getElementById("atende_urgencia").checked,
+        atende_fora_comercial: document.getElementById("atende_fora_comercial").checked,
+        raio_km: Number(val("raio_km")) || 10,
+        horarios: { turnos: checks("turno") },
+        bio: val("bio"),
+      };
+      btn.disabled = true; btn.textContent = "Enviando...";
+      try {
+        const res = await fetch("/api/manut/prestador/cadastro", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Não foi possível cadastrar.");
+        localStorage.setItem(TOKEN_KEY, data.token);
+        window.location.replace("/manutencao/prestador/avaliacao");
+      } catch (err) {
+        al.textContent = err.message; al.style.display = ""; window.scrollTo(0,0);
+        btn.disabled = false; btn.textContent = "Cadastrar e ir para a avaliação →";
+      }
+    });
+  </script>
+</body>
+</html>

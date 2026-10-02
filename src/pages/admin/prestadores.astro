@@ -1,0 +1,129 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { listarPrestadoresAdmin } from "../../lib/manut/prestadores";
+import { espLabel, espIcon, TIPOS_CLIENTE, tipoClienteLabel } from "../../lib/manut/especialidades";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+try { const c = await verifyToken<AdminClaims>(token); if (c.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+
+const prestadores = await listarPrestadoresAdmin();
+const nPend = prestadores.filter((p: any) => p.status === "avaliacao" || p.status === "cadastro").length;
+const nAprov = prestadores.filter((p: any) => p.status === "aprovado").length;
+
+const stBadge: Record<string, { t: string; c: string }> = {
+  cadastro: { t: "Cadastro", c: "background:#F3F4F6;color:#374151" },
+  avaliacao: { t: "Em análise", c: "background:#FEF3C7;color:#92400E" },
+  aprovado: { t: "✅ Aprovado", c: "background:#DCFCE7;color:#166534" },
+  reprovado: { t: "Reprovado", c: "background:#FEE2E2;color:#991B1B" },
+  inativo: { t: "Inativo", c: "background:#F3F4F6;color:#6B7280" },
+};
+const espCor = (e: any) => e.aprovado ? (e.nivel === "avancado" ? "background:#DCFCE7;color:#166534" : "background:#DBEAFE;color:#1E40AF") : (e.nivel && e.nivel !== "nao_avaliado" ? "background:#FEE2E2;color:#991B1B" : "background:#F3F4F6;color:#6B7280");
+const espTxt = (e: any) => e.nivel && e.nivel !== "nao_avaliado" ? `${e.nota} · ${e.nivel === "avancado" ? "Avançado" : e.nivel === "intermediario" ? "Interm." : "Reprov."}` : "não avaliada";
+---
+<Admin title="Prestadores (marketplace)" current="prestadores">
+  <style>
+    .pr-kpis{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .pr-kpi{flex:1;min-width:130px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+    .pr-kpi .v{font-size:26px;font-weight:800;color:var(--brand)}
+    .pr-kpi .l{font-size:12px;color:var(--muted)}
+    .pr-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .pr-fbtn{border:1.5px solid var(--border);background:#fff;border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer}
+    .pr-fbtn.on{border-color:var(--brand);background:#FEF2F2;color:var(--brand);font-weight:700}
+    .pr-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+    .pr-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .pr-nome{font-weight:800;font-size:15px}
+    .pr-badge{padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700}
+    .pr-rank{margin-left:auto;text-align:center}
+    .pr-rank .n{font-size:22px;font-weight:800;color:var(--brand);line-height:1}
+    .pr-rank .l{font-size:10px;color:var(--muted)}
+    .pr-esp{display:inline-block;padding:3px 9px;border-radius:7px;font-size:11.5px;font-weight:600;margin:4px 4px 0 0}
+    .pr-flags{margin-top:8px;color:#4B5563;font-size:12.5px;display:flex;gap:12px;flex-wrap:wrap}
+    .pr-acts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+    .pr-act{border:0;border-radius:8px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer}
+    .a-ok{background:#16A34A;color:#fff}.a-no{background:#DC2626;color:#fff}.a-gray{background:#6B7280;color:#fff}.a-ghost{background:#fff;color:#374151;border:1.5px solid var(--border)}
+    .vazio{background:#fff;border:1px dashed var(--border);border-radius:12px;padding:30px;text-align:center;color:var(--muted)}
+  </style>
+
+  <p style="color:var(--muted);font-size:13px;margin:0 0 14px">Prestadores que se cadastraram no marketplace. A nota vem da avaliação técnica (corte 70%). O <b>ranking</b> cruza a nota com mobilidade e amplitude de especialidades — use o filtro para ver quem atende cada tipo de cliente.</p>
+
+  <div class="pr-kpis">
+    <div class="pr-kpi"><div class="v">{prestadores.length}</div><div class="l">Cadastrados</div></div>
+    <div class="pr-kpi"><div class="v">{nPend}</div><div class="l">Aguardando análise</div></div>
+    <div class="pr-kpi"><div class="v">{nAprov}</div><div class="l">Aprovados (na rede)</div></div>
+  </div>
+
+  <div class="pr-filtros">
+    <button class="pr-fbtn on" data-filtro="todos">Todos</button>
+    {TIPOS_CLIENTE.map((t) => (<button class="pr-fbtn" data-filtro={t.key}>{t.label}</button>))}
+    <button class="pr-fbtn" data-filtro="pendentes">Só aguardando análise</button>
+  </div>
+
+  <div id="pr-lista">
+    {prestadores.length === 0 && <div class="vazio">Nenhum prestador cadastrado ainda. Divulgue o link <b>/manutencao/prestador/cadastro</b>.</div>}
+    {prestadores.map((p: any) => (
+      <div class="pr-card" data-id={p.id} data-status={p.status} data-ranking={p.ranking} data-tipos={(p.tipos_cliente || []).join(",")}>
+        <div class="pr-head">
+          <span class="pr-nome">{p.nome}</span>
+          <span class="pr-badge" style={stBadge[p.status]?.c}>{stBadge[p.status]?.t || p.status}</span>
+          <span style="color:var(--muted);font-size:12.5px">{p.cidade || "—"}{p.uf ? "/" + p.uf : ""} · {p.telefone || "sem telefone"}</span>
+          <div class="pr-rank"><div class="n">{p.ranking ?? 0}</div><div class="l">ranking</div></div>
+        </div>
+        <div>
+          {(p.especialidades || []).map((e: any) => (
+            <span class="pr-esp" style={espCor(e)}>{espIcon(e.especialidade)} {espLabel(e.especialidade)} · {espTxt(e)}</span>
+          ))}
+        </div>
+        <div class="pr-flags">
+          <span>{p.tem_veiculo ? "🚗 Veículo próprio" : "🚶 Sem veículo"}</span>
+          {p.atende_urgencia && <span>⚡ Urgências</span>}
+          {p.atende_fora_comercial && <span>🌙 Fora do comercial</span>}
+          <span>📍 Raio {p.raio_km} km</span>
+          {(p.tipos_cliente || []).length > 0 && <span>👥 {(p.tipos_cliente || []).map((t: string) => tipoClienteLabel(t)).join(", ")}</span>}
+        </div>
+        <div class="pr-acts" data-requer-edicao>
+          {p.status !== "aprovado" && <button class="pr-act a-ok" data-acao="aprovado">Aprovar</button>}
+          {p.status !== "reprovado" && <button class="pr-act a-no" data-acao="reprovado">Reprovar</button>}
+          {p.status !== "inativo" && <button class="pr-act a-gray" data-acao="inativo">Inativar</button>}
+          {(p.status === "inativo" || p.status === "reprovado") && <button class="pr-act a-ghost" data-acao="avaliacao">Reabrir análise</button>}
+        </div>
+      </div>
+    ))}
+  </div>
+
+  <script>
+    // Filtro por tipo de cliente / pendentes + ordenação por ranking.
+    const lista = document.getElementById("pr-lista");
+    document.querySelectorAll(".pr-fbtn").forEach((b) => b.addEventListener("click", () => {
+      document.querySelectorAll(".pr-fbtn").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      const f = (b as HTMLElement).dataset.filtro;
+      const cards = Array.from(document.querySelectorAll<HTMLElement>(".pr-card"));
+      cards.forEach((c) => {
+        const tipos = (c.dataset.tipos || "").split(",").filter(Boolean);
+        const st = c.dataset.status;
+        let mostra = true;
+        if (f === "pendentes") mostra = st === "avaliacao" || st === "cadastro";
+        else if (f && f !== "todos") mostra = tipos.includes(f);
+        c.style.display = mostra ? "" : "none";
+      });
+      // ordena os visíveis por ranking desc
+      cards.filter((c) => c.style.display !== "none").sort((a, z) => Number(z.dataset.ranking) - Number(a.dataset.ranking)).forEach((c) => lista!.appendChild(c));
+    }));
+
+    // Ações (aprovar/reprovar/inativar/reabrir)
+    const rotulo: Record<string, string> = { aprovado: "APROVAR", reprovado: "REPROVAR", inativo: "INATIVAR", avaliacao: "reabrir a análise de" };
+    document.querySelectorAll<HTMLButtonElement>(".pr-act").forEach((btn) => btn.addEventListener("click", async () => {
+      const card = btn.closest<HTMLElement>(".pr-card")!;
+      const id = card.dataset.id, acao = btn.dataset.acao!;
+      const nome = card.querySelector(".pr-nome")?.textContent || "este prestador";
+      if (!confirm(`Deseja ${rotulo[acao] || acao} ${nome}?`)) return;
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/prestadores/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: acao }) });
+      if (res.ok) location.reload();
+      else { const d = await res.json().catch(() => ({})); alert((d as any).error || "Erro"); btn.disabled = false; }
+    }));
+  </script>
+</Admin>

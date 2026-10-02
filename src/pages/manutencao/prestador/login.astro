@@ -1,0 +1,95 @@
+---
+export const prerender = false;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Entrar — Prestador — Manutenção Costa Júnior</title>
+  <meta name="theme-color" content="#C41E3A" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600&display=swap" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{--brand:#C41E3A;--brand-dark:#A01828;--ink:#2D2F36;--border:#E5E7EB}
+    body{margin:0;font-family:'Open Sans',sans-serif;background:#1E2128;min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .wrap{width:100%;max-width:400px;padding:24px}
+    .login-logo{text-align:center;margin-bottom:28px}
+    .login-logo img{max-width:160px;height:auto;display:block;margin:0 auto 12px;filter:brightness(0) invert(1)}
+    .login-logo p{font-size:13px;color:#9CA3AF;margin:0}
+    .card{background:#fff;border-radius:12px;padding:32px}
+    .card h2{font-family:'Montserrat',sans-serif;font-weight:700;font-size:19px;margin:0 0 22px;text-align:center}
+    .form-group{margin-bottom:16px}
+    .form-group label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+    .form-group input{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;outline:none}
+    .form-group input:focus{border-color:var(--brand)}
+    .btn{width:100%;padding:13px;background:var(--brand);color:#fff;border:0;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
+    .btn:hover{background:var(--brand-dark)}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .alert{padding:11px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+    .alert.ok{background:#DCFCE7;color:#166534;border-color:#BBF7D0}
+    .link-back{display:block;text-align:center;font-size:13px;color:#9CA3AF;margin-top:20px;text-decoration:none}
+    .link-forgot{display:block;text-align:center;margin-top:16px;font-size:13px;color:#6B7280;cursor:pointer}
+    .novo{display:block;text-align:center;margin-top:10px;font-size:13.5px;color:#374151;text-decoration:none}
+    .novo b{color:var(--brand)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="login-logo"><img src="/logo-cjr.png" alt="Costa Júnior" /><p>Rede de prestadores</p></div>
+    <div class="card">
+      <h2>Entrar como prestador</h2>
+      <div id="alert" class="alert" style="display:none"></div>
+      <form id="form">
+        <div class="form-group"><label>E-mail</label><input type="email" id="email" required autocomplete="email" /></div>
+        <div class="form-group"><label>Senha</label><input type="password" id="senha" required autocomplete="current-password" placeholder="••••••••" /></div>
+        <button type="submit" class="btn" id="btn">Entrar</button>
+      </form>
+      <span class="link-forgot" id="showReset">Esqueci minha senha</span>
+      <a class="novo" href="/manutencao/prestador/cadastro">Ainda não tem cadastro? <b>Cadastre-se</b></a>
+
+      <div id="resetSection" style="display:none;margin-top:18px;border-top:1px solid var(--border);padding-top:18px">
+        <p style="font-size:13px;color:#5B5F6B;margin:0 0 14px">Informe seu e-mail. Enviaremos uma senha temporária.</p>
+        <div id="resetAlert" class="alert" style="display:none"></div>
+        <div class="form-group"><label>E-mail</label><input type="email" id="resetEmail" /></div>
+        <button type="button" class="btn" id="resetBtn">Enviar nova senha</button>
+        <span class="link-forgot" id="showLogin">Voltar para o login</span>
+      </div>
+    </div>
+    <a href="/" class="link-back">← Voltar ao site</a>
+  </div>
+
+  <script>
+    const TOKEN_KEY = "manut_prestador_token";
+    if (localStorage.getItem(TOKEN_KEY)) window.location.replace("/manutencao/prestador");
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const al = document.getElementById("alert"), btn = document.getElementById("btn");
+      al.style.display = "none"; btn.disabled = true; btn.textContent = "Entrando...";
+      try {
+        const res = await fetch("/api/manut/prestador/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: document.getElementById("email").value.trim(), senha: document.getElementById("senha").value }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Credenciais inválidas");
+        localStorage.setItem(TOKEN_KEY, data.token);
+        window.location.replace("/manutencao/prestador");
+      } catch (err) {
+        al.textContent = err.message; al.style.display = ""; btn.disabled = false; btn.textContent = "Entrar";
+      }
+    });
+
+    const formEl = document.getElementById("form"), resetSection = document.getElementById("resetSection");
+    document.getElementById("showReset").addEventListener("click", () => { formEl.style.display = "none"; resetSection.style.display = "block"; document.getElementById("resetEmail").value = document.getElementById("email").value || ""; });
+    document.getElementById("showLogin").addEventListener("click", () => { resetSection.style.display = "none"; formEl.style.display = ""; });
+    document.getElementById("resetBtn").addEventListener("click", async () => {
+      const rb = document.getElementById("resetBtn"), ra = document.getElementById("resetAlert");
+      const email = document.getElementById("resetEmail").value.trim();
+      if (!email) { ra.className = "alert"; ra.textContent = "Informe o e-mail"; ra.style.display = ""; return; }
+      rb.disabled = true; rb.textContent = "Enviando...";
+      try { await fetch("/api/manut/prestador/reset-senha", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) }); ra.className = "alert ok"; ra.textContent = "Se o e-mail estiver cadastrado, enviaremos uma senha temporária."; ra.style.display = ""; }
+      finally { rb.disabled = false; rb.textContent = "Enviar nova senha"; }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+---
+export const prerender = false;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Meu painel — Prestador — Manutenção Costa Júnior</title>
+  <meta name="theme-color" content="#C41E3A" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600;700&display=swap" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{--brand:#C41E3A;--ink:#2D2F36;--muted:#6B7280;--border:#E5E7EB;--bg:#F4F6FA}
+    body{margin:0;font-family:'Open Sans',sans-serif;background:var(--bg);color:var(--ink)}
+    .top{background:#1E2128;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px}
+    .top img{height:26px;filter:brightness(0) invert(1)}
+    .top b{font-family:'Montserrat',sans-serif;flex:1;font-size:14px}
+    .sair{color:#9CA3AF;font-size:13px;cursor:pointer;background:none;border:0}
+    .wrap{max-width:640px;margin:0 auto;padding:18px 14px 50px}
+    .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px}
+    .hi{font-family:'Montserrat',sans-serif;font-size:20px;margin:0 0 4px}
+    .badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700}
+    .b-wait{background:#FEF3C7;color:#92400E}.b-ok{background:#DCFCE7;color:#166534}.b-no{background:#FEE2E2;color:#991B1B}.b-gray{background:#F3F4F6;color:#374151}
+    .kpis{display:flex;gap:12px;margin-top:12px}
+    .kpi{flex:1;background:#F9FAFB;border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center}
+    .kpi .v{font-family:'Montserrat',sans-serif;font-size:22px;font-weight:800;color:var(--brand)}
+    .kpi .l{font-size:11.5px;color:var(--muted)}
+    .esp{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:10px;padding:11px 12px;margin-bottom:8px}
+    .esp .nome{flex:1;font-weight:600;font-size:14px}
+    .pill{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+    .p-av{background:#DCFCE7;color:#166534}.p-int{background:#DBEAFE;color:#1E40AF}.p-no{background:#FEE2E2;color:#991B1B}.p-na{background:#F3F4F6;color:#6B7280}
+    .btn{display:inline-block;padding:9px 14px;background:var(--brand);color:#fff;border:0;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none}
+    .btn.lg{display:block;text-align:center;padding:13px;font-size:14.5px;margin-top:6px}
+    .muted{color:var(--muted);font-size:13px}
+    .loading{text-align:center;color:var(--muted);padding:40px 0}
+  </style>
+</head>
+<body>
+  <div class="top"><img src="/logo-cjr.png" alt="Costa Júnior" /><b>Rede de prestadores</b><button class="sair" id="sair">Sair</button></div>
+  <div class="wrap" id="wrap"><div class="loading">Carregando…</div></div>
+
+  <script>
+    const TOKEN_KEY = "manut_prestador_token";
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) window.location.replace("/manutencao/prestador/login");
+    document.getElementById("sair").addEventListener("click", () => { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/prestador/login"); });
+
+    const ESP_LABEL = { eletrica:"Elétrica", hidraulica:"Hidráulica", pintura:"Pintura", alvenaria:"Alvenaria / Pedreiro", ar_condicionado:"Ar-condicionado", serralheria:"Serralheria / Marcenaria", limpeza_pos_obra:"Limpeza pós-obra" };
+    const ESP_ICON = { eletrica:"⚡", hidraulica:"🚰", pintura:"🎨", alvenaria:"🧱", ar_condicionado:"❄️", serralheria:"🪚", limpeza_pos_obra:"🧽" };
+    const esc = (s) => String(s==null?"":s).replace(/[&<>"]/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+
+    (async () => {
+      let d;
+      try {
+        const res = await fetch("/api/manut/prestador/me", { headers: { "x-prestador-auth": token } });
+        if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/prestador/login"); return; }
+        d = (await res.json()).prestador;
+      } catch { document.getElementById("wrap").innerHTML = '<div class="card">Erro ao carregar. Tente novamente.</div>'; return; }
+
+      const esps = d.especialidades || [];
+      const avaliadas = esps.filter((e) => e.nivel && e.nivel !== "nao_avaliado");
+      const faltam = esps.length - avaliadas.length;
+
+      let statusBadge, statusTxt;
+      if (d.status === "aprovado") { statusBadge = '<span class="badge b-ok">✅ Aprovado — você está na rede</span>'; statusTxt = "Pronto! Você já pode receber chamados assim que o módulo de atendimento abrir."; }
+      else if (d.status === "reprovado") { statusBadge = '<span class="badge b-no">Cadastro não aprovado</span>'; statusTxt = "Nossa equipe não aprovou seu cadastro desta vez. Fale com o suporte."; }
+      else if (d.status === "inativo") { statusBadge = '<span class="badge b-gray">Inativo</span>'; statusTxt = "Seu cadastro está inativo."; }
+      else if (faltam > 0) { statusBadge = '<span class="badge b-wait">Avaliação pendente</span>'; statusTxt = `Faça a avaliação técnica de ${faltam} especialidade(s) para sua análise começar.`; }
+      else { statusBadge = '<span class="badge b-wait">Em análise</span>'; statusTxt = "Avaliações feitas! Nossa equipe vai revisar e aprovar seu cadastro em breve."; }
+
+      const pill = (e) => {
+        if (!e.nivel || e.nivel === "nao_avaliado") return '<span class="pill p-na">não avaliada</span>';
+        if (e.nivel === "avancado") return `<span class="pill p-av">Avançado · ${e.nota}</span>`;
+        if (e.nivel === "intermediario") return `<span class="pill p-int">Intermediário · ${e.nota}</span>`;
+        return `<span class="pill p-no">Reprovado · ${e.nota}</span>`;
+      };
+
+      document.getElementById("wrap").innerHTML = `
+        <div class="card">
+          <h1 class="hi">Olá, ${esc((d.nome||"").split(" ")[0])}! 👋</h1>
+          <div style="margin:8px 0">${statusBadge}</div>
+          <p class="muted" style="margin:0">${esc(statusTxt)}</p>
+          <div class="kpis">
+            <div class="kpi"><div class="v">${d.nota_geral ?? "—"}</div><div class="l">Nota técnica</div></div>
+            <div class="kpi"><div class="v">${d.ranking ?? 0}</div><div class="l">Pontos de ranking</div></div>
+            <div class="kpi"><div class="v">${esps.filter(e=>e.aprovado).length}/${esps.length}</div><div class="l">Áreas aprovadas</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="font-family:'Montserrat',sans-serif;font-weight:700;font-size:15px;margin-bottom:10px">Minhas especialidades</div>
+          ${esps.map((e)=>`<div class="esp"><span>${ESP_ICON[e.especialidade]||"🛠️"}</span><span class="nome">${esc(ESP_LABEL[e.especialidade]||e.especialidade)}</span>${pill(e)}</div>`).join("")}
+          <a class="btn lg" href="/manutencao/prestador/avaliacao">${faltam>0?"Fazer avaliação técnica →":"Refazer uma avaliação"}</a>
+        </div>
+
+        <p class="muted" style="text-align:center">Dúvidas? Fale com a Costa Júnior pelo WhatsApp.</p>
+      `;
+    })();
+  </script>
+</body>
+</html>

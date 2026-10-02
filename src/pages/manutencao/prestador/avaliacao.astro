@@ -1,0 +1,126 @@
+---
+export const prerender = false;
+---
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Avaliação técnica — Prestador — Manutenção Costa Júnior</title>
+  <meta name="theme-color" content="#C41E3A" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Open+Sans:wght@400;600;700&display=swap" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{--brand:#C41E3A;--brand-dark:#A01828;--ink:#2D2F36;--muted:#6B7280;--border:#E5E7EB;--bg:#F4F6FA}
+    body{margin:0;font-family:'Open Sans',sans-serif;background:var(--bg);color:var(--ink)}
+    .top{background:#1E2128;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px}
+    .top img{height:26px;filter:brightness(0) invert(1)}
+    .top b{font-family:'Montserrat',sans-serif;flex:1;font-size:14px}
+    .top a{color:#9CA3AF;font-size:13px;text-decoration:none}
+    .wrap{max-width:640px;margin:0 auto;padding:18px 14px 50px}
+    .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px}
+    h1{font-family:'Montserrat',sans-serif;font-size:19px;margin:0 0 4px}
+    .muted{color:var(--muted);font-size:13px}
+    .esp{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:10px;padding:11px 12px;margin-bottom:8px}
+    .esp .nome{flex:1;font-weight:600;font-size:14px}
+    .pill{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+    .p-av{background:#DCFCE7;color:#166534}.p-int{background:#DBEAFE;color:#1E40AF}.p-no{background:#FEE2E2;color:#991B1B}.p-na{background:#F3F4F6;color:#6B7280}
+    .btn{display:inline-block;padding:9px 14px;background:var(--brand);color:#fff;border:0;border-radius:8px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none}
+    .btn.lg{display:block;width:100%;text-align:center;padding:14px;font-size:15px}
+    .btn.ghost{background:#fff;color:var(--brand);border:1.5px solid var(--brand)}
+    .q{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px}
+    .q .enun{font-weight:700;font-size:14.5px;margin-bottom:10px}
+    .opt{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:7px;cursor:pointer;font-size:14px}
+    .opt input{accent-color:var(--brand);margin-top:2px}
+    .opt:has(input:checked){border-color:var(--brand);background:#FEF2F2}
+    .alert{padding:11px 14px;border-radius:8px;font-size:13.5px;margin-bottom:12px;background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+    .res{text-align:center;padding:10px 0}
+    .res .big{font-family:'Montserrat',sans-serif;font-size:46px;font-weight:800}
+    .ok{color:#16A34A}.no{color:#DC2626}
+    .loading{text-align:center;color:var(--muted);padding:40px 0}
+  </style>
+</head>
+<body>
+  <div class="top"><img src="/logo-cjr.png" alt="Costa Júnior" /><b>Avaliação técnica</b><a href="/manutencao/prestador">← Meu painel</a></div>
+  <div class="wrap" id="wrap"><div class="loading">Carregando…</div></div>
+
+  <script>
+    const TOKEN_KEY = "manut_prestador_token";
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) window.location.replace("/manutencao/prestador/login");
+    const H = { "x-prestador-auth": token };
+    const ESP_LABEL = { eletrica:"Elétrica", hidraulica:"Hidráulica", pintura:"Pintura", alvenaria:"Alvenaria / Pedreiro", ar_condicionado:"Ar-condicionado", serralheria:"Serralheria / Marcenaria", limpeza_pos_obra:"Limpeza pós-obra" };
+    const ESP_ICON = { eletrica:"⚡", hidraulica:"🚰", pintura:"🎨", alvenaria:"🧱", ar_condicionado:"❄️", serralheria:"🪚", limpeza_pos_obra:"🧽" };
+    const esc = (s) => String(s==null?"":s).replace(/[&<>"]/g,(c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+    const wrap = document.getElementById("wrap");
+
+    function pill(e){ if(!e.nivel||e.nivel==="nao_avaliado")return '<span class="pill p-na">não avaliada</span>'; if(e.nivel==="avancado")return `<span class="pill p-av">Avançado · ${e.nota}</span>`; if(e.nivel==="intermediario")return `<span class="pill p-int">Intermediário · ${e.nota}</span>`; return `<span class="pill p-no">Reprovado · ${e.nota}</span>`; }
+
+    async function verLista(){
+      wrap.innerHTML = '<div class="loading">Carregando…</div>';
+      const res = await fetch("/api/manut/prestador/me", { headers: H });
+      if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); window.location.replace("/manutencao/prestador/login"); return; }
+      const d = (await res.json()).prestador;
+      const esps = d.especialidades || [];
+      wrap.innerHTML = `
+        <div class="card">
+          <h1>Suas avaliações técnicas</h1>
+          <p class="muted">Para cada especialidade há uma prova rápida (${esps.length? "": ""}múltipla escolha, aprovação com 70%). Pode refazer se precisar — guardamos a sua melhor nota.</p>
+          <div style="margin-top:12px">
+            ${esps.map((e)=>`<div class="esp"><span>${ESP_ICON[e.especialidade]||"🛠️"}</span><span class="nome">${esc(ESP_LABEL[e.especialidade]||e.especialidade)}</span>${pill(e)}<button class="btn" data-esp="${e.especialidade}">${(!e.nivel||e.nivel==="nao_avaliado")?"Iniciar":"Refazer"}</button></div>`).join("")}
+          </div>
+        </div>`;
+      wrap.querySelectorAll("button[data-esp]").forEach((b)=>b.addEventListener("click",()=>fazerProva(b.dataset.esp)));
+    }
+
+    async function fazerProva(esp){
+      wrap.innerHTML = '<div class="loading">Preparando a prova…</div>';
+      const res = await fetch("/api/manut/prestador/avaliacao?especialidade="+encodeURIComponent(esp), { headers: H });
+      const d = await res.json();
+      if (!res.ok) { wrap.innerHTML = `<div class="card"><div class="alert">${esc(d.error||"Erro")}</div><button class="btn ghost" id="volta">Voltar</button></div>`; document.getElementById("volta").onclick=verLista; return; }
+      const perguntas = d.perguntas || [];
+      wrap.innerHTML = `
+        <div class="card">
+          <h1>${ESP_ICON[esp]||"🛠️"} ${esc(d.label||esp)}</h1>
+          <p class="muted">Responda todas. Aprovação com <b>${d.corte}%</b> de acerto.</p>
+          <div id="alert" class="alert" style="display:none"></div>
+          <form id="prova">
+            ${perguntas.map((p,i)=>`<div class="q"><div class="enun">${i+1}. ${esc(p.q)}</div>${p.alt.map((a,j)=>`<label class="opt"><input type="radio" name="q_${p.id}" value="${j}"><span>${esc(a)}</span></label>`).join("")}</div>`).join("")}
+            <button type="submit" class="btn lg">Enviar respostas</button>
+            <button type="button" class="btn ghost lg" id="cancelar" style="margin-top:8px">Cancelar</button>
+          </form>
+        </div>`;
+      document.getElementById("cancelar").onclick = verLista;
+      document.getElementById("prova").addEventListener("submit", async (e)=>{
+        e.preventDefault();
+        const al = document.getElementById("alert"); al.style.display="none";
+        const respostas = {};
+        for (const p of perguntas){ const sel = document.querySelector(`input[name="q_${p.id}"]:checked`); if(!sel){ al.textContent="Responda todas as perguntas antes de enviar."; al.style.display=""; window.scrollTo(0,0); return;} respostas[p.id]=Number(sel.value); }
+        const btn = e.submitter; if(btn){btn.disabled=true;btn.textContent="Corrigindo…";}
+        const r2 = await fetch("/api/manut/prestador/avaliacao", { method:"POST", headers:{...H,"content-type":"application/json"}, body: JSON.stringify({ especialidade: esp, respostas }) });
+        const rd = await r2.json();
+        if (!r2.ok){ al.textContent = rd.error||"Erro ao enviar."; al.style.display=""; if(btn){btn.disabled=false;btn.textContent="Enviar respostas";} return; }
+        mostrarResultado(esp, d.label||esp, rd);
+      });
+    }
+
+    function mostrarResultado(esp, label, rd){
+      const aprovado = rd.aprovado;
+      wrap.innerHTML = `
+        <div class="card">
+          <div class="res">
+            <div class="big ${aprovado?"ok":"no"}">${rd.nota}%</div>
+            <div style="font-weight:700;font-size:16px;margin-bottom:4px">${ESP_ICON[esp]||"🛠️"} ${esc(label)}</div>
+            <p class="muted">${rd.acertos} de ${rd.total} corretas · ${aprovado?`<b class="ok">Aprovado (${esc(rd.nivel==="avancado"?"Avançado":"Intermediário")})</b>`:'<b class="no">Abaixo do corte (70%)</b>'}</p>
+            <p class="muted">${aprovado?"Boa! Essa especialidade entra no seu perfil. Nossa equipe revisa seu cadastro para liberar seu atendimento.":"Você pode refazer esta prova quando quiser — guardamos a sua melhor nota."}</p>
+          </div>
+          <button class="btn lg" id="volta">Voltar às especialidades</button>
+        </div>`;
+      document.getElementById("volta").onclick = verLista;
+    }
+
+    verLista();
+  </script>
+</body>
+</html>

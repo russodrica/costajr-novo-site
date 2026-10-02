@@ -160,6 +160,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   { id: "manutencao", label: "Manutenção", itens: [
     { key: "clientes", label: "Clientes", icon: "👥", href: "/admin/clientes" },
     { key: "tecnicos", label: "Técnicos", icon: "🔧", href: "/admin/tecnicos" },
+    { key: "prestadores", label: "Prestadores (marketplace)", icon: "🧰", href: "/admin/prestadores" },
     { key: "chamados", label: "Chamados", icon: "📋", href: "/admin/chamados" },
     { key: "preventivas", label: "Preventivas", icon: "🗓️", href: "/admin/preventivas" },
     { key: "pagamentos", label: "Pagamentos", icon: "💰", href: "/admin/pagamentos" },

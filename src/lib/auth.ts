@@ -25,7 +25,8 @@ export function temPerfil(claims: AdminClaims, aceitos: string[]): boolean {
   return perfisDe(claims).some((r) => aceitos.includes(r));
 }
 export type RepresentanteClaims = { sub: string; tipo: "representante"; email: string; troca?: boolean };
-export type AnyClaims = ClienteClaims | TecnicoClaims | AdminClaims | RepresentanteClaims;
+export type PrestadorClaims = { sub: string; tipo: "prestador"; email: string; troca?: boolean };
+export type AnyClaims = ClienteClaims | TecnicoClaims | AdminClaims | RepresentanteClaims | PrestadorClaims;
 
 export async function signToken(claims: AnyClaims, ttl: string = "7d"): Promise<string> {
   return new SignJWT(claims as any)
@@ -111,6 +112,9 @@ export function getPortalToken(req: Request): string {
 export function getRepresentanteToken(req: Request): string {
   return req.headers.get("x-rep-auth") || "";
 }
+export function getPrestadorToken(req: Request): string {
+  return req.headers.get("x-prestador-auth") || "";
+}
 
 export async function requireCliente(req: Request): Promise<ClienteClaims> {
   const tok = getClienteToken(req);
@@ -133,6 +137,14 @@ export async function requireRepresentante(req: Request): Promise<RepresentanteC
   if (!tok) throw new Error("Não autenticado");
   const claims = await verifyToken<RepresentanteClaims>(tok);
   if (claims.tipo !== "representante") throw new Error("Token inválido");
+  return claims;
+}
+
+export async function requirePrestador(req: Request): Promise<PrestadorClaims> {
+  const tok = getPrestadorToken(req);
+  if (!tok) throw new Error("Não autenticado");
+  const claims = await verifyToken<PrestadorClaims>(tok);
+  if (claims.tipo !== "prestador") throw new Error("Token inválido");
   return claims;
 }
 
