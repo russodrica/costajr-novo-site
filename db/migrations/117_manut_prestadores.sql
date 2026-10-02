@@ -22,7 +22,7 @@ create table if not exists manut_prestadores (
   atende_urgencia boolean not null default false,          -- consegue se deslocar rápido
   atende_fora_comercial boolean not null default false,    -- atende fora do horário comercial
   horarios jsonb not null default '{}'::jsonb,             -- disponibilidade por dia/turno
-  tipos_cliente text[] not null default '{}',              -- residencia | condominio | comercial
+  tipos_cliente text[] not null default '{}'::text[],      -- residencia | condominio | comercial
   bio text,
   -- conta
   senha_hash text,
@@ -69,3 +69,5 @@ create index if not exists idx_prest_status on manut_prestadores(status);
 alter table manut_prestadores enable row level security;
 alter table manut_prestador_especialidades enable row level security;
 alter table manut_prestador_avaliacoes enable row level security;
+
+notify pgrst, 'reload schema';
