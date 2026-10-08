@@ -566,6 +566,59 @@ ${linhas}${resto}
     ]));
 }
 
+/**
+ * Mostra as contas achadas PELO VALOR e deixa escolher.
+ *
+ * Usada em dois lugares: no botão "Procurar contas de R$ X" e no beco sem
+ * saída do fornecedor — porque quando existe cadastro DUPLICADO do mesmo
+ * fornecedor o valor é uma chave melhor que o nome. Caso real (08/10/2026):
+ * o sindicato tem TRÊS cadastros; o comprovante nomeia o que não tem conta
+ * nenhuma, e o lançamento novo ficou noutro. O bot dizia "não tem conta em
+ * aberto" e a pessoa entendia "nada lançado" — quando a conta estava lá.
+ */
+async function mostrarContasPorValor(
+  db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number,
+  achadas: ParcelaAberta[], opts: { aproximada?: boolean; cabecalho?: string } = {},
+) {
+  estado.candidatas = achadas.map((c) => ({
+    ...c,
+    diferenca: Math.round((valorBusca(estado) - c.valor) * 100) / 100,
+    exata: Math.round(c.valor * 100) === Math.round(valorBusca(estado) * 100),
+  }));
+  estado.etapa = "esc_parcela";
+  await salvarEstado(db, token, estado);
+
+  const linhas = achadas.map((c, i) => {
+    const quem = c.fornecedor ? escTg(c.fornecedor) : "<i>sem fornecedor</i>";
+    const atraso = c.diasAtraso > 0 ? ` · ${c.diasAtraso}d em atraso` : "";
+    return `${i + 1}. <b>${dataBR(c.vencimento)}</b> — ${brl(c.valor)}${atraso}
+    ${quem}
+    <i>${escTg(c.descricao.slice(0, 44))}</i>`;
+  }).join("\n");
+
+  const bts = achadas.map((c) => [{
+    text: `${dataBR(c.vencimento).slice(0, 5)} · ${brl(c.valor)} · ${(c.fornecedor || c.descricao).slice(0, 22)}`.slice(0, 60),
+    callback_data: `fbparc:${token}:${c.id}`,
+  }]);
+  bts.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+
+  const cabeca = opts.cabecalho
+    ?? (opts.aproximada
+      ? `🔎 Nenhuma conta de <b>${brl(valorBusca(estado))}</b> exato — estas são as mais <b>próximas</b>:`
+      : `🔎 Contas em aberto de <b>${brl(valorBusca(estado))}</b>, de qualquer fornecedor:`);
+
+  await enviar(B, chatId,
+    cabeca + `
+
+${linhas}
+
+` +
+    (opts.aproximada
+      ? `<i>A diferença costuma ser multa/juros do boleto pago em atraso — na baixa eu registro isso como encargo.</i>`
+      : `<i>Qual delas?</i>`),
+    inline(bts));
+}
+
 /** Busca o fornecedor pelo nome guardado no estado e segue o fluxo. */
 async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
   const nome = estado.nomeBusca || "";
@@ -599,6 +652,24 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
     // todos respondem "esse lancamento ja foi tratado ou expirou".
     estado.etapa = "sem_fornecedor";
     await salvarEstado(db, token, estado);
+
+    // ANTES de dizer que não achou: tenta pelo VALOR. Cadastro duplicado do
+    // mesmo fornecedor é comum (o sindicato tem três), e o comprovante nomeia
+    // justamente o cadastro vazio — a conta está lançada no irmão. Mostrar a
+    // lista aqui evita a leitura errada de "não tem nada lançado".
+    if (!ehPagamentoDeFatura(nome)) {
+      let porValor: ParcelaAberta[] = [];
+      try { porValor = await parcelasAbertasPorValor(valorBusca(estado), 8); } catch { porValor = []; }
+      if (porValor.length) {
+        const cab = nomeAchado
+          ? `⚠️ O cadastro <b>${escTg(nomeAchado)}</b> não tem conta em aberto, mas achei ` +
+            `${porValor.length === 1 ? "esta conta" : `estas ${porValor.length} contas`} de <b>${brl(valorBusca(estado))}</b>:` +
+            `\n<i>(a Vobi tem mais de um cadastro para o mesmo fornecedor — confira o vencimento antes de escolher)</i>`
+          : `🔎 Não achei o fornecedor <b>${escTg(nome)}</b>, mas achei ` +
+            `${porValor.length === 1 ? "esta conta" : `estas ${porValor.length} contas`} de <b>${brl(valorBusca(estado))}</b>:`;
+        return await mostrarContasPorValor(db, B, token, estado, chatId, porValor, { cabecalho: cab });
+      }
+    }
     // O favorecido ser NU PAGAMENTOS quer dizer FATURA DO CARTÃO: o pagamento
     // não é de um fornecedor, é do cartão inteiro. Nesse caso o caminho certo
     // vem primeiro, com o texto explicando o que ele faz.
@@ -701,7 +772,16 @@ type NovoLanc = {
   idCentroCusto?: number;
   ccNome?: string;
   pago?: boolean;
+  /** a pessoa confirmou que quer criar mesmo havendo cadastro de nome igual */
+  forcarCriar?: boolean;
 };
+
+/** Mesmo nome de fornecedor, ignorando acento, pontuação e espaço duplo. */
+function mesmoNomeFornecedor(a?: string | null, b?: string | null): boolean {
+  const limpa = (s: unknown) => normalizarTxt(String(s || "")).replace(/[^a-z0-9]+/g, " ").trim();
+  const x = limpa(a), y = limpa(b);
+  return x.length >= 4 && x === y;
+}
 
 function normalizarTxt(s: string): string {
   return String(s || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -2346,6 +2426,30 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
 
   if (acao === "fbnforcriar") {
     const termo = (estado.novo?.buscaForn || estado.novo?.nome || "").trim();
+    // NÃO criar cadastro DUPLICADO. Em 08/10/2026 o bot criou um segundo
+    // "SIND TRAB IND CONSTRUCAO CIVIL SP" idêntico ao que já existia (que tem
+    // 15 lançamentos e o CNPJ); a baixa seguinte procurou pelo nome do
+    // comprovante, caiu num TERCEIRO cadastro vazio e disse que não havia
+    // conta em aberto. Três cadastros do mesmo sindicato por causa disso.
+    const iguais = (await fornecedores().catch(() => []))
+      .filter((f) => mesmoNomeFornecedor(f.nome || f.razao, termo))
+      .slice(0, 3);
+    if (iguais.length && !estado.novo?.forcarCriar) {
+      estado.novo!.forcarCriar = true;
+      await salvarEstado(db, token, estado);
+      await enviar(B, chatId,
+        `⚠️ Já existe <b>${escTg(iguais[0].nome || iguais[0].razao)}</b> na Vobi com esse mesmo nome.\n\n` +
+        `<i>Criar outro faz o lançamento ficar num cadastro e a baixa procurar no outro — foi assim que o sindicato ficou com três.</i>`,
+        inline([
+          ...iguais.map((f) => [{
+            text: `✅ Usar ${(f.nome || f.razao).slice(0, 40)}`.slice(0, 60),
+            callback_data: `fbnfor:${token}:${f.id}`,
+          }]),
+          [{ text: "➕ Criar outro mesmo assim", callback_data: `fbnforcriar:${token}` }],
+          [{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }],
+        ]));
+      return;
+    }
     try {
       const f = await criarFornecedor(termo);
       estado.novo!.idSupplier = f.id;
@@ -2698,41 +2802,7 @@ export async function onCallbackFinanceiro(db: any, B: Bot, cq: any, chatId: num
       );
       return;
     }
-    // Candidata = ParcelaAberta + a diferenca para o valor pago (juros/desconto)
-    estado.candidatas = achadas.map((c) => ({
-      ...c,
-      diferenca: Math.round((valorBusca(estado) - c.valor) * 100) / 100,
-      exata: Math.round(c.valor * 100) === Math.round(valorBusca(estado) * 100),
-    }));
-    estado.etapa = "esc_parcela";
-    await salvarEstado(db, token, estado);
-    const linhas = achadas.map((c, i) => {
-      const quem = c.fornecedor ? escTg(c.fornecedor) : "<i>sem fornecedor</i>";
-      const atraso = c.diasAtraso > 0 ? ` · ${c.diasAtraso}d em atraso` : "";
-      return `${i + 1}. <b>${dataBR(c.vencimento)}</b> — ${brl(c.valor)}${atraso}\n    ${quem}\n    <i>${escTg(c.descricao.slice(0, 44))}</i>`;
-    }).join("\n");
-    const bts = achadas.map((c) => [{
-      text: `${dataBR(c.vencimento).slice(0, 5)} · ${brl(c.valor)} · ${(c.fornecedor || c.descricao).slice(0, 22)}`.slice(0, 60),
-      callback_data: `fbparc:${token}:${c.id}`,
-    }]);
-    bts.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
-    await enviar(
-      B,
-      chatId,
-      (aproximada
-        ? `🔎 Nenhuma conta de <b>${brl(valorBusca(estado))}</b> exato — estas são as mais <b>próximas</b>:`
-        : `🔎 Contas em aberto de <b>${brl(valorBusca(estado))}</b>, de qualquer fornecedor:`) +
-        `
-
-${linhas}
-
-` +
-        (aproximada
-          ? `<i>A diferença costuma ser multa/juros do boleto pago em atraso — na baixa eu registro isso como encargo.</i>`
-          : `<i>Qual delas?</i>`),
-      inline(bts),
-    );
-    return;
+    return await mostrarContasPorValor(db, B, token, estado, chatId, achadas, { aproximada });
   }
 
   if (acao === "fbforn") {
