@@ -2694,3 +2694,42 @@ antigas e pagas — e o filtro por fornecedor FUNCIONA, so nao tem o fantasma), 
 pagamentos em aberto e das 1.323 parcelas em aberto. **A correcao e no DADO, nao no bot:**
 abrir o lancamento na tela e tirar o RATEIO por projeto (a fatia nao-principal some de todas
 as listagens — armadilha 53). Feito isso, o bot acha sozinho as parcelas restantes.
+
+## Atualizacao 08/10/2026 — cadastro DUPLICADO de fornecedor quebrava a baixa
+
+**Relato:** "lancei pelo bot e na hora de dar baixa disse que nao tem nada lancado".
+**O lancamento estava certo** (b9444eba, R$ 56,82, venc 08/10, Banco Villela, parcela
+em aberto). O que quebrou foi o casamento do comprovante com o fornecedor: o sindicato
+tinha **TRES cadastros** — 809197 (nome completo SINTRACON, 0 lancamentos), 812331
+(15 lancamentos, com CNPJ) e 1049500 (criado pelo bot naquele dia). O comprovante do PIX
+imprime o nome COMPLETO -> casou com o 809197, que nao tem conta -> "nao tem conta em
+aberto", lido como "nada lancado".
+
+**Codigo (commit f43ca2b):**
+- `mostrarContasPorValor()` extraida do handler `fbvalor` e reusada no beco sem saida:
+  **antes de dizer que nao achou, procura pelo VALOR** e lista as contas ("o cadastro X
+  nao tem conta, mas achei estas 2 de R$ 56,82") com vencimento. Com cadastro duplicado
+  o valor e chave melhor que o nome.
+- **Guarda de duplicata:** `fbnforcriar` compara o nome normalizado
+  (`mesmoNomeFornecedor`) com o cadastro existente e oferece "usar o existente" antes de
+  "criar outro mesmo assim". Foi a criacao sem checagem que gerou o 3o cadastro.
+
+**DADOS (a Adriana liberou a escrita na Vobi; `TEMP-sindicato-unificar.mjs`, snapshot em
+`TEMP-sindicato-snapshot.json`):** (1) razao social completa do SINTRACON gravada no
+MESTRE 812331 — **`pontuarFornecedor` pontua `nome + razao`, entao o nome do comprovante
+passa a cair no cadastro certo para sempre**; (2) o lancamento movido de 1049500 p/ 812331
+e renomeado "CENTRO DE CUSTO" -> "CONTRIBUICAO ASSISTENCIAL" (PUT /payment com
+`installments` COM id = no-op, 1 parcela antes e depois); (3) 809197 e 1049500 inativados
+(so depois de conferir que tinham 0 lancamentos).
+
+**PEGADINHA que quase anulou tudo:** mexer no fornecedor por FORA do `criarFornecedor`
+deixa o `vobi_cache` (chave `fornecedores`, 24h) com a copia velha — o bot so veria a
+razao social nova no dia seguinte. **Depois de editar fornecedor direto na API, APAGAR a
+linha do cache:** `DELETE /rest/v1/vobi_cache?chave=eq.fornecedores`.
+
+**Verificado ao vivo depois:** o mesmo comprovante agora cai em "SIND TRAB IND CONSTRUCAO
+CIVIL SP" e lista os vencimentos, com as duas de R$ 56,82 marcadas "✅ valor exato".
+
+**Campo de documento do fornecedor e `document`** (so 66 de 2.548 preenchidos) — nao serve
+de chave geral, mas e o desempate certo quando existe. O leitor de comprovante ja extrai
+`favorecido_documento`; casar por CNPJ fica como melhoria.
