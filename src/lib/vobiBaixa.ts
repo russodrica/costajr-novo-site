@@ -1753,3 +1753,73 @@ export async function darBaixa(dados: DadosBaixa, opts: { dryRun?: boolean } = {
           `${dados.valorPago.toFixed(2)}. Confira na Vobi antes de considerar resolvida.`,
   };
 }
+
+// ───────────────── busca pelo NOME DO LANÇAMENTO ─────────────────
+//
+// A última porta, descoberta em 09/10/2026: `/payment` aceita
+// `where[name][like]=%TERMO%` (com `like`; `iLike` devolve 400). É a ÚNICA
+// busca que alcança lançamento cujo nome não tem nada a ver com o favorecido
+// do comprovante — e era o caso do seguro da frota: o comprovante diz "TOKIO
+// MARINE SEGURADORA S.A." e o lançamento se chama "SEGURO TOKIO MARINE -
+// FROTA (boletos pagos no cartao Nubank)", sem conta em aberto nenhuma porque
+// cada boleto só é registrado quando é pago. Passou meses invisível.
+//
+// Também serve de diagnóstico honesto: se o lançamento existe mas não tem
+// parcela em aberto, a resposta certa é "a parcela desse mês não está
+// lançada", e não "não achei o fornecedor".
+export type PagamentoAchado = {
+  id: string;
+  nome: string;
+  valor: number;
+  abertas: ParcelaAberta[];
+};
+
+/**
+ * Lançamentos cujo NOME contém o termo, com as parcelas em aberto de cada um.
+ *
+ * Custa 1 chamada + 1 por lançamento, então o `max` é baixo de propósito: isso
+ * roda num beco sem saída, e a Vobi libera 1000 consultas/hora para tudo.
+ */
+export async function pagamentosPorNome(termo: string, max = 4): Promise<PagamentoAchado[]> {
+  // A ORDEM das palavras importa: a marca vem na frente ("TOKIO marine
+  // seguradora", "LEROY merlin") e a genérica atrás. Ordenar por tamanho
+  // escolhia justamente a genérica — "SEGURADORA" achava a seguradora errada
+  // e não o seguro da frota. Então: as duas primeiras juntas, depois a
+  // primeira sozinha, e só então a mais longa.
+  const palavras = palavrasDoTermo(termo);
+  if (!palavras.length) return [];
+  const tentativas = [...new Set([
+    palavras.length > 1 ? palavras[0] + " " + palavras[1] : "",
+    palavras[0],
+    [...palavras].sort((a, b) => b.length - a.length)[0],
+  ].filter((t) => t && t.length >= 4))];
+  let linhas: any[] = [];
+  for (const chave of tentativas) {
+    const j = await vGet(`/payment?limit=20&where[name][like]=%25${encodeURIComponent(chave)}%25`);
+    linhas = (j?.rows || []).filter((p: any) => p?.id && p.billType !== "income");
+    if (linhas.length) break;
+  }
+  // o nome do serviço repete em toda mensalidade (8x "SLTECH SUPORTE REMOTO"):
+  // mostrar um por NOME já diz à pessoa o que ela precisa saber
+  const porNome = new Map<string, any>();
+  for (const p of linhas) {
+    const n = String(p.name || "").trim();
+    if (n && !porNome.has(n)) porNome.set(n, p);
+  }
+  const out: PagamentoAchado[] = [];
+  for (const p of [...porNome.values()].slice(0, max)) {
+    let abertas: ParcelaAberta[] = [];
+    try {
+      const d = await vGet(`/installment?limit=30&where[idPayment]=${encodeURIComponent(p.id)}`);
+      const minhas = (d?.rows || []).filter((i: any) => i.idPayment === p.id && i.idInstallmentStatus === 1);
+      const nomes = await mapaFornecedores(minhas);
+      abertas = minhas
+        .map((i: any) => montarParcela(i, nomes[(i.payment || {}).idSupplier] ?? null))
+        .sort((a: ParcelaAberta, b: ParcelaAberta) => a.vencimento.localeCompare(b.vencimento));
+    } catch { /* sem as parcelas o nome do lançamento já ajuda */ }
+    out.push({ id: String(p.id), nome: String(p.name || "").trim(), valor: num(p.value), abertas });
+  }
+  // quem tem conta em aberto primeiro: é nela que a pessoa pode tocar
+  out.sort((a, b) => b.abertas.length - a.abertas.length);
+  return out;
+}

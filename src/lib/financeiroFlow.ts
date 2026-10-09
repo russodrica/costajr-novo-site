@@ -38,6 +38,8 @@ import {
   faturasEmAberto, CONTA_CARTAO, nomeDoPagamentoDaFatura,
   type ItemCatalogo,
   type Candidata, type Fornecedor, type ParcelaAberta,
+  pagamentosPorNome,
+  type PagamentoAchado,
 } from "./vobiBaixa";
 
 const CHAVE_GRUPO = "grupo_financeiro";
@@ -668,6 +670,32 @@ async function buscarFornecedorEContinuar(db: any, B: Bot, token: string, estado
           : `🔎 Não achei o fornecedor <b>${escTg(nome)}</b>, mas achei ` +
             `${porValor.length === 1 ? "esta conta" : `estas ${porValor.length} contas`} de <b>${brl(valorBusca(estado))}</b>:`;
         return await mostrarContasPorValor(db, B, token, estado, chatId, porValor, { cabecalho: cab });
+      }
+    }
+    // Ainda antes de desistir: procura pelo NOME DO LANÇAMENTO. É a única
+    // busca que acha lançamento cujo nome não tem a ver com o favorecido do
+    // comprovante — o caso do seguro da frota, que ficou meses invisível
+    // ("SEGURO TOKIO MARINE - FROTA" para um comprovante da "TOKIO MARINE
+    // SEGURADORA S.A."). Quando o lançamento existe mas está sem parcela em
+    // aberto, a resposta honesta é "a parcela desse mês não está lançada".
+    if (!ehPagamentoDeFatura(nome)) {
+      let achados: PagamentoAchado[] = [];
+      try { achados = await pagamentosPorNome(nome); } catch { achados = []; }
+      const comAberta = achados.filter((p) => p.abertas.length);
+      if (comAberta.length) {
+        const todas = comAberta.flatMap((p) => p.abertas).slice(0, 8);
+        return await mostrarContasPorValor(db, B, token, estado, chatId, todas, {
+          cabecalho: `🔎 Pelo <b>nome do lançamento</b> eu achei ${todas.length === 1 ? "esta conta" : `estas ${todas.length} contas`} em aberto:`,
+        });
+      }
+      if (achados.length) {
+        const linhas = achados.slice(0, 3).map((p) => `• <b>${escTg(p.nome.slice(0, 60))}</b>`).join("\n");
+        await enviar(B, chatId,
+          `🔎 Achei ${achados.length === 1 ? "este lançamento" : "estes lançamentos"} com esse nome, ` +
+          `mas <b>sem nenhuma parcela em aberto</b>:\n${linhas}\n\n` +
+          `<i>Quer dizer que a parcela deste mês provavelmente não está lançada. ` +
+          `Se for isso, use “Cadastrar como lançamento novo”; se a parcela existe e não apareceu, ` +
+          `me mande o ID dela.</i>`);
       }
     }
     // O favorecido ser NU PAGAMENTOS quer dizer FATURA DO CARTÃO: o pagamento
