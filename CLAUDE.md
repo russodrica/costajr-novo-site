@@ -3143,3 +3143,16 @@ outra (612f2e18) na conciliacao -> a minha foi estornada e CANCELADA (banco tem 
 mostra); a aba do Claude in Chrome fica OCULTA (visibilityState hidden) e ai digitacao/screenshot nao
 funcionam — pedir a Adriana para deixar a janela do Chrome visivel. A rota /installment/list (usada
 pela tela) tambem nao mostra fatias escondidas (26.457 linhas, filtros ignorados).
+**Perguntas 8b, 9 e 10 APLICADAS (09/10/2026) — SANTANDER 2026 FECHADO jan-set:** (8b) na tela
+(Chrome, despesas, busca CRISPIM) o R$ 170 escondido e "EXAME_DEMISSIONAL_GIVANILDO_CRISPIM" (parcela
+5a0946c9, criada pela Renata 11/09, paga pela Construtivo 14/09, projeto Administrativo = invisivel na
+API); o MEDTRAB 170 (03d813d4) do robo em 21/09 era a duplicata -> estornado e CANCELADO. (9/10) Santander
+bloqueado pelo Sisbajud 23-30/06 (extrato sem movimento); nenhum outro banco/cartao tem os Pix de 25/06
+(350) e 26/06 (300) ao Sebastiao -> 5 itens movidos p/ BAIXA_VOBI (onde ja estavam as outras fatias):
+fatias obra 355686 das diarias 01-15/06 (d0391844 95,45 "nao pagar_celular", bd1d6617 95,45, f7a9acf4
+81,82), receita VENDA DE EQUIPAMENTO CELULAR 350 (cb8b4b6d; anotacao: dinheiro recebido pelo Higor e
+repassado ao Sebastiao) e STD_4774 ADITIVO LEONARDO 1.200 de 29/06 (ab8b282f, notebook). RESULTADO:
+tela = banco em TODOS os meses jan-set (so -0,02 de arredondamento de rateio em maio, que zera em jun).
+Falta so out +3,18 (pergunta 11: receita 60 e sindicato 56,82 de 08/10 nao passaram pelo Santander nem
+pelo Villela; extratos Nubank_Empresa e ELYSIUM de outubro nao estao no portal; a exportacao do
+Telegram NAO trouxe os PDFs dos comprovantes, so o messages.html).
