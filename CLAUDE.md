@@ -3121,3 +3121,13 @@ rebaixa). `GET /payment/split/{splitId}` so da os totais por parcela. A platafor
 **Pergunta 5 aplicada (09/10/2026):** Adriana: "cancelar a de 30/04" — REEMBOLSO_VALDEMAR R$ 176
 (b08d673e, descricao "NAO E DEVIDO_ANALISAR") estornada e CANCELADA. O Pix real saiu 12/12/2025 e ja
 esta dentro do valor de corte de 2025. Abril do Santander fecha com o banco.
+**Pergunta 7 aplicada (09/10/2026):** Adriana: "tem que bater o extrato" + "nao devo nada a este
+prestador". Verificacao adversarial (workflow, 2 agentes) achou as contas simetricas; quem decidiu foi
+o ANEXO do lancamento c58dfbeb (demonstrativospagamentosebastiao.pdf): "1a quinzena de maio, 3 diarias
+= 660, Pagamento realizado em 22/05 R$ 500, saldo 160" (pago 17/06). Logo o Pix de 22/05 = fechamento;
+as 2 parcelas de 250 da EMPREITA SEBASTIAO (bef8ff5f, b1cfcb7b; lanc b52eba77 de 2.500) estornadas e
+CANCELADAS. LICAO: quando o extrato nao decide, procurar ANEXO/demonstrativo nos lancamentos
+(`invoices[].file.fullpath` no GET /payment/{id ou splitId}). Pendentes do Sebastiao achados pelos
+verificadores: COMBUSTIVEL_MONTANA 70 (cf0c686b, aberto, provavel duplicata do pago no Nubank 24/08) e
+REEMBOLSO_SEBASTIAO_RODA_TETO 127 (eb1adca6, aberto) — Adriana diz que nao deve nada (decidir).
+O demonstrativo tem 5 paginas com comprovantes de jun (01/06, 02/06...) — pode resolver a pergunta 9.
