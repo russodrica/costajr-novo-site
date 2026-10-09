@@ -3171,3 +3171,29 @@ vence dia ~08 de M+1. Na serie ainda ha 2 previsoes de R$ 200 em ABERTO (venc 10
 FIM DA RODADA: Santander 2026 = banco em todos os meses (jan-out). Proximos: cartao Nubank — juros/IOF
 de boletos pagos no credito das faturas 02/06 (~551,08) e 02/07 (~315,86) nao lancados no cartao;
 cartao Itau 3380 com -211,30 em 2026 (itens da fatura 01/02 financiada); confirmar saldo ELYSIUM.
+
+**Rodada final de 09/10/2026 (3 pontos que sobraram, decididos pela Adriana):**
+- **Sindicato:** a previsao de JULHO (R$ 200, venc 10/07) foi cancelada — a contribuicao de
+  julho foi paga no cartao Nubank em 22/07 (fatura 03/08, R$ 163,41 = 156,83 + 0,65 IOF + 5,94
+  juros) e ja estava lancada no cartao (1e0c6582). Fev (200), mar (195,15) e abr (200) NAO estao
+  em fatura nem extrato -> continuam EM ABERTO (regra dela: "se nao esta em nenhuma fatura, esta
+  em aberto").
+- **Cartao Itau 3380:** canceladas as 2 compras de 2026 (PG *JUSBRASIL 151,40 e ENVIO DOC_MENSAL
+  59,90) — sao da fatura de 01/02/2026, que foi PARCELADA e esta no montante "CARTAO ITAU
+  MASTERCARD BUSINESS 8905 - SALDO A QUITAR" (R$ 7.179,02, conta Emprestimos, venc 10/12/2026).
+  Manter as duas contaria a despesa 2 vezes. Cartao Itau agora zerado em todos os meses de 2026.
+- **Cartao Nubank — juros/IOF de boleto pago no credito:** JA estavam lancados, em linhas mensais
+  "IOF E JUROS DE FINANCIAMENTO_CARTAO NUBANK_MM/2026" (05 = 551,07; 06 = 257,08; 08 = 293,37),
+  sem fornecedor e datadas no ultimo dia do mes (convencao da casa; por isso o cartao fecha o mes
+  negativo quando a fatura e paga no mes seguinte). Unico erro: a linha de 07 (84,09) levava
+  R$ 58,78 da fatura 02/07 (RECEITA FEDERAL 05/06 + ROTAEXATA 12/06). Separada: 58,78 em 30/06
+  (1b154793) e 25,31 em 31/07 (CONTROLID, 52f05146), fornecedor 666144 NUBANK 1405. Agora 02/06,
+  02/07 e 03/08 fecham linha a linha (a diferenca de R$ 270 na fatura 02/06 e 02/07 e a fatia
+  ESCONDIDA do rateio dos VIDROS_CHB: Evglass 1.200 = 930 visivel + 270 so na tela).
+- **Residuo do cartao Nubank (nao tratado):** -57,12 desde janeiro = itens da fatura 02/01
+  (Manus/D4Sign) no cartao sem o pagamento correspondente — a fatura de R$ 80,61 foi paga em
+  05/01 pela conta NUBANK_EMPRESA (extrato de jan), e esse pagamento nao virou transferencia
+  para o cartao na Vobi. Fecha o ano em -11,68.
+- **Tecnica:** `D:/temp/busca_vt/fatura_x_cartao2.mjs <vencFatura> <pagoDe> <pagoAte>` casa as
+  linhas da fatura transcrita com os itens do cartao baixados no periodo (qualquer vencimento) —
+  o vencimento das linhas de juros nao e o da fatura, por isso o filtro e pela data de pagamento.
