@@ -2774,3 +2774,41 @@ que usa a mesma Bot API limitada).
 **O caminho que funciona hoje:** Telegram Desktop → grupo CJR_ADM → menu ⋮ →
 "Export chat history" (JSON, com fotos) → salvar na pasta do projeto → eu leio e cruzo
 com a Vobi. Daqui pra frente o log `vobi_comprovante` torna isso desnecessario.
+
+## Atualizacao 09/10/2026 (parte 2) — auditoria do export do grupo CJR_ADM (60 comprovantes)
+
+A Adriana exportou o grupo (Telegram Desktop -> ⋮ -> Export chat history). ATENCAO: na
+primeira vez ela exportou o **CJR_DOCUMENTOS** (comeca com `/ativar_grupo`); o das baixas e
+o **CJR_ADM** (ativado com `/ativar_financeiro`, onde o bot diz "📎 Lendo o comprovante").
+O BOT se chama CJR_ADM e assina nos dois grupos — da para confundir.
+
+**Metodo (reusavel):** parsear `messages.html` (split em `<div class="message `, pegar
+`title=` da data, `from_name` com carry-forward, `.text`, `.media_file .title`), segmentar
+por "Lendo o comprovante" e classificar cada trecho pelo ✅ final. **O vocabulario de sucesso
+nao e so "Baixa confirmada"** — tem "Lançado no cartão", "Lançado na Vobi", "Transferência
+lançada", "Baixadas as N parcelas", "CONFIRMADO (atualiza". Classificador que so olha
+"Baixa confirmada" conta errado (eu contei 23 OK antes de corrigir para 29).
+
+**Resultado: 60 comprovantes, 29 fecharam na hora, e 7 pagamentos ficaram de fora** (conferido
+contra as 1.302 parcelas de despesa EM ABERTO): CEF MATRIZ 723,78 (17/09); TOKIO MARINE
+1.900,32 (28/09, a parcela fantasma); L J G TECNOLOGIA 537,13 e 254,43 (28/09, nao existem na
+Vobi); SIMONE CARDOSO 317,40 (01/10); receita de 60,00 (08/10); transferencia Villela 1.889,94
+(09/10, cancelada no passo do destino). O resto dos 60 era REENVIO do mesmo papel (Construtivo
+4x, ENEL 3x, Caixa 4x). Relatorio em `CONFERENCIA-TELEGRAM-VOBI.md`.
+**Dois alarmes falsos conferidos:** a ENEL de 107,56 aparece "Lançado no cartão" 3x mas existe
+UMA SO parcela de 107,56 em 02/10 (nao duplicou); TECSYSTEM 620,00 e MERCADO LIVRE 1.237,89
+ficaram no meio da conversa mas as contas ja nao estao em aberto (baixadas por outro caminho).
+
+**CAUSA RAIZ nova e CORRIGIDA (commit fa502b2): resposta do leitor CORTADA no meio.** Em
+16/09 quatro comprovantes seguidos morreram em "nao consegui identificar o valor" — e o erro
+dizia `respondeu fora de JSON: ```json { "valor": 107.56,`. O modelo tinha LIDO certo; a
+resposta e que veio truncada e o `extrairJson` (que exige chaves balanceadas) devolvia null.
+**`camposSoltos(txt)` em src/lib/llm.ts** colhe campo a campo varrendo por chave
+(`pedacoDaChave`: do ":" ate a virgula/fecho fora de aspas), so quando o extrairJson falha.
+Nome com <4 letras e DESCARTADO (o "CO" de COSTA JUNIOR fazia procurar fornecedor errado).
+Testado com as 2 respostas truncadas reais do grupo. **Isso vale para QUALQUER leitura de
+documento por IA no projeto — reusar camposSoltos onde hoje so tem extrairJson.**
+
+**As 3 causas de falha, em ordem de tamanho:** (1) conversa ABANDONADA no passo de escolher o
+vencimento — de longe a maior; (2) leitura truncada (corrigida); (3) HTTP 429 da Vobi (ja
+corrigido em 17/09). O bot nunca errou valor ou conta.
