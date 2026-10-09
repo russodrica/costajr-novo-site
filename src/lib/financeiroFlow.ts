@@ -1779,8 +1779,40 @@ function resumoCartao(e: EstadoBaixa): string {
   return txt;
 }
 
+/**
+ * O comprovante não disse de onde o dinheiro saiu: PERGUNTA antes de confirmar.
+ *
+ * Antes o bot assumia Santander e só marcava "(padrão — confira)". O comprovante
+ * do Villela sai sem o nome do banco, e assim foram parar no Santander, entre
+ * set e out/2026, R$ 6.427,40 que saíram do Villela (Simone, Tecsystem, Josuel)
+ * — o saldo das duas contas ficou errado e só apareceu no extrato. Escolha
+ * explícita é um toque a mais e acaba com isso.
+ */
+async function perguntarContaSaida(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  estado.etapa = "esc_conta";
+  await salvarEstado(db, token, estado);
+  const linhas: any[] = [];
+  for (let i = 0; i < CONTAS_TRANSFERENCIA.length; i += 2) {
+    linhas.push(CONTAS_TRANSFERENCIA.slice(i, i + 2).map((c) => ({
+      text: c.nome,
+      callback_data: `fbconta:${token}:${c.id}`,
+    })));
+  }
+  linhas.push([{ text: "❌ Cancelar", callback_data: `fbnao:${token}` }]);
+  await enviar(
+    B, chatId,
+    `🏦 <b>De qual conta o dinheiro saiu?</b>\n` +
+      `<i>O comprovante não diz o banco (o do Villela sai sem o nome). Escolha antes de eu dar baixa.</i>`,
+    inline(linhas),
+  );
+}
+
 /** Salva e mostra o resumo certo (baixa normal ou cartão) com [Sim][Não][Alterar]. */
 async function irParaConfirmacao(db: any, B: Bot, token: string, estado: EstadoBaixa, chatId: number) {
+  // No cartão a conta não importa (fica a de onde a fatura vai ser paga).
+  if (estado.forma !== FORMA_CARTAO && !estado.contaDoComprovante) {
+    return await perguntarContaSaida(db, B, token, estado, chatId);
+  }
   estado.etapa = "confirmar";
   await salvarEstado(db, token, estado);
   const txt = estado.forma === FORMA_CARTAO ? resumoCartao(estado) : resumoBaixa(estado);
@@ -3657,6 +3689,7 @@ function rotuloEtapa(e: string): string {
     confirmar: "faltou só confirmar",
     esc_parcela: "faltou escolher a conta",
     esc_forma: "faltou escolher a forma de pagamento",
+    esc_conta: "faltou dizer de qual conta saiu",
     esc_tipo: "faltou dizer se é despesa, receita ou transferência",
     sem_fornecedor: "não achei o fornecedor",
     buscando: "parou na busca do fornecedor",
