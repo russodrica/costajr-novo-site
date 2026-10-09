@@ -17,7 +17,8 @@ pasta ja acumulou 24 `PUBLICAR-*.cmd` mortos por causa disso.
 `PUBLICAR.cmd`, `IMPORTAR-USUARIOS.cmd`, `RESETAR-MINHA-SENHA.cmd`,
 `COMERCIAL-PUXAR.cmd`. Tambem ficam (uso recorrente, nao versionados):
 `1-BAIXAR-DO-GITHUB.cmd`, `ATIVAR-PONTE-AUTOMATICA.cmd`,
-`DESATIVAR-PONTE-AUTOMATICA.cmd`.
+`DESATIVAR-PONTE-AUTOMATICA.cmd`, `ATIVAR-PLANILHA-AUTOMATICA.cmd`,
+`DESATIVAR-PLANILHA-AUTOMATICA.cmd` (planilha financeira sob demanda, 09/10/2026).
 
 ---
 
@@ -2879,3 +2880,36 @@ A dela e a que vale (tem os dados do banco e ja esta em uso); a minha foi **inat
 apagada) e o mapeamento do bot aponta para **31532** (commit 4900178). **LICAO: "pedi para
 cadastrar" pode querer dizer que ela mesma ja fez — perguntar antes de criar cadastro, ou
 conferir de novo no instante de gravar.**
+
+## Atualizacao 09/10/2026 (parte 5) — Planilha financeira SOB DEMANDA (fim do GitHub diario)
+
+O GitHub Actions dos repos privados esta SEM MINUTOS desde 21/09/2026 (franquia
+esgotada; trazpraca-automacao gastou ~4.400 min em ago-set). TODOS os robos privados
+falham com startup_failure: costajunior-financeiro-diario, cadin-sp-robot,
+fgts-crf-robot, vobi-tarefas-automatico, trazpraca. O Power Automate seguiu baixando o
+release "latest" as 07:44 e salvando com a data do dia = planilha com dados de 19/09.
+
+**Decisao da Adriana (opcao A): a ANALISE_FINANCEIRA_CJR.xlsx e gerada SO quando ela
+pede, no computador dela.** Commit d97c49f:
+- botao "Gerar planilha agora" em /admin/vobi-financeiro e /admin/financeiro
+  (src/components/PlanilhaFinanceiraBotao.astro) e **/planilha** no grupo CJR_ADM
+  (/planilha forcar ignora o intervalo de 60 min — cada geracao gasta ~550 das 1000
+  consultas/h da Vobi, compartilhadas com o bot);
+- pedido em telegram_sessoes (chave `planilha:<id>`; batimento `ponte:planilha`),
+  logica em src/lib/planilhaFinanceira.ts; APIs /api/admin/vobi/planilha (portal) e
+  /api/integra/planilha-jobs (ponte, segredo INTEGRA_TELEGRAM_SECRET);
+- tarefa do Windows **"CJR - Planilha Financeira"** (a cada minuto, sem janela:
+  scripts/planilha-silenciosa.vbs -> scripts/planilha-ponte.mjs) roda o gerador em
+  `C:\Users\adriana.russo\CJR\gerador-planilha-financeira` (clone; a ponte NAO faz
+  git pull), salva em 02_Fluxos com data+hora (nunca sobrescreve) e manda o arquivo
+  no grupo DIRETO do PC (o arquivo nao passa pela Vercel nem pelo Supabase).
+  Log: _ponte-planilha.log. So funciona com o PC ligado e ela logada.
+- No repo do gerador o `schedule` do daily.yml foi removido (fica workflow_dispatch).
+- **PENDENTE (acao dela):** desligar o fluxo do Power Automate que baixa o release
+  diario — senao ele continua gravando a versao velha com a data do dia.
+
+**BUG do filtro (segmentacao com cursor 🚫):** o arquivo abria com 2 abas selecionadas
+(template com tabSelected na DESPESAS_2026 + activeTab=0) = modo Grupo, que trava
+segmentacao e "Classificar e Filtrar". Corrigido no gerador (commit b708b8e): so a
+DESPESAS do ano atual fica selecionada. Diagnostico via COM:
+`Windows(1).SelectedSheets.Count`. Atalho manual: botao direito na aba -> Desagrupar.
