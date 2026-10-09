@@ -3039,3 +3039,12 @@ para conciliar, nunca a soma do /installment (que perde as fatias). O relatorio 
 alguns minutos depois de gravar. Erro que sobrou em 2026 (tela - banco, por mes): jan -2.783,19;
 fev +3.767,37; mar +5.236,66; abr -1.340,24; mai -700,02; jun -422,71; jul -540,00; set -170,00;
 out +3,18 (total 3.051,05) — sendo resolvido item a item (workflow fechar-santander-2026).
+**Fechamento 2026, rodada 2 (09/10/2026):** 13 correcoes aplicadas (13 ok): serralheiro M4 630
+-> Caixa Pessoal (pago do bolso da Adriana); lancados Edson 200 (23/01), VT Patricia 56,28 e
+Samyria 37,52 (05/01), JusBrasil 151,40 + encargos 166,04 da fatura Itau paga 03/02, VA
+Gabrielly +83,33, ENEL em duplicidade 23,93 (24/04); D4Sign trocados de fatura; cancelados frete
+80 duplicado, VA Alelo 815 duplicado e um 15,00 que eu tinha duplicado (Lemab). NAO aplicado: mover
+o sindicato 56,82 p/ Villela (o extrato Villela 01-09/10 nao tem esse debito). Tela confere ao
+centavo com a previsao em todos os meses. **Santander: tela 3.872,55 x banco 0,00 — o resto
+depende de 11 perguntas** (D:/temp/conc_santander_2026/fechamento_rev.json, campo perguntas, com
+as operacoes prontas por resposta). Com as sugestoes aceitas, todos os meses de 2026 zeram.
