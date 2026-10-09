@@ -3135,3 +3135,11 @@ O demonstrativo tem 5 paginas com comprovantes de jun (01/06, 02/06...) — pode
 DUPLICADO do COBUSTIVEL_MONTANA_SEBASTIAO 70 pago no Nubank (fatura 02/09: unico Pix no credito de 70
 ao Sebastiao, 02/08) -> CANCELADO (ela pediu "excluir"; nao excluo, cancelo e ela exclui na tela se
 quiser). REEMBOLSO_SEBASTIAO_RODA_TETO 127 (eb1adca6/b445e3dc) CANCELADO a pedido dela.
+**Pergunta 8 (09/10/2026):** (a) APLICADA — a tela (cashFlow, Receitas > Emprestimos, jun, Santander)
+soma 2.730 x API 2.030: ja existia uma receita de 700 em junho INVISIVEL na API, e eu tinha lancado
+outra (612f2e18) na conciliacao -> a minha foi estornada e CANCELADA (banco tem 1 entrada de 700).
+(b) PENDENTE — set/Rescisao: tela 3.395,15 x API 3.225,15 = 170 escondido na rescisao; o exame MEDTRAB
+170 (03d813d4) casa com o debito do banco de 14/09. Para cancelar o escondido preciso do id (so a tela
+mostra); a aba do Claude in Chrome fica OCULTA (visibilityState hidden) e ai digitacao/screenshot nao
+funcionam — pedir a Adriana para deixar a janela do Chrome visivel. A rota /installment/list (usada
+pela tela) tambem nao mostra fatias escondidas (26.457 linhas, filtros ignorados).
