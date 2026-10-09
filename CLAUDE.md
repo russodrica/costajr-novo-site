@@ -3026,3 +3026,16 @@ corte 2025 (13,9 mil, ADIADO) + itens da aba "Decidir" (~3,8 mil). FALTA: Adrian
 saldo na tela; decidir os 17 itens; corrigir o corte de 31/12/2025 depois da contabilidade.
 Efeitos colaterais a conferir: Bradesco_Empresa (24607) subiu +20.318,19 (folha saiu dele);
 Cartao 1405 -1.411,54 e Cartao Itau -211,30 (faturas de jan/fev nao localizadas).
+
+**REGRA DA ADRIANA (09/10/2026): erro de 2025 se corrige no SALDO DE DEZEMBRO/2025 (valor de
+corte); erro de 2026 se corrige no LANCAMENTO.** Aplicado: VALOR DE CORTE do Santander
+31/12/2025 de 881.994,26 -> **868.487,29** (novo lancamento c533cb72 / parcela 18da0166; o
+antigo 557d86db/1dc8886c cancelado, como na troca anterior de 17/09) -> tela em 31/12/2025 =
+**81.515,71 = extrato**. **DESCOBERTA: o saldo "como a tela calcula" (com as fatias de rateio)
+sai do relatorio `GET /financial/cashFlow?source=report&where[year]=AAAA&where[ownBusiness]=true
+&where[idInstallmentStatus][0..7]=2,3,4,7,8,9,10,11&where[idPaymentBankAccount]=<conta>`, linha
+`finalBalance` (january..december)** — bateu com o print da tela (16.558,02). Usar ESSE numero
+para conciliar, nunca a soma do /installment (que perde as fatias). O relatorio tem cache de
+alguns minutos depois de gravar. Erro que sobrou em 2026 (tela - banco, por mes): jan -2.783,19;
+fev +3.767,37; mar +5.236,66; abr -1.340,24; mai -700,02; jun -422,71; jul -540,00; set -170,00;
+out +3,18 (total 3.051,05) — sendo resolvido item a item (workflow fechar-santander-2026).
