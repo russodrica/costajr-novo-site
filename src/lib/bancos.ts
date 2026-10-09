@@ -16,14 +16,19 @@ export const BANCOS = [
   "VillelaPay",
   "Banco Inter",
   "UPay",
+  "Elysium",
 ];
 
 /** Contas criadas depois: só entram nos extratos A PARTIR do mês informado. */
-export const BANCO_DESDE: Record<string, string> = { "VillelaPay": "2026-06", "Banco Inter": "2024-01", "UPay": "2026-08" };
+export const BANCO_DESDE: Record<string, string> = { "VillelaPay": "2026-06", "Banco Inter": "2024-01", "UPay": "2026-08", "Elysium": "2026-10" };
+
+/** Contas encerradas: deixam de aparecer DEPOIS do mês informado. O histórico até
+ *  esse mês continua acessível (ex.: VillelaPay encerrada em out/2026 → some a partir de nov). */
+export const BANCO_ATE: Record<string, string> = { "VillelaPay": "2026-10" };
 
 /** Cartões de crédito com fatura mensal (não fazem parte do escopo do fornecedor). */
 export const CARTOES = ["Nubank", "Itaú"];
 
 export const ymOf = (a: number, m: number) => `${a}-${String(m).padStart(2, "0")}`;
 export const bancosDoMes = (a: number, m: number) =>
-  BANCOS.filter((b) => !BANCO_DESDE[b] || ymOf(a, m) >= BANCO_DESDE[b]);
+  BANCOS.filter((b) => (!BANCO_DESDE[b] || ymOf(a, m) >= BANCO_DESDE[b]) && (!BANCO_ATE[b] || ymOf(a, m) <= BANCO_ATE[b]));
