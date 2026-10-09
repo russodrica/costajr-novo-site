@@ -3091,3 +3091,17 @@ OBS: a tela da Vobi (app.vobi.com.br) abre EM BRANCO na aba do Claude in Chrome 
 02/03 93,80 + 93,80; 07/04 93,80 + 93,80. Santander tela x banco: jan e FEV ZERADOS; mar +5.780,73 =
 exatamente o Pix a Adriana de 02/03 (pergunta 4) — conferido que nao existe em nenhuma conta/status,
 nem como par, nem como combinacao de ate 5 emprestimos em aberto (261 itens).
+**Pergunta 4 aplicada (09/10/2026, OK da Adriana):** Pix de 5.780,73 a Adriana em 02/03 = DEVOLUCAO do
+capital de giro de 21/01 (entrou 5.000; combinado 5.607,30 venc 27/02; +173,43 de 1 semana de juros).
+Lancado c0a146ab (forn 665703, cat 21797531, CC 26197, forma 1). A devolucao nunca tinha sido lancada.
+**Pergunta 6 CONFERIDA NAS FATURAS NUBANK** (pedido dela: "precisa conferir a fatura"). Modelo Nubank
+2026: Santander lanca o PAGAMENTO INTEIRO da fatura (despesa forma 5 "SANTANDER - CARTAO 1405_NUBANK_
+PAGAMENTO FATURA dd/mm" + receita no cartao 24624) e as compras ficam no cartao. Fatura 04/05 (3.645,19,
+paga 30/04): 7 linhas no cartao; FALTAM no cartao Rematy (Pix no credito EDSON PEREIRA DA SILVA 08/04,
+1.090,77) e a fatia de 270 do Evglass 1/3 (1.200 = 930 no cartao + 270 no Santander) — ambas no
+Santander = em dobro. Faturas 02/06 (4.406,09, paga 29/05 pelo Santander — Pix NU PAGAMENTOS) e 02/07
+(6.333, paga 06-10/07): Evglass 2/3 e 3/3 idem (270 no Santander) + uma 4a fatia de 270 venc 03/08 sem
+linha em fatura. (c) Pix de 70,00 do Santander p/ a propria CJR (BB) em 15/05 (extrato) esta saindo do
+"Cartao 5100". Transcricoes das faturas Nubank 2026: D:/temp/faturas-2026-completo.json; o extrato
+Santander de MAIO tem outro formato (PIX ENVIADO X - valor-), a regex padrao nao le. Achado lateral:
+faturas 02/06 e 02/07 tem juros/IOF de boletos pagos no credito que nao estao no cartao (~551,08 e ~315,86).
