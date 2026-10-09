@@ -3131,3 +3131,7 @@ CANCELADAS. LICAO: quando o extrato nao decide, procurar ANEXO/demonstrativo nos
 verificadores: COMBUSTIVEL_MONTANA 70 (cf0c686b, aberto, provavel duplicata do pago no Nubank 24/08) e
 REEMBOLSO_SEBASTIAO_RODA_TETO 127 (eb1adca6, aberto) — Adriana diz que nao deve nada (decidir).
 O demonstrativo tem 5 paginas com comprovantes de jun (01/06, 02/06...) — pode resolver a pergunta 9.
+**Sebastiao — abertos cancelados (09/10/2026):** COMBUSTIVEL_MONTANA 70 (cf0c686b/62a0018a) era
+DUPLICADO do COBUSTIVEL_MONTANA_SEBASTIAO 70 pago no Nubank (fatura 02/09: unico Pix no credito de 70
+ao Sebastiao, 02/08) -> CANCELADO (ela pediu "excluir"; nao excluo, cancelo e ela exclui na tela se
+quiser). REEMBOLSO_SEBASTIAO_RODA_TETO 127 (eb1adca6/b445e3dc) CANCELADO a pedido dela.
