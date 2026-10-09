@@ -2962,3 +2962,14 @@ Nubank_Empresa em -2.078,02. Receita f9fc74b4 (parcela d53fb5ef), cliente 235750
 MARINE, categoria 22881525 "Estornos e Devolucoes", CC 26422 DESPESAS FIXAS, PIX, paga 30/09.
 O POST engoliu a parcela de novo (recriada pelo PUT). Nubank_Empresa agora R$ 700,00 na Vobi
 (confirmar com o extrato; a conciliacao da Vobi mostra 29 pendentes nessa conta).
+
+**Nubank_Empresa CONCILIADO com o extrato de set/26 (09/10/2026):** saldo 30/09 = 2.078,02 e
+hoje = 0,00, igual ao banco. Faltava a LJG: a regra da Adriana e "o que tem JUROS e o
+atrasado" — os boletos pagos no CARTAO em 28/09 (537,13 + 254,43 c/ encargos) sao AGOSTO, e
+os pagos em 30/09 pela conta, sem juros, sao SETEMBRO. Na Vobi estava invertido; corrigido so
+pelas PARCELAS (PUT /payment parcial {value, paymentTypes, installments}, como o
+rolarParaCartao — preserva a recorrencia 2ccdaa85): a93d1eb9 (AGO) = 2 parcelas no cartao
+venc 02/11; 9ed341db (SET) = 475 + 225 pagas 30/09 no Nubank (boleto). Os Pix no credito do
+extrato (TJSP 1.000 em 01/09; TIM 127,82 + 448,73 em 15/09) ja estavam no cartao, fatura 02/10.
+PENDENTE de resposta dela: TIM 127,82 venc 20/09 ainda EM ABERTO (provavel a mesma paga no
+Pix no credito) e a correcao do Villela.
