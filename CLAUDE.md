@@ -3053,5 +3053,10 @@ as operacoes prontas por resposta). Com as sugestoes aceitas, todos os meses de 
 (a programacao do Santander de 31/01 nao foi efetivada; nada em nenhum extrato da empresa, nas
 faturas dos cartoes Nubank/Itau da empresa nem no cartao PESSOAL Itau dela) e o fornecedor nunca
 entregou. Cancelar (parcela 12 / lancamento 4) e nao excluir: tira das somas e e reversivel.
-A ver depois: Pix de R$ 300 ao Edson em 31/01 pago no cartao PESSOAL da Adriana (Itau final 5507)
-- pode ser despesa da empresa sem lancamento.
+As faturas do cartao PESSOAL Itau da Adriana (Platinum final 5507 + adicionais 1477/9889/6386/8579,
+out/24-jul/26; zip em D:/temp/faturas_pessoal_zip) confirmaram 2 itens da pergunta 1: Pix no credito
+de R$ 300 ao Edson em 31/01 (ja estava na Caixa Economica_Pessoal pela P1) e TINTAS MC VILA MASCOTE
+R$ 594,90 em 04/02 (final 1477) = STD_4281 CALHAS/TINTA 599f2864, re-baixada na Caixa
+Economica_Pessoal 24613, 04/02, forma 3. Leroy 3/3 R$ 396,99 (ce131187) NAO esta no cartao pessoal
+- segue em aberto. Fatura Nubank e extrato Caixa/BB/Sicoob sao PDF imagem: ler pelo WinRT do
+Windows (memoria pdf_imagem_render_windows).
