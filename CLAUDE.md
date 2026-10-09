@@ -3105,3 +3105,16 @@ linha em fatura. (c) Pix de 70,00 do Santander p/ a propria CJR (BB) em 15/05 (e
 "Cartao 5100". Transcricoes das faturas Nubank 2026: D:/temp/faturas-2026-completo.json; o extrato
 Santander de MAIO tem outro formato (PIX ENVIADO X - valor-), a regex padrao nao le. Achado lateral:
 faturas 02/06 e 02/07 tem juros/IOF de boletos pagos no credito que nao estao no cartao (~551,08 e ~315,86).
+**Pergunta 6 APLICADA (09/10/2026, pedido "faca pelo chrome"):** a TELA da Vobi tem bug em rateio —
+"Voltar para aguardando" numa parcela de rateio deu "Id invalido" e estornou SO uma fatia (revertido
+na hora). Feito pela API, fatia por fatia (executor, 16 ops, todas OK): REMATY 9 fatias (3 obras x 3
+parcelas, R$ 1.090,77) Santander -> Cartao 1405 em 30/04; VIDROS 3 fatias de 270 (obra 356477)
+Santander -> Cartao 1405 em 30/04, 29/05 e 06/07; 4a fatia de 270 (0b997f5b, venc 03/08) CANCELADA;
+transferencia de R$ 70 de 15/05 (58c5af88) origem Cartao 5100 -> Santander. Santander x banco agora:
+jan, fev, mar EXATOS; abr -176 (P5), mai -500,02 (P7), jun -422,71 (P8a/9/10), jul/ago 0, set -170
+(P8b), out +3,18 (P11). Cartao 1405 terminou 2026 em -11,68 na tela.
+**TECNICA-CHAVE (rateio invisivel na API):** `GET /v2/payment/{splitId}` (o id do RATEIO, nao do
+pagamento) devolve `assembleInstallments` = {idObra: [{id, number, price}]} com o id de TODAS as
+fatias, inclusive as escondidas. Com esses ids, `PUT /installment/{id}` funciona normal (estorno +
+rebaixa). `GET /payment/split/{splitId}` so da os totais por parcela. A plataforma fica em
+**plataforma.vobi.com.br** (app.vobi.com.br e a pagina Bubble, abre em branco).
