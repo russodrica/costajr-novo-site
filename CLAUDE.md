@@ -2812,3 +2812,39 @@ documento por IA no projeto — reusar camposSoltos onde hoje so tem extrairJson
 **As 3 causas de falha, em ordem de tamanho:** (1) conversa ABANDONADA no passo de escolher o
 vencimento — de longe a maior; (2) leitura truncada (corrigida); (3) HTTP 429 da Vobi (ja
 corrigido em 17/09). O bot nunca errou valor ou conta.
+
+## Atualizacao 09/10/2026 (parte 3) — a busca que faltava + 4 falsos alarmes meus
+
+A Adriana corrigiu minha lista: "tinha pedido para separar o lancamento da sltech e mudar o
+fornecedor"; "CFE: DEVE SER FGTS"; "TOKIO E P SEGURO". Ela estava certa nos tres.
+
+**DESCOBERTA QUE MATA O PONTO CEGO: `/payment?where[name][like]=%TERMO%` funciona** (com `like`;
+`iLike` = HTTP 400). E a unica busca que alcanca lancamento cujo nome nao tem a ver com o
+favorecido do comprovante. O "seguro fantasma da Tokio" (armadilhas de 25/09 e 28/09) nunca foi
+rateio nem bug da API: o lancamento e **"SEGURO TOKIO MARINE - FROTA (boletos pagos no cartao
+Nubank)"** (5f71bb24), com as parcelas 1/6 e 2/6 JA PAGAS e conta 24624 — **cada boleto do carne
+so entra quando e pago no cartao**, entao nunca ha parcela em aberto para achar. E **nao existe
+lancamento de 6x1.632,63 em lugar nenhum** (varri a faixa 1632-1633 na base inteira): o que eu
+tinha anotado como pagamento fantasma `1b8c8e67` era a tela do CARNE DA SEGURADORA.
+
+**4 dos 7 "pagamentos faltando" do relatorio eram ERRO MEU.** Procurei pelo valor da CONTA na
+lista de parcelas EM ABERTO, e isso nao acha: (1) compra no cartao e gravada com os juros
+EMBUTIDOS (475,00 -> 537,13); (2) conta ja paga nao esta na lista de abertas; (3) o nome do
+fornecedor NAO vem no payload da parcela (regex em payment.name nao acha "LJG"). Estado real:
+FGTS_08/2026 R$ 723,78 **pago** 17/09 (era o "CEF MATRIZ"); REEMBOLSO_ELETRICA_SIMONE R$ 317,40
+**pago** 02/10; LJG/SLTECH = lancamento 9ed341db ja separado (fornecedor LJG 1041407, 537,13 +
+254,43 vencendo **02/11** no cartao, em aberto ate a fatura de novembro). **REGRA: antes de dizer
+"nao esta lancado", buscar pelo NOME do lancamento e conferir tambem as PAGAS.**
+
+**Codigo (commit 81bab5c):** `pagamentosPorNome(termo)` em vobiBaixa (tenta as 2 primeiras
+palavras juntas, depois a 1a, depois a mais longa — ordenar por TAMANHO escolhia a palavra
+generica e "SEGURADORA" achava a seguradora errada). No beco sem saida do fluxo: se achar conta
+em aberto pelo nome, oferece baixar; se o lancamento existe SEM parcela em aberto, diz a verdade
+("a parcela deste mes provavelmente nao esta lancada") em vez de "nao achei o fornecedor".
+
+**PENDENTE (bloqueado pelo classificador de permissao):** gravar a **parcela 3/6 do seguro** —
+R$ 1.900,32 (boleto 1.680,48 + 219,84 de encargos), venc **02/11/2026**, conta 24624, forma 3,
+em aberto, no lancamento 5f71bb24, via `PUT /payment` mandando SO a parcela nova (as pagas sao
+preservadas — armadilha ja documentada). Script pronto, conferido que nao duplica (nao existe
+parcela de 1.900,32 na base). **Em qual fatura cai:** conta 24624 por dueDate = 02/09 (45
+parcelas, 0 abertas), 02/10 (14, quitada em 25/09), nada em 02/11 -> compra de 28/09 vai p/ 02/11.
