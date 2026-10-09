@@ -2913,3 +2913,29 @@ pede, no computador dela.** Commit d97c49f:
 segmentacao e "Classificar e Filtrar". Corrigido no gerador (commit b708b8e): so a
 DESPESAS do ano atual fica selecionada. Diagnostico via COM:
 `Windows(1).SelectedSheets.Count`. Atalho manual: botao direito na aba -> Desagrupar.
+
+## Atualizacao 09/10/2026 (parte 6) — "Duplicidade" na planilha era o STATUS da Vobi traduzido errado
+
+**Relato:** a Adriana viu o acordo LYSNOR (R$ 1.615,70, venc 23/09) duas vezes na
+planilha financeira. **Na Vobi nao ha duplicidade:** a entrada foi CANCELADA dentro do
+lancamento ffcbab3d (parcela status 12) e relancada a parte como "...PARCELA 1/7"
+(5b098080), paga em 17/09 (status 4).
+
+**Causa:** o gerador (repo costajunior-financeiro-diario) usava um mapa de status
+chutado {1 Em aberto, 2 Pago, 3 Atrasado, 4 Cancelado, 5 Aguardando}. O ENUM OFICIAL:
+**parcela 1 aguardando, 2..11 paga (4 = "pago manualmente", gravado pela baixa da tela e
+do bot), 12 cancelada; lancamento 1 rascunho, 2 em aberto, 3 pago, 4 cancelado.**
+Toda baixa do bot saia "Cancelado" (fora das somas) e todo cancelado saia em branco
+(dentro das somas). O PORTAL ja usava o enum certo (vobiBaixa/vobi.ts/saldoContas).
+
+**Corrigido no gerador (commit 6350788):** enum oficial (o 1 continua rotulado "Em
+aberto" — ~200 formulas do template casam esse texto); PRIORIDADE nao vai para
+cancelado; `_corrigir_formulas_status` poe Q<>"Cancelado" nos quadros que somavam sem
+status, inclusive o total do topo de cada base (o que reage aos filtros). Conferido por
+workflow de 5 agentes + Excel COM: 6.797 parcelas sem excecao, G = E + J, Passivo =
+soma em aberto (1.176.132,17), 0 erros. Os numeros MUDAM (para o certo): CATEG 2025
+resultado +2,51 mi -> +667 mil (dois "VALOR DE CORTE" cancelados abatiam a despesa).
+
+**Duplicidade REAL** (parcelas nao canceladas) foi levantada a parte: 26 provaveis + 12
+a conferir em `02_Fluxos\CONFERIR_DUPLICIDADES_VOBI_2026-10-09.xlsx`. NADA foi alterado
+na Vobi — cancelar so com a Adriana conferindo extrato/fatura.
