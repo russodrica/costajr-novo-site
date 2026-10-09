@@ -2733,3 +2733,44 @@ CIVIL SP" e lista os vencimentos, com as duas de R$ 56,82 marcadas "✅ valor ex
 **Campo de documento do fornecedor e `document`** (so 66 de 2.548 preenchidos) — nao serve
 de chave geral, mas e o desempate certo quando existe. O leitor de comprovante ja extrai
 `favorecido_documento`; casar por CNPJ fica como melhoria.
+
+## Atualizacao 09/10/2026 — "nao da baixa em tudo que mando": o que o log provou
+
+A Adriana: "continua nao dando baixa em tudo que mando no telegram junto a vobi".
+**O log respondeu em 2 consultas** (era pra isso que ele existia):
+- `audit_log` entidade `vobi_baixa`/`vobi_lancamento`/`vobi_transferencia` desde 25/09:
+  **4 escritas, TODAS ✅** (29/09 R$ 4.860,00 · 01/10 transf Nubank→Villela R$ 2.078,02 ·
+  07/10 JOSUEL R$ 630,00 · 08/10 lancamento novo do sindicato R$ 56,82). Zero ❌.
+- `telegram_sessoes` chave `fb:%`: **2 conversas penduradas**, as duas de 08/10 19:13-19:14.
+  Sessao que existe = baixa NAO concluida (o fluxo apaga ao terminar).
+Ou seja: quando o bot escreve, acerta. Ele falha por **ABANDONO** — a conversa para num
+passo e o comprovante nao vira baixa. O aviso diario de pendencias (avisarBaixasPendentes
+no cron regua-cobranca, 09:00 BRT) provavelmente foi o que gerou a reclamacao: ele listou
+as 2 corretamente.
+
+**Resolvido:** a conta do SINDICATO (CONTRIBUICAO ASSISTENCIAL, parcela
+bf8cfef9-97f0-4d44-bec1-f5b314941a37, R$ 56,82 venc 08/10) estava em aberto — baixada
+manualmente espelhando o corpo do `darBaixa` (status 4, paidDate 08/10, conta 24582,
+forma 2 boleto), conferida na releitura e registrada em audit_log; sessao apagada.
+A outra (R$ 60,00 RECEITA de "Adriana Russo da Costa") **nao tem o que baixar**: nao existe
+receita de R$ 60 em aberto na Vobi (as 4 abertas de set/out sao 24.154,49 / 44,00 /
+1.729,72 / 56.360,48). Precisa entrar como lancamento NOVO.
+
+**Codigo (commit 7b8156d) — o ponto cego que sobrava:** o log so guardava o que o bot
+ESCREVEU; comprovante que nao virava baixa era invisivel.
+- `onComprovanteFinanceiro` agora grava **"RECEBIDO: <arquivo>"** em audit_log
+  (entidade **`vobi_comprovante`**) assim que a foto/PDF chega, ANTES de qualquer leitura.
+  Em /admin/logs da para cruzar recebido × baixado.
+- Comando **`/pendencias`** (ou `/pendentes`) no grupo financeiro: lista na hora tudo que
+  comecou e nao terminou, com o botao Retomar (chama `avisarBaixasPendentes(db, 0)`).
+
+**SOBRE "INSTALAR PLUGIN DO TELEGRAM" (pergunta dela):** nao resolve.
+(1) A **Bot API nao le historico** — bot so recebe o que chega depois, e `getUpdates`
+fica indisponivel com webhook ativo (e roubaria os updates do nosso bot).
+(2) Ler o historico de um grupo exige conta de **USUARIO** (MTProto, api_id/api_hash do
+my.telegram.org + codigo de login) — e eu nao faco login no lugar dela.
+(3) Nao ha conector de Telegram no registro de MCP que sirva (busquei: so AnythingMCP,
+que usa a mesma Bot API limitada).
+**O caminho que funciona hoje:** Telegram Desktop → grupo CJR_ADM → menu ⋮ →
+"Export chat history" (JSON, com fotos) → salvar na pasta do projeto → eu leio e cruzo
+com a Vobi. Daqui pra frente o log `vobi_comprovante` torna isso desnecessario.
