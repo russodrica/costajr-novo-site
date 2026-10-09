@@ -3085,3 +3085,9 @@ january..december)** — comparar o total da categoria na tela com a soma da API
 (`/installment?where[$payment.idFinancialCategory$]=<id>`). Vale Transporte (21797710) no Santander:
 tela = API ao centavo jan-mai; nas outras 20 contas a tela nao tem VT/vale/reembolso em jan-mai.
 OBS: a tela da Vobi (app.vobi.com.br) abre EM BRANCO na aba do Claude in Chrome — usar o cashFlow.
+**Pergunta 3 aplicada (09/10/2026, Adriana: "com certeza receberam" = VT da Patricia e da Samyria):**
+6 lancamentos VT MENSAL no Santander, forn 664328 (Patricia) / 872294 (Samyria), cat 21797710, CC
+26762, forma 5 (igual a folha do PAGSAL): 05/02 93,80 + 75,04 (Samyria ja tinha 18,76 no lote);
+02/03 93,80 + 93,80; 07/04 93,80 + 93,80. Santander tela x banco: jan e FEV ZERADOS; mar +5.780,73 =
+exatamente o Pix a Adriana de 02/03 (pergunta 4) — conferido que nao existe em nenhuma conta/status,
+nem como par, nem como combinacao de ate 5 emprestimos em aberto (261 itens).
