@@ -3008,3 +3008,21 @@ sem entrada; faturas Nubank/Itau pagas pelo Santander sem registro; TED Carrefou
 10/12/25 sem receita). Planilha `02_Fluxos\CONCILIACAO_SANTANDER_DEZ25_SET26.xlsx` (46
 correcoes + 17 decisoes). **NADA APLICADO — aguardando a Adriana** (varias mexem em 2025).
 Dados e scripts: D:/temp/conc_santander_2026; resultado em %TEMP%/conc_santander_resultado.json.
+**APLICADO (09/10/2026, "so 2026"):** 79 operacoes, 79 ok, 0 falhas (executor com trava de
+estado/guarda, copia completa antes, conferencia do valor apos o estorno, parada na 1a falha;
+backup e log em scratchpad/rev26/plano_2026_lote1.*.jsonl): folha jan/fev (8 + 8 parcelas) e
+Odontoprev/emprestimo do Bradesco -> Santander; compras de cartao Nubank (jan, abr) -> Cartao
+1405 e Itau (jan) -> Cartao 3380; datas corrigidas (tarifas, Leoncio, Santander/Verisure 04/03,
+fatura Itau 02/03, Jusbrasil/Leroy/D4Sign p/ fatura Itau, ZTE trocadas, TD SYNNEX 17/09);
+lancados: capital de giro 150/100/700, transferencia Caixa Pessoal->Santander 2.100 (a despesa
+antiga 0cebe382 cancelada), 30.700 do BB em 09/04, Lalamove 400, Lemab 15, encargos/anuidade
+Itau, rendimentos ContaMax; cancelados duplicados (tarifa 112, D4Sign 20+2,95, residuos 0,01,
+provisao tarifa ago 299); estornados 0,01 de capital de giro e o Edvaldo.
+**Resultado (API):** Santander fim jan = 11.161,82 x banco 38,04, exatamente o previsto (dif =
+corte 13.906,97 - divergencias de jan nao aprovadas 2.783,19). **A dif de fim de set (API) subiu
+para 57.483,20** porque os erros de 2026 compensavam o corte alto: pela premissa do rateio
+(39.771,12 em fatias que so a TELA ve) a TELA deve mostrar ~R$ 17,7 mil x banco 0,00 =
+corte 2025 (13,9 mil, ADIADO) + itens da aba "Decidir" (~3,8 mil). FALTA: Adriana confirmar o
+saldo na tela; decidir os 17 itens; corrigir o corte de 31/12/2025 depois da contabilidade.
+Efeitos colaterais a conferir: Bradesco_Empresa (24607) subiu +20.318,19 (folha saiu dele);
+Cartao 1405 -1.411,54 e Cartao Itau -211,30 (faturas de jan/fev nao localizadas).
