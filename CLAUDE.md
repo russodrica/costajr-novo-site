@@ -2973,3 +2973,18 @@ venc 02/11; 9ed341db (SET) = 475 + 225 pagas 30/09 no Nubank (boleto). Os Pix no
 extrato (TJSP 1.000 em 01/09; TIM 127,82 + 448,73 em 15/09) ja estavam no cartao, fatura 02/10.
 PENDENTE de resposta dela: TIM 127,82 venc 20/09 ainda EM ABERTO (provavel a mesma paga no
 Pix no credito) e a correcao do Villela.
+
+**Villela CONCILIADO com o extrato (09/10/2026, autorizado: "tudo que voce localizar no
+extrato pode baixar"):** Villela fecha em 31/08 (7.216,42), 30/09 (805,44) e hoje (0,00).
+Feito: 5 parcelas do Santander -> Villela (Simone 4.860 e 317,40 [data 02/10 -> 01/10],
+Tecsystem 425+195, Josuel 630); PG MARMORES 2.178,94 baixado 22/09 pelo Villela; 10 tarifas
+do Villela lancadas (R$ 123,24; forn 951299, cat 21658086, CC 37599, forma 9); TIM 127,82
+venc 20/09 CANCELADA (st 12) — era a mesma conta paga 15/09 no Pix no credito (cartao 136,18).
+**Santander agora 18.586,09 na Vobi: SO confere com o extrato de set/out, que ainda nao
+esta no portal.** ARMADILHA: `PUT /installment` em parcela PAGA da 400 "Parcelas pagas nao
+podem ser alteradas" (e "Data invalida" se mandar so a conta) — trocar conta de parcela paga =
+ESTORNO (status 1, paidDate null) + nova baixa (status 4) na conta certa; o script devolve ao
+estado original se a nova baixa falhar.
+**Bot corrigido (commit 068bb1d):** baixa de despesa sem banco no comprovante agora PERGUNTA
+"De qual conta o dinheiro saiu?" antes da confirmacao (cartao nao pergunta; receita ja
+perguntava; lancamento novo ja perguntava). Ensaio TEMP-e2e-conta.mts (5 cenarios).
