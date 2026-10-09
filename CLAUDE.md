@@ -2858,7 +2858,7 @@ A Adriana autorizou a gravacao. Tres coisas feitas na Vobi (todas registradas em
    (400 API-B-00166) — corrige a nota antiga de que o value era ignorado. Para ACRESCENTAR
    parcela num lancamento com outras ja pagas: mandar `installments:[a nova]` **e `value` = o
    preco dela**; as pagas sao preservadas (conferido 2 -> 3, as duas intactas).
-2. **Conta Elysium criada na Vobi (id 31530)** — `POST /bank-account` FUNCIONA, mesmo sem estar
+2. **Conta Elysium**: eu criei uma pela API (31530) e a Adriana cadastrou a dela na tela minutos depois (**31532**, ag 0001 conta 9336311, a que vale) — a minha foi INATIVADA e o mapeamento aponta para a 31532 — `POST /bank-account` FUNCIONA, mesmo sem estar
    na spec (que nao tem nenhuma rota de conta). Mapeada em CONTAS_PRINCIPAIS e
    CONTAS_TRANSFERENCIA (commit a2f3f3b), rx aceita "elysium" e "elisio". Agencia/conta ficaram
    nulas — a Adriana completa na tela. Contexto: conta aberta em 10/2026; a VillelaPay encerra
@@ -2872,3 +2872,10 @@ A Adriana autorizou a gravacao. Tres coisas feitas na Vobi (todas registradas em
 
 **Falta so a transferencia de R$ 1.889,94** (Villela -> ?) que ela cancelou em 09/10 no passo do
 destino: agora o Elysium aparece na lista, e basta reenviar o comprovante no grupo.
+
+**CORRECAO no mesmo dia — conta duplicada:** a Adriana cadastrou a ELYSIUM na TELA da Vobi
+(id **31532**, ag 0001, conta 9336311) oito minutos depois de eu criar uma pela API (31530).
+A dela e a que vale (tem os dados do banco e ja esta em uso); a minha foi **inativada** (nao
+apagada) e o mapeamento do bot aponta para **31532** (commit 4900178). **LICAO: "pedi para
+cadastrar" pode querer dizer que ela mesma ja fez — perguntar antes de criar cadastro, ou
+conferir de novo no instante de gravar.**
