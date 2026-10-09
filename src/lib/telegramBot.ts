@@ -17,7 +17,7 @@ import { responderJuniaIA } from "./juniaIA";
 import { detectarCategoria } from "./junia";
 import { assinarTreinoToken } from "./treinoStorage";
 import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial, onMessageComercial, mostrarMenuComercial, onCallbackEtapa } from "./comercialFlow";
-import { onTextoFinanceiro, onComprovanteFinanceiro, onCallbackFinanceiro, onTextoDuranteBaixa, onPrintDuranteBaixa, getGrupoFinanceiro, ativarGrupoFinanceiro, extrairValor } from "./financeiroFlow";
+import { onTextoFinanceiro, onComprovanteFinanceiro, onCallbackFinanceiro, onTextoDuranteBaixa, onPrintDuranteBaixa, avisarBaixasPendentes, getGrupoFinanceiro, ativarGrupoFinanceiro, extrairValor } from "./financeiroFlow";
 
 const SITE_TREINO = "https://www.costajr.com.br";
 
@@ -853,6 +853,15 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
 
   // ── grupo FINANCEIRO: baixa de pagamento ──
   if (financeiro && cid === financeiro) {
+    // "/pendencias": mostra AGORA tudo que começou aqui e não virou baixa, com
+    // o botão de retomar cada uma. É a mesma lista do aviso diário, mas sob
+    // demanda — a resposta direta para "não deu baixa em tudo que eu mandei".
+    const cmd = texto.toLowerCase().split("@")[0].trim();
+    if (cmd === "/pendencias" || cmd === "/pendentes") {
+      const r = await avisarBaixasPendentes(db, 0);
+      if (!r.n) await enviar(B, chatId, "✅ Nenhuma baixa pendente — tudo que começou aqui foi concluído.");
+      return;
+    }
     // se alguém está no meio de uma baixa (ex.: digitando o novo valor)
     if (texto && (await onTextoDuranteBaixa(db, B, chatId, texto))) return;
     if (msg.photo || msg.document) {

@@ -1161,6 +1161,18 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   if (!fileId) return;
 
   await enviar(B, chatId, "📎 Lendo o comprovante… ⏳");
+  // REGISTRO DE CHEGADA — toda foto/PDF que entra no grupo vira uma linha em
+  // /admin/logs, mesmo que a leitura falhe ou a conversa seja abandonada depois.
+  // Antes só existia registro do que o bot ESCREVEU na Vobi, e a pergunta
+  // "mandei no Telegram e não baixou" ficava sem resposta (08/10/2026): dava
+  // para ver as baixas feitas, nunca os comprovantes que não viraram baixa.
+  const quemMandou = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ").trim() || "alguém";
+  await registrarAcao(db, { req: undefined, admin: { email: quemMandou + " (via Telegram)" } } as any, {
+    acao: "criar",
+    entidade: "vobi_comprovante",
+    descricao: "RECEBIDO: " + nome + (msg.caption ? ' | "' + String(msg.caption).slice(0, 60) + '"' : ""),
+    dados: { arquivo: nome, tipo: ct, legenda: msg.caption || null },
+  });
   const buf = await baixarArquivoTg(B, fileId);
   if (!buf) { await enviar(B, chatId, "❌ Não consegui baixar o arquivo. Tente de novo."); return; }
   if (buf.length > 18 * 1024 * 1024) { await enviar(B, chatId, "❌ Arquivo muito grande (máx. ~18 MB)."); return; }
