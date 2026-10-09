@@ -3060,3 +3060,18 @@ R$ 594,90 em 04/02 (final 1477) = STD_4281 CALHAS/TINTA 599f2864, re-baixada na 
 Economica_Pessoal 24613, 04/02, forma 3. Leroy 3/3 R$ 396,99 (ce131187) NAO esta no cartao pessoal
 - segue em aberto. Fatura Nubank e extrato Caixa/BB/Sicoob sao PDF imagem: ler pelo WinRT do
 Windows (memoria pdf_imagem_render_windows).
+**Pergunta 2 resolvida (09/10/2026, OK explicito da Adriana): fatura Itau 3380 venc 01/01/2026
+(R$ 4.333,33, paga pelo Santander em 03/02) conferida LINHA A LINHA** — regra dela: "o que fecha a
+fatura precisa bater, nao lancar qualquer coisa" (NADA de transferencia-tampao). Itens: JusBrasil
+05/12 151,40 + D4S 09/12 59,90 + encargos 166,04 (ja estavam no Santander 03/02) + VOCE CONSTROI 1/2
+2.407,49 (ea9f619b) + TELHANORTE 1/2 1.548,50 (a27c394f), estas duas MOVIDAS do cartao 24625
+(09/12/2025) p/ o Santander 03/02/2026 forma 3 (regra "cartao nao paga conta"). Como sairam de 2025,
+o ajuste de saldo do cartao 31/12/2025 trocou de 111.955,07 (ae140681/5e1f3c39, CANCELADO) para
+**107.999,08 (26ade879 / parcela c38fbb32, forma 7)** — cartao segue 0,00 em 31/12/2025. POST de
+lancamento balance exige forma de pagamento (paymentTypes [{value:7}] + idPaymentType 7 na parcela;
+o corte do Santander tambem usa 7). Santander na tela agora: jan 38,04 = banco; fev +168,84 = PAGSAL
+da pergunta 3; mar +6.137,17 = perguntas 3 (168,84+187,60) e 4 (5.780,73). Faturas Itau da empresa
+no portal: doc_cartao_faturas (venc dia 01 desde out/25); texto em D:/temp/itau3380. A fatura
+01/02/2026 (9.355,29) foi paga 4.333,33 em 03/02 e o resto (5.021,96) PARCELADO 12x 790,80 em 02/02;
+o cartao 24625 ainda tem -211,30 em 2026 (JusBrasil 04/01 71488988 + D4S b270d96f, itens dessa
+fatura financiada) — proxima conferencia.
