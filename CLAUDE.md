@@ -3075,3 +3075,13 @@ no portal: doc_cartao_faturas (venc dia 01 desde out/25); texto em D:/temp/itau3
 01/02/2026 (9.355,29) foi paga 4.333,33 em 03/02 e o resto (5.021,96) PARCELADO 12x 790,80 em 02/02;
 o cartao 24625 ainda tem -211,30 em 2026 (JusBrasil 04/01 71488988 + D4S b270d96f, itens dessa
 fatura financiada) — proxima conferencia.
+**Pergunta 3 — busca refeita a pedido da Adriana ("tem certeza que nao esta lancado?"):** os 2
+pagamentos dentro de cada PAGSAL (05/02 R$ 168,84; 02/03 R$ 187,60; 07/04 R$ 187,60) NAO estao na
+Vobi. Provas: (1) copia nova das 26.549 parcelas de TODAS as contas (incl. inativas e as apagadas
+24627/24605), qualquer status — nenhum valor multiplo de 18,76 nem par que some o que falta;
+(2) extrato x Vobi casado linha a linha nos 3 dias; (3) **TECNICA p/ achar fatia de rateio que a
+API esconde: o `cashFlow?source=report` tem `children` por categoria (`idCategory`, meses
+january..december)** — comparar o total da categoria na tela com a soma da API
+(`/installment?where[$payment.idFinancialCategory$]=<id>`). Vale Transporte (21797710) no Santander:
+tela = API ao centavo jan-mai; nas outras 20 contas a tela nao tem VT/vale/reembolso em jan-mai.
+OBS: a tela da Vobi (app.vobi.com.br) abre EM BRANCO na aba do Claude in Chrome — usar o cashFlow.
