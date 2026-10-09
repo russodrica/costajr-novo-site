@@ -2939,3 +2939,26 @@ resultado +2,51 mi -> +667 mil (dois "VALOR DE CORTE" cancelados abatiam a despe
 **Duplicidade REAL** (parcelas nao canceladas) foi levantada a parte: 26 provaveis + 12
 a conferir em `02_Fluxos\CONFERIR_DUPLICIDADES_VOBI_2026-10-09.xlsx`. NADA foi alterado
 na Vobi — cancelar so com a Adriana conferindo extrato/fatura.
+
+## Atualizacao 09/10/2026 (parte 7) — Saldos Villela/Nubank errados + reembolso Tokio
+
+**Diagnostico (so leitura, extrato real x Vobi):** o "Saldo atual" da Vobi soma certo o que
+esta lancado (API = tela). O Villela da Vobi (R$ 8.729,58) esta R$ 8.729,58 acima do real
+(extrato VillelaPay: R$ 805,44 em 30/09 e **R$ 0,00 em 09/10**). Fecha ao centavo com o que
+saiu do Villela e esta lancado no **Santander**: Simone 4.860,00 (29/09) e 317,40 (01/10),
+Tecsystem 425+195 (23/09), Josuel 630,00 (07/10); mais PG MARMORES 2.178,94 (22/09) ainda
+**em aberto**, e 10 tarifas do Villela (R$ 123,24: 9,90 por PIX enviado; 26,31/11,21/16,42
+cobradas em PIX RECEBIDO). Causa: comprovante do Villela nao traz o banco -> bot assume
+Santander "(padrao — confira)". **Correcao proposta e AGUARDANDO autorizacao da Adriana:**
+mover as 5 parcelas p/ Villela, baixar PG Marmores pelo Villela, lancar as 10 tarifas, e o bot
+PERGUNTAR a conta quando o papel nao disser. Santander/Nubank so fecham com os extratos de
+set/out (portal tem Villela set/out; Nubank e Santander so ate ago).
+Rota util: `GET /installment/bankStatement?where[idPaymentBankAccount]=<id>` = extrato interno
+da conta (todas as parcelas, com payment embutido).
+
+**Reembolso Tokio LANCADO (pedido explicito dela):** PIX de R$ 2.778,02 da TOKIO MARINE para
+o Nubank em 30/09 (2 carros segurados, 1 cancelado) — era a entrada que faltava e deixava o
+Nubank_Empresa em -2.078,02. Receita f9fc74b4 (parcela d53fb5ef), cliente 235750 SEGURO TOKIO
+MARINE, categoria 22881525 "Estornos e Devolucoes", CC 26422 DESPESAS FIXAS, PIX, paga 30/09.
+O POST engoliu a parcela de novo (recriada pelo PUT). Nubank_Empresa agora R$ 700,00 na Vobi
+(confirmar com o extrato; a conciliacao da Vobi mostra 29 pendentes nessa conta).
