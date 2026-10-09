@@ -2998,3 +2998,13 @@ x 7,67; posicao 09/10 do banco = 0,00). Parte vem do movimento de 19/09/2026 (35
 de 2023 da conta apagada "Santander OFX" foram para o Santander — ver memoria
 vobi_contas_orfas) e do "VALOR DE CORTE" de 31/12/2025. Conciliacao mes a mes dez/25..set/26
 em andamento (workflow conciliar-santander-2026; dados em D:/temp/conc_santander_2026).
+**Resultado da conciliacao mes a mes (workflow de 10 agentes, so leitura):** todos os meses
+dez/25..set/26 se explicam ao centavo. Da diferenca de R$ 42,7 mil (API) no fim de set:
+**R$ 39.771 sao fatias de RATEIO de diarias (mar-set) que a API nao lista e a TELA soma** —
+premissa a CONFIRMAR com o saldo do Santander na tela (esperado ~R$ 2,9 mil). O resto: VALOR
+DE CORTE de 31/12/2025 (1dc8886c, +881.994,26) alto em 13.906,97 vs saldo real 81.515,71,
+compensado por erros de movimento (folha jan/fev no Bradesco ~19,9 mil; 30.700 do BB em 09/04
+sem entrada; faturas Nubank/Itau pagas pelo Santander sem registro; TED Carrefour 55.066,06 em
+10/12/25 sem receita). Planilha `02_Fluxos\CONCILIACAO_SANTANDER_DEZ25_SET26.xlsx` (46
+correcoes + 17 decisoes). **NADA APLICADO — aguardando a Adriana** (varias mexem em 2025).
+Dados e scripts: D:/temp/conc_santander_2026; resultado em %TEMP%/conc_santander_resultado.json.
