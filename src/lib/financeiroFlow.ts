@@ -24,7 +24,7 @@ import { escTg, enviarTelegram } from "./telegram";
 import { registrarAcao } from "./auditoria";
 import { ehAPropriaCJR, identificarLado, type LadoCJR } from "./identidadeCJR";
 import { type Bot, enviar, inline, baixarArquivoTg, extrairTextoConteudo } from "./telegramBot";
-import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson } from "./llm";
+import { lerDocumentoLLM, gerarTextoLLM, llmConfigurado, extrairJson, camposSoltos } from "./llm";
 import {
   buscarFornecedoresAproximado, fornecedores, parcelasCandidatas, parcelasAbertasPorValor, fornecedoresComContaEmAberto, parcelasAbertasDeFornecedores, parcelasAbertasDoFornecedor, parcelaPorId, darBaixa,
   rolarParaCartao, proximoVencimentoCartao, calcularAcrescimo,
@@ -1241,12 +1241,18 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
       .catch((e: any) => ({ texto: null, provedor: "", erro: String(e?.message || e) }));
     erroVisao = r.erro;
     if (r.texto) {
-      const j = extrairJson(r.texto);
+      // Resposta cortada no meio ainda serve: colhe o que chegou (16/09/2026).
+      let j = extrairJson(r.texto);
+      let resgatado = false;
+      if (!j) {
+        const sol = camposSoltos(r.texto);
+        if (Object.keys(sol).length) { j = sol; resgatado = true; }
+      }
       // PONTO CEGO que custou uma rodada de teste: o leitor RESPONDEU (erro
       // vazio) mas a resposta não era JSON — aí a falha ficava sem explicação.
       if (!j) erroVisao = `${r.provedor} respondeu fora de JSON: ${r.texto.slice(0, 80)}`;
       else {
-        usar(j, "lendo a imagem");
+        usar(j, resgatado ? "lendo a imagem (resposta cortada)" : "lendo a imagem");
         if (!valor || (!pagador && !favorecido)) erroVisao = `${r.provedor} leu mas devolveu ${JSON.stringify(j).slice(0, 80)}`;
       }
     }

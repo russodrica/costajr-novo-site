@@ -307,3 +307,58 @@ export function extrairJson(txt: string): any | null {
   }
   return melhor;
 }
+
+/**
+ * RESGATE de uma resposta CORTADA no meio.
+ *
+ * Nasceu de quatro comprovantes perdidos em 16/09/2026: o modelo tinha LIDO o
+ * papel certo ("valor": 107.56) mas a resposta chegou truncada, sem fechar as
+ * chaves — o extrairJson devolvia null e o bot dizia "não consegui identificar
+ * o valor nem o favorecido". Jogar fora uma leitura boa por causa de uma chave
+ * que faltou é o pior dos mundos; aqui a gente colhe campo a campo o que deu
+ * tempo de chegar.
+ *
+ * Só é usado quando o extrairJson falha — resposta íntegra continua passando
+ * pelo parser de verdade.
+ */
+function pedacoDaChave(txt: string, chave: string): string {
+  const i = txt.indexOf('"' + chave + '"');
+  if (i < 0) return "";
+  let k = txt.indexOf(":", i);
+  if (k < 0) return "";
+  k++;
+  const ini = k;
+  let dentro = false;
+  for (; k < txt.length; k++) {
+    const c = txt[k];
+    if (c === '"') { dentro = !dentro; continue; }
+    if (!dentro && (c === "," || c === "}")) break;
+  }
+  return txt.slice(ini, k).trim();
+}
+
+export function camposSoltos(txt: string): Record<string, any> {
+  const s = String(txt || "");
+  const out: Record<string, any> = {};
+  const textos = ["sentido", "pagador", "pagador_documento", "favorecido",
+    "favorecido_documento", "forma", "banco_origem", "banco_destino", "data"];
+  for (const chave of textos) {
+    const p = pedacoDaChave(s, chave);
+    if (!p || p === "null") continue;
+    const a = p.indexOf('"');
+    if (a < 0) continue;
+    const b = p.indexOf('"', a + 1);
+    const v = (b < 0 ? p.slice(a + 1) : p.slice(a + 1, b)).trim();
+    // nome cortado em 2 ou 3 letras faz o bot sair procurando fornecedor
+    // errado: melhor não ter nome do que ter um caco.
+    const curto = (chave === "pagador" || chave === "favorecido") && v.length < 4;
+    if (v && !curto) out[chave] = v;
+  }
+  for (const chave of ["valor", "valor_nominal", "encargos"]) {
+    const p = pedacoDaChave(s, chave);
+    if (!p || p === "null") continue;
+    const m = p.match(/-?[0-9]+(?:[.][0-9]+)?/);
+    if (m) out[chave] = Number(m[0]);
+  }
+  return out;
+}
