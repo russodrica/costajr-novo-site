@@ -2848,3 +2848,27 @@ em aberto, no lancamento 5f71bb24, via `PUT /payment` mandando SO a parcela nova
 preservadas — armadilha ja documentada). Script pronto, conferido que nao duplica (nao existe
 parcela de 1.900,32 na base). **Em qual fatura cai:** conta 24624 por dueDate = 02/09 (45
 parcelas, 0 abertas), 02/10 (14, quitada em 25/09), nada em 02/11 -> compra de 28/09 vai p/ 02/11.
+
+## Atualizacao 09/10/2026 (parte 4) — escritas autorizadas: seguro 3/6, conta Elysium, emprestimo
+
+A Adriana autorizou a gravacao. Tres coisas feitas na Vobi (todas registradas em /admin/logs):
+1. **Seguro da frota, parcela 3/6** (5dbba68f): R$ 1.900,32 (boleto 1.680,48 + 219,84 de
+   encargos do cartao), venc 02/11/2026, conta 24624, forma 3, em aberto ate a fatura de
+   novembro. **LICAO: `PUT /payment` VALIDA `value` contra a soma das parcelas ENVIADAS**
+   (400 API-B-00166) — corrige a nota antiga de que o value era ignorado. Para ACRESCENTAR
+   parcela num lancamento com outras ja pagas: mandar `installments:[a nova]` **e `value` = o
+   preco dela**; as pagas sao preservadas (conferido 2 -> 3, as duas intactas).
+2. **Conta Elysium criada na Vobi (id 31530)** — `POST /bank-account` FUNCIONA, mesmo sem estar
+   na spec (que nao tem nenhuma rota de conta). Mapeada em CONTAS_PRINCIPAIS e
+   CONTAS_TRANSFERENCIA (commit a2f3f3b), rx aceita "elysium" e "elisio". Agencia/conta ficaram
+   nulas — a Adriana completa na tela. Contexto: conta aberta em 10/2026; a VillelaPay encerra
+   em nov/2026 (src/lib/bancos.ts BANCO_ATE).
+3. **Receita de R$ 60,00** (b2e6601e) — emprestimo pessoal da Adriana para a empresa.
+   **Receita a mao:** `billType:"income"` + **`idCompanyCustomer`** no lugar de `idSupplier`
+   (o `criarLancamento` do bot so faz despesa). Categoria 21796619 "Emprestimos", centro de
+   custo 23 "Administrativo", cliente 235631 ADRIANA RUSSO DA COSTA, parcela
+   `idInstallmentStatus:2` + paidDate + paidValue. **ASSUMI a conta Santander** (a conta paga no
+   mesmo dia foi a do sindicato, R$ 56,82, no Santander) — trocar se nao for.
+
+**Falta so a transferencia de R$ 1.889,94** (Villela -> ?) que ela cancelou em 09/10 no passo do
+destino: agora o Elysium aparece na lista, e basta reenviar o comprovante no grupo.
