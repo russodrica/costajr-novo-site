@@ -2988,3 +2988,13 @@ estado original se a nova baixa falhar.
 **Bot corrigido (commit 068bb1d):** baixa de despesa sem banco no comprovante agora PERGUNTA
 "De qual conta o dinheiro saiu?" antes da confirmacao (cartao nao pergunta; receita ja
 perguntava; lancamento novo ja perguntava). Ensaio TEMP-e2e-conta.mts (5 cenarios).
+
+**Santander (09/10/2026, extrato de set/26 no portal):** setembro fecha com o banco depois de
+baixar a **W.I.K 1/2 R$ 24.154,49** (TED 25/09, receita e750c28d estava em aberto). Divisoes
+que NAO sao erro: PIX 1.969 = Smartfit 1.521,50 + 447,50; TED Sisbajud 6.463,45 = 6.277,32 +
+186,13; PIX Renata 6.600 = 6.000 + 600. **MAS o saldo do Santander na Vobi esta ~R$ 42,7 mil
+acima do banco desde antes de setembro** (fim abr: Vobi 46.931 x banco 13.132; fim ago: 42.745
+x 7,67; posicao 09/10 do banco = 0,00). Parte vem do movimento de 19/09/2026 (357 lancamentos
+de 2023 da conta apagada "Santander OFX" foram para o Santander — ver memoria
+vobi_contas_orfas) e do "VALOR DE CORTE" de 31/12/2025. Conciliacao mes a mes dez/25..set/26
+em andamento (workflow conciliar-santander-2026; dados em D:/temp/conc_santander_2026).
