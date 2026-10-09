@@ -3163,3 +3163,11 @@ pessoal" — ja era: EMPRESTIMO PESSOAL_ADRIANA, cat 21796619 Emprestimos, clien
 08/10. Santander na tela = 0,00 em out (banco 0,00). ELYSIUM na tela: 1.893,12 (1.889,94 + 60 - 56,82;
 confirmar com o extrato dela). Pendente 11b: a guia paga em 08/10 era de SET (27233f75 venc 08/09 em
 aberto -> cancelar) ou de OUT?
+**Pergunta 11b APLICADA (09/10/2026):** Adriana: a contribuicao assistencial de SETEMBRO vence em
+OUTUBRO e foi paga em dia em 08/10 (bf8cfef9, ELYSIUM). A parcela da serie com venc 08/09 (27233f75,
+em aberto) era a mesma obrigacao com vencimento errado -> CANCELADA. REGRA: contribuicao do mes M
+vence dia ~08 de M+1. Na serie ainda ha 2 previsoes de R$ 200 em ABERTO (venc 10/04 c32fc821 e 10/07
+9c94722c) — conferir se ja foram pagas com outro valor/data antes de cancelar.
+FIM DA RODADA: Santander 2026 = banco em todos os meses (jan-out). Proximos: cartao Nubank — juros/IOF
+de boletos pagos no credito das faturas 02/06 (~551,08) e 02/07 (~315,86) nao lancados no cartao;
+cartao Itau 3380 com -211,30 em 2026 (itens da fatura 01/02 financiada); confirmar saldo ELYSIUM.
