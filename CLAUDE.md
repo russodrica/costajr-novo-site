@@ -3048,3 +3048,10 @@ o sindicato 56,82 p/ Villela (o extrato Villela 01-09/10 nao tem esse debito). T
 centavo com a previsao em todos os meses. **Santander: tela 3.872,55 x banco 0,00 — o resto
 depende de 11 perguntas** (D:/temp/conc_santander_2026/fechamento_rev.json, campo perguntas, com
 as operacoes prontas por resposta). Com as sugestoes aceitas, todos os meses de 2026 zeram.
+**Pergunta 1 resolvida (09/10/2026):** serralheiro M8 (CHB_M8_ANDREIA PEREIRA ROCHA_SERRALHEIRO,
+735e0e2a / parcela 9c2fc480, R$ 1.750, venc 31/01) **CANCELADO** a pedido da Adriana: nao foi pago
+(a programacao do Santander de 31/01 nao foi efetivada; nada em nenhum extrato da empresa, nas
+faturas dos cartoes Nubank/Itau da empresa nem no cartao PESSOAL Itau dela) e o fornecedor nunca
+entregou. Cancelar (parcela 12 / lancamento 4) e nao excluir: tira das somas e e reversivel.
+A ver depois: Pix de R$ 300 ao Edson em 31/01 pago no cartao PESSOAL da Adriana (Itau final 5507)
+- pode ser despesa da empresa sem lancamento.
