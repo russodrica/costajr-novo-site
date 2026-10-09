@@ -1,5 +1,6 @@
 ---
 import Admin from "../../layouts/Admin.astro";
+import PlanilhaFinanceiraBotao from "../../components/PlanilhaFinanceiraBotao.astro";
 const token = Astro.cookies.get("admin_token")?.value;
 if (!token) return Astro.redirect("/admin/login");
 const anoAtual = new Date().getFullYear();
@@ -14,6 +15,8 @@ for (let a = anoAtual + 1; a >= anoAtual - 4; a--) anos.push(a);
     </select>
     <button class="btn btn-secondary btn-sm" id="btnReload"><i class="ti ti-refresh" aria-hidden="true"></i> Atualizar</button>
   </div>
+
+  <PlanilhaFinanceiraBotao />
 
   <div id="vfStatus" class="loading"><span class="spinner"></span> Consultando a Vobi…</div>
 

@@ -1,5 +1,6 @@
 ---
 import Admin from "../../layouts/Admin.astro";
+import PlanilhaFinanceiraBotao from "../../components/PlanilhaFinanceiraBotao.astro";
 import { verifyToken, type AdminClaims } from "../../lib/auth";
 import { supabaseAdmin } from "../../lib/supabase";
 
@@ -128,6 +129,8 @@ const catJson = JSON.stringify((categorias || []).map((c: any) => ({ id: c.id, n
 <Admin title="Financeiro" current="financeiro">
 
   {erros.map(e => <div class="alert alert-error">Erro ao carregar dados — {e}. Verifique se a migration 022_financeiro.sql foi aplicada no Supabase.</div>)}
+
+  <PlanilhaFinanceiraBotao />
 
   <!-- Cards do mês corrente -->
   <div class="card-grid">

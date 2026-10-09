@@ -18,6 +18,7 @@ import { detectarCategoria } from "./junia";
 import { assinarTreinoToken } from "./treinoStorage";
 import { onMessageProcessos, onCallbackProcessos, mostrarMenuAreas, onMessageComercialRoteiro, iniciarNovaProposta, ehComercial, onMessageComercial, mostrarMenuComercial, onCallbackEtapa } from "./comercialFlow";
 import { onTextoFinanceiro, onComprovanteFinanceiro, onCallbackFinanceiro, onTextoDuranteBaixa, onPrintDuranteBaixa, avisarBaixasPendentes, getGrupoFinanceiro, ativarGrupoFinanceiro, extrairValor } from "./financeiroFlow";
+import { pedirPlanilha, mensagemPedido } from "./planilhaFinanceira";
 
 const SITE_TREINO = "https://www.costajr.com.br";
 
@@ -860,6 +861,22 @@ async function onGrupoMensagem(db: any, B: Bot, msg: any) {
     if (cmd === "/pendencias" || cmd === "/pendentes") {
       const r = await avisarBaixasPendentes(db, 0);
       if (!r.n) await enviar(B, chatId, "✅ Nenhuma baixa pendente — tudo que começou aqui foi concluído.");
+      return;
+    }
+    // "/planilha": pede a planilha financeira (ANALISE_FINANCEIRA_CJR.xlsx) com
+    // os dados da Vobi de agora. Quem gera é o computador da Adriana, que manda
+    // o arquivo aqui e salva na 02_Fluxos (ver src/lib/planilhaFinanceira.ts).
+    // "/planilha forcar" passa por cima do intervalo de 1h da cota da Vobi.
+    const partesCmd = texto.trim().split(/\s+/);
+    if ((partesCmd[0] || "").toLowerCase().split("@")[0] === "/planilha") {
+      const arg = partesCmd.slice(1).join(" ").toLowerCase();
+      const r = await pedirPlanilha(db, {
+        origem: "telegram",
+        solicitante: nomeRemetente(msg.from),
+        chatId,
+        forcar: /^(forcar|forçar|nova|agora)\b/.test(arg),
+      });
+      await enviar(B, chatId, mensagemPedido(r));
       return;
     }
     // se alguém está no meio de uma baixa (ex.: digitando o novo valor)

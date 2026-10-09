@@ -1,0 +1,97 @@
+---
+// Botão "Gerar planilha financeira" (ANALISE_FINANCEIRA_CJR.xlsx) — sob demanda.
+// Quem gera é o computador da Adriana (scripts/planilha-ponte.mjs): salva na
+// pasta 02_Fluxos e manda no grupo financeiro do Telegram. Aqui só pedimos e
+// acompanhamos. Ver src/lib/planilhaFinanceira.ts.
+---
+<div class="pf-card" id="pfCard">
+  <div class="pf-topo">
+    <div>
+      <div class="pf-titulo">📊 Planilha financeira (Excel)</div>
+      <div class="pf-sub">Gera a <b>ANALISE_FINANCEIRA_CJR</b> com os dados da Vobi de agora. Fica salva na pasta <b>02_Fluxos</b> e chega no grupo financeiro do Telegram em uns 3 minutos.</div>
+    </div>
+    <button class="btn btn-primary" id="pfBtn" type="button">Gerar planilha agora</button>
+  </div>
+  <div class="pf-status" id="pfStatus">Carregando…</div>
+</div>
+
+<style is:global>
+  .pf-card{background:var(--surface,#fff);border:1px solid var(--border,#e5e7eb);border-left:4px solid #16A34A;border-radius:10px;padding:14px 16px;margin-bottom:16px}
+  .pf-topo{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .pf-titulo{font-weight:700;font-size:1rem;margin-bottom:3px}
+  .pf-sub{font-size:.85rem;color:var(--ink-light,#555);max-width:640px}
+  .pf-status{margin-top:10px;font-size:.86rem;line-height:1.5}
+  .pf-status .pf-ok{color:#15803d;font-weight:600}
+  .pf-status .pf-err{color:#b91c1c;font-weight:600}
+  .pf-status .pf-wait{color:#b45309;font-weight:600}
+  .pf-status .pf-off{color:#b91c1c}
+  .pf-status .pf-mini{color:var(--ink-light,#666);font-size:.8rem}
+</style>
+
+<script is:inline>
+  (function () {
+    var btn = document.getElementById("pfBtn");
+    var box = document.getElementById("pfStatus");
+    if (!btn || !box) return;
+    var timer = null;
+    function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+    function hora(iso) { return iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : ""; }
+    function dia(iso) { return iso ? new Date(iso).toLocaleDateString("pt-BR") : ""; }
+    function haMin(iso) { if (!iso) return null; return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000)); }
+
+    function render(d) {
+      var p = (d.pedidos || [])[0];
+      var ponte = d.ponte || {};
+      var html = "";
+      if (!p) html += "Nenhuma planilha pedida por aqui ainda.";
+      else if (p.estado === "pendente") html += '<span class="pf-wait">⏳ Na fila</span> desde ' + hora(p.pedido_em) + " — aguardando o computador pegar o pedido.";
+      else if (p.estado === "gerando") html += '<span class="pf-wait">⚙️ Gerando</span> desde ' + hora(p.iniciado_em) + " — leva uns 3 minutos.";
+      else if (p.estado === "pronto") html += '<span class="pf-ok">✅ Pronta</span> em ' + dia(p.concluido_em) + " às " + hora(p.concluido_em) + (p.arquivo ? " — <code>" + esc(p.arquivo) + "</code>" : "") + '<br><span class="pf-mini">Está na pasta 02_Fluxos e foi enviada no grupo financeiro do Telegram.</span>';
+      else if (p.estado === "erro") html += '<span class="pf-err">⚠️ Não foi gerada</span> (' + dia(p.concluido_em || p.pedido_em) + " " + hora(p.concluido_em || p.pedido_em) + "): " + esc(p.erro || "erro desconhecido");
+      var m = haMin(ponte.visto_em);
+      if (!ponte.online) html += '<br><span class="pf-off">🔌 O computador que gera a planilha não responde' + (m != null ? " há " + m + " min" : "") + ". Ligue-o e entre com seu usuário — o pedido sai sozinho.</span>";
+      else html += '<br><span class="pf-mini">🟢 Computador ligado (última resposta há ' + (m || 0) + " min).</span>";
+      box.innerHTML = html;
+      var andando = p && (p.estado === "pendente" || p.estado === "gerando");
+      btn.disabled = !!andando;
+      btn.textContent = andando ? "Gerando…" : "Gerar planilha agora";
+      clearTimeout(timer);
+      if (andando) timer = setTimeout(carregar, 10000);
+    }
+
+    function carregar() {
+      fetch("/api/admin/vobi/planilha", { headers: { accept: "application/json" } })
+        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+        .then(function (o) {
+          if (!o.r.ok) { box.innerHTML = '<span class="pf-err">' + esc(o.j.error || "Não consegui consultar.") + "</span>"; btn.disabled = true; return; }
+          render(o.j);
+        })
+        .catch(function () { box.innerHTML = '<span class="pf-err">Sem conexão com o servidor.</span>'; });
+    }
+
+    function pedir(forcar) {
+      btn.disabled = true;
+      btn.textContent = "Pedindo…";
+      fetch("/api/admin/vobi/planilha", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ forcar: !!forcar }),
+      })
+        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+        .then(function (o) {
+          if (!o.r.ok) { alert(o.j.error || "Não consegui pedir a planilha."); carregar(); return; }
+          if (o.j.tipo === "recente") {
+            var msg = "A última planilha ficou pronta há " + o.j.minutos + " min (às " + hora(o.j.pedido.concluido_em) + ").\n\n" +
+              "Cada geração usa ~550 das 1000 consultas por hora que a Vobi libera — as baixas de pagamento do Telegram usam a mesma cota. " +
+              "Uma nova sai sem conflito a partir das " + hora(o.j.libera_em) + ".\n\nGerar mesmo assim agora?";
+            if (confirm(msg)) return pedir(true);
+          }
+          carregar();
+        })
+        .catch(function () { alert("Sem conexão com o servidor."); carregar(); });
+    }
+
+    btn.addEventListener("click", function () { pedir(false); });
+    carregar();
+  })();
+</script>
