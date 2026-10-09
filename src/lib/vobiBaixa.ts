@@ -147,7 +147,7 @@ export const CONTAS_PRINCIPAIS = [
   { id: 24624, nome: "Cartão 1405 Nubank" },
   { id: 24986, nome: "BAIXA_VOBI" },
   { id: 30168, nome: "Banco Villela" },
-  { id: 31530, nome: "Elysium" },
+  { id: 31532, nome: "Elysium" },
   { id: 24607, nome: "Bradesco Empresa" },
   { id: 24608, nome: "Sicoob Empresa" },
 ];
@@ -164,9 +164,9 @@ export const CONTAS_PRINCIPAIS = [
  */
 export const CONTAS_TRANSFERENCIA: Array<{ id: number; nome: string; rx?: RegExp }> = [
   { id: 30168, nome: "Banco Villela", rx: /vil?lela/i },
-  // conta aberta em 10/2026, criada na Vobi em 09/10 (id 31530). A Adriana fala
-  // "Elisio" — o rx aceita as duas grafias para a estrela do comprovante acertar.
-  { id: 31530, nome: "Elysium", rx: /elysium|el[ií]sio/i },
+  // conta aberta em 10/2026 (ag 0001, conta 9336311), cadastrada pela Adriana na
+  // tela da Vobi. O rx aceita "elisio" porque e assim que ela fala o nome.
+  { id: 31532, nome: "Elysium", rx: /elysium|el[ií]sio/i },
   { id: 24582, nome: "Santander", rx: /santander/i },
   { id: 24596, nome: "Banco do Brasil", rx: /banco do brasil/i },
   { id: 24609, nome: "Itaú", rx: /ita(u|ú)/i },
