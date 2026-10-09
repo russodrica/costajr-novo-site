@@ -3118,3 +3118,6 @@ pagamento) devolve `assembleInstallments` = {idObra: [{id, number, price}]} com 
 fatias, inclusive as escondidas. Com esses ids, `PUT /installment/{id}` funciona normal (estorno +
 rebaixa). `GET /payment/split/{splitId}` so da os totais por parcela. A plataforma fica em
 **plataforma.vobi.com.br** (app.vobi.com.br e a pagina Bubble, abre em branco).
+**Pergunta 5 aplicada (09/10/2026):** Adriana: "cancelar a de 30/04" — REEMBOLSO_VALDEMAR R$ 176
+(b08d673e, descricao "NAO E DEVIDO_ANALISAR") estornada e CANCELADA. O Pix real saiu 12/12/2025 e ja
+esta dentro do valor de corte de 2025. Abril do Santander fecha com o banco.
