@@ -3261,3 +3261,26 @@ itens das perguntas 9/10 — ela quer zerar a BAIXA_VOBI: decidir destino).
 20/08 (405 + 8,03): transferencia 9faaba00 no Santander sem a perna do cartao (no cartao estao como despesa);
 b4c5b09f ESTORNO_PARCIAL_PORTA_QG +105 e 22c875a3 juros 08/2026 293,37 (inclui os 105) — classificacao, sem
 efeito no saldo; confirmar o ELYSIUM com o extrato dela.
+
+**10/10/2026 (parte 2) — decisoes da Adriana aplicadas:**
+- **REGRA: "tudo deveria estar em algum banco ou excluido se nao tiver ocorrido"** (BAIXA_VOBI tem de zerar).
+  Aplicado aos 5 itens das perguntas 9/10: CANCELADAS as parcelas 1, 2 e 3 das DIARIAS 01/06 A 15/06 (rateio
+  6bdcf164, 12 fatias, R$ 1.000 — a parcela 4 de R$ 1.420 paga pelo Santander em 01/07 ficou), a VENDA DE
+  EQUIPAMENTO CELULAR 350 e o STD_4774 ADITIVO LEONARDO 1.200 (notebook). Cancelar UMA fatia de rateio faz a Vobi
+  cancelar as fatias irmas do mesmo numero de parcela (o executor parou ao achar a irma ja cancelada — esperado).
+  A BAIXA_VOBI ainda tem ~51 lancamentos de 2026 (antigos de 2025 baixados em 2026, -28 mil) para a mesma regra.
+- **Caixa Pessoal ago/set:** NAO foi conciliacao nem Telegram — a Samyria lancou em 21/09 4 BRADESCO SAUDE
+  (jun-set, R$ 10.854,20) pagos pela conta do socio. Decisao: CANCELADOS. Caixa Pessoal: ago 266,28, set 331,30.
+  (2 deles tinham juros/multa gravados: o estorno nao devolve o valor-base e o executor para por seguranca —
+  para CANCELAR isso nao importa, seguir direto para o cancelar.)
+- **Pix no credito (regra dela): o VALOR e transferencia em conta; so as TAXAS sao despesa, separadas.**
+  20/08: 405,00 e 8,03 viraram transferencia cartao -> Santander (a perna do Santander, 76ac2559 de 413,03, ja
+  existia sozinha, criada pela Construtivo); taxa 0,39 separada (a de 19,87 ja estava na linha de juros de ago).
+  7 Pix no credito com taxa embutida voltaram ao valor da transacao + taxa em linha propria "IOF E JUROS - PIX NO
+  CREDITO ..." (cat 21797568, forn 666144, total R$ 439,89): FGTS 1.170,32 (+130,08) e FGTS consignado 505,09
+  (+56,14), ONR 7,62 (+0,79), devolucao de capital de giro da Adriana 1.000 (+96,33; o lancamento tem outra parcela
+  de 1.000 em aberto venc 15/10 que foi recriada igual), TJSP 1.000 (+118,84), TIM 448,73 (+29,35) e 127,82 (+8,36).
+  BOLETOS no credito (Tokio x2, Vivo, Vobi/Home Hero, Enel 16/09, sindicato) ficam com a taxa embutida (escolha dela:
+  "so nos Pix"). Como distinguir: Pix no credito passa pelo extrato da Nubank_Empresa ("Valor adicionado ... /
+  Transferencia enviada pelo Pix"); boleto nao.
+- **ELYSIUM:** confirmado correto pela Adriana.
