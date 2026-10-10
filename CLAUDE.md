@@ -3197,3 +3197,36 @@ cartao Itau 3380 com -211,30 em 2026 (itens da fatura 01/02 financiada); confirm
 - **Tecnica:** `D:/temp/busca_vt/fatura_x_cartao2.mjs <vencFatura> <pagoDe> <pagoAte>` casa as
   linhas da fatura transcrita com os itens do cartao baixados no periodo (qualquer vencimento) —
   o vencimento das linhas de juros nao e o da fatura, por isso o filtro e pela data de pagamento.
+
+## Atualizacao 09/10/2026 (parte 8) — "tava certo e bagunçou": Bradesco e Caixa Pessoal (efeito colateral)
+
+**O que houve:** a conciliacao do Santander de hoje MOVEU lancamentos de outras contas para o Santander (e da
+Santander para outras). Duas contas que ja fechavam com o extrato quebraram:
+- **Bradesco_Empresa** foi a R$ 17.694,37 (o certo e **-2.623,82**, extrato de 23/06/2026: conta parada desde
+  25/11/2025, so tarifas). Causa: 19 parcelas de jan-mar/2026 (folha jan/fev, Odontoprev, emprestimo = 20.318,19)
+  sairam do Bradesco para o Santander (estao no extrato do Santander). O SALDO de 31/12/2025 do Bradesco
+  (105.634,88, montado em 16/09) tinha sido calculado COM essas parcelas dentro. Erro de 2025 -> saldo novo
+  **85.316,69** (lanc de saldo c742635b "VALOR DE CORTE BRADESCO (31/12/2025)"; o antigo 585daa16/6b07a762
+  CANCELADO; campo initialBalance da conta tambem 85.316,69). OK da Adriana. Bradesco volta a -2.623,82 de abr em diante.
+- **Caixa Economica_Pessoal** ficou -1.524,90 (fechava com o extrato ate jul). Causa: 3 gastos pagos pela Adriana
+  no cartao PESSOAL Itau (Edson 300 em 31/01, serralheiro M4 630 em 31/01, tinta STD 594,90 em 04/02) foram para la.
+  Decisao dela ("como fizemos da outra vez? o objetivo e zerar a BAIXA_VOBI"): modelo do
+  "CAPITAL DE GIRO USADO PARA PAGAR DIARISTA QG_NELCILENE" -> viraram valor A DEVOLVER para ela: renomeados
+  "CAPITAL DE GIRO USADO PARA PAGAR <nome>", fornecedor 665703 (Adriana), categoria 21797531, centro de custo
+  original (obra), EM ABERTO no Santander, venc 15/10/2026. Caixa Pessoal voltou: jan 567,35 ... jun/jul 0,01.
+  (Ago -8.150,58 e set -10.522,90 da Caixa Pessoal NAO sao de hoje — diferenca anterior, a investigar.)
+
+**LICAO (regra daqui pra frente):** antes de mover parcela de uma conta para outra, olhar se a conta de ORIGEM
+ja fechava com o extrato — se fechava, ela tinha um erro compensando (saldo de corte ou outro lancamento) e vai
+quebrar. Depois de qualquer lote, rodar o diff por conta: `node D:/temp/busca_vt/diff_contas.mjs [conta|v]`
+(compara a copia de antes, `D:/temp/conc_santander_2026/vobi_parcelas_nov25_out26.json`, com uma copia nova
+tirada por `TEMP-copia-contas.mjs <pasta>`), e conferir o saldo de tela de CADA conta tocada.
+
+**API Vobi — saldo inicial/corte e vencimento (medido hoje):**
+- O saldo inicial vive em DOIS lugares: campo `initialBalance` da conta E um lancamento `billType: balance` cuja
+  parcela e o que a tela soma. `PUT /bank-account/{id}` com initialBalance novo responde 200 mas NAO atualiza a
+  parcela. `PUT /installment` com `price` na parcela de saldo da "Data invalida" (mesmo com dueDate, mesmo estornada).
+  O que funciona (igual Santander e cartao Itau): POST de um lancamento balance novo (paymentTypes [{value:7}] +
+  idPaymentType 7) e cancelar o antigo (estorno + status 12). Script modelo: TEMP-ajuste-corte-bradesco.mjs.
+- `PUT /installment` com `dueDate` novo responde 200 e IGNORA a data. Vencimento so muda por `PUT /payment` com
+  `installments` SEM id (a parcela e recriada com id novo) — o caminho do rolarParaCartao.
