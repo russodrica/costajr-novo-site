@@ -91,3 +91,35 @@
   manda para a CENPROT; as consultas proprias pedem numero e data do protocolo ou livro e folha, e CAPTCHA.
   O credor dos titulos nao identificados so sai pela certidao (paga) ou pedindo ao cartorio.
   9o Tabeliao: WhatsApp (11) 3116-9090 / (11) 92610-9578, e-mail nonoprotesto@nonoprotestosp.com.br.
+
+
+## Intimacoes de protesto da PGFN (lote de 05/10/2026, prazo limite 09/10/2026)
+
+Fonte: PDFs PGFN_PROTESTOS2 e PROTESTOS_PGFN (19 intimacoes). Apresentante: Procuradoria-Geral da Fazenda Nacional. Todas sao CDAs das inscricoes de 13/11/2025 (Regularize, relatorio de 23/06/2026).
+
+| Cartorio | Protocolo | Inscricao (CDA) | Natureza | Valor a protestar | Custas | Total |
+|---|---|---|---|---:|---:|---:|
+| 1o SP | 1158-06/10/2026-71 | 81 4 25 048546-02 | DIV.ATIVA-CONTRIBUICAO SES | 2.785,92 | 264,85 | 3.050,77 |
+| 1o SP | 1154-06/10/2026-42 | 80 2 25 110948-54 | DIV.ATIVA-IRPJ FONTE | 3.702,13 | 324,10 | 4.026,23 |
+| 1o SP | 1151-06/10/2026-0 | 81 4 25 048538-00 | DIV.ATIVA-CONTRIBUICAO SEN | 1.772,17 | 176,32 | 1.948,49 |
+| 3o SP | 1191 (dig. 2) | 81 4 25 048551-70 | DIV ATIVA CONTRIB SAL EDUC | 4.659,23 | 442,57 | 5.101,80 |
+| 3o SP | 1194 (dig. 5) | 81 4 25 048554-12 | DIV ATIVA CONTRIBUICAO SES | 2.795,49 | 264,85 | 3.060,34 |
+| 4o SP | 1176 | 81 4 25 048534-79 | DIV.ATIVA-CONTR. EMPREGADO | 31.384,39 | 2.292,41 | 33.676,80 |
+| 4o SP | 1179 | 81 4 25 048555-01 | DIV.ATIVA-CONTRIBUICAO SEB | 1.118,18 | 116,42 | 1.234,60 |
+| 5o SP | 1202 (dig. 2) | 80 6 25 163283-05 | DIV ATIVA-COFINS | 19.781,19 | 1.539,46 | 21.320,65 |
+| 5o SP | 1203 (dig. 3) | 80 2 25 110944-20 | DIV ATIVA-IRPJ FONTE | 4.101,44 | 383,34 | 4.484,78 |
+| 5o SP | 1204 (dig. 4) | 81 4 25 048545-21 | INTIMACAO (art. 14 Lei 9.492/97) - Tipo  | 1.857,27 | 176,32 | 2.033,59 |
+| 5o SP | 1205 (dig. 5) | 81 4 25 048543-60 | INTIMACAO (art. 14 Lei 9.492/97) - Tipo  | 4.643,25 | 442,57 | 5.085,82 |
+| 5o SP | 1206 (dig. 6) | 80 2 25 110947-73 | INTIMACAO (art. 14 Lei 9.492/97) - Tipo  | 25.767,24 | 1.539,46 | 27.306,70 |
+| 5o SP | 1208 (digito 0) | 81 4 25 048550-99 | DIV ATIVA-RI AMB AP ESPEC (impresso no c | 2.795,49 | 264,85 | 3.060,34 |
+| 6o SP | 1194 | 81 4 25 048542-89 | DIV.ATIVA-RI.AMB.AP.ESPEC | 2.785,92 | 264,85 | 3.050,77 |
+| 7o SP | 1201 | 81 4 25 048535-50 | DIV.ATIVA-RI.AMB.AP.ESPEC | 2.658,28 | 235,56 | 2.893,84 |
+| 7o SP | 1203 | 81 4 25 048549-55 | DIV.ATIVA-CONTR. EMPREGADO | 38.884,68 | 2.292,41 | 41.177,09 |
+| 9o SP | 1197 | 81 4 25 048553-31 | DIV.ATIVA-CONTRIBUICAO SEN | 1.863,67 | 176,32 | 2.039,99 |
+| 9o SP | 1194 | 81 4 25 048548-74 | DIV.ATIVA-CONTR. SEGURADOS | 17.096,45 | 1.420,92 | 18.517,37 |
+| 9o SP | 1196 | 81 4 25 048547-93 | DIV.ATIVA-CONTRIBUICAO SEB | 1.114,30 | 116,42 | 1.230,72 |
+| **TOTAL (19)** | | | | **171.566,69** | **12.734,00** | **184.300,69** |
+
+Das 37 inscricoes de 13/11/2025 (R$ 428.184,70 em 06/2026), 18 ainda nao vieram neste lote (R$ 261.997,76 em 06/2026).
+
+**Titulo de R$ 1.180.548,55 do 9o Tabeliao:** muito provavelmente a inscricao do SIMPLES NACIONAL 80 4 24 292594-83 (25/03/2024, R$ 1.172.381,43 em 23/06/2026, ativa a ser ajuizada). A outra do Simples, 80 4 24 554219-50 (R$ 829.980,96), ja esta ajuizada. Confirmar com o 9o Tabeliao.

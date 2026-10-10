@@ -3363,3 +3363,10 @@ mascara "07.132.942/0001-72" (digitar embaralha) -> CONSULTAR -> botao +Info de 
 tabela; esperar ~6s por cartorio e reler (apos ~5 modais o site devolve a tabela antiga: refazer a consulta e
 seguir do ponto); pagina 2 so pelo link de dentro da tabela. NAO clicar em botoes da tabela por JS em lote: um clique
 foi para "Meus Pedidos" de cancelamento. A pagina /Resultados?page=2 direta vem sem scripts (+Info nao abre).
+- **PGFN (10/10/2026):** a Adriana mandou 19 INTIMACOES de protesto da PGFN (apresentadas 05/10/2026, prazo limite
+  09/10/2026; 1o, 3o, 4o, 5o, 6o, 7o e 9o SP): R$ 171.566,69 + custas R$ 12.734,00 = R$ 184.300,69. Sao 19 das 37
+  inscricoes de 13/11/2025 (Regularize_Relatorio_Divida_Ativa_23062026-1237.pdf em Financeiro/01_Documentos/
+  14_Auditoria Bancaria/...); as outras 18 (R$ 262 mil em 06/2026) ainda nao vieram. O titulo de R$ 1.180.548,55 do 9o
+  e muito provavelmente a inscricao do Simples 80 4 24 292594-83 (R$ 1.172.381,43 em 06/2026). Dados extraidos em
+  D:/temp/pgfn_prot (intimacoes.json, intimacoes_x_regularize.json); PDFs eram imagem -> render.ps1 (WinRT) + workflow
+  de leitura. O Read de PDF nao funciona aqui (sem pdftoppm).
