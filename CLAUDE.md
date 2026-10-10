@@ -3346,3 +3346,5 @@ Escritas BLOQUEADAS pelo classificador do modo automatico mesmo com OK dela -> a
 - **ANDRA (mapa de debitos ARC Advogados 22/09/2026, 13 titulos, principal 14.223,76):** os 13 estao em aberto na
   Vobi com valor exato (codigo do titulo = E + serie 2 dig + NF 6 dig + parcela, ex. E181716753 = NF 171675 p3). Fora
   da lista so a985fea2 (NF167200 p3, BAIXA_VOBI) -> cancelada (passo 1b do atalho) e 01cde9ba (ja nos 11 provados).
+- **Jedival 340, Leonardo Amaral 500 e Loggi 35,87:** a Adriana decidiu que nao sao devidos -> cancelar (passo 5b).
+  Da limpeza da BAIXA_VOBI so falta a J ALBERTO (ela vai mandar as pendencias) e a Mascarenhas NF7273 x NF4274.
