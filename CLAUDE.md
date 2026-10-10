@@ -3316,3 +3316,30 @@ BAIXA_VOBI (Beatriz 3.200, Danilo 250 x2, Leonardo 250); 2 fantasmas de 2025 no 
 LICAO: na planilha/lista da Vobi "Pago" nao diz ONDE — a BAIXA_VOBI aparece como "Pago"; sempre mostrar a
 conta ao discutir se algo foi pago. E a tela (cashFlow por categoria) e o jeito de provar que um pagamento
 NAO esta na Vobi, inclusive em fatia de rateio.
+
+**10/10/2026 (parte 3) — BAIXA_VOBI: "so cancela com certeza" (regra da Adriana) + verificacao adversarial**
+Eu tinha montado 21 cancelamentos com o motivo "nao achei pagamento". A Adriana barrou: "BAIXA VOBI SO PODEMOS
+CANCELAR SE DE FATO TIVER CERTEZA QUE SAO DESPESAS INDEVIDAS". Verificacao item a item (workflow: prova + revisor
+adversario, 14 agentes) mostrou que eu teria errado em varios:
+- **F JOGO:** os boletos/e-mails do escritorio (financeiro@fjogo.com.br) provam que o Pix de 3.770,74 de 05/12/2025
+  pagou NOV + DEZ + nota de debito 1271 (diligencias 126,74) — e NAO "out + nov com juros" como eu tinha suposto
+  (eu ia cancelar dezembro, que foi pago). Outubro nao foi localizado em nenhum extrato -> cancelado (regra dela).
+  Boleto 1534 (24/08/2026) lista em aberto abr-jul/2026; o Pix de 1.945,70 de 24/08 (sem juros) pagou AGOSTO, nao
+  abril (abril volta a aberto). Padrao: lista de abertos do credor manda.
+- **Rogerio:** OS assinadas da Via Varejo provam 2 visitas (11/12 e 15/12) — mas a Adriana disse que so ha R$ 1.800
+  pendente (parcela 8689cea6, ZTE maio/2026) -> as 2 de 250 canceladas.
+- **Leroy (cancelados de manha):** 1 errado — 40af9e26 (541,69) foi paga em 09/12/2025 (Santander 552,91); volta.
+  E no mesmo dia o Santander pagou 2.239,98 + 413,88 (p1 do pedido 33441660) que nao estavam na Vobi -> lancados.
+- **Mascarenhas NF7273 (559,80, BAIXA_VOBI)** = provavelmente a NF4274 (559,90 em 3 boletos, em aberto): NAO reabrir
+  (dobraria a divida); pendente de confirmacao.
+- **Contabilidade 2.725 x4** (fornecedor 710213 criado por ela em 25/11/2025 copiando a Consiste): "e tudo
+  contabilidade" -> canceladas (inclusive 0a84dd91, "paga" no Santander 16/12/2025 sem saida no extrato).
+- **Pendentes dela:** J Alberto boleto 2 (633,46, protestado; devolucao NF-e 041 de 198) e ANDRA NF167200 (sobram
+  111,69 depois do abatimento de 1.551,84) — ela vai mandar as pendencias; Jedival 340, Leonardo Amaral 500, Loggi
+  35,87; Leroy Elaine 3.552,60 ("pago no cartao por link", cartao nao achado); Odontoprev Diretoria possivelmente
+  paga 2x (393,36 em 30/12/2025 e 401,57 em 04/03/2026 — credito a recuperar?).
+- **Portal:** o slot "Caixa out/2025" de doc_extratos_bancarios tem uma PLANILHA DE INSUMOS de obra, nao o extrato;
+  BB out e nov/2025 nao existem no portal.
+Escritas BLOQUEADAS pelo classificador do modo automatico mesmo com OK dela -> atalho TEMP-CANCELAR-BAIXA-VOBI.cmd
+(10 passos; scripts e logs em D:/temp/baixavobi_q21; corte Santander 868.487,29 -> 872.939,80 e Mercado Pago
+8.788,66 -> 9.135,33, ambos com guardas). Verificacoes: D:/temp/baixavobi_q21/verif_22.json e verif_ja_cancelados.json.
