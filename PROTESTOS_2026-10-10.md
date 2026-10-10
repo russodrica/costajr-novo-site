@@ -1,86 +1,90 @@
 # Protestos da Costa Junior - consulta CENPROT-SP de 10/10/2026 (protocolo 0154859016)
 
-58 titulos em 11 cartorios. A consulta gratuita mostra o valor de cada titulo, nao o credor: o credor foi identificado cruzando o valor com a Vobi.
+58 titulos ja protestados em 11 cartorios. O credor foi identificado pelo valor (Vobi), pela area logada da CENPROT, pelas intimacoes escaneadas e pela planilha "Protestos_CJR_20.02.26".
 
-| Credor | Titulos | Valor protestado | Custo p/ cancelar | Cartorios |
-|---|---:|---:|---:|---|
-| ANDRA (material eletrico) | 13 | 14.223,76 | 2.360,55 | 1o SP, 2o SP, 3o SP, 4o SP, 5o SP, 8o SP, 10o SP |
-| SANTIL (material eletrico) | 10 | 6.294,80 | 1.143,15 | 1o SP, 2o SP, 3o SP, 4o SP, 5o SP, 6o SP, 9o SP, 10o SP |
-| MASCARENHAS (tintas) | 9 | 2.623,90 | 672,00 | 1o SP, 3o SP, 4o SP, 5o SP, 6o SP, 7o SP |
-| J ALBERTO | 3 | 2.534,08 | 439,14 | 3o SP, 6o SP, 10o SP |
-| JAFE (material) | 3 | 4.337,57 | 616,87 | 2o SP, 9o SP |
-| ATUAL COMERCIO DE TINTAS (CNPJ 42.194.537/0005-03, NF 358, obra ZTE Kansas) | 2 | 1.136,00 | 233,52 | 2o SP |
-| CONSERTO MONTANA (veiculo) | 3 | 1.834,98 | 350,28 | 2o SP, 5o SP, 9o SP |
-| SAINT-GOBAIN - JA PAGO, so falta dar baixa no cartorio | 2 | 443,76 | 144,87 | 2o SP, 3o SP |
-| SAINT-GOBAIN (titulo 0035471502, emissao 26/08/2025) - JA PAGO, so falta dar baixa no cartorio | 1 | 576,46 | 116,76 | 8o SP |
-| EMPRESTIMO (parcela de 13.637,89 da serie em aberto na conta Emprestimos) | 1 | 13.637,89 | 1.806,27 | 1o SP |
-| PREST_PJ (provavel) | 1 | 4.183,34 | 561,06 | 7o SP |
-| ROTA EXATA rastreador (provavel) | 1 | 79,00 | 50,36 | 4o SP |
-| NAO IDENTIFICADOS na Vobi | 9 | 1.202.482,40 | 6.381,63 | Jundiai, 2o SP, 3o SP, 4o SP, 6o SP, 7o SP, 9o SP |
-| **TOTAL** | **58** | **1.254.387,94** | **14.876,46** | |
+| Credor | Titulos | Valor protestado | Custo p/ cancelar | Situacao | Cartorios |
+|---|---:|---:|---:|---|---|
+| ANDRA S A ELECTRIC SOLUTIONS | 13 | 14.223,76 | 2.360,55 | em aberto na Vobi | 1o SP, 2o SP, 3o SP, 4o SP, 5o SP, 8o SP, 10o SP |
+| SANTIL COMERCIAL ELETRICA | 10 | 6.294,80 | 1.143,15 | em aberto na Vobi | 1o SP, 2o SP, 3o SP, 4o SP, 5o SP, 6o SP, 9o SP, 10o SP |
+| BRASFOR COMERCIAL | 5 | 9.753,35 | 1.384,52 | negociacao 10x 1.055,69 (2 pagas); saldo 8.445,52 em aberto na Vobi | 2o SP, 3o SP, 6o SP, 9o SP |
+| COMERCIO DE TINTAS MASCARENHAS | 9 | 2.623,90 | 672,00 | em aberto na Vobi | 1o SP, 3o SP, 4o SP, 5o SP, 6o SP, 7o SP |
+| REGIONAL TELHAS (titulo 42623103) | 1 | 10.656,09 | 1.316,93 | em aberto na Vobi: STD S. MIGUEL NF426231 (10.655,86) | 7o SP |
+| JAFE MATERIAIS E ACABAMENTOS | 3 | 4.337,57 | 616,87 | em aberto na Vobi | 2o SP, 9o SP |
+| J ALBERTO SOARES MACIEL | 3 | 2.534,08 | 439,14 | em aberto na Vobi | 3o SP, 6o SP, 10o SP |
+| CONSERTO MONTANA (provavel, pelo valor) | 3 | 1.834,98 | 350,28 | em aberto na Vobi | 2o SP, 5o SP, 9o SP |
+| ATUAL COMERCIO DE TINTAS E MAT. (NF 358) | 2 | 1.136,00 | 233,52 | em aberto na Vobi (ZTE Kansas) | 2o SP |
+| SAINT-GOBAIN DISTRIBUICAO | 3 | 1.020,22 | 261,63 | JA PAGO - credor autorizou o cancelamento | 2o SP, 3o SP, 8o SP |
+| Parcela da serie EMPRESTIMO (provavel, pelo valor) | 1 | 13.637,89 | 1.806,27 | conta Emprestimos | 1o SP |
+| PREST_PJ (provavel, pelo valor) | 1 | 4.183,34 | 561,06 | em aberto na Vobi | 7o SP |
+| ROTA EXATA rastreador (provavel, pelo valor) | 1 | 79,00 | 50,36 |  | 4o SP |
+| PGFN - SIMPLES NACIONAL 80 4 24 292594-83 (provavel) | 1 | 1.180.548,55 | 3.424,64 | R$ 1.172.381,43 no Regularize em 06/2026 | 9o SP |
+| NAO IDENTIFICADOS | 2 | 1.524,41 | 255,54 |  | Jundiai, 4o SP |
+| **TOTAL** | **58** | **1.254.387,94** | **14.876,46** | | |
 
 ## Titulo a titulo
 
-| Cartorio | Valor | Custo cancelar | Credor provavel |
+| Cartorio | Valor | Custo cancelar | Credor |
 |---|---:|---:|---|
-| 1o SP | 906,75 | 160,67 | ANDRA (material eletrico) |
-| 1o SP | 634,92 | 116,76 | ANDRA (material eletrico) |
-| 2o SP | 1.235,30 | 205,62 | ANDRA (material eletrico) |
-| 3o SP | 1.923,23 | 294,49 | ANDRA (material eletrico) |
-| 3o SP | 1.235,29 | 205,62 | ANDRA (material eletrico) |
-| 4o SP | 1.460,66 | 205,62 | ANDRA (material eletrico) |
-| 5o SP | 1.235,30 | 205,62 | ANDRA (material eletrico) |
-| 8o SP | 1.460,67 | 205,62 | ANDRA (material eletrico) |
-| 8o SP | 201,00 | 71,85 | ANDRA (material eletrico) |
-| 10o SP | 928,93 | 160,67 | ANDRA (material eletrico) |
-| 10o SP | 443,56 | 116,76 | ANDRA (material eletrico) |
-| 10o SP | 1.923,23 | 294,49 | ANDRA (material eletrico) |
-| 10o SP | 634,92 | 116,76 | ANDRA (material eletrico) |
-| 1o SP | 1.011,50 | 160,67 | SANTIL (material eletrico) |
-| 2o SP | 309,48 | 71,85 | SANTIL (material eletrico) |
-| 3o SP | 1.134,40 | 205,62 | SANTIL (material eletrico) |
-| 3o SP | 606,58 | 116,76 | SANTIL (material eletrico) |
-| 4o SP | 311,33 | 71,85 | SANTIL (material eletrico) |
-| 5o SP | 730,60 | 116,76 | SANTIL (material eletrico) |
-| 6o SP | 168,80 | 50,36 | SANTIL (material eletrico) |
-| 9o SP | 1.011,50 | 160,67 | SANTIL (material eletrico) |
-| 10o SP | 280,00 | 71,85 | SANTIL (material eletrico) |
-| 10o SP | 730,61 | 116,76 | SANTIL (material eletrico) |
-| 1o SP | 186,00 | 50,36 | MASCARENHAS (tintas) |
-| 3o SP | 416,00 | 116,76 | MASCARENHAS (tintas) |
-| 3o SP | 337,00 | 71,85 | MASCARENHAS (tintas) |
-| 4o SP | 279,00 | 71,85 | MASCARENHAS (tintas) |
-| 5o SP | 187,90 | 50,36 | MASCARENHAS (tintas) |
-| 5o SP | 337,00 | 71,85 | MASCARENHAS (tintas) |
-| 5o SP | 186,00 | 50,36 | MASCARENHAS (tintas) |
-| 6o SP | 279,00 | 71,85 | MASCARENHAS (tintas) |
-| 7o SP | 416,00 | 116,76 | MASCARENHAS (tintas) |
-| 3o SP | 633,46 | 116,76 | J ALBERTO |
-| 6o SP | 1.267,16 | 205,62 | J ALBERTO |
-| 10o SP | 633,46 | 116,76 | J ALBERTO |
-| 2o SP | 3.304,33 | 428,26 | JAFE (material) |
-| 2o SP | 337,14 | 71,85 | JAFE (material) |
-| 9o SP | 696,10 | 116,76 | JAFE (material) |
-| 2o SP | 568,00 | 116,76 | ATUAL COMERCIO DE TINTAS (CNPJ 42.194.537/0005-03, NF 358, obra ZTE Kansas) |
-| 2o SP | 568,00 | 116,76 | ATUAL COMERCIO DE TINTAS (CNPJ 42.194.537/0005-03, NF 358, obra ZTE Kansas) |
-| 2o SP | 611,66 | 116,76 | CONSERTO MONTANA (veiculo) |
-| 5o SP | 611,66 | 116,76 | CONSERTO MONTANA (veiculo) |
-| 9o SP | 611,66 | 116,76 | CONSERTO MONTANA (veiculo) |
-| 2o SP | 254,76 | 71,85 | SAINT-GOBAIN - JA PAGO, so falta dar baixa no cartorio (autorizacao de cancelamento ja disponivel) |
-| 3o SP | 189,00 | 73,02 | SAINT-GOBAIN - JA PAGO, so falta dar baixa no cartorio (autorizacao de cancelamento ja disponivel) |
-| 8o SP | 576,46 | 116,76 | SAINT-GOBAIN (titulo 0035471502, emissao 26/08/2025) - JA PAGO, so falta dar baixa no cartorio (autorizacao de cancelamento ja disponivel) |
-| 1o SP | 13.637,89 | 1.806,27 | EMPRESTIMO (parcela de 13.637,89 da serie em aberto na conta Emprestimos) |
-| 7o SP | 4.183,34 | 561,06 | PREST_PJ (provavel) |
-| 4o SP | 79,00 | 50,36 | ROTA EXATA rastreador (provavel) |
-| Jundiai | 124,41 | 49,92 | NAO IDENTIFICADOS na Vobi |
-| 2o SP | 743,48 | 116,76 | NAO IDENTIFICADOS na Vobi |
-| 3o SP | 2.415,56 | 339,39 | NAO IDENTIFICADOS na Vobi |
-| 4o SP | 1.400,00 | 205,62 | NAO IDENTIFICADOS na Vobi |
-| 6o SP | 1.953,33 | 294,49 | NAO IDENTIFICADOS na Vobi |
-| 6o SP | 2.086,15 | 294,49 | NAO IDENTIFICADOS na Vobi |
-| 7o SP | 10.656,09 | 1.316,93 | NAO IDENTIFICADOS na Vobi |
-| 9o SP | 2.554,83 | 339,39 | NAO IDENTIFICADOS na Vobi |
-| 9o SP | 1.180.548,55 | 3.424,64 | NAO IDENTIFICADOS na Vobi |
+| 1o SP | 906,75 | 160,67 | ANDRA S A ELECTRIC SOLUTIONS |
+| 1o SP | 634,92 | 116,76 | ANDRA S A ELECTRIC SOLUTIONS |
+| 2o SP | 1.235,30 | 205,62 | ANDRA S A ELECTRIC SOLUTIONS |
+| 3o SP | 1.923,23 | 294,49 | ANDRA S A ELECTRIC SOLUTIONS |
+| 3o SP | 1.235,29 | 205,62 | ANDRA S A ELECTRIC SOLUTIONS |
+| 4o SP | 1.460,66 | 205,62 | ANDRA S A ELECTRIC SOLUTIONS |
+| 5o SP | 1.235,30 | 205,62 | ANDRA S A ELECTRIC SOLUTIONS |
+| 8o SP | 1.460,67 | 205,62 | ANDRA S A ELECTRIC SOLUTIONS |
+| 8o SP | 201,00 | 71,85 | ANDRA S A ELECTRIC SOLUTIONS |
+| 10o SP | 928,93 | 160,67 | ANDRA S A ELECTRIC SOLUTIONS |
+| 10o SP | 443,56 | 116,76 | ANDRA S A ELECTRIC SOLUTIONS |
+| 10o SP | 1.923,23 | 294,49 | ANDRA S A ELECTRIC SOLUTIONS |
+| 10o SP | 634,92 | 116,76 | ANDRA S A ELECTRIC SOLUTIONS |
+| 1o SP | 1.011,50 | 160,67 | SANTIL COMERCIAL ELETRICA |
+| 2o SP | 309,48 | 71,85 | SANTIL COMERCIAL ELETRICA |
+| 3o SP | 1.134,40 | 205,62 | SANTIL COMERCIAL ELETRICA |
+| 3o SP | 606,58 | 116,76 | SANTIL COMERCIAL ELETRICA |
+| 4o SP | 311,33 | 71,85 | SANTIL COMERCIAL ELETRICA |
+| 5o SP | 730,60 | 116,76 | SANTIL COMERCIAL ELETRICA |
+| 6o SP | 168,80 | 50,36 | SANTIL COMERCIAL ELETRICA |
+| 9o SP | 1.011,50 | 160,67 | SANTIL COMERCIAL ELETRICA |
+| 10o SP | 280,00 | 71,85 | SANTIL COMERCIAL ELETRICA |
+| 10o SP | 730,61 | 116,76 | SANTIL COMERCIAL ELETRICA |
+| 2o SP | 743,48 | 116,76 | BRASFOR COMERCIAL |
+| 3o SP | 2.415,56 | 339,39 | BRASFOR COMERCIAL |
+| 6o SP | 1.953,33 | 294,49 | BRASFOR COMERCIAL |
+| 6o SP | 2.086,15 | 294,49 | BRASFOR COMERCIAL |
+| 9o SP | 2.554,83 | 339,39 | BRASFOR COMERCIAL |
+| 1o SP | 186,00 | 50,36 | COMERCIO DE TINTAS MASCARENHAS |
+| 3o SP | 416,00 | 116,76 | COMERCIO DE TINTAS MASCARENHAS |
+| 3o SP | 337,00 | 71,85 | COMERCIO DE TINTAS MASCARENHAS |
+| 4o SP | 279,00 | 71,85 | COMERCIO DE TINTAS MASCARENHAS |
+| 5o SP | 187,90 | 50,36 | COMERCIO DE TINTAS MASCARENHAS |
+| 5o SP | 337,00 | 71,85 | COMERCIO DE TINTAS MASCARENHAS |
+| 5o SP | 186,00 | 50,36 | COMERCIO DE TINTAS MASCARENHAS |
+| 6o SP | 279,00 | 71,85 | COMERCIO DE TINTAS MASCARENHAS |
+| 7o SP | 416,00 | 116,76 | COMERCIO DE TINTAS MASCARENHAS |
+| 7o SP | 10.656,09 | 1.316,93 | REGIONAL TELHAS (titulo 42623103) |
+| 2o SP | 3.304,33 | 428,26 | JAFE MATERIAIS E ACABAMENTOS |
+| 2o SP | 337,14 | 71,85 | JAFE MATERIAIS E ACABAMENTOS |
+| 9o SP | 696,10 | 116,76 | JAFE MATERIAIS E ACABAMENTOS |
+| 3o SP | 633,46 | 116,76 | J ALBERTO SOARES MACIEL |
+| 6o SP | 1.267,16 | 205,62 | J ALBERTO SOARES MACIEL |
+| 10o SP | 633,46 | 116,76 | J ALBERTO SOARES MACIEL |
+| 2o SP | 611,66 | 116,76 | CONSERTO MONTANA (provavel, pelo valor) |
+| 5o SP | 611,66 | 116,76 | CONSERTO MONTANA (provavel, pelo valor) |
+| 9o SP | 611,66 | 116,76 | CONSERTO MONTANA (provavel, pelo valor) |
+| 2o SP | 568,00 | 116,76 | ATUAL COMERCIO DE TINTAS E MAT. (NF 358) |
+| 2o SP | 568,00 | 116,76 | ATUAL COMERCIO DE TINTAS E MAT. (NF 358) |
+| 2o SP | 254,76 | 71,85 | SAINT-GOBAIN DISTRIBUICAO |
+| 3o SP | 189,00 | 73,02 | SAINT-GOBAIN DISTRIBUICAO |
+| 8o SP | 576,46 | 116,76 | SAINT-GOBAIN DISTRIBUICAO |
+| 1o SP | 13.637,89 | 1.806,27 | Parcela da serie EMPRESTIMO (provavel, pelo valor) |
+| 7o SP | 4.183,34 | 561,06 | PREST_PJ (provavel, pelo valor) |
+| 4o SP | 79,00 | 50,36 | ROTA EXATA rastreador (provavel, pelo valor) |
+| 9o SP | 1.180.548,55 | 3.424,64 | PGFN - SIMPLES NACIONAL 80 4 24 292594-83 (provavel) |
+| Jundiai | 124,41 | 49,92 | NAO IDENTIFICADOS |
+| 4o SP | 1.400,00 | 205,62 | NAO IDENTIFICADOS |
+
+Planilha de 20/02/2026 tambem listava TEMFER (1.225,00 no 6o; 425,00 no 9o e no 10o): ja pagos e com baixa de protesto paga em 24/04/2026 (nao aparecem mais na CENPROT).
 
 ## Complemento (10/10/2026, area logada da CENPROT e sites dos cartorios)
 
