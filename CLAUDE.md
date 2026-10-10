@@ -3348,3 +3348,18 @@ Escritas BLOQUEADAS pelo classificador do modo automatico mesmo com OK dela -> a
   da lista so a985fea2 (NF167200 p3, BAIXA_VOBI) -> cancelada (passo 1b do atalho) e 01cde9ba (ja nos 11 provados).
 - **Jedival 340, Leonardo Amaral 500 e Loggi 35,87:** a Adriana decidiu que nao sao devidos -> cancelar (passo 5b).
   Da limpeza da BAIXA_VOBI so falta a J ALBERTO (ela vai mandar as pendencias) e a Mascarenhas NF7273 x NF4274.
+
+**10/10/2026 (parte 4) — Protestos (CENPROT-SP, consulta gratuita, protocolo 0154859016)**
+58 titulos em 11 cartorios (Jundiai + 1o a 10o SP), R$ 1.254.387,94 (R$ 1.180.548,55 num unico titulo do 9o
+Tabeliao, credor nao identificado). A consulta gratuita da o VALOR de cada titulo, nao o credor: identificar pelo
+valor na Vobi. Lista em PROTESTOS_2026-10-10.md (dados em D:/temp/protestos). Batem 1:1 com a Vobi em aberto:
+ANDRA 13, Santil 10, Mascarenhas 9, J Alberto 3, JAFE 3, ZTE Kansas 2, Conserto Montana 3. Pagos com autorizacao de
+cancelamento: Saint-Gobain 254,76 e 189,00 + um de 576,46. Nao identificados: 124,41 / 743,48 / 1.400,00 / 2.415,56 /
+1.953,33 / 2.086,15 / 10.656,09 / 2.554,83 / 1.180.548,55; 13.637,89 = parcela da serie EMPRESTIMO (forn 665980).
+Consequencias na Vobi (passo 5c do atalho): Mascarenhas NF7273 (nao protestada) e J Alberto boleto 2 da BAIXA_VOBI
+cancelados; ANDRA tem um 2o cadastro de fornecedor (664212) com 4 titulos repetidos -> copias canceladas.
+COMO LER O SITE (Claude in Chrome, sessao da empresa logada): NovaConsulta -> select CNPJ + form_input do CNPJ COM
+mascara "07.132.942/0001-72" (digitar embaralha) -> CONSULTAR -> botao +Info de cada cartorio abre modal com a
+tabela; esperar ~6s por cartorio e reler (apos ~5 modais o site devolve a tabela antiga: refazer a consulta e
+seguir do ponto); pagina 2 so pelo link de dentro da tabela. NAO clicar em botoes da tabela por JS em lote: um clique
+foi para "Meus Pedidos" de cancelamento. A pagina /Resultados?page=2 direta vem sem scripts (+Info nao abre).
