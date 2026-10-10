@@ -3230,3 +3230,34 @@ tirada por `TEMP-copia-contas.mjs <pasta>`), e conferir o saldo de tela de CADA 
   idPaymentType 7) e cancelar o antigo (estorno + status 12). Script modelo: TEMP-ajuste-corte-bradesco.mjs.
 - `PUT /installment` com `dueDate` novo responde 200 e IGNORA a data. Vencimento so muda por `PUT /payment` com
   `installments` SEM id (a parcela e recriada com id novo) — o caminho do rolarParaCartao.
+
+## Atualizacao 10/10/2026 — Cartao Nubank 1405 e Nubank_Empresa fechados (plano revisado por 4 agentes)
+
+**Nubank_Empresa (24611) = extrato em TODOS os meses:** dez/25 85,61 | jan-mar 5,00 | abr-jun 4,75 | jul-ago 0 |
+set 2.078,02 | out 0. O saldo de 31/12/2025 (416,88, de 16/09) escondia 2 lancamentos repetidos e 2 que faltavam.
+Feito (OK da Adriana): CANCELADOS CHB_DENILSON_LEROY 2.403,02 (06/02; a propria anotacao dizia "ja foi pago a
+vista 3738,71" = Leroy da fatura Nubank 02/03) e EMPRESTIMO_CAPITAL DE GIRO 3.136,51 (21/05; repetia o Pix no
+credito que ja esta no cartao); LANCADOS o pagamento da fatura 02/01 (80,61 em 05/01, par saida NE / entrada
+cartao "NUBANK EMPRESA - CARTAO 1405_NUBANK_PAGAMENTO FATURA 02/01/2026") e o Pix de 0,25 de 30/04 para a conta
+Mercado Pago da empresa (despesa, decisao dela). Saldo de 31/12/2025 -> **-5.041,79** — a API RECUSA saldo
+negativo (POST balance: "informe um valor maior que zero"); a Adriana ajustou pela TELA (Contas e Extratos ->
+lapis -> Saldo inicial) e a parcela de saldo acompanhou na hora.
+
+**Cartao 1405_Nubank (24624):** fim de mes so com centavos do proprio Nubank (jan-abr -0,01, jul +0,12, ago +0,10,
+set +0,15 = resumo da fatura x soma das linhas). Feito: juros 06/2026 (257,08 + 58,78) de 30/06 -> 06/07 (data em
+que a fatura 02/07 foi paga); SEGURO TOKIO 2/6 1.875,46 de 24/08 -> 25/09 (e linha da fatura 02/10; o vencimento
+ficou 02/09 porque mudar exigiria regravar as 3 parcelas do lancamento 5f71bb24); fatura 02/10: lancados
+Registrobr 40, IOF Anthropic 40,10, Uber 26,96, 99* 24,20, Anthropic corrigido 1.144,00 -> 1.145,77, e o estorno
+do Canva 87,75 como ENTRADA no cartao em 25/09 (cliente novo 352161 CANVA BRASIL, cat 22881525 Estornos e
+Devolucoes — escolha dela, como o ESTORNO_PARCIAL_PORTA_QG); fatura 02/01: lancado EBN*CANVA04739 23,50 que nao
+existia em conta nenhuma (eu tinha suposto que estava em dez/25 — os revisores derrubaram).
+**Pix no credito 21/05 (3.000) e 22/05 (500)** reclassificados de "emprestimo da Adriana" para TRANSFERENCIA
+cartao -> Santander (cabecalho dos 4 lancamentos; parcelas intactas). Regra dela (CAIXA ALTA): juros e IOF da
+transferencia pelo cartao SEMPRE em despesa separada (ja estavam: 124,08 + 12,44 e 20,98).
+**Comparacao final por conta** (copia de 16:14 de 09/10 x 10/10): Bradesco, Nubank_Empresa e Caixa Pessoal com
+variacao liquida ZERO; Santander = banco; ELYSIUM +3,18 e Cartao 5100 +70 combinados; BAIXA_VOBI -1.122,72 (5
+itens das perguntas 9/10 — ela quer zerar a BAIXA_VOBI: decidir destino).
+**Pendentes conhecidos:** Caixa Pessoal ago/set (-8.150,58 / -10.522,90, anterior a 09/10); Pix no credito de
+20/08 (405 + 8,03): transferencia 9faaba00 no Santander sem a perna do cartao (no cartao estao como despesa);
+b4c5b09f ESTORNO_PARCIAL_PORTA_QG +105 e 22c875a3 juros 08/2026 293,37 (inclui os 105) — classificacao, sem
+efeito no saldo; confirmar o ELYSIUM com o extrato dela.
