@@ -12,7 +12,7 @@
 | ZTE KANSAS - reforma NF358 | 2 | 1.136,00 | 233,52 | 2o SP |
 | CONSERTO MONTANA (veiculo) | 3 | 1.834,98 | 350,28 | 2o SP, 5o SP, 9o SP |
 | SAINT-GOBAIN - JA PAGO, so falta dar baixa no cartorio | 2 | 443,76 | 144,87 | 2o SP, 3o SP |
-| PAGO, credor ja autorizou o cancelamento (credor nao identificado) | 1 | 576,46 | 116,76 | 8o SP |
+| SAINT-GOBAIN (titulo 0035471502, emissao 26/08/2025) - JA PAGO, so falta dar baixa no cartorio | 1 | 576,46 | 116,76 | 8o SP |
 | EMPRESTIMO (parcela de 13.637,89 da serie em aberto na conta Emprestimos) | 1 | 13.637,89 | 1.806,27 | 1o SP |
 | PREST_PJ (provavel) | 1 | 4.183,34 | 561,06 | 7o SP |
 | ROTA EXATA rastreador (provavel) | 1 | 79,00 | 50,36 | 4o SP |
@@ -68,7 +68,7 @@
 | 9o SP | 611,66 | 116,76 | CONSERTO MONTANA (veiculo) |
 | 2o SP | 254,76 | 71,85 | SAINT-GOBAIN - JA PAGO, so falta dar baixa no cartorio (autorizacao de cancelamento ja disponivel) |
 | 3o SP | 189,00 | 73,02 | SAINT-GOBAIN - JA PAGO, so falta dar baixa no cartorio (autorizacao de cancelamento ja disponivel) |
-| 8o SP | 576,46 | 116,76 | PAGO, credor ja autorizou o cancelamento (credor nao identificado) (autorizacao de cancelamento ja disponivel) |
+| 8o SP | 576,46 | 116,76 | SAINT-GOBAIN (titulo 0035471502, emissao 26/08/2025) - JA PAGO, so falta dar baixa no cartorio (autorizacao de cancelamento ja disponivel) |
 | 1o SP | 13.637,89 | 1.806,27 | EMPRESTIMO (parcela de 13.637,89 da serie em aberto na conta Emprestimos) |
 | 7o SP | 4.183,34 | 561,06 | PREST_PJ (provavel) |
 | 4o SP | 79,00 | 50,36 | ROTA EXATA rastreador (provavel) |
@@ -81,3 +81,13 @@
 | 7o SP | 10.656,09 | 1.316,93 | NAO IDENTIFICADOS na Vobi |
 | 9o SP | 2.554,83 | 339,39 | NAO IDENTIFICADOS na Vobi |
 | 9o SP | 1.180.548,55 | 3.424,64 | NAO IDENTIFICADOS na Vobi |
+
+## Complemento (10/10/2026, area logada da CENPROT e sites dos cartorios)
+
+- **Cancelamento com anuencia (devedor):** os 3 titulos com autorizacao sao todos da **SAINT-GOBAIN DISTRIBUICAO BRASIL (CNPJ 03.840.986/0001-04)**:
+  0035471502 (8o, emissao 26/08/2025, custas 116,76), 0130982101 (2o, 22/09/2025, 71,85) e 0130979701 (3o, 22/09/2025, 73,02).
+- **Renegociacao e quitacao:** nenhum titulo disponivel para quitar online.
+- **Sites dos cartorios** (9protestosp.com.br, 2protestosp.com.br, protestojundiai.com.br; sistema Rift): a consulta por CNPJ
+  manda para a CENPROT; as consultas proprias pedem numero e data do protocolo ou livro e folha, e CAPTCHA.
+  O credor dos titulos nao identificados so sai pela certidao (paga) ou pedindo ao cartorio.
+  9o Tabeliao: WhatsApp (11) 3116-9090 / (11) 92610-9578, e-mail nonoprotesto@nonoprotestosp.com.br.
