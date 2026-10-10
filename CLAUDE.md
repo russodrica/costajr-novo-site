@@ -3343,3 +3343,6 @@ adversario, 14 agentes) mostrou que eu teria errado em varios:
 Escritas BLOQUEADAS pelo classificador do modo automatico mesmo com OK dela -> atalho TEMP-CANCELAR-BAIXA-VOBI.cmd
 (10 passos; scripts e logs em D:/temp/baixavobi_q21; corte Santander 868.487,29 -> 872.939,80 e Mercado Pago
 8.788,66 -> 9.135,33, ambos com guardas). Verificacoes: D:/temp/baixavobi_q21/verif_22.json e verif_ja_cancelados.json.
+- **ANDRA (mapa de debitos ARC Advogados 22/09/2026, 13 titulos, principal 14.223,76):** os 13 estao em aberto na
+  Vobi com valor exato (codigo do titulo = E + serie 2 dig + NF 6 dig + parcela, ex. E181716753 = NF 171675 p3). Fora
+  da lista so a985fea2 (NF167200 p3, BAIXA_VOBI) -> cancelada (passo 1b do atalho) e 01cde9ba (ja nos 11 provados).
