@@ -3284,3 +3284,35 @@ efeito no saldo; confirmar o ELYSIUM com o extrato dela.
   "so nos Pix"). Como distinguir: Pix no credito passa pelo extrato da Nubank_Empresa ("Valor adicionado ... /
   Transferencia enviada pelo Pix"); boleto nao.
 - **ELYSIUM:** confirmado correto pela Adriana.
+
+## Atualizacao 10/10/2026 — Leroy e Santil conferidas titulo a titulo; limpeza da BAIXA_VOBI
+
+**Leroy Merlin x cobranca da Hold Brasil** (memoria de calculo de 09/08/2026 + planilha "Debitos - COSTA
+JUNIOR", 173 titulos, R$ 95.820,58). Aplicado com OK da Adriana: 5 parcelas canceladas (a Leroy nao cobra),
+6 corrigidas (valor/data; cancela a errada e cria a certa com a mesma obra/categoria), 2 pedidos lancados
+em aberto (33877987 CYR_MB29 e 33521467 CYR_MB4). Resultado: os 154 titulos de obra conhecida batem um a
+um, em aberto, R$ 88.187,42 (R$ 0,05 de arredondamento antigo em 3 NFs). **Faltam 3 pedidos sem obra
+identificada (R$ 7.633,11): 33441660, 33925931 (loja L0034) e 34173225 (loja L0005)** — a Adriana precisa
+dizer a obra (ou lancar em Administrativo). Scripts TEMP-leroy-acerto.mjs / D:/temp/busca_vt/leroy_pos.mjs.
+LICAO: diferenca de centavos ENTRE parcelas da mesma NF nao e erro — conferir o TOTAL da NF antes de
+"corrigir" centavo de parcela (eu desequilibrei 2 NFs e desfiz).
+
+**Santil** (print do contas a receber deles, 19/03/2026, 10 titulos, R$ 6.294,80, com assessoria de
+cobranca): bate exato com as 10 parcelas em aberto no Santander; so o vencimento da NF 178126 foi
+corrigido (27/10 -> 25/10/2025). Nenhum pagamento a Santil nos extratos de 2026.
+
+**BAIXA_VOBI — triagem dos 27 restantes (workflow, extrato a extrato):** 21 nunca pagos ou em dobro ->
+cancelar; Mascarenhas NF7273 559,80 (protestada) -> volta a divida em aberto no Santander; F JOGO out+nov
+(1.822 cada) foram pagas JUNTAS no Pix de R$ 3.770,74 de 05/12/2025 no Santander (2 parcelas em 1 Pix,
+confirmado pela Adriana) -> mover p/ Santander com juros; J Alberto NF10653 -> cartao Mercado Pago
+29/09/2025 por 346,67 (regra dela: "cartao fica onde o cartao paga"); gasolina Edson -> R$ 200 no
+Santander 17/11/2025. Cortes de 31/12/2025 acertados junto (Santander 868.487,29 -> 872.458,03; Mercado
+Pago 8.788,66 -> 9.135,33). **O classificador do modo automatico BLOQUEOU essas gravacoes** mesmo com o OK
+dela -> ficou tudo no atalho TEMP-CANCELAR-BAIXA-VOBI.cmd (scripts em D:/temp/baixavobi_q21, cada passo
+confere antes e rele depois; os cortes so trocam se os lancamentos ja estiverem no lugar).
+PENDENTE: F JOGO dez/2025 (1.822, sem pagamento — em aberto ou cancelar?); 4 receitas em aberto na
+BAIXA_VOBI (Beatriz 3.200, Danilo 250 x2, Leonardo 250); 2 fantasmas de 2025 no Santander (0a84dd91
+"CONTABILIDADE" 2.725 sem saida no extrato; 39017dc9/e2f19cf3 = 1 Pix de 250 ao Leonardo lancado 2x).
+LICAO: na planilha/lista da Vobi "Pago" nao diz ONDE — a BAIXA_VOBI aparece como "Pago"; sempre mostrar a
+conta ao discutir se algo foi pago. E a tela (cashFlow por categoria) e o jeito de provar que um pagamento
+NAO esta na Vobi, inclusive em fatia de rateio.
