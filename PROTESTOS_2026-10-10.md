@@ -1,6 +1,6 @@
 # Protestos da Costa Junior - consulta CENPROT-SP de 10/10/2026 (protocolo 0154859016)
 
-58 titulos ja protestados em 11 cartorios. O credor foi identificado pelo valor (Vobi), pela area logada da CENPROT, pelas intimacoes escaneadas e pela planilha "Protestos_CJR_20.02.26".
+58 titulos ja protestados em 11 cartorios. O credor foi identificado pelo valor (Vobi), pela area logada da CENPROT, pelas intimacoes escaneadas, pela planilha "Protestos_CJR_20.02.26" e pelo PDF "Protestos_Diversos" (22 intimacoes).
 
 | Credor | Titulos | Valor protestado | Custo p/ cancelar | Situacao | Cartorios |
 |---|---:|---:|---:|---|---|
@@ -15,10 +15,11 @@
 | ATUAL COMERCIO DE TINTAS E MAT. (NF 358) | 2 | 1.136,00 | 233,52 | em aberto na Vobi (ZTE Kansas) | 2o SP |
 | SAINT-GOBAIN DISTRIBUICAO | 3 | 1.020,22 | 261,63 | JA PAGO - credor autorizou o cancelamento | 2o SP, 3o SP, 8o SP |
 | Parcela da serie EMPRESTIMO (provavel, pelo valor) | 1 | 13.637,89 | 1.806,27 | conta Emprestimos | 1o SP |
-| PREST_PJ (provavel, pelo valor) | 1 | 4.183,34 | 561,06 | em aberto na Vobi | 7o SP |
-| ROTA EXATA rastreador (provavel, pelo valor) | 1 | 79,00 | 50,36 |  | 4o SP |
+| LEMAB OBRAS LTDA (CNPJ 47.784.131/0001-70) | 1 | 4.183,34 | 561,06 | em aberto na Vobi: PREST_PJ b71b2df0, venc 10/05/2026 | 7o SP |
+| ROTAEXATA SOFTWARE (CNPJ 13.661.448/0001-06) | 1 | 79,00 | 50,36 | em aberto na Vobi: mensalidade venc 31/08/2026 | 4o SP |
+| PREFEITURA DE JUNDIAI - ISS retido 2025 (CDA 538.2025.9922.138) | 1 | 124,41 | 49,92 | Vobi diz PAGO no cartao Itau em 25/04/2025 (106,53) - a conferir | Jundiai |
 | PGFN - SIMPLES NACIONAL 80 4 24 292594-83 (provavel) | 1 | 1.180.548,55 | 3.424,64 | R$ 1.172.381,43 no Regularize em 06/2026 | 9o SP |
-| NAO IDENTIFICADOS | 2 | 1.524,41 | 255,54 |  | Jundiai, 4o SP |
+| NAO IDENTIFICADO | 1 | 1.400,00 | 205,62 |  | 4o SP |
 | **TOTAL** | **58** | **1.254.387,94** | **14.876,46** | | |
 
 ## Titulo a titulo
@@ -78,11 +79,11 @@
 | 3o SP | 189,00 | 73,02 | SAINT-GOBAIN DISTRIBUICAO |
 | 8o SP | 576,46 | 116,76 | SAINT-GOBAIN DISTRIBUICAO |
 | 1o SP | 13.637,89 | 1.806,27 | Parcela da serie EMPRESTIMO (provavel, pelo valor) |
-| 7o SP | 4.183,34 | 561,06 | PREST_PJ (provavel, pelo valor) |
-| 4o SP | 79,00 | 50,36 | ROTA EXATA rastreador (provavel, pelo valor) |
+| 7o SP | 4.183,34 | 561,06 | LEMAB OBRAS LTDA (DSI 00000091) |
+| 4o SP | 79,00 | 50,36 | ROTAEXATA SOFTWARE (DSI 159085-3) |
 | 9o SP | 1.180.548,55 | 3.424,64 | PGFN - SIMPLES NACIONAL 80 4 24 292594-83 (provavel) |
-| Jundiai | 124,41 | 49,92 | NAO IDENTIFICADOS |
-| 4o SP | 1.400,00 | 205,62 | NAO IDENTIFICADOS |
+| Jundiai | 124,41 | 49,92 | PREFEITURA DE JUNDIAI (CDA 538.2025.9922.138) |
+| 4o SP | 1.400,00 | 205,62 | NAO IDENTIFICADO |
 
 Planilha de 20/02/2026 tambem listava TEMFER (1.225,00 no 6o; 425,00 no 9o e no 10o): ja pagos e com baixa de protesto paga em 24/04/2026 (nao aparecem mais na CENPROT).
 
@@ -144,3 +145,37 @@ Todos ja constam na consulta da CENPROT (protesto lavrado) e estao em aberto na 
 
 **Nao e protesto:** multa de transito NIC (nao indicacao de condutor) da Prefeitura de Ferraz de Vasconcelos, auto
 A99-0071869, Montana FAU7E64 (infracao de 02/09/2025), R$ 312,37 ate 04/05/2026 / R$ 390,46 depois. Nao esta na Vobi.
+
+## PDF "Protestos_Diversos" (22 intimacoes, lidas em 10/10/2026)
+
+**Credores novos identificados:**
+
+| Cartorio | Protocolo | Credor | Titulo | Vencimento | Valor | Na Vobi |
+|---|---|---|---|---|---:|---|
+| Jundiai | 1996 (07/05/2026) | PREFEITURA MUNICIPAL DE JUNDIAI (CNPJ 45.780.103/0001-50) | CDA 538.2025.9922.138 - ISS responsabilidade tributaria 2025 | 25/03/2025 | 106,53 (124,41 atualizado) | ISS TOMADOS_JUNDIAI_CJR d00ded6e: PAGO no cartao Itau 3380 em 25/04/2025 |
+| 7o SP | 0883 (20/05/2026) | LEMAB OBRAS LTDA (CNPJ 47.784.131/0001-70) | DSI 00000091 | 12/05/2026 | 4.183,34 | PREST_PJ b71b2df0 em aberto (venc 10/05/2026) |
+| 4o SP | 0761 (02/10/2026) | ROTAEXATA SOFTWARE LTDA (CNPJ 13.661.448/0001-06) | DSI 159085-3 | 31/08/2026 | 79,00 | RASTREADOR_ROTA EXATA 7efd604d em aberto |
+
+**ISS de Jundiai:** a Vobi registra o pagamento de 106,53 no cartao Itau em 25/04/2025 (lancado em 08/10/2025), mas a
+Prefeitura protestou a CDA em maio/2026. Ou o pagamento nao aconteceu ou quitou outra guia. Conferir a fatura do
+cartao Itau de maio/2025: se o debito nao estiver la, a parcela da Vobi esta errada.
+
+**Ja resolvidos:** TEMFER DMI 500191 (10o SP, 425,00) - CYRELA MATERIAL MARIO pago em 17/04/2026 e baixa de protesto
+paga em 24/04/2026; nao aparece mais na CENPROT.
+
+**No CPF da Adriana, nao no CNPJ** (por isso nao aparecem na consulta da empresa):
+
+| Cartorio | Protocolo | Credor | Titulo | Vencimento | Valor | Custas |
+|---|---|---|---|---|---:|---:|
+| 8o SP | 2026.02.05.0438-8 | ENEL ELETROPAULO | DMI 2-017164064 | 29/12/2025 | 457,24 | 83,90 |
+| 9o SP | 0532 (05/03/2026) | ENEL ELETROPAULO (CNPJ 61.695.227/0001-93) | DMI 1-025979612 | 27/01/2026 | 507,83 | 83,90 |
+
+Endereco das contas: R Ipiranga 456 AP 81. Nenhuma das duas esta na Vobi. Para saber se foram protestadas, consultar o CPF na CENPROT.
+
+**As outras 17 paginas** sao intimacoes de titulos ja identificados (ANDRA 11, Santil 2, JAFE 1, J Alberto 1, Atual Tintas 2).
+Todas batem com valor e cartorio da consulta da CENPROT.
+
+**Continua sem credor:** 1.400,00 no 4o SP (nao esta no PDF, nem na planilha de 20/02/2026; nenhuma conta de 1.400 em
+aberto na Vobi). So a certidao do 4o Tabeliao ou um contato com o cartorio identificam.
+Seguem "provaveis, pelo valor": 13.637,89 (1o, serie EMPRESTIMO), 611,66 x3 (2o/5o/9o, Conserto Montana) e
+1.180.548,55 (9o, PGFN Simples Nacional).
