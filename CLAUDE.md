@@ -3370,3 +3370,22 @@ foi para "Meus Pedidos" de cancelamento. A pagina /Resultados?page=2 direta vem 
   e muito provavelmente a inscricao do Simples 80 4 24 292594-83 (R$ 1.172.381,43 em 06/2026). Dados extraidos em
   D:/temp/pgfn_prot (intimacoes.json, intimacoes_x_regularize.json); PDFs eram imagem -> render.ps1 (WinRT) + workflow
   de leitura. O Read de PDF nao funciona aqui (sem pdftoppm).
+
+**12/10/2026 — atalho da BAIXA_VOBI rodou 2x + planilha de protestos atualizada**
+- O TEMP-CANCELAR-BAIXA-VOBI.cmd foi aberto 2x ao mesmo tempo (21:09 de 10/10). As 33 parcelas tocadas ficaram
+  certas, mas os lancamentos novos e o saldo de corte do Mercado Pago sairam em DOBRO -> 4 copias canceladas
+  (q31_duplicados). A Leroy 40af9e26 nao voltou: a Vobi NAO reabre parcela cancelada (PUT 200, status segue 12).
+  Falta rodar TEMP-CORRIGIR-LEROY-E-SALDO.cmd (lanca a Leroy 552,91 em 09/12/2025 + troca o corte do Santander
+  868.487,29 -> 872.939,80; com trava contra clique duplo). Hoje o Santander de 31/12/2025 mostra 77.616,11 na
+  tela; depois do atalho volta a 81.515,71 = extrato. Mercado Pago ja fecha 2025 em 0,00. BAIXA_VOBI sem nenhum
+  movimento pago em 2026.
+- Planilha de protestos titulo a titulo: `Financeiro/01_Documentos/15_Protestos/Protestos_CJR_12_10_26.xlsx`
+  (abas PROTESTOS, POR CREDOR, POR TABELIAO, LEIA-ME). 58 da CENPROT (R$ 1.254.387,94 + custas 14.876,46),
+  19 intimacoes PGFN (R$ 171.566,69 + 12.734,00) e 5 fora da CENPROT (TEMFER pagos, ENEL no CPF). Credor
+  confirmado em 50 dos 58; provaveis: 3 Mascarenhas, 3 Nasci Car/Conserto Montana (611,66), PGFN Simples
+  (1.180.548,55); nao identificado: 1.400,00 no 4o (hipotese Arpini & Araujo). Via Capital (13.637,89) CONFIRMADA
+  pela `01. Controle_Protestos.xlsx` (protocolo 3030, 14/10/2025). DATA DO PROTESTO nao consta em nenhum
+  documento (a coluna "data do protesto" das planilhas antigas e a data do PROTOCOLO): so a certidao de cada
+  cartorio da. Gerador: D:/temp/protestos_planilha (juntar.mjs -> montar_excel.mjs -> gravar_excel.ps1 via COM).
+  LICAO COM do Excel aqui: NumberFormat usa codigos LOCAIS pt-BR ('"R$" #.##0,00', 'dd/mm/aaaa', 'Geral'), mas
+  .Formula e em ingles (SUM/IF/COUNT); FreezePanes exige ScreenUpdating = true.
