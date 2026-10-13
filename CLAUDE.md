@@ -3389,3 +3389,10 @@ foi para "Meus Pedidos" de cancelamento. A pagina /Resultados?page=2 direta vem 
   cartorio da. Gerador: D:/temp/protestos_planilha (juntar.mjs -> montar_excel.mjs -> gravar_excel.ps1 via COM).
   LICAO COM do Excel aqui: NumberFormat usa codigos LOCAIS pt-BR ('"R$" #.##0,00', 'dd/mm/aaaa', 'Geral'), mas
   .Formula e em ingles (SUM/IF/COUNT); FreezePanes exige ScreenUpdating = true.
+- **12/10/2026 22:18 — TEMP-CORRIGIR-LEROY-E-SALDO.cmd RODADO (1 vez so, trava funcionou):** Leroy NF 1613774 p1
+  lancada (pag 84a7bf90, parcela 1d1f73d5, R$ 552,91 paga no Santander em 09/12/2025) e corte do Santander
+  31/12/2025 trocado para 872.939,80 (parcela 4ae0cd22; o de 868.487,29 cancelado). Conferido na tela (cashFlow):
+  Santander 31/12/2025 = 81.515,71 = extrato; 2026 = banco (jan 38,04 · abr 13.132,16 · ago 7,67 · set/out 0,00);
+  Mercado Pago 0,00 em 31/12/2025 e em 2026; BAIXA_VOBI sem nenhum movimento pago em 2026. Limpeza da BAIXA_VOBI
+  de 10/10/2026 ENCERRADA. Cosmetico: a parcela cancelada 40af9e26 ficou com data/conta de pagamento gravadas
+  (a Vobi nao limpou), mas esta cancelada e fora de todas as somas.
