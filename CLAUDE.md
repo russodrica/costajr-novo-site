@@ -3396,3 +3396,15 @@ foi para "Meus Pedidos" de cancelamento. A pagina /Resultados?page=2 direta vem 
   Mercado Pago 0,00 em 31/12/2025 e em 2026; BAIXA_VOBI sem nenhum movimento pago em 2026. Limpeza da BAIXA_VOBI
   de 10/10/2026 ENCERRADA. Cosmetico: a parcela cancelada 40af9e26 ficou com data/conta de pagamento gravadas
   (a Vobi nao limpou), mas esta cancelada e fora de todas as somas.
+- **13/10/2026 00:05 — e-mail aos 11 tabelionatos pedindo a relacao de titulos protestados (OK da Adriana):**
+  enviados do Outlook dela (adriana@costajr.com.br), assunto "Relação de títulos protestados - COSTA JUNIOR
+  ENGENHARIA - CNPJ 07.132.942/0001-72"; 11 em Itens Enviados, Caixa de Saida vazia. Enderecos (conferidos no site
+  oficial de cada um + revisor independente): 1o tabeliao@primeiroprotestosp.com.br | 2o
+  2protestosp@segundoprotestosp.com.br | 3o 3protesto@3protesto-sp.com.br | 4o cartorio@quartoprotestosp.com.br
+  (cancelamento@ ja atendeu a empresa em 03/2025) | 5o dpo@5protesto.com.br (UNICO publicado; e o canal de LGPD;
+  tel (11) 3118-5050) | 6o certidao@sextoprotestosp.com.br (auto-resposta: ate 1 dia util) | 7o
+  adm@setimoprotestosp.com.br | 8o contato@8tpsp.com.br | 9o nonoprotesto@nonoprotestosp.com.br | 10o
+  contato@10tpsp.com.br (cancelamento@ ja atendeu em 10/2025) | Jundiai contato@protestojundiai.com.br. Todos os
+  sites dizem que o detalhe sai por CERTIDAO (paga, protestosp.com.br; na capital 1 certidao cobre os 10). Central
+  da capital: contato.scpt@protestocapitalsp.com.br. Scripts: D:/temp/protestos_planilha/outlook_rascunhos.ps1
+  (rascunho -> enviar por EntryID) e emails_cartorios.json (corpo e entry_id de cada um).
