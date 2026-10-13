@@ -3408,3 +3408,6 @@ foi para "Meus Pedidos" de cancelamento. A pagina /Resultados?page=2 direta vem 
   sites dizem que o detalhe sai por CERTIDAO (paga, protestosp.com.br; na capital 1 certidao cobre os 10). Central
   da capital: contato.scpt@protestocapitalsp.com.br. Scripts: D:/temp/protestos_planilha/outlook_rascunhos.ps1
   (rascunho -> enviar por EntryID) e emails_cartorios.json (corpo e entry_id de cada um).
+  DECISAO DA ADRIANA (13/10/2026): NAO pedir certidao paga — a informacao dos titulos protestados ao devedor o
+  cartorio da de graca (obrigacao). Se algum cartorio responder exigindo certidao, insistir na informacao gratuita
+  (ou ligar) em vez de pagar.
