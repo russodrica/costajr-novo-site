@@ -37,6 +37,10 @@ async function getJson(path: string): Promise<any> {
   if (!r.ok) throw new Error(`Vobi GET ${path}: HTTP ${r.status}`);
   return r.json();
 }
+/** GET autenticado na Vobi (reaproveita o token em cache). Erro "HTTP 429" = cota da hora esgotada. */
+export async function vobiGetJson(path: string): Promise<any> {
+  return getJson(path);
+}
 /** Pagina um endpoint de listagem (limit 500). Cap de segurança em 80 páginas. */
 async function getAll(endpoint: string, extra = ""): Promise<any[]> {
   const out: any[] = [];

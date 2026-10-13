@@ -196,6 +196,10 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
     { key: "vobi-financeiro", label: "Financeiro Vobi", icon: "🔗", href: "/admin/vobi-financeiro" },
     { key: "fin-conciliacao", label: "Conciliação (OFX)", icon: "🔄", href: "/admin/fin-conciliacao" },
   ] },
+  // Diretoria: estratégia de dívidas e plano de receita. Só admin (mostra salários, dívidas e avais).
+  { id: "diretoria", label: "Diretoria", itens: [
+    { key: "situacao-financeira", label: "Situação Financeira", icon: "🧭", href: "/admin/situacao-financeira" },
+  ] },
   { id: "comercial", label: "Comercial", itens: [
     { key: "comercial", label: "Comercial (CRM)", icon: "📊", href: "/admin/comercial" },
     { key: "vobi-comercial", label: "Oportunidades Vobi", icon: "🔗", href: "/admin/vobi-comercial" },
@@ -265,6 +269,7 @@ export const GRUPO_ROLES: Record<string, string[]> = {
   operacoes:  ["admin", "operacional", "manutencao_operacao", "manutencao_administrativo"],
   rh:         ["admin", "rh"],
   financeiro: ["admin", "financeiro"],
+  diretoria:  ["admin"], // Situação Financeira (dívidas, salários, avais) — liberar outro perfil só via /admin/permissoes
   comercial:  ["admin", "comercial"],
   negocios:   ["admin", "comercial"], // Novos Negócios (terrenos, empreendimentos, busca de imóveis)
   vendas:     ["admin"], // negócio pessoal da Adriana (TrazPraCa/ML/Shopee) — só admin por padrão;

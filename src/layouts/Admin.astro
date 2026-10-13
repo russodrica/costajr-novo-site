@@ -130,6 +130,13 @@ const grupos: NavGroup[] = [
     ],
   },
   {
+    // Diretoria: só admin (GRUPO_ROLES.diretoria em src/lib/permissoes.ts)
+    id: "diretoria", label: "Diretoria", cor: "#B91C1C",
+    items: [
+      { href: "/admin/situacao-financeira", label: "Situação Financeira", ic: "chart-pie", key: "situacao-financeira" },
+    ],
+  },
+  {
     id: "comercial", label: "Comercial", cor: "#7C3AED",
     items: [
       { href: "/admin/comercial", label: "Comercial (CRM)", ic: "businessplan", key: "comercial" },
