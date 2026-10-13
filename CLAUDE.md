@@ -3411,3 +3411,22 @@ foi para "Meus Pedidos" de cancelamento. A pagina /Resultados?page=2 direta vem 
   DECISAO DA ADRIANA (13/10/2026): NAO pedir certidao paga — a informacao dos titulos protestados ao devedor o
   cartorio da de graca (obrigacao). Se algum cartorio responder exigindo certidao, insistir na informacao gratuita
   (ou ligar) em vez de pagar.
+
+## Atualizacao 13/10/2026 — Aba "Situacao Financeira" (Diretoria, so admin) NO AR
+
+`/admin/situacao-financeira` (menu grupo vermelho **Diretoria**; GRUPO_ROLES.diretoria = so admin —
+a Renata tem perfil financeiro e NAO pode ver dividas/salarios). Abas: Visao geral · Impostos · Bancos ·
+Fornecedores · Despesas fixas · Plano de acao · Protestos. Commit 6d2ff40 (publicado 13/10, push meu
+com os 33 commits que estavam parados localmente — a Adriana "nao localizou no portal" porque nada
+tinha subido).
+- **Migration 118 RODADA** pela Management API (token do dashboard no Chrome, status 201): tabelas
+  `fin_sf_dividas` (117), `fin_sf_protestos` (82), `fin_sf_acoes` (44 ideias; 6 descartadas pela revisao),
+  `fin_sf_painel` (10 chaves jsonb). IDs text, RLS ligado, service-role only.
+- **Seed FORA do repo** (dados sensiveis): `D:/temp/situacao_fin/seed.mjs` (dry por padrao; `--gravar`
+  faz upsert PRESERVANDO o que foi editado na tela; `--sobrescrever` forca). Rodar de dentro da pasta
+  do projeto.
+- Parte ao vivo (fornecedores em aberto/vencidos + fluxo mensal) vem da Vobi por
+  `/api/admin/situacao-financeira/aovivo` (cache `sf:aovivo:v2` em vobi_cache, 1h; copia velha se 429).
+  Edicoes (status/responsavel/prazo das ideias, resposta do cartorio nos protestos, situacao/valor das
+  dividas) por PATCH em `acoes|protestos|dividas/[id]`, com auditoria.
+- Pendente: preencher `resposta_cartorio` conforme os 11 tabelionatos responderem o e-mail de 13/10.
