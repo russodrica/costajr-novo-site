@@ -3,11 +3,16 @@
 // Lê os dados do banco pelo island JSON #sfData e busca a parte ao vivo da Vobi em
 // GET /api/admin/situacao-financeira/aovivo (cache de 1 h no servidor; ?forcar=1 refaz).
 // Gravações (sempre com content-type JSON: CSRF do Astro):
-//   PATCH .../dividas/{id}   proposta de quitação, quitada, valor pago…
+//   PATCH .../dividas/{id}   proposta de quitação, quitada, valor pago, a vencer, cobrança, "não vai acontecer",
+//                            fornecedor na Vobi… ("✓ Quitei" numa linha com a vencer paga SÓ o vencido: a linha
+//                            segue aberta com o comprometido e valor_pago guarda o que já foi pago do vencido)
 //   PATCH .../acoes/{id}     situação e "vendi R$" do plano v2
 //   PATCH .../protestos/{id} resposta do cartório, cancelado
 //   POST  .../reaver, PATCH/DELETE .../reaver/{id}
+//   POST  .../sincronizar    depois do "Atualizar da Vobi": vencido / a vencer das dívidas ligadas a um fornecedor
 // Todos os números do Painel são calculados AQUI a partir das linhas: mudam na hora a cada edição.
+// Regra (Adriana, 14/10/2026): DÍVIDA = só o VENCIDO; o a vencer é despesa COMPROMETIDA, fora da dívida e da meta.
+// Um "a vencer" cuja data gravada já passou vira vencido na tela (estimado pela parcela) até ser atualizado.
 // Só `import type` do lib: nada do servidor (supabase) entra no pacote do navegador.
 import type { SfDivida, SfProtesto, SfAcao, SfReaver, DadosAoVivo, FluxoMes } from "../lib/situacaoFinanceira";
 
@@ -25,6 +30,7 @@ type Ilha = {
   statusAcao: string[]; rotuloStatus: Record<string, string>;
   tiposReaver: string[]; rotuloTipoReaver: Record<string, string>;
   chances: string[]; rotuloChance: Record<string, string>;
+  cobrancas: string[]; rotuloCobranca: Record<string, string>; situacoesComCobranca: string[];
   podeEditar: boolean;
 };
 type Tipo = "imposto" | "banco" | "fornecedor" | "outro";
@@ -151,6 +157,9 @@ function lerIlha(): Ilha {
     rotuloTipoReaver: { processo: "Processos", credito_tributario: "Créditos tributários", consorcio: "Consórcios", outro: "Outros" },
     chances: ["alta", "media", "baixa", "nao_sei"],
     rotuloChance: { alta: "Alta", media: "Média", baixa: "Baixa", nao_sei: "Não sei" },
+    cobrancas: ["com_cobranca", "sem_cobranca"],
+    rotuloCobranca: { com_cobranca: "Com cobrança", sem_cobranca: "Sem cobrança" },
+    situacoesComCobranca: ["protestada", "intimada", "execucao", "ajuizada", "citada", "inscrita"],
     podeEditar: false,
   };
   try {
@@ -166,6 +175,9 @@ function lerIlha(): Ilha {
       rotuloTipoReaver: { ...vazio.rotuloTipoReaver, ...(b.rotuloTipoReaver || {}) },
       chances: arr<string>(b.chances).length ? arr<string>(b.chances) : vazio.chances,
       rotuloChance: { ...vazio.rotuloChance, ...(b.rotuloChance || {}) },
+      cobrancas: arr<string>(b.cobrancas).length ? arr<string>(b.cobrancas) : vazio.cobrancas,
+      rotuloCobranca: { ...vazio.rotuloCobranca, ...(b.rotuloCobranca || {}) },
+      situacoesComCobranca: arr<string>(b.situacoesComCobranca).length ? arr<string>(b.situacoesComCobranca) : vazio.situacoesComCobranca,
       podeEditar: b.podeEditar === true,
     };
   } catch {
@@ -209,10 +221,102 @@ function motivoFora(d: SfDivida): string | null {
   return null;
 }
 function contaNaDivida(d: SfDivida): boolean { return d.ativo !== false && !motivoFora(d); }
-/** Devido = valor de hoje (piso). Sem valor de hoje conta 0 e ganha o selo "sem valor" — contar pelo teto
- *  inflava os bancos acima do teto do próprio levantamento (R$ 3,4 mi x R$ 2,43 mi). */
-function devido(d: SfDivida): number { return num(d.valor) ?? 0; }
-function semValor(d: SfDivida): boolean { return num(d.valor) == null; }
+
+// Regra da Adriana (14/10/2026): DÍVIDA = só o que JÁ VENCEU e não foi pago (com ou sem cobrança). O que vence
+// depois é despesa COMPROMETIDA: fica fora da dívida, da meta e das próximas vitórias (pode deixar de acontecer).
+// valor = vencido; valor_a_vencer = comprometido (migration 120). Toda a conta passa por divisao(d).
+/** Linha declarada "em dia": situação "Em dia", ou "Em acordo" com a observação começando por "em dia" (acordo
+ *  sendo cumprido, ex.: rescisões parceladas). Nada dela venceu sem pagar. */
+function declaradaEmDia(d: SfDivida): boolean {
+  const k = chaveSituacao(d.situacao);
+  if (k === "em_dia") return true;
+  return k === "acordo" && /^em dia\b/.test(norm(d.observacao));
+}
+/** Linha antiga, ainda sem o "a vencer" separado, declarada em dia: nada dela venceu — o valor é todo a vencer
+ *  (até a sincronização com a Vobi ou alguém separar no ✎). Ex.: Evandio R$ 31.800 que vence em 01/12. */
+function emDiaSemSeparar(d: SfDivida): boolean {
+  return num(d.valor_a_vencer) == null && declaradaEmDia(d);
+}
+function dataISO(v: unknown): string | null {
+  const s = txt(v).trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+/** Soma n meses a uma data AAAA-MM-DD (dia 31 vira o último dia do mês quando ele não existe). */
+function somaMeses(iso: string, n: number): string {
+  const [a, m, d] = iso.split("-").map(Number);
+  const ultimo = new Date(Date.UTC(a, m - 1 + n + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(a, m - 1 + n, Math.min(d, ultimo))).toISOString().slice(0, 10);
+}
+const r2 = (v: number) => Math.round(v * 100) / 100;
+type Divisao = {
+  vencido: number; aVencer: number; proximo: string | null;
+  /** quanto do "a vencer" gravado a tela passou para o vencido porque o próximo vencimento já passou (estimativa:
+   *  pela parcela por mês, ou tudo quando não há parcela) — até alguém atualizar no ✎ ou pela Vobi */
+  estimado: number; venceuEm: string | null;
+  /** sem valor de hoje: o vencido é desconhecido (conta 0 e ganha o selo "sem valor") */
+  semValor: boolean;
+};
+/** Vencido / a vencer / próximo vencimento como a tela usa. Vencido = valor de hoje (piso): sem valor de hoje
+ *  conta 0 e ganha o selo "sem valor" — contar pelo teto inflava os bancos acima do teto do levantamento.
+ *  Um "a vencer" cuja data já passou NÃO continua comprometido: vira vencido (estimado) até ser atualizado. */
+function divisao(d: SfDivida): Divisao {
+  const sep = emDiaSemSeparar(d);
+  const valor = num(d.valor);
+  let venc = sep ? 0 : Math.max(0, valor ?? 0);
+  let av = sep ? Math.max(0, valor ?? 0) : Math.max(0, num(d.valor_a_vencer) ?? 0);
+  let pv = dataISO(d.proximo_vencimento);
+  let estimado = 0;
+  let venceuEm: string | null = null;
+  const hoje = hojeISO();
+  if (av > 0 && pv && pv < hoje && !d.quitada && !d.comprometida_cortada) {
+    venceuEm = pv;
+    const parc = num(d.parcela_mensal);
+    if (parc != null && parc > 0) {
+      let n = 0;
+      let prox = pv;
+      while (prox < hoje && n < 600) { n++; prox = somaMeses(pv, n); }
+      estimado = Math.min(av, r2(n * parc));
+      av = r2(av - estimado);
+      pv = av > 0 ? prox : null;
+    } else {
+      estimado = av;
+      av = 0;
+      pv = null;
+    }
+    venc = r2(venc + estimado);
+  }
+  // sem valor de hoje e sem declarar "em dia": o vencido é desconhecido (mesmo com saldo a vencer, ex.: banco
+  // com adimplência a levantar) — fica visível nas vencidas com o selo, sem inflar a dívida
+  const semValor = valor == null && !declaradaEmDia(d) && estimado === 0;
+  return { vencido: venc, aVencer: av, proximo: pv, estimado, venceuEm, semValor };
+}
+function vencido(d: SfDivida): number { return divisao(d).vencido; }
+/** A vencer (comprometido): parcelas futuras. */
+function aVencer(d: SfDivida): number { return divisao(d).aVencer; }
+/** O que conta como dívida = o vencido. */
+function devido(d: SfDivida): number { return vencido(d); }
+/** Vencido de valor desconhecido: conta 0 e ganha o selo "sem valor". */
+function semValor(d: SfDivida): boolean { return divisao(d).semValor; }
+/** Em aberto = não quitada e com algo VENCIDO (ou vencido sem valor conhecido). Só "a vencer" não é dívida. */
+function emAberto(d: SfDivida): boolean { return !d.quitada && (vencido(d) > 0 || semValor(d)); }
+/** Despesa comprometida (a vencer) ainda valendo: não quitada, com a vencer e não cortada. */
+function comprometida(d: SfDivida): boolean { return !d.quitada && aVencer(d) > 0 && !d.comprometida_cortada; }
+/** O que já foi pago do VENCIDO de uma linha que continua aberta (ela tem a vencer): "✓ Paguei o vencido".
+ *  Em linha aberta, valor_pago guarda a soma desses pagamentos e quitada_em a data do último. */
+function pagoParcial(d: SfDivida): number { return d.quitada ? 0 : Math.max(0, n0(d.valor_pago)); }
+type Cobranca = "com_cobranca" | "sem_cobranca";
+/** Com cobrança = o credor cobra ativamente: protesto, intimação, execução/ação, citação, cobrança jurídica ou
+ *  dívida ativa. Vale o campo da linha; vazio = deduz pela situação e, nos fornecedores, pelo subgrupo. */
+function cobrancaDe(d: SfDivida): Cobranca {
+  if (d.cobranca === "com_cobranca" || d.cobranca === "sem_cobranca") return d.cobranca;
+  return cobrancaDerivada(d);
+}
+function cobrancaDerivada(d: SfDivida): Cobranca {
+  if (D.situacoesComCobranca.includes(chaveSituacao(d.situacao))) return "com_cobranca";
+  const sub = txt(d.subgrupo);
+  if (!/\bsem cobran/i.test(sub) && /\bcom (cobran|protest)|cobran[çc]a jur[ií]dica|protest|execu[çc][ãa]o|d[ií]vida ativa/i.test(sub)) return "com_cobranca";
+  return "sem_cobranca";
+}
 function realista(d: SfDivida): number { return num(d.valor_proposta) ?? devido(d); }
 function pagoDe(d: SfDivida): number { return num(d.valor_pago) ?? realista(d); }
 /** O que saiu da lista ao quitar: o devido; se a linha não tinha valor, o que foi pago. */
@@ -220,22 +324,42 @@ function eliminadoDe(d: SfDivida): number { return devido(d) || n0(d.valor_pago)
 
 type Stats = {
   devidoAberto: number; realistaAberto: number; eliminado: number; pago: number;
-  qtdQuitadas: number; qtdTotal: number; economia: number; progresso: number;
+  /** qtdTotal = quitadas + em aberto (linha só "a vencer" não é dívida e não entra na contagem) */
+  qtdQuitadas: number; qtdAbertas: number; qtdTotal: number; economia: number; progresso: number;
   /** linhas em aberto sem valor de hoje (contam 0 até alguém informar) */
   semValor: number;
+  /** vencido em aberto que já está sendo cobrado (protesto, execução, dívida ativa…) */
+  comCobranca: number;
+  /** comprometido: a vencer das linhas não quitadas e não cortadas; cortado = o que ela marcou "não vai acontecer" */
+  aVencer: number; cortado: number;
 };
 function stats(l: SfDivida[]): Stats {
-  const s: Stats = { devidoAberto: 0, realistaAberto: 0, eliminado: 0, pago: 0, qtdQuitadas: 0, qtdTotal: l.length, economia: 0, progresso: 0, semValor: 0 };
+  const s: Stats = {
+    devidoAberto: 0, realistaAberto: 0, eliminado: 0, pago: 0, qtdQuitadas: 0, qtdAbertas: 0, qtdTotal: 0,
+    economia: 0, progresso: 0, semValor: 0, comCobranca: 0, aVencer: 0, cortado: 0,
+  };
   for (const d of l) {
     if (d.quitada) {
       s.eliminado += eliminadoDe(d); s.pago += pagoDe(d); s.qtdQuitadas++;
-    } else {
+      continue;
+    }
+    // vencido já pago de uma linha que segue aberta (só com o a vencer): sai da dívida e conta no progresso
+    const pp = pagoParcial(d);
+    if (pp > 0) { s.eliminado += pp; s.pago += pp; }
+    if (emAberto(d)) {
+      s.qtdAbertas++;
       s.devidoAberto += devido(d); s.realistaAberto += realista(d);
+      if (cobrancaDe(d) === "com_cobranca") s.comCobranca += devido(d);
       if (semValor(d)) s.semValor++;
       const p = num(d.valor_proposta);
       if (p != null) s.economia += devido(d) - p;
     }
+    if (aVencer(d) > 0) {
+      if (d.comprometida_cortada) s.cortado += aVencer(d);
+      else s.aVencer += aVencer(d);
+    }
   }
+  s.qtdTotal = s.qtdQuitadas + s.qtdAbertas;
   const base = s.eliminado + s.devidoAberto;
   s.progresso = base > 0 ? (s.eliminado / base) * 100 : 0;
   return s;
@@ -281,15 +405,43 @@ function mediaReceita(n: number): { valor: number; de: string; ate: string } | n
   const v = f.reduce((s, m) => s + n0(m.receita), 0) / f.length;
   return { valor: v, de: f[0].mes, ate: f[f.length - 1].mes };
 }
-function fornecedoresVobi(): { total: number; vencido: number } | null {
+function fornecedoresVobi(): { total: number; vencido: number; aVencer: number } | null {
   const ab = vivo?.aberto;
   if (!ab) return null;
-  const r = { total: 0, vencido: 0 };
+  const r = { total: 0, vencido: 0, aVencer: 0 };
   for (const g of ab.porGrupo) {
     if (g.aba !== "fornecedor" || g.grupo === "fornecedor_contingente") continue; // Tax All fica fora (contingente)
-    r.total += n0(g.total); r.vencido += n0(g.vencido);
+    r.total += n0(g.total); r.vencido += n0(g.vencido); r.aVencer += n0(g.aVencer);
   }
   return r;
+}
+function somaDias(iso: string, dias: number): string {
+  const [a, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(a, m - 1, d + dias));
+  return dt.toISOString().slice(0, 10);
+}
+/** Quanto do comprometido de uma linha vence nos próximos 30 dias; null = sem data para saber.
+ *  1º a Vobi (linha ligada a um fornecedor: soma exata das parcelas dos próximos 30 dias);
+ *  senão o próximo vencimento da linha, contando a parcela mensal (ou o a vencer inteiro, se não houver parcela). */
+function aVencer30(d: SfDivida): number | null {
+  const av = aVencer(d);
+  if (!(av > 0)) return 0;
+  const id = num(d.vobi_fornecedor_id);
+  if (id != null && vivo?.aberto) {
+    const pf = /pessoa f[ií]sica|fora da empresa/i.test(txt(d.subgrupo));
+    let s = 0, achou = false;
+    for (const x of arr<{ idFornecedor: number | null; grupo: string; aVencer30?: number }>(vivo.aberto.porFornecedor)) {
+      if (x.idFornecedor !== id || (x.grupo === "pessoa_fisica" && !pf)) continue;
+      achou = true;
+      s += n0(x.aVencer30);
+    }
+    if (achou) return Math.min(s, av);
+  }
+  const pv = divisao(d).proximo; // já avançado quando a data gravada passou (o que venceu foi para o vencido)
+  if (!pv) return null;
+  if (pv > somaDias(hojeISO(), 30)) return 0;
+  const parc = num(d.parcela_mensal);
+  return parc != null && parc > 0 ? Math.min(parc, av) : av;
 }
 
 // ───────────────────────── A reaver ─────────────────────────
@@ -379,7 +531,8 @@ function renderPainel(): void {
     return;
   }
   const st = statsTotal();
-  const abertas = D.dividas.filter((d) => contaNaDivida(d) && !d.quitada);
+  // só o VENCIDO é dívida em aberto: linha só "a vencer" não entra no herói nem nas próximas vitórias
+  const abertas = D.dividas.filter((d) => (TIPOS as string[]).includes(d.grupo) && contaNaDivida(d) && emAberto(d));
 
   // (1) herói: o que já foi eliminado
   let frase: string;
@@ -407,16 +560,34 @@ function renderPainel(): void {
   const m3 = mediaReceita(3);
   const receitaSub = m3 ? `média de ${esc(faixaMeses(m3.de, m3.ate))} (Vobi)` : (aguardandoVivo() ? "buscando na Vobi…" : "sem leitura da Vobi");
   const cards = `<div class="sf-cards">
-    <div class="sf-c"><div class="sf-c-l">Dívida hoje</div><div class="sf-c-v">${esc(fmtCurto(st.devidoAberto))}</div><div class="sf-c-s">${st.qtdTotal - st.qtdQuitadas} em aberto${st.semValor > 0 ? ` · ${st.semValor} sem valor` : ""}</div></div>
+    <div class="sf-c"><div class="sf-c-l">Dívida hoje (vencida)</div><div class="sf-c-v">${esc(fmtCurto(st.devidoAberto))}</div><div class="sf-c-s">${st.qtdAbertas} vencida${st.qtdAbertas === 1 ? "" : "s"}${st.comCobranca > 0 ? ` · ${esc(fmtCurto(st.comCobranca))} com cobrança` : ""}${st.semValor > 0 ? ` · ${st.semValor} sem valor` : ""}</div></div>
     <div class="sf-c sf-c-azul"><div class="sf-c-l">Realista</div><div class="sf-c-v">${esc(fmtCurto(st.realistaAberto))}</div><div class="sf-c-s">${st.economia > 0 ? `−${esc(fmtCurto(st.economia))} negociados` : "com as propostas que entrarem"}</div></div>
     <div class="sf-c sf-c-verde"><div class="sf-c-l">A reaver</div><div class="sf-c-v">${esc(fmtCurto(rv.pode))}</div><div class="sf-c-s">provável ${esc(fmtCurto(rv.provavel))}${rv.credito > 0 ? ` · ${esc(fmtCurto(rv.credito))} abatem dívida` : ""}</div></div>
     <div class="sf-c"><div class="sf-c-l">Receita média/mês</div><div class="sf-c-v">${m3 ? esc(fmtCurto(m3.valor)) : "—"}</div><div class="sf-c-s">${receitaSub}</div></div>
   </div>`;
 
-  sec.innerHTML = `${heroi}${cards}${blocoMeta(m3)}
+  sec.innerHTML = `${heroi}${cards}${blocoComprometidoPainel(st)}${blocoMeta(m3)}
     <div class="sf-blk">${blkTitulo("layout-list", "Por tipo")}<div class="sf-tipos">${TIPOS.map(linhaTipoPainel).join("")}</div></div>
     ${blocoVitorias(abertas)}
     ${blocoConquistas()}`;
+}
+/** Card "Comprometido (a vencer)": parcelas futuras, FORA da dívida e da meta (boa parte já está no custo fixo). */
+function blocoComprometidoPainel(st: Stats): string {
+  const ls = D.dividas.filter((d) => (TIPOS as string[]).includes(d.grupo) && contaNaDivida(d) && comprometida(d));
+  if (!ls.length && !(st.cortado > 0)) return "";
+  let p30 = 0, semData = 0;
+  for (const d of ls) {
+    const v = aVencer30(d);
+    if (v == null) semData++;
+    else p30 += v;
+  }
+  const porTipo = TIPOS.map((t) => [TIPO_INFO[t].nome, ls.filter((d) => d.grupo === t).reduce((s, d) => s + aVencer(d), 0)] as const)
+    .filter(([, v]) => v > 0).map(([n, v]) => `${esc(n)} ${esc(fmtCurto(v))}`).join(" · ");
+  return `<div class="sf-comp" title="Parcelas que ainda vão vencer: não são dívida e não entram na meta. Veja e corte o que não vai acontecer no fim de cada aba.">
+    <div class="sf-comp-h"><span class="sf-c-l">Comprometido (a vencer)</span><span class="sf-comp-v">${esc(fmtCurto(st.aVencer))}</span></div>
+    <div class="sf-comp-s">próximos 30 dias: <strong>${esc(fmtR(p30))}</strong>${semData ? ` · ${semData} sem data` : ""} · fora da dívida e da meta${st.cortado > 0 ? ` · <span class="sf-pos">você cortou ${esc(fmtCurto(st.cortado))}</span>` : ""}</div>
+    ${porTipo ? `<div class="sf-comp-t">${porTipo}</div>` : ""}
+  </div>`;
 }
 function blkTitulo(icone: string, titulo: string): string {
   return `<p class="sf-blk-title"><i class="ti ti-${icone}" aria-hidden="true"></i> ${esc(titulo)}</p>`;
@@ -445,6 +616,8 @@ function blocoMeta(m3: { valor: number; de: string; ate: string } | null): strin
     ${trilho}
     <p class="sf-alavanca">Cada R$ 100 mil negociados a menos = −${esc(fmtR(alavanca))}/mês na meta.</p>
     ${detalhes("painel|calc", false, "", "Como calculei", `<div class="sf-det-body"><ul>
+      <li>Dívida = só o que já VENCEU e não foi pago (com ou sem cobrança); o que vence depois é “comprometido” e fica fora da dívida e da meta (boa parte já está no custo fixo).</li>
+      <li>Parcela comprometida cuja data passou sem atualização entra sozinha no vencido (selo “venceu — atualize”); nos bancos, o saldo inteiro só conta como vencido quando ele foi antecipado (execução, protesto).</li>
       <li>De cada R$ 100 faturados sobram ${esc(fmtR(mr.k * 100))}: margem de ${esc(FMT_N.format(n0(D.painel.meta?.margem ?? 0.4405) * 100))}% menos ${esc(FMT_N.format(n0(D.painel.meta?.tributo ?? 0.1333) * 100))}% de imposto.</li>
       <li>Manter a empresa = custo fixo ${esc(fmtR(mr.fixo))} ÷ ${esc(mr.k.toLocaleString("pt-BR", { maximumFractionDigits: 4 }))}.</li>
       <li>Quitar = (custo fixo + impostos ÷ ${PRAZO_IMPOSTO} + bancos, fornecedores e outras ÷ ${prazo}) ÷ ${esc(mr.k.toLocaleString("pt-BR", { maximumFractionDigits: 4 }))}.</li>
@@ -477,17 +650,25 @@ function blocoVitorias(abertas: SfDivida[]): string {
       <div class="sf-vit-info"><strong>${esc(d.credor)}</strong><span class="sf-muted sf-vit-id"${d.identificacao ? ` title="${esc(d.identificacao)}"` : ""}>${esc(TIPO_INFO[d.grupo as Tipo]?.nome || d.grupo)}${d.identificacao ? " · " + esc(d.identificacao) : ""}</span>
         ${k ? `<div class="sf-small">equivale a ${esc(fmtR(realista(d) / k))} de faturamento</div>` : ""}</div>
       <span class="sf-vit-v">${esc(fmtR(realista(d)))}</span>
-      ${D.podeEditar ? `<button type="button" class="sf-quitei" data-requer-edicao data-sf-act="quitar" data-id="${esc(d.id)}">✓ Quitei</button>` : ""}
+      ${botaoQuitei(d)}
     </div>`).join("")}</div></div>`;
 }
 function blocoConquistas(): string {
   type Conq = { data: string; txt: string };
   const c: Conq[] = [];
   for (const d of D.dividas) if (d.quitada) c.push({ data: txt(d.quitada_em), txt: `Quitou ${d.credor} — ${fmtR(pagoDe(d))}` });
+  for (const d of D.dividas) {
+    if (d.ativo !== false && pagoParcial(d) > 0) c.push({ data: txt(d.quitada_em), txt: `Pagou o vencido de ${d.credor} — ${fmtR(pagoParcial(d))}` });
+  }
   for (const r of D.reaver) if (r.ativo !== false && r.recebido) c.push({ data: txt(r.recebido_em), txt: `Recebeu: ${r.titulo} — ${fmtR(num(r.valor_recebido) ?? r.valor_estimado)}` });
   // venda do plano não tem data própria (updated_at muda a cada edição da ideia): entra sem data, depois das datadas
   for (const a of D.acoes) if (n0(a.valor_vendido) > 0) c.push({ data: "", txt: `Vendeu ${fmtR(a.valor_vendido)} com “${a.titulo}”` });
   for (const p of D.protestos) if (p.cancelado) c.push({ data: txt(p.cancelado_em), txt: `Cancelou o protesto de ${p.credor}` });
+  for (const d of D.dividas) {
+    if (d.ativo !== false && d.comprometida_cortada && !d.quitada && aVencer(d) > 0) {
+      c.push({ data: txt(d.cortada_em), txt: `Cortou despesa comprometida — ${fmtR(aVencer(d))} (${d.credor})` });
+    }
+  }
   if (!c.length) return "";
   c.sort((a, b) => (a.data ? 0 : 1) - (b.data ? 0 : 1) || b.data.localeCompare(a.data));
   return `<div class="sf-blk">${blkTitulo("trophy", "Conquistas")}<ul class="sf-conq">${c.slice(0, 6).map((x) =>
@@ -495,13 +676,15 @@ function blocoConquistas(): string {
 }
 
 // ───────────────────────── 2–5. Abas de tipo ─────────────────────────
+// Cada aba: "Vencidas — com cobrança", "Vencidas — sem cobrança" (só linhas com algo VENCIDO), quitadas, fora da conta
+// e, recolhido no fim, "Despesas comprometidas — a vencer" (não entram na dívida; dá para cortar o que não vai acontecer).
 function cabecalhoTipo(t: Tipo): string {
   const i = TIPO_INFO[t];
   const s = statsTipo(t);
   const extra = extraMesTipo(t);
   return `<div class="sf-thead" style="--c:${i.cor}">
     <div class="sf-thead-nums">
-      <div><span>Devido em aberto</span><strong>${esc(fmtCurto(s.devidoAberto))}</strong>${s.semValor > 0 ? `<em class="sf-em-cinza">${s.semValor} sem valor de hoje — informe no ✎</em>` : ""}</div>
+      <div><span>Vencido em aberto</span><strong>${esc(fmtCurto(s.devidoAberto))}</strong>${s.semValor > 0 ? `<em class="sf-em-cinza">${s.semValor} sem valor de hoje — informe no ✎</em>` : ""}</div>
       <div><span>Realista</span><strong>${esc(fmtCurto(s.realistaAberto))}</strong>${s.economia > 0 ? `<em>−${esc(fmtCurto(s.economia))} negociados</em>` : ""}</div>
       <div><span>Quitadas</span><strong>${s.qtdQuitadas}/${s.qtdTotal}</strong></div>
       <div><span>Zerar em ${prazoDe(t)} meses</span><strong>${extra != null ? `+${esc(fmtCurto(extra))}/mês` : "—"}</strong></div>
@@ -515,16 +698,16 @@ function renderCabecalhoTipo(t: Tipo): void {
 }
 function linhaVobiFornecedores(): string {
   const f = fornecedoresVobi();
-  if (f) return `Na Vobi hoje: <strong>${esc(fmtR(f.total))}</strong> em aberto com fornecedores (${esc(fmtR(f.vencido))} vencido).`;
+  if (f) return `Na Vobi hoje, com fornecedores: <strong>${esc(fmtR(f.vencido))}</strong> vencido · ${esc(fmtR(f.aVencer))} a vencer (comprometido, fora da dívida).`;
   if (aguardandoVivo()) return "Buscando os fornecedores em aberto na Vobi…";
   return "Sem a leitura da Vobi agora.";
 }
 function extraTipo(t: Tipo): string {
   if (t === "imposto") {
-    const ret = dividasDo("imposto").filter((d) => d.retido && contaNaDivida(d) && !d.quitada);
+    const ret = dividasDo("imposto").filter((d) => d.retido && contaNaDivida(d) && emAberto(d));
     if (!ret.length) return "";
     const v = ret.reduce((s, d) => s + devido(d), 0);
-    return `<div class="sf-alerta">🔴 ${ret.length} imposto(s) retido(s) em aberto: ${esc(fmtR(v))} — risco penal; pagar primeiro.</div>`;
+    return `<div class="sf-alerta">🔴 ${ret.length} imposto(s) retido(s) vencido(s): ${esc(fmtR(v))} — risco penal; pagar primeiro.</div>`;
   }
   if (t === "fornecedor") return `<div class="sf-ref" id="sfVobiForn">${linhaVobiFornecedores()}</div>`;
   return "";
@@ -535,43 +718,72 @@ function selosDivida(d: SfDivida): string {
   const sit = badgeSituacao(d.situacao);
   if (sit) s.push(sit);
   if (semValor(d)) s.push(`<span class="badge badge-gray">sem valor</span>`);
-  return s.length ? `<div class="sf-l-selos">${s.join("")}</div>` : "";
+  s.push(seloVenceu(d));
+  const h = s.filter(Boolean);
+  return h.length ? `<div class="sf-l-selos">${h.join("")}</div>` : "";
+}
+/** O próximo vencimento gravado já passou: a tela tratou o que venceu como vencido (estimativa) — atualize. */
+function seloVenceu(d: SfDivida): string {
+  const dv = divisao(d);
+  if (!(dv.estimado > 0) || !dv.venceuEm) return "";
+  const como = num(d.parcela_mensal) ? "pela parcela por mês" : "todo o a vencer";
+  return `<span class="badge badge-orange" title="O próximo vencimento gravado (${esc(fmtData(dv.venceuEm))}) já passou: a tela passou ${esc(fmtR(dv.estimado))} para o vencido (${como}). Confira no ✎ ou pela Vobi.">venceu em ${esc(fmtDataCurta(dv.venceuEm))} — atualize</span>`;
+}
+/** "já pagou R$ X do vencido" (linha que segue aberta por causa do a vencer), com o desfazer. */
+function notaPagoParcial(d: SfDivida): string {
+  const pp = pagoParcial(d);
+  if (!(pp > 0)) return "";
+  const quando = d.quitada_em ? ` em ${esc(fmtDataCurta(d.quitada_em))}` : "";
+  const desf = D.podeEditar ? ` <button type="button" class="sf-link" data-requer-edicao data-sf-act="desfazer-parcial" data-id="${esc(d.id)}">desfazer</button>` : "";
+  return `<div class="sf-l-motivo sf-l-pago">✓ já pagou ${esc(fmtR(pp))} do vencido${quando}${desf}</div>`;
 }
 function textoEconomia(d: SfDivida): string {
   const p = num(d.valor_proposta);
   const dv = devido(d);
   if (p == null) return "";
   if (p < dv) return `−${fmtR(dv - p)}`;
-  if (p > dv && dv > 0) return `+${fmtR(p - dv)} acima do devido`;
+  if (p > dv && dv > 0) return `+${fmtR(p - dv)} acima do vencido`;
   return "";
 }
+/** Célula "Vencido" (é a dívida); o que ainda vai vencer aparece embaixo, cinza, só de referência. */
 function celDevido(d: SfDivida): string {
-  const v = num(d.valor), t = num(d.valor_teto);
+  const t = num(d.valor_teto);
+  const av = aVencer(d);
   let h: string;
-  if (v == null && t == null) h = `<strong class="sf-muted">—</strong>`;
-  else if (v == null) h = `<strong class="sf-muted">—</strong><span class="sf-muted">sem valor de hoje · máx. ${esc(fmtR(t))}</span>`;
-  else h = `<strong>${esc(fmtR(v))}</strong>${t != null && t !== v ? `<span class="sf-muted">até ${esc(fmtR(t))}</span>` : ""}`;
-  return `<div class="sf-l-devido"><span class="sf-l-rot">Devido</span>${h}</div>`;
+  if (semValor(d)) {
+    h = t == null ? `<strong class="sf-muted">—</strong>` : `<strong class="sf-muted">—</strong><span class="sf-muted">sem valor de hoje · máx. ${esc(fmtR(t))}</span>`;
+  } else {
+    const v = vencido(d);
+    h = `<strong>${esc(fmtR(v))}</strong>${t != null && t !== v && !emDiaSemSeparar(d) ? `<span class="sf-muted">até ${esc(fmtR(t))}</span>` : ""}`;
+  }
+  if (av > 0) h += `<span class="sf-muted">+ ${esc(fmtR(av))} a vencer${d.comprometida_cortada ? " (cortado)" : ""}</span>`;
+  return `<div class="sf-l-devido"><span class="sf-l-rot">Vencido</span>${h}</div>`;
 }
 /** Identificação em 1 linha (cortada com "…"); o texto inteiro fica no title e no ✎. */
 function idDivida(d: SfDivida): string {
   return d.identificacao ? `<div class="sf-l-id" title="${esc(d.identificacao)}">${esc(d.identificacao)}</div>` : "";
 }
+/** Botão "✓ Quitei": numa linha com a vencer, paga SÓ o vencido (o a vencer continua comprometido). */
+function botaoQuitei(d: SfDivida): string {
+  if (!D.podeEditar) return "";
+  const dica = aVencer(d) > 0 ? ` title="Paga só o vencido; o que ainda vai vencer continua como despesa comprometida"` : "";
+  return `<button type="button" class="sf-quitei" data-requer-edicao data-sf-act="quitar" data-id="${esc(d.id)}"${dica}>✓ Quitei</button>`;
+}
 function linhaAberta(d: SfDivida): string {
   const dis = D.podeEditar ? "" : " disabled";
   return `<div class="sf-linha" data-linha-id="${esc(d.id)}">
-    <div class="sf-l-info"><div class="sf-l-cred">${esc(d.credor)}</div>${idDivida(d)}${selosDivida(d)}</div>
+    <div class="sf-l-info"><div class="sf-l-cred">${esc(d.credor)}</div>${idDivida(d)}${selosDivida(d)}${notaPagoParcial(d)}</div>
     ${celDevido(d)}
     <div class="sf-l-prop"><label class="sf-l-rot" for="sfp-${esc(d.id)}">Proposta de quitação</label>
       <input id="sfp-${esc(d.id)}" class="sf-in" type="text" inputmode="decimal" placeholder="R$ para quitar" data-prop-id="${esc(d.id)}" value="${esc(valorParaCampo(d.valor_proposta))}"${dis} />
       <span class="sf-econ" data-econ-id="${esc(d.id)}">${esc(textoEconomia(d))}</span></div>
     <div class="sf-l-acoes">
-      ${D.podeEditar ? `<button type="button" class="sf-quitei" data-requer-edicao data-sf-act="quitar" data-id="${esc(d.id)}">✓ Quitei</button>` : ""}
+      ${botaoQuitei(d)}
       <button type="button" class="sf-ed" title="Detalhes" aria-label="Detalhes de ${esc(d.credor)}" data-sf-act="editar-divida" data-id="${esc(d.id)}">✎</button>
     </div>
   </div>`;
 }
-/** Total do subgrupo no resumo recolhível: devido e, quando há proposta, "→ realista". */
+/** Total do subgrupo no resumo recolhível: vencido e, quando há proposta, "→ realista". */
 function totSubgrupo(ds: SfDivida[]): string {
   const devidoSub = ds.reduce((s, d) => s + devido(d), 0);
   const realSub = ds.reduce((s, d) => s + realista(d), 0);
@@ -580,6 +792,69 @@ function totSubgrupo(ds: SfDivida[]): string {
 function detalhes(chave: string, padraoAberto: boolean, cls: string, resumo: string, corpo: string): string {
   const aberto = detAberto.has(chave) ? detAberto.get(chave) : padraoAberto;
   return `<details class="sf-det ${cls}" data-det="${esc(chave)}"${aberto ? " open" : ""}><summary>${resumo}</summary>${corpo}</details>`;
+}
+function subgrupoDe(d: SfDivida): string { return txt(d.subgrupo).trim() || "Outros"; }
+/** Linhas que entram num bloco de vencidas (mesma regra da tela e da atualização do total ao digitar a proposta). */
+function vencidasDo(t: Tipo, cob: Cobranca): SfDivida[] {
+  return dividasDo(t).filter((d) => contaNaDivida(d) && emAberto(d) && cobrancaDe(d) === cob);
+}
+const BLOCO_VENC: Record<Cobranca, { titulo: string; dica: string; ic: string; cls: string }> = {
+  com_cobranca: { titulo: "Vencidas — com cobrança", dica: "protesto, intimação, execução/ação, cobrança jurídica ou dívida ativa", ic: "gavel", cls: "sf-bloco-com" },
+  sem_cobranca: { titulo: "Vencidas — sem cobrança", dica: "atrasadas, sem protesto nem ação conhecidos", ic: "clock-exclamation", cls: "sf-bloco-sem" },
+};
+function blocoVencidas(t: Tipo, cob: Cobranca): string {
+  const ds = vencidasDo(t, cob);
+  if (!ds.length) return "";
+  const b = BLOCO_VENC[cob];
+  // agrupadas por subgrupo (Bancos: por banco), na ordem do levantamento
+  const grupos = new Map<string, SfDivida[]>();
+  for (const d of ds) {
+    const k = subgrupoDe(d);
+    grupos.set(k, [...(grupos.get(k) || []), d]);
+  }
+  let lista = "";
+  for (const [sub, l] of grupos) {
+    const resumo = `${esc(sub)} <span class="sf-muted">(${l.length})</span><span class="sf-grupo-tot">${totSubgrupo(l)}</span>`;
+    lista += detalhes(`${t}|${cob}|${sub}`, l.length <= 8, "sf-grupo", resumo, l.map(linhaAberta).join(""));
+  }
+  return `<div class="sf-bloco ${b.cls}">
+    <div class="sf-bloco-t"><span><i class="ti ti-${b.ic}" aria-hidden="true"></i> ${esc(b.titulo)} <span class="sf-bloco-n">(${ds.length})</span></span><span class="sf-bloco-tot">${totSubgrupo(ds)}</span><span class="sf-bloco-sub">${esc(b.dica)}</span></div>
+    ${lista}
+  </div>`;
+}
+/** Despesa comprometida (a vencer): não é dívida; o botão "✗ Não vai acontecer" corta (fica riscada, dá para desfazer). */
+function linhaComprometida(d: SfDivida): string {
+  const cort = d.comprometida_cortada === true;
+  const dv = divisao(d);
+  const botao = !D.podeEditar ? ""
+    : cort
+      ? `<button type="button" class="sf-ed" data-requer-edicao data-sf-act="descortar-comp" data-id="${esc(d.id)}">desfazer</button>`
+      : `<button type="button" class="sf-cortar" data-requer-edicao data-sf-act="cortar-comp" data-id="${esc(d.id)}" title="Esta despesa não vai acontecer: sai do comprometido">✗ Não vai acontecer</button>`;
+  const semData = !cort && !dv.proximo
+    ? `<div class="sf-l-selos"><span class="badge badge-gray" title="Sem a data a tela não sabe quando o comprometido vira vencido">informe o vencimento no ✎</span></div>`
+    : "";
+  const vencNota = dv.vencido > 0
+    ? `<div class="sf-l-motivo">também tem ${esc(fmtR(dv.vencido))} vencido (na lista acima)</div>`
+    : dv.semValor ? `<div class="sf-l-motivo">vencido sem valor de hoje (na lista acima)</div>` : "";
+  return `<div class="sf-linha sf-linha-comp${cort ? " sf-linha-cortada" : ""}">
+    <div class="sf-l-info"><div class="sf-l-cred">${esc(d.credor)}</div>${idDivida(d)}
+      ${cort ? `<div class="sf-l-motivo">✗ cortada${d.cortada_em ? ` em ${esc(fmtDataCurta(d.cortada_em))}` : ""} — não vai acontecer</div>` : ""}
+      ${vencNota}${notaPagoParcial(d)}${semData}</div>
+    <div class="sf-l-devido"><span class="sf-l-rot">A vencer</span><strong>${esc(fmtR(dv.aVencer))}</strong></div>
+    <div class="sf-l-devido"><span class="sf-l-rot">Próximo venc.</span><strong${dv.proximo ? "" : ` class="sf-muted"`}>${dv.proximo ? esc(fmtData(dv.proximo)) : "—"}</strong></div>
+    <div class="sf-l-acoes">${botao}<button type="button" class="sf-ed" aria-label="Detalhes de ${esc(d.credor)}" data-sf-act="editar-divida" data-id="${esc(d.id)}">✎</button></div>
+  </div>`;
+}
+function blocoComprometidas(t: Tipo, dentro: SfDivida[]): string {
+  const ls = dentro.filter((d) => !d.quitada && aVencer(d) > 0);
+  if (!ls.length) return "";
+  const pv = (d: SfDivida) => divisao(d).proximo || "9999-12-31";
+  const ativas = ls.filter((d) => !d.comprometida_cortada).sort((a, b) => pv(a).localeCompare(pv(b)) || aVencer(b) - aVencer(a));
+  const cortadas = ls.filter((d) => d.comprometida_cortada);
+  const soma = ativas.reduce((s, d) => s + aVencer(d), 0);
+  const corte = cortadas.reduce((s, d) => s + aVencer(d), 0);
+  const resumo = `Despesas comprometidas — a vencer <span class="sf-muted">(${ativas.length}) · não entram na dívida</span><span class="sf-grupo-tot">${esc(fmtCurto(soma))}${corte > 0 ? ` <span class="sf-pos">· cortou ${esc(fmtCurto(corte))}</span>` : ""}</span>`;
+  return detalhes(`${t}|comprometidas`, false, "sf-comp-det", resumo, [...ativas, ...cortadas].map(linhaComprometida).join(""));
 }
 function renderTipo(t: Tipo): void {
   const i = TIPO_INFO[t];
@@ -591,30 +866,27 @@ function renderTipo(t: Tipo): void {
     return;
   }
   const dentro = todas.filter(contaNaDivida);
-  const abertas = dentro.filter((d) => !d.quitada);
+  const abertas = dentro.filter(emAberto);
   const quitadas = dentro.filter((d) => d.quitada);
+  // sem nada vencido nem a vencer e não quitada (ex.: a Vobi zerou uma linha sem valor): não pode sumir da tela
+  const semSaldo = dentro.filter((d) => !d.quitada && !emAberto(d) && !(aVencer(d) > 0));
   const fora = todas.filter((d) => !contaNaDivida(d));
 
-  // abertas agrupadas por subgrupo (Bancos: por banco), na ordem do levantamento
-  const grupos = new Map<string, SfDivida[]>();
-  for (const d of abertas) {
-    const k = txt(d.subgrupo).trim() || "Outros";
-    const l = grupos.get(k) || [];
-    l.push(d);
-    grupos.set(k, l);
-  }
-  let lista = "";
-  for (const [sub, ds] of grupos) {
-    const resumo = `${esc(sub)} <span class="sf-muted">(${ds.length})</span><span class="sf-grupo-tot">${totSubgrupo(ds)}</span>`;
-    lista += detalhes(`${t}|${sub}`, ds.length <= 8, "sf-grupo", resumo, ds.map(linhaAberta).join(""));
-  }
-  if (!abertas.length) lista = `<div class="sf-box sf-box-verde"><strong>Tudo quitado aqui.</strong>Nenhuma dívida em aberto em ${esc(i.nome)}.</div>`;
+  let lista = `${blocoVencidas(t, "com_cobranca")}${blocoVencidas(t, "sem_cobranca")}`;
+  if (!abertas.length) lista = `<div class="sf-box sf-box-verde"><strong>Nada vencido aqui.</strong>Nenhuma dívida vencida em aberto em ${esc(i.nome)}.</div>`;
 
   const blocoQuit = quitadas.length ? detalhes(`${t}|quitadas`, false, "sf-quitadas", `✓ Quitadas (${quitadas.length}) <span class="sf-grupo-tot">${esc(fmtCurto(quitadas.reduce((s, d) => s + eliminadoDe(d), 0)))} eliminados</span>`,
     quitadas.map((d) => `<div class="sf-linha sf-linha-ok">
       <div class="sf-l-info"><div class="sf-l-cred">${esc(d.credor)}</div>${idDivida(d)}</div>
       <span class="sf-small">pago ${esc(fmtR(pagoDe(d)))}${d.quitada_em ? ` em ${esc(fmtData(d.quitada_em))}` : ""}</span>
       <div class="sf-l-acoes">${D.podeEditar ? `<button type="button" class="sf-ed" data-requer-edicao data-sf-act="desfazer-quitar" data-id="${esc(d.id)}">desfazer</button>` : ""}<button type="button" class="sf-ed" aria-label="Detalhes" data-sf-act="editar-divida" data-id="${esc(d.id)}">✎</button></div>
+    </div>`).join("")) : "";
+
+  const blocoSemSaldo = semSaldo.length ? detalhes(`${t}|semsaldo`, false, "sf-fora", `Sem nada vencido nem a vencer (${semSaldo.length}) <span class="sf-grupo-tot">confira e marque quitada</span>`,
+    semSaldo.map((d) => `<div class="sf-linha sf-linha-fora">
+      <div class="sf-l-info"><div class="sf-l-cred">${esc(d.credor)}</div>${idDivida(d)}${notaPagoParcial(d)}</div>
+      ${celDevido(d)}
+      <div class="sf-l-acoes">${botaoQuitei(d)}<button type="button" class="sf-ed" aria-label="Detalhes" data-sf-act="editar-divida" data-id="${esc(d.id)}">✎</button></div>
     </div>`).join("")) : "";
 
   const blocoFora = fora.length ? detalhes(`${t}|fora`, false, "sf-fora", `Fora da conta (${fora.length}) <span class="sf-grupo-tot">${esc(fmtCurto(fora.reduce((s, d) => s + devido(d), 0)))}</span>`,
@@ -624,7 +896,7 @@ function renderTipo(t: Tipo): void {
       <div class="sf-l-acoes"><button type="button" class="sf-ed" aria-label="Detalhes" data-sf-act="editar-divida" data-id="${esc(d.id)}">✎</button></div>
     </div>`).join("")) : "";
 
-  sec.innerHTML = `<div id="sfHead-${t}">${cabecalhoTipo(t)}</div>${extraTipo(t)}${lista}${blocoQuit}${blocoFora}`;
+  sec.innerHTML = `<div id="sfHead-${t}">${cabecalhoTipo(t)}</div>${extraTipo(t)}${lista}${blocoQuit}${blocoSemSaldo}${blocoFora}${blocoComprometidas(t, dentro)}`;
 }
 function renderTipos(): void { for (const t of TIPOS) renderTipo(t); }
 
@@ -910,11 +1182,14 @@ function renderProtLista(): void {
 function renderLiveStatus(): void {
   const st = el("sfLiveStatus");
   const btn = el("sfBtnVobi") as HTMLButtonElement | null;
-  if (btn) btn.disabled = vivoCarregando;
+  if (btn) btn.disabled = vivoCarregando || sincronizando;
   if (st) {
     st.className = "sf-live-st";
     st.title = "";
-    if (vivoCarregando) {
+    if (sincronizando) {
+      st.classList.add("sf-live-loading");
+      st.innerHTML = `<span class="spinner"></span> Vobi: conferindo vencidos e a vencer…`;
+    } else if (vivoCarregando) {
       st.classList.add("sf-live-loading");
       st.innerHTML = `<span class="spinner"></span> Vobi: ${vivo ? "atualizando…" : "carregando…"}`;
     } else if (vivo) {
@@ -975,7 +1250,53 @@ async function carregarVivo(forcar: boolean): Promise<void> {
     renderPartesVivas();
   }
 }
-function sfAtualizarVobi(): void { void carregarVivo(true); }
+/** Sincronização das dívidas ligadas a um fornecedor da Vobi (vencido / a vencer / próximo vencimento / quitada). */
+let sincronizando = false;
+type RespSinc = {
+  atualizadas?: number; linhas?: Array<Partial<SfDivida> & { id?: string }>;
+  conflitos?: Array<{ credores?: string[] }>; falhas?: Array<{ credor?: string }>;
+  /** ligadas cujo fornecedor não apareceu com nada em aberto na leitura: nada foi gravado — ela confere e marca */
+  paraConferir?: Array<{ credor?: string }>;
+};
+async function sincronizarVobi(): Promise<void> {
+  if (sincronizando) return;
+  sincronizando = true;
+  renderLiveStatus();
+  try {
+    // corpo vazio, mas em JSON: o content-type é obrigatório nas mutações (CSRF do Astro)
+    const r = await enviarJson<RespSinc>("POST", `${API}/sincronizar`, {});
+    for (const l of arr<Partial<SfDivida> & { id?: string }>(r?.linhas)) {
+      if (l && typeof l.id === "string") mesclar(D.dividas, l.id, {}, l);
+    }
+    const at = n0(r?.atualizadas);
+    const conf = arr<{ credores?: string[] }>(r?.conflitos);
+    const falhas = arr<{ credor?: string }>(r?.falhas);
+    const conferir = arr<{ credor?: string }>(r?.paraConferir);
+    if (at > 0) { renderTipos(); renderPainel(); }
+    if (at > 0) toast(`Vobi: ${at} dívida(s) atualizada(s) (vencido e a vencer).`);
+    if (conf.length || falhas.length || conferir.length) {
+      const partes: string[] = [];
+      if (conferir.length) partes.push(`${conferir.length} dívida(s) sem nada em aberto na Vobi (${conferir.map((c) => txt(c.credor)).slice(0, 4).join(", ")}) — não mexi: se já pagou, marque ✓ Quitei; senão confira o nº do fornecedor no ✎`);
+      if (conf.length) partes.push(`${conf.length} fornecedor(es) ligado(s) a mais de uma linha (${conf.flatMap((c) => arr<string>(c.credores)).slice(0, 4).join(", ")}) — não sincronizei esses`);
+      if (falhas.length) partes.push(`${falhas.length} linha(s) não gravada(s)`);
+      window.setTimeout(() => toast(partes.join("; ") + ".", "erro"), at > 0 ? 3400 : 0);
+    }
+  } catch (e) {
+    toast(`Sincronização com a Vobi: ${e instanceof Error ? e.message : String(e)}`, "erro");
+  } finally {
+    sincronizando = false;
+    renderLiveStatus();
+  }
+}
+/** Botão "Atualizar da Vobi": lê a Vobi de novo e, se a leitura veio boa, sincroniza as dívidas ligadas a ela. */
+async function atualizarESincronizar(): Promise<void> {
+  if (vivoCarregando || sincronizando) return;
+  await carregarVivo(true);
+  if (!D.podeEditar || !vivo || vivoErro || vivo.aviso || !vivo.aberto) return;
+  if (!D.dividas.some((d) => d.ativo !== false && !d.quitada && num(d.vobi_fornecedor_id) != null)) return;
+  await sincronizarVobi();
+}
+function sfAtualizarVobi(): void { void atualizarESincronizar(); }
 
 // ───────────────────────── gravações ─────────────────────────
 async function enviarJson<T>(metodo: "POST" | "PATCH" | "DELETE", url: string, body: Record<string, unknown>): Promise<T> {
@@ -1054,12 +1375,15 @@ async function salvarProposta(inp: HTMLInputElement): Promise<void> {
     marcar(inp, "ok");
     const econ = document.querySelector<HTMLElement>(`[data-econ-id="${CSS.escape(id)}"]`);
     if (econ && nova) econ.textContent = textoEconomia(nova);
-    // total do subgrupo (resumo do recolhível) sem redesenhar a lista: o foco pode já estar no próximo campo
+    // totais do subgrupo e do bloco (com/sem cobrança) sem redesenhar a lista: o foco pode já estar no próximo campo
+    const doBloco = vencidasDo(d.grupo as Tipo, cobrancaDe(d));
     const tot = inp.closest("details")?.querySelector<HTMLElement>(":scope > summary .sf-grupo-tot");
     if (tot) {
-      const sub = txt(d.subgrupo).trim() || "Outros";
-      tot.innerHTML = totSubgrupo(D.dividas.filter((x) => x.grupo === d.grupo && contaNaDivida(x) && !x.quitada && (txt(x.subgrupo).trim() || "Outros") === sub));
+      const sub = subgrupoDe(d);
+      tot.innerHTML = totSubgrupo(doBloco.filter((x) => subgrupoDe(x) === sub));
     }
+    const btot = inp.closest(".sf-bloco")?.querySelector<HTMLElement>(":scope > .sf-bloco-t .sf-bloco-tot");
+    if (btot) btot.innerHTML = totSubgrupo(doBloco);
     renderCabecalhoTipo(d.grupo as Tipo);
     renderPainel();
   } catch (e) {
@@ -1220,16 +1544,29 @@ async function abrirQuitar(tipo: "divida" | "reaver", id: string): Promise<void>
   const modal = el("sfModalQuitar");
   if (!modal || !D.podeEditar) return;
   await esperarPendente(`${tipo}:${id}`); // a proposta/valor recém-digitado na linha precisa chegar antes
+  const nota = el("sfMqNota");
+  if (nota) nota.textContent = "";
   if (tipo === "divida") {
     const d = D.dividas.find((x) => x.id === id);
     if (!d) return;
-    (el("sfMqTitulo") as HTMLElement).textContent = "✓ Quitei esta dívida";
+    const dv = divisao(d);
+    const pp = pagoParcial(d);
+    // com a vencer: paga SÓ o vencido — o que ainda vai vencer continua comprometido (não some sem ela cortar)
+    const parcial = dv.aVencer > 0;
+    (el("sfMqTitulo") as HTMLElement).textContent = parcial ? "✓ Paguei o vencido" : "✓ Quitei esta dívida";
     (el("sfMqTexto") as HTMLElement).textContent = [d.credor, d.identificacao].filter(Boolean).join(" — ");
-    (el("sfMqValorRot") as HTMLElement).textContent = "Quanto pagou? (R$)";
-    // sem valor nenhum (devido 0): o campo vem vazio e é obrigatório — nada de gravar "pagou R$ 0,00" sem querer
-    const sugerido = num(d.valor_pago) ?? realista(d);
+    (el("sfMqValorRot") as HTMLElement).textContent = pp > 0 ? "Quanto pagou agora? (R$)" : "Quanto pagou? (R$)";
+    if (nota) {
+      const partes: string[] = [];
+      if (parcial) partes.push(`Sai da dívida só o vencido. O que ainda vai vencer (${fmtR(dv.aVencer)}${dv.proximo ? `, próximo em ${fmtData(dv.proximo)}` : ""}) continua como despesa comprometida.`);
+      if (pp > 0) partes.push(`Já anotado antes: ${fmtR(pp)} pagos do vencido — informe só o pagamento de agora.`);
+      nota.textContent = partes.join(" ");
+    }
+    // linha aberta: valor_pago guarda pagamentos parciais anteriores, não serve de sugestão; sugere o realista.
+    // Sem valor nenhum (devido 0): o campo vem vazio e é obrigatório — nada de gravar "pagou R$ 0,00" sem querer
+    const sugerido = realista(d);
     setCampo("sfMqValor", sugerido > 0 ? valorParaCampo(sugerido) : "");
-    setCampo("sfMqData", txt(d.quitada_em).slice(0, 10) || hojeISO());
+    setCampo("sfMqData", hojeISO());
   } else {
     const r = D.reaver.find((x) => x.id === id);
     if (!r) return;
@@ -1256,20 +1593,49 @@ async function sfConfirmarQuitar(): Promise<void> {
   if (ctx.tipo === "divida") {
     const d0 = D.dividas.find((x) => x.id === ctx.id);
     // dívida sem valor cadastrado: o que foi pago é o único número que sai da lista
-    if (d0 && devido(d0) <= 0 && !(valor != null && valor > 0)) { msgModal("sfMqMsg", "Esta dívida não tem valor cadastrado: informe quanto pagou.", true); return; }
+    if (d0 && semValor(d0) && !(valor != null && valor > 0)) { msgModal("sfMqMsg", "Esta dívida não tem valor cadastrado: informe quanto pagou.", true); return; }
   }
   const btn = el("sfMqOk") as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   msgModal("sfMqMsg", "Salvando…");
   try {
     if (ctx.tipo === "divida") {
-      const body = { quitada: true, valor_pago: valor, quitada_em: data };
+      const d0 = D.dividas.find((x) => x.id === ctx.id);
+      if (!d0) { sfFecharQuitar(); return; }
+      const dv = divisao(d0);
+      const antes = pagoParcial(d0);
+      const pagoAgora = valor ?? 0;
+      let body: Record<string, unknown>;
+      let parcial = false;
+      if (dv.aVencer > 0) {
+        // paga SÓ o vencido: a linha segue aberta com o a vencer (comprometido). valor_pago acumula o que já foi
+        // pago do vencido; a proposta (era para o vencido) sai; a divisão gravada é a que a tela mostrava.
+        parcial = true;
+        body = {
+          valor: 0, valor_proposta: null, valor_pago: r2(antes + pagoAgora), quitada_em: data,
+          valor_a_vencer: dv.aVencer, proximo_vencimento: dv.proximo,
+        };
+      } else if (antes > 0) {
+        // fim de uma linha que já tinha pagamentos do vencido: o que sai da lista é tudo o que foi vencendo
+        const total = r2(dv.vencido + antes);
+        body = { quitada: true, valor: total, valor_pago: r2(antes + pagoAgora), quitada_em: data, valor_a_vencer: 0, proximo_vencimento: null };
+        tetoCompativel(d0, total, body);
+      } else {
+        body = { quitada: true, valor_pago: valor, quitada_em: data };
+        // divisão calculada pela tela (em dia sem separar / vencimento que passou): grava o vencido que saiu da lista
+        if (dv.estimado > 0 || emDiaSemSeparar(d0)) {
+          Object.assign(body, { valor: dv.vencido, valor_a_vencer: 0, proximo_vencimento: null });
+          tetoCompativel(d0, dv.vencido, body);
+        }
+      }
       const linha = await patchJson<Partial<SfDivida>>(`${API}/dividas/${encodeURIComponent(ctx.id)}`, body);
-      const d = mesclar(D.dividas, ctx.id, body, linha);
+      const d = mesclar(D.dividas, ctx.id, body as Partial<SfDivida>, linha);
       sfFecharQuitar();
       if (d) renderTipo(d.grupo as Tipo);
       renderPainel();
-      toast(`Quitada! Você já eliminou ${fmtR(statsTotal().eliminado)}.`);
+      toast(parcial
+        ? `Vencido pago! Fica só o a vencer (${fmtR(dv.aVencer)}), como despesa comprometida. Você já eliminou ${fmtR(statsTotal().eliminado)}.`
+        : `Quitada! Você já eliminou ${fmtR(statsTotal().eliminado)}.`);
     } else {
       const body = { recebido: true, valor_recebido: valor, recebido_em: data };
       const linha = await patchJson<Partial<SfReaver>>(`${API}/reaver/${encodeURIComponent(ctx.id)}`, body);
@@ -1285,12 +1651,49 @@ async function sfConfirmarQuitar(): Promise<void> {
     if (btn) btn.disabled = false;
   }
 }
+/** O valor (vencido) gravado não pode passar do teto (o servidor recusa): se passar, o teto sobe junto. */
+function tetoCompativel(d: SfDivida, novoValor: number, body: Record<string, unknown>): void {
+  const t = num(d.valor_teto);
+  if (t != null && t < novoValor) body.valor_teto = novoValor;
+}
 async function desfazerQuitar(id: string): Promise<void> {
   const d = D.dividas.find((x) => x.id === id);
-  if (!d || !window.confirm(`Voltar “${d.credor}” para em aberto?`)) return;
+  if (!d || !window.confirm(`Voltar “${d.credor}” para em aberto?\n\nO pagamento anotado (${fmtR(pagoDe(d))}) é desfeito.`)) return;
+  // em linha aberta, valor_pago é "já pago do vencido" (conta como eliminado): ao reabrir, o pagamento sai junto.
+  // Vencido zerado com o valor guardado no pago (quitação antiga feita pela sincronização): o valor volta.
+  const body: Record<string, unknown> = { quitada: false, valor_pago: null, quitada_em: null };
+  if (num(d.valor) === 0 && n0(d.valor_pago) > 0) {
+    body.valor = n0(d.valor_pago);
+    tetoCompativel(d, n0(d.valor_pago), body);
+  }
   try {
-    const linha = await patchJson<Partial<SfDivida>>(`${API}/dividas/${encodeURIComponent(id)}`, { quitada: false });
-    mesclar(D.dividas, id, { quitada: false }, linha);
+    const linha = await patchJson<Partial<SfDivida>>(`${API}/dividas/${encodeURIComponent(id)}`, body);
+    mesclar(D.dividas, id, body as Partial<SfDivida>, linha);
+    renderTipo(d.grupo as Tipo);
+    renderPainel();
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), "erro");
+  }
+}
+/** Desfaz o "✓ Paguei o vencido" de uma linha que segue aberta: o pago volta a contar como vencido. */
+async function desfazerParcial(id: string): Promise<void> {
+  const d = D.dividas.find((x) => x.id === id);
+  const pp = d ? pagoParcial(d) : 0;
+  if (!d || !(pp > 0)) return;
+  const ligada = num(d.vobi_fornecedor_id) != null;
+  const msg = ligada
+    ? `Desfazer o pagamento do vencido de “${d.credor}” (${fmtR(pp)})?\n\nA linha é atualizada pela Vobi: o vencido volta no próximo “Atualizar da Vobi”, se ainda estiver em aberto lá.`
+    : `Desfazer o pagamento do vencido de “${d.credor}” (${fmtR(pp)})?\n\nO valor volta a contar como vencido.`;
+  if (!window.confirm(msg)) return;
+  const body: Record<string, unknown> = { valor_pago: null, quitada_em: null };
+  if (!ligada) {
+    const novo = r2(Math.max(0, n0(d.valor)) + pp);
+    body.valor = novo;
+    tetoCompativel(d, novo, body);
+  }
+  try {
+    const linha = await patchJson<Partial<SfDivida>>(`${API}/dividas/${encodeURIComponent(id)}`, body);
+    mesclar(D.dividas, id, body as Partial<SfDivida>, linha);
     renderTipo(d.grupo as Tipo);
     renderPainel();
   } catch (e) {
@@ -1310,9 +1713,42 @@ async function desfazerReceber(id: string): Promise<void> {
   }
 }
 
+// ── despesa comprometida: "✗ Não vai acontecer" (corta) e desfazer ──
+async function cortarComprometida(id: string, cortar: boolean): Promise<void> {
+  const d = D.dividas.find((x) => x.id === id);
+  if (!d || !D.podeEditar) return;
+  const pergunta = cortar
+    ? `“${d.credor}”: ${fmtR(aVencer(d))} a vencer não vai acontecer?\n\nSai do comprometido (fica riscada; dá para desfazer).`
+    : `Desfazer o corte de “${d.credor}”? Volta a contar como despesa comprometida.`;
+  if (!window.confirm(pergunta)) return;
+  try {
+    // sem data: o servidor grava cortada_em = hoje (São Paulo), ou mantém a que já existia
+    const body = { comprometida_cortada: cortar };
+    const linha = await patchJson<Partial<SfDivida>>(`${API}/dividas/${encodeURIComponent(id)}`, body);
+    mesclar(D.dividas, id, cortar ? { comprometida_cortada: true, cortada_em: d.cortada_em || hojeISO() } : { comprometida_cortada: false }, linha);
+    renderTipo(d.grupo as Tipo);
+    renderPainel();
+    if (cortar) toast(`Despesa cortada: −${fmtR(aVencer(d))} no comprometido.`);
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), "erro");
+  }
+}
+
 // ── detalhes da dívida (modal) ──
-const MD_CAMPOS = ["sfMdSituacao", "sfMdProposta", "sfMdPropObs", "sfMdPago", "sfMdQuitEm", "sfMdValor", "sfMdTeto", "sfMdParcela", "sfMdRisco", "sfMdObs"];
+const MD_CAMPOS = [
+  "sfMdSituacao", "sfMdProposta", "sfMdPropObs", "sfMdPago", "sfMdQuitEm", "sfMdValor", "sfMdTeto",
+  "sfMdAVencer", "sfMdProxVenc", "sfMdCobranca", "sfMdParcela", "sfMdRisco", "sfMdObs", "sfMdVobiId",
+];
 let mdSnap: Record<string, string> = {};
+/** O modal abriu mostrando uma divisão CALCULADA pela tela (em dia sem separar, ou vencimento que já passou):
+ *  qualquer gravação leva junto vencido + a vencer + próximo vencimento como foram mostrados — senão mudar só a
+ *  situação (ou outro campo) faria o valor antigo voltar a contar inteiro como vencido. */
+let mdDividido = false;
+function textoVobi(idf: number | null): string {
+  return idf != null
+    ? `Ligada ao fornecedor nº ${idf} da Vobi: “Atualizar da Vobi” regrava o vencido, o a vencer e o próximo vencimento.`
+    : "Só ligue a um fornecedor da Vobi se TODA a dívida desta linha estiver lançada lá: o “Atualizar da Vobi” passa a regravar o vencido e o a vencer com o que estiver em aberto na Vobi.";
+}
 async function sfEditarDivida(id: string): Promise<void> {
   await esperarPendente(`divida:${id}`); // proposta digitada na linha e ✎ tocado logo em seguida
   const d = D.dividas.find((x) => x.id === id);
@@ -1332,13 +1768,43 @@ async function sfEditarDivida(id: string): Promise<void> {
   setCampo("sfMdPropObs", d.proposta_obs || "");
   setCampo("sfMdPago", valorParaCampo(d.valor_pago));
   setCampo("sfMdQuitEm", txt(d.quitada_em).slice(0, 10));
-  setCampo("sfMdValor", valorParaCampo(d.valor));
+  // divisão calculada pela tela (em dia sem separar: vencido 0 e tudo a vencer; vencimento que passou: o que
+  // venceu foi para o vencido): o modal mostra exatamente o que a tela usa
+  const dv = divisao(d);
+  mdDividido = !d.quitada && (emDiaSemSeparar(d) || dv.estimado > 0);
+  setCampo("sfMdValor", mdDividido ? valorParaCampo(dv.vencido) : valorParaCampo(d.valor));
   setCampo("sfMdTeto", valorParaCampo(d.valor_teto));
+  setCampo("sfMdAVencer", mdDividido ? valorParaCampo(dv.aVencer) : valorParaCampo(d.valor_a_vencer));
+  setCampo("sfMdProxVenc", mdDividido ? (dv.proximo || "") : (dataISO(d.proximo_vencimento) || ""));
+  const aviso = el("sfMdAviso");
+  if (aviso) {
+    aviso.textContent = d.quitada ? ""
+      : dv.estimado > 0 && dv.venceuEm
+        ? `O próximo vencimento gravado (${fmtData(dv.venceuEm)}) já passou: a tela passou ${fmtR(dv.estimado)} do “a vencer” para o vencido (${num(d.parcela_mensal) ? "pela parcela por mês" : "tudo, por não haver parcela"}). Confira os valores abaixo e salve — ou use “Atualizar da Vobi”.`
+        : emDiaSemSeparar(d)
+          ? "Linha “em dia” sem o a vencer separado: tudo conta como a vencer (comprometido). Ao salvar, essa divisão é gravada."
+          : dv.aVencer > 0 && !dv.proximo
+            ? "Informe o próximo vencimento: sem ele a tela não sabe quando o comprometido vira vencido."
+            : "";
+  }
+  setCampo("sfMdVobiId", d.vobi_fornecedor_id != null ? String(d.vobi_fornecedor_id) : "");
+  const cobSel = campo("sfMdCobranca") as HTMLSelectElement | null;
+  if (cobSel) {
+    const auto = D.rotuloCobranca[cobrancaDerivada(d)] || cobrancaDerivada(d);
+    cobSel.innerHTML = [`<option value="">Automática (pela situação: ${esc(auto.toLowerCase())})</option>`]
+      .concat(D.cobrancas.map((c) => `<option value="${esc(c)}">${esc(D.rotuloCobranca[c] || c)}</option>`)).join("");
+    cobSel.value = d.cobranca === "com_cobranca" || d.cobranca === "sem_cobranca" ? d.cobranca : "";
+  }
+  const vobiNota = el("sfMdVobi");
+  if (vobiNota) vobiNota.textContent = textoVobi(num(d.vobi_fornecedor_id));
   setCampo("sfMdParcela", valorParaCampo(d.parcela_mensal));
   setCampo("sfMdRisco", d.risco || "");
   setCampo("sfMdObs", d.observacao || "");
+  // quitada, ou aberta com o vencido já pago ("✓ Paguei o vencido"): mostra o valor pago e a data
   const qb = el("sfMdQuitBox");
-  if (qb) qb.style.display = d.quitada ? "" : "none";
+  if (qb) qb.style.display = d.quitada || pagoParcial(d) > 0 ? "" : "none";
+  const qt = el("sfMdQuitTit");
+  if (qt) qt.textContent = d.quitada ? "✓ Quitada" : "✓ Vencido já pago (a linha segue com o a vencer)";
   const cred = el("sfMdCredor");
   if (cred) cred.textContent = [d.credor, d.identificacao].filter(Boolean).join(" — ") + (motivoFora(d) ? ` (${motivoFora(d)})` : "");
   modal.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input:not([type=hidden]), textarea, select")
@@ -1357,21 +1823,49 @@ async function sfSalvarDivida(): Promise<void> {
   // só vai no PATCH o que mudou em relação ao que o modal mostrou ao abrir (não desfaz o que foi salvo na linha)
   const body: Record<string, unknown> = {};
   const nomes: Array<[string, string, string]> = [
-    ["valor_proposta", "sfMdProposta", "Proposta de quitação"], ["valor", "sfMdValor", "Valor devido"],
-    ["valor_teto", "sfMdTeto", "Valor máximo"], ["parcela_mensal", "sfMdParcela", "Parcela por mês"],
+    ["valor_proposta", "sfMdProposta", "Proposta de quitação"], ["valor", "sfMdValor", "Vencido"],
+    ["valor_teto", "sfMdTeto", "Valor máximo"], ["valor_a_vencer", "sfMdAVencer", "A vencer"],
+    ["parcela_mensal", "sfMdParcela", "Parcela por mês"],
   ];
-  if (d.quitada) nomes.push(["valor_pago", "sfMdPago", "Valor pago"]);
+  const temPago = d.quitada || pagoParcial(d) > 0;
+  if (temPago) nomes.push(["valor_pago", "sfMdPago", "Valor pago"]);
+  // divisão calculada pela tela (em dia sem separar / vencimento que passou): mudou QUALQUER campo (inclusive só a
+  // situação) → grava vencido + a vencer + próximo vencimento como o modal mostrou (senão o valor antigo, que a tela
+  // mostrava como a vencer, voltaria a contar inteiro como vencido)
+  const gravarDivisao = mdDividido && MD_CAMPOS.some((c) => mudou(mdSnap, c));
   for (const [k, cid, rot] of nomes) {
-    if (!mudou(mdSnap, cid)) continue;
+    if (!mudou(mdSnap, cid) && !(gravarDivisao && (k === "valor" || k === "valor_a_vencer"))) continue;
     const v = lerValor(campo(cid)?.value || "");
     if (v != null && (Number.isNaN(v) || v < 0)) { msgModal("sfMdMsg", `${rot}: valor inválido. Use números, ex.: 1.234,56`, true); return; }
     body[k] = v == null ? null : Math.round(v * 100) / 100;
   }
   const textos: Array<[string, string]> = [["situacao", "sfMdSituacao"], ["proposta_obs", "sfMdPropObs"], ["risco", "sfMdRisco"], ["observacao", "sfMdObs"]];
   for (const [k, cid] of textos) if (mudou(mdSnap, cid)) body[k] = (campo(cid)?.value || "").trim() || null;
-  if (d.quitada && mudou(mdSnap, "sfMdQuitEm")) {
+  const pvCampo = (campo("sfMdProxVenc")?.value || "").trim();
+  if (pvCampo && !/^\d{4}-\d{2}-\d{2}$/.test(pvCampo)) { msgModal("sfMdMsg", "Próximo vencimento: data inválida.", true); return; }
+  if (mudou(mdSnap, "sfMdProxVenc") || gravarDivisao) body.proximo_vencimento = pvCampo || null;
+  // o que já venceu não é "a vencer": com a vencer > 0, o próximo vencimento não pode estar no passado
+  if (!d.quitada && ("proximo_vencimento" in body || "valor_a_vencer" in body)) {
+    const av = lerValor(campo("sfMdAVencer")?.value || "");
+    if (pvCampo && pvCampo < hojeISO() && av != null && av > 0) {
+      msgModal("sfMdMsg", `O próximo vencimento (${fmtData(pvCampo)}) já passou: o que venceu nessa data vai no campo “Vencido”. Informe a próxima data a vencer (ou deixe em branco).`, true);
+      return;
+    }
+  }
+  if (mudou(mdSnap, "sfMdCobranca")) body.cobranca = campo("sfMdCobranca")?.value || null;
+  if (temPago && mudou(mdSnap, "sfMdQuitEm")) {
     const q = (campo("sfMdQuitEm")?.value || "").trim();
     if (q) body.quitada_em = q;
+  }
+  if (mudou(mdSnap, "sfMdVobiId")) {
+    const s = (campo("sfMdVobiId")?.value || "").trim();
+    if (!s) body.vobi_fornecedor_id = null;
+    else if (/^\d{1,9}$/.test(s) && Number(s) > 0) body.vobi_fornecedor_id = Number(s);
+    else { msgModal("sfMdMsg", "Fornecedor na Vobi: use só o número do cadastro (ex.: 665764), ou deixe vazio.", true); return; }
+    if (body.vobi_fornecedor_id != null) {
+      const outra = D.dividas.find((x) => x.id !== d.id && x.ativo !== false && !x.quitada && num(x.vobi_fornecedor_id) === body.vobi_fornecedor_id);
+      if (outra && !window.confirm(`O fornecedor nº ${body.vobi_fornecedor_id} já está ligado a “${outra.credor}”. Com duas linhas no mesmo fornecedor, o “Atualizar da Vobi” pula as duas. Ligar mesmo assim?`)) return;
+    }
   }
   if (!Object.keys(body).length) { sfFecharDivida(); return; } // nada mudou: fecha sem gravar
   const btn = el("sfMdSalvar") as HTMLButtonElement | null;
@@ -1525,6 +2019,9 @@ function aoAcionar(t: HTMLElement): void {
   if (act === "ir-aba") { ativarAba(t.dataset.aba || "painel"); window.scrollTo({ top: 0, behavior: "smooth" }); }
   else if (act === "quitar") void abrirQuitar("divida", id);
   else if (act === "desfazer-quitar") void desfazerQuitar(id);
+  else if (act === "desfazer-parcial") void desfazerParcial(id);
+  else if (act === "cortar-comp") void cortarComprometida(id, true);
+  else if (act === "descortar-comp") void cortarComprometida(id, false);
   else if (act === "editar-divida") void sfEditarDivida(id);
   else if (act === "receber") void abrirQuitar("reaver", id);
   else if (act === "desfazer-receber") void desfazerReceber(id);

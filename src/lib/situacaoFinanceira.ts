@@ -28,16 +28,34 @@ export const ROTULO_TIPO_REAVER: Record<TipoReaver, string> = {
 export const CHANCES = ["alta", "media", "baixa", "nao_sei"] as const;
 export type Chance = (typeof CHANCES)[number];
 export const ROTULO_CHANCE: Record<Chance, string> = { alta: "Alta", media: "Média", baixa: "Baixa", nao_sei: "Não sei" };
+/** Se o credor está cobrando ativamente uma dívida VENCIDA (fin_sf_dividas.cobranca, migration 120). */
+export const COBRANCAS = ["com_cobranca", "sem_cobranca"] as const;
+export type Cobranca = (typeof COBRANCAS)[number];
+export const ROTULO_COBRANCA: Record<Cobranca, string> = { com_cobranca: "Com cobrança", sem_cobranca: "Sem cobrança" };
+/** Situações que, por si, são cobrança ativa (usadas quando fin_sf_dividas.cobranca é null): protesto, intimação
+ *  de protesto, execução/ação judicial, citação e inscrição em dívida ativa. Banco em execução = saldo inteiro vencido. */
+export const SITUACOES_COM_COBRANCA = ["protestada", "intimada", "execucao", "ajuizada", "citada", "inscrita"] as const;
 
 // ───────────────────────── tipos das tabelas ─────────────────────────
 export type SfDivida = {
   id: string; grupo: GrupoDivida; subgrupo: string | null; credor: string; identificacao: string | null;
-  natureza: string | null; retido: boolean; valor: number | null; valor_teto: number | null; parcela_mensal: number | null;
+  natureza: string | null; retido: boolean;
+  /** Desde a migration 120: SÓ O VENCIDO (o que conta como dívida). O que vence depois fica em valor_a_vencer. */
+  valor: number | null; valor_teto: number | null; parcela_mensal: number | null;
   situacao: string | null; risco: string | null; data_ref: string | null; fonte: string | null; observacao: string | null;
   ordem: number | null; ativo: boolean;
   /** v2 (migration 119): valor de quitação proposto/negociado, observação da proposta e quitação */
   valor_proposta: number | null; proposta_obs: string | null;
   quitada: boolean; quitada_em: string | null; valor_pago: number | null;
+  /** migration 120: parcelas futuras (despesa comprometida, fora da dívida) e a próxima a vencer */
+  valor_a_vencer: number | null; proximo_vencimento: string | null;
+  /** migration 120: null = deriva da situação (SITUACOES_COM_COBRANCA) */
+  cobranca: Cobranca | null;
+  /** migration 120: fornecedor na Vobi — "Atualizar da Vobi" grava vencido/a vencer/próximo vencimento */
+  vobi_fornecedor_id: number | null;
+  /** migration 120: a Adriana marcou que a despesa comprometida NÃO vai acontecer */
+  comprometida_cortada: boolean; cortada_em: string | null;
+  atualizado_por?: string | null;
   updated_at?: string | null;
 };
 export type SfProtesto = {
@@ -91,10 +109,14 @@ export async function carregarSituacao(): Promise<{
   if (r.error) console.warn("[situacao-financeira] fin_sf_reaver indisponível:", r.error.message);
   const painel: Record<string, any> = {};
   for (const row of (k.data || []) as SfPainel[]) painel[row.chave] = row.dados;
-  // linhas de antes da migration 119 podem vir sem os campos novos: completa com o padrão
+  // linhas de antes das migrations 119/120 podem vir sem os campos novos (select * traz só o que existe): completa com o padrão
   const dividas = ((d.data || []) as SfDivida[]).map((x) => ({
     ...x, valor_proposta: x.valor_proposta ?? null, proposta_obs: x.proposta_obs ?? null,
     quitada: x.quitada === true, quitada_em: x.quitada_em ?? null, valor_pago: x.valor_pago ?? null,
+    valor_a_vencer: x.valor_a_vencer ?? null, proximo_vencimento: x.proximo_vencimento ?? null,
+    cobranca: (COBRANCAS as readonly string[]).includes(String(x.cobranca)) ? x.cobranca : null,
+    vobi_fornecedor_id: x.vobi_fornecedor_id ?? null,
+    comprometida_cortada: x.comprometida_cortada === true, cortada_em: x.cortada_em ?? null,
   }));
   const protestos = ((p.data || []) as SfProtesto[]).map((x) => ({ ...x, cancelado: x.cancelado === true, cancelado_em: x.cancelado_em ?? null }));
   const acoes = ((a.data || []) as SfAcao[]).map((x) => ({ ...x, plano: x.plano || "v1", valor_vendido: x.valor_vendido ?? null }));
@@ -287,19 +309,27 @@ export type ResumoAberto = {
   /** total/vencido/aVencer/qtd/proximos90 NÃO incluem o grupo "pessoa_fisica" (não é dívida da empresa); porGrupo e porFornecedor incluem. */
   total: number; vencido: number; aVencer: number; qtd: number;
   porGrupo: Array<{ grupo: GrupoAberto; rotulo: string; aba: GrupoDivida; total: number; vencido: number; aVencer: number; qtd: number }>;
-  porFornecedor: Array<{ fornecedor: string; idFornecedor: number | null; grupo: GrupoAberto; total: number; vencido: number; aVencer: number; qtd: number; maisAntigo: string }>;
+  /** vencido = vencimento ANTES de hoje (já passou e não foi pago); aVencer = de hoje em diante (comprometido).
+   *  proximoAVencer = vencimento futuro mais próximo (null se nada a vencer); aVencer30 = o que vence nos próximos 30 dias. */
+  porFornecedor: Array<{
+    fornecedor: string; idFornecedor: number | null; grupo: GrupoAberto; total: number; vencido: number; aVencer: number; qtd: number;
+    maisAntigo: string; proximoAVencer: string | null; aVencer30: number;
+  }>;
   proximos90: Array<{ mes: string; grupo: GrupoAberto; total: number }>;
 };
 
 /** Contas a pagar em aberto (despesas), deduplicadas por id, agrupadas. ~3 chamadas. */
 export async function contasAbertas(hojeISO: string): Promise<ResumoAberto> {
-  const lista = await vencimentosNoPeriodo("2015-01-01", "2040-12-31");
+  // estrito: leitura cortada na paginação LANÇA (vira "cópia salva com aviso") em vez de virar soma menor — senão
+  // a sincronização gravaria vencidos/a vencer faltando parcelas
+  const lista = await vencimentosNoPeriodo("2015-01-01", "2040-12-31", { estrito: true, maxPaginas: 20 });
   const vistos = new Set<string>();
   const res: ResumoAberto = { total: 0, vencido: 0, aVencer: 0, qtd: 0, porGrupo: [], porFornecedor: [], proximos90: [] };
   const g = new Map<GrupoAberto, ResumoAberto["porGrupo"][number]>();
   const f = new Map<string, ResumoAberto["porFornecedor"][number]>();
   const p90 = new Map<string, number>();
   const limite90 = new Date(Date.parse(hojeISO + "T00:00:00Z") + 90 * 86400000).toISOString().slice(0, 10);
+  const limite30 = new Date(Date.parse(hojeISO + "T00:00:00Z") + 30 * 86400000).toISOString().slice(0, 10);
   for (const p of lista) {
     if (p.tipo !== "despesa" || vistos.has(p.id)) continue;
     vistos.add(p.id);
@@ -315,8 +345,18 @@ export async function contasAbertas(hojeISO: string): Promise<ResumoAberto> {
     g.set(grupo, gg);
     const nome = (p.fornecedor || p.descricao || "Sem fornecedor").trim();
     const chave = `${grupo}|${p.idFornecedor ?? nome}`;
-    const ff = f.get(chave) || { fornecedor: nome, idFornecedor: p.idFornecedor, grupo, total: 0, vencido: 0, aVencer: 0, qtd: 0, maisAntigo: p.vencimento };
-    ff.total += p.valor; ff.qtd++; if (venc) ff.vencido += p.valor; else ff.aVencer += p.valor;
+    const ff = f.get(chave) || {
+      fornecedor: nome, idFornecedor: p.idFornecedor, grupo, total: 0, vencido: 0, aVencer: 0, qtd: 0,
+      maisAntigo: p.vencimento, proximoAVencer: null as string | null, aVencer30: 0,
+    };
+    ff.total += p.valor; ff.qtd++;
+    if (venc) {
+      ff.vencido += p.valor;
+    } else {
+      ff.aVencer += p.valor;
+      if (p.vencimento && (!ff.proximoAVencer || p.vencimento < ff.proximoAVencer)) ff.proximoAVencer = p.vencimento;
+      if (p.vencimento && p.vencimento <= limite30) ff.aVencer30 += p.valor;
+    }
     if (p.vencimento && p.vencimento < ff.maisAntigo) ff.maisAntigo = p.vencimento;
     f.set(chave, ff);
     if (daEmpresa && !venc && p.vencimento <= limite90) {
@@ -326,10 +366,30 @@ export async function contasAbertas(hojeISO: string): Promise<ResumoAberto> {
   }
   res.total = r2(res.total); res.vencido = r2(res.vencido); res.aVencer = r2(res.aVencer);
   res.porGrupo = [...g.values()].map((x) => ({ ...x, total: r2(x.total), vencido: r2(x.vencido), aVencer: r2(x.aVencer) })).sort((a, b) => b.total - a.total);
-  res.porFornecedor = [...f.values()].map((x) => ({ ...x, total: r2(x.total), vencido: r2(x.vencido), aVencer: r2(x.aVencer) })).sort((a, b) => b.total - a.total);
+  res.porFornecedor = [...f.values()]
+    .map((x) => ({ ...x, total: r2(x.total), vencido: r2(x.vencido), aVencer: r2(x.aVencer), aVencer30: r2(x.aVencer30) }))
+    .sort((a, b) => b.total - a.total);
   res.proximos90 = [...p90.entries()].map(([k, total]) => { const [mes, grupo] = k.split("|"); return { mes, grupo: grupo as GrupoAberto, total: r2(total) }; })
     .sort((a, b) => a.mes.localeCompare(b.mes) || b.total - a.total);
   return res;
+}
+
+/** Soma das contas em aberto de UM fornecedor da Vobi (todas as categorias dele). As de pessoa física só entram
+ *  quando a linha da dívida é ela mesma de pessoa física (senão a dívida da empresa ficaria inflada). */
+export function somaFornecedorVobi(aberto: ResumoAberto, idFornecedor: number, incluirPessoaFisica: boolean): {
+  achou: boolean; vencido: number; aVencer: number; aVencer30: number; proximoAVencer: string | null;
+} {
+  const r = { achou: false, vencido: 0, aVencer: 0, aVencer30: 0, proximoAVencer: null as string | null };
+  for (const x of aberto.porFornecedor || []) {
+    if (x.idFornecedor !== idFornecedor) continue;
+    if (x.grupo === "pessoa_fisica" && !incluirPessoaFisica) continue;
+    r.achou = true;
+    r.vencido += Number(x.vencido) || 0;
+    r.aVencer += Number(x.aVencer) || 0;
+    r.aVencer30 += Number(x.aVencer30) || 0;
+    if (x.proximoAVencer && (!r.proximoAVencer || x.proximoAVencer < r.proximoAVencer)) r.proximoAVencer = x.proximoAVencer;
+  }
+  return { ...r, vencido: r2(r.vencido), aVencer: r2(r.aVencer), aVencer30: r2(r.aVencer30) };
 }
 
 export type DadosAoVivo = {
@@ -341,8 +401,8 @@ export type DadosAoVivo = {
   fluxo: FluxoMes[]; aberto: ResumoAberto | null;
 };
 
-// v2: grupos novos (fornecedores da estrutura, Tax All, pessoa física); a cópia antiga não serve mais.
-const CHAVE_CACHE = "sf:aovivo:v2";
+// v3: porFornecedor ganhou proximoAVencer e aVencer30 (vencido x comprometido, 14/10/2026); a cópia v2 não tem.
+const CHAVE_CACHE = "sf:aovivo:v3";
 const TTL_MS = 60 * 60 * 1000;
 /** "Atualizar da Vobi" repetido dentro deste intervalo devolve a mesma leitura (poupa a cota de 1000/h). */
 const PISO_FORCAR_MS = 3 * 60 * 1000;

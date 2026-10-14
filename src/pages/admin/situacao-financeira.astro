@@ -2,8 +2,11 @@
 // Situação Financeira v2 (grupo Diretoria, só admin por padrão) — 14/10/2026.
 // Tela enxuta e de ESTÍMULO: painel com o que já foi eliminado, dívidas por tipo com proposta de quitação
 // editável e "✓ Quitei", A reaver, plano de ação novo (v2) e protestos com contador de cancelados.
-// Tabelas fin_sf_* (migrations 118 e 119) + leitura AO VIVO da Vobi (receita média e fornecedores em aberto)
-// pela API /api/admin/situacao-financeira/aovivo, com cache de 1 h no servidor.
+// Tabelas fin_sf_* (migrations 118, 119 e 120) + leitura AO VIVO da Vobi (receita média e fornecedores em aberto)
+// pela API /api/admin/situacao-financeira/aovivo, com cache de 1 h no servidor; "Atualizar da Vobi" também chama
+// /sincronizar (grava vencido / a vencer das dívidas ligadas a um fornecedor da Vobi).
+// Regra da Adriana (14/10/2026): dívida = só o VENCIDO (com ou sem cobrança); o que vence depois é despesa
+// COMPROMETIDA, mostrada à parte em cada aba (fora da dívida e da meta) e que ela pode cortar.
 // Todo o desenho fica em src/scripts/situacaoFinanceira.ts (módulo próprio: <script> grande
 // direto na página some do SSR). Os dados do banco chegam ao cliente por um island JSON.
 import Admin from "../../layouts/Admin.astro";
@@ -11,6 +14,7 @@ import { verifyToken, assertSessaoValida, type AdminClaims } from "../../lib/aut
 import { nivelModuloUsuario } from "../../lib/permissoes";
 import {
   carregarSituacao, STATUS_ACAO, ROTULO_STATUS, TIPOS_REAVER, ROTULO_TIPO_REAVER, CHANCES, ROTULO_CHANCE,
+  COBRANCAS, ROTULO_COBRANCA, SITUACOES_COM_COBRANCA,
 } from "../../lib/situacaoFinanceira";
 
 const token = Astro.cookies.get("admin_token")?.value;
@@ -55,6 +59,9 @@ const ilha = JSON.stringify({
   rotuloTipoReaver: ROTULO_TIPO_REAVER,
   chances: CHANCES,
   rotuloChance: ROTULO_CHANCE,
+  cobrancas: COBRANCAS,
+  rotuloCobranca: ROTULO_COBRANCA,
+  situacoesComCobranca: SITUACOES_COM_COBRANCA,
   podeEditar: nivel === "editar",
 }).replace(/</g, "\\u003c"); // nunca deixar "</script>" vindo do banco fechar a tag
 ---
@@ -135,7 +142,7 @@ const ilha = JSON.stringify({
             <textarea id="sfMdPropObs" maxlength="1000" rows="2"></textarea>
           </div>
           <div class="sf-md-quit" id="sfMdQuitBox">
-            <div class="sf-md-quit-t">✓ Quitada</div>
+            <div class="sf-md-quit-t" id="sfMdQuitTit">✓ Quitada</div>
             <div class="sf-md-grid">
               <div class="form-group">
                 <label for="sfMdPago">Valor pago (R$)</label>
@@ -147,9 +154,10 @@ const ilha = JSON.stringify({
               </div>
             </div>
           </div>
+          <p class="sf-md-aviso" id="sfMdAviso"></p>
           <div class="sf-md-grid">
             <div class="form-group">
-              <label for="sfMdValor">Valor devido hoje (R$)</label>
+              <label for="sfMdValor">Vencido hoje — é a dívida (R$)</label>
               <input id="sfMdValor" type="text" inputmode="decimal" placeholder="ex.: 10.000,00" />
             </div>
             <div class="form-group">
@@ -159,14 +167,33 @@ const ilha = JSON.stringify({
           </div>
           <div class="sf-md-grid">
             <div class="form-group">
+              <label for="sfMdAVencer">A vencer — comprometido (R$)</label>
+              <input id="sfMdAVencer" type="text" inputmode="decimal" placeholder="parcelas futuras" />
+            </div>
+            <div class="form-group">
+              <label for="sfMdProxVenc">Próximo vencimento</label>
+              <input id="sfMdProxVenc" type="date" />
+            </div>
+          </div>
+          <div class="sf-md-grid">
+            <div class="form-group">
+              <label for="sfMdCobranca">Cobrança do vencido</label>
+              <select id="sfMdCobranca"></select>
+            </div>
+            <div class="form-group">
               <label for="sfMdParcela">Parcela por mês (R$)</label>
               <input id="sfMdParcela" type="text" inputmode="decimal" placeholder="ex.: 1.234,56" />
             </div>
-            <div class="form-group">
-              <label for="sfMdRisco">Risco (CPF, bloqueio…)</label>
-              <input id="sfMdRisco" type="text" maxlength="1000" />
-            </div>
           </div>
+          <div class="form-group">
+            <label for="sfMdRisco">Risco (CPF, bloqueio…)</label>
+            <input id="sfMdRisco" type="text" maxlength="1000" />
+          </div>
+          <div class="form-group">
+            <label for="sfMdVobiId">Fornecedor na Vobi (nº do cadastro)</label>
+            <input id="sfMdVobiId" type="text" inputmode="numeric" maxlength="9" placeholder="vazio = não ligada" />
+          </div>
+          <p class="sf-md-vobi" id="sfMdVobi"></p>
           <div class="form-group">
             <label for="sfMdObs">Observação</label>
             <textarea id="sfMdObs" maxlength="4000" rows="3"></textarea>
@@ -190,6 +217,7 @@ const ilha = JSON.stringify({
       </div>
       <form onsubmit="event.preventDefault();sfConfirmarQuitar()">
         <p class="sf-md-credor" id="sfMqTexto"></p>
+        <p class="sf-md-aviso" id="sfMqNota"></p>
         <div class="sf-md-body">
           <div class="sf-md-grid">
             <div class="form-group">
@@ -360,6 +388,14 @@ const ilha = JSON.stringify({
     .sf-c-verde .sf-c-v { color: var(--success-fg); }
     .sf-c-azul .sf-c-v { color: var(--info-fg); }
 
+    /* Painel: comprometido (a vencer) — fora da dívida: borda tracejada, tom neutro */
+    .sf-comp { background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius-md); padding: 10px 13px; margin-bottom: 14px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; min-width: 0; }
+    .sf-comp-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .sf-comp-v { font-family: 'Montserrat', sans-serif; font-size: 1.15rem; font-weight: 800; color: var(--ink-mid); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .sf-comp-s { flex: 1 1 220px; min-width: 0; font-size: .78rem; color: var(--ink-mid); line-height: 1.4; }
+    .sf-comp-s strong { color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .sf-comp-t { flex-basis: 100%; font-size: .74rem; color: var(--ink-light); overflow-wrap: anywhere; }
+
     /* Painel: meta de receita */
     .sf-meta { margin-bottom: 14px; }
     .sf-meta-l { display: flex; justify-content: space-between; align-items: center; gap: 4px 10px; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: .88rem; flex-wrap: wrap; }
@@ -440,6 +476,24 @@ const ilha = JSON.stringify({
     .sf-linha-fora .sf-l-cred { color: var(--ink-mid); }
     .sf-quitadas > summary { color: var(--success-fg); }
     .sf-fora > summary { color: var(--ink-mid); }
+
+    /* Abas de tipo: blocos "Vencidas — com cobrança" / "Vencidas — sem cobrança" */
+    .sf-bloco { margin-bottom: 14px; min-width: 0; }
+    .sf-bloco-t { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; margin: 2px 0 8px; padding: 2px 0 2px 10px; border-left: 4px solid var(--bc, var(--ink-light)); font-family: 'Montserrat', sans-serif; font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--bfg, var(--ink-mid)); }
+    .sf-bloco-t i { font-size: 15px; vertical-align: -2px; }
+    .sf-bloco-n { font-weight: 600; color: var(--ink-light); }
+    .sf-bloco-tot { margin-left: auto; font-family: 'Open Sans', sans-serif; font-size: .84rem; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .sf-bloco-sub { flex-basis: 100%; font-family: 'Open Sans', sans-serif; font-size: .72rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink-light); }
+    .sf-bloco-com { --bc: var(--danger); --bfg: var(--danger-fg); }
+    .sf-bloco-sem { --bc: #F59E0B; --bfg: var(--warning-fg); }
+
+    /* Abas de tipo: despesas comprometidas (a vencer — fora da dívida) */
+    .sf-comp-det > summary { color: var(--ink-mid); }
+    .sf-linha-comp { grid-template-columns: minmax(0, 1fr) 120px 112px auto; }
+    .sf-linha-cortada { background: var(--gray-50); }
+    .sf-linha-cortada .sf-l-cred, .sf-linha-cortada .sf-l-devido strong { text-decoration: line-through; text-decoration-color: rgba(0,0,0,.35); color: var(--ink-light); }
+    .sf-cortar { background: #fff; border: 1px solid var(--border-strong); color: var(--ink-mid); border-radius: 8px; padding: 6px 10px; font-weight: 700; font-size: .76rem; cursor: pointer; white-space: nowrap; font-family: inherit; }
+    .sf-cortar:hover { border-color: var(--danger); color: var(--danger); }
     .sf-vazio { padding: 12px 14px; color: var(--ink-light); font-size: .86rem; }
 
     /* A reaver */
@@ -533,6 +587,11 @@ const ilha = JSON.stringify({
     .modal-box.sf-modal .sf-msg { padding: 0 24px; }
     .sf-md-quit { background: #F3FDF6; border: 1px solid #BBF7D0; border-radius: var(--radius-md); padding: 8px 10px 0; margin-bottom: 14px; }
     .sf-md-quit-t { font-size: .78rem; font-weight: 800; color: var(--success-fg); margin-bottom: 6px; }
+    .sf-md-vobi { font-size: .76rem; color: var(--info-fg); margin: -4px 0 10px; line-height: 1.4; }
+    .sf-md-vobi:empty { display: none; }
+    .sf-md-aviso { font-size: .8rem; color: var(--warning-fg, #92400E); background: var(--warning-bg, #FFFBEB); border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; line-height: 1.4; }
+    .sf-md-aviso:empty { display: none; }
+    .sf-l-pago { color: var(--success-fg, var(--success)); }
     .sf-mr-footer { align-items: center; }
     .sf-espaco { flex: 1; }
     .sf-btn-remover { color: var(--danger); border-color: #FECACA; }
@@ -582,7 +641,8 @@ const ilha = JSON.stringify({
     }
     @media (max-width: 640px), (pointer: coarse) {
       .sf-in, .sf-chance, .sf-pl-form select, .sf-meta-l select { font-size: 16px; } /* iOS não dá zoom no foco */
-      .sf-quitei, .sf-ed, .sf-btn-canc { min-height: 40px; min-width: 40px; padding: 8px 12px; }
+      .sf-modal .form-group input, .sf-modal .form-group select, .sf-modal .form-group textarea { font-size: 16px; }
+      .sf-quitei, .sf-ed, .sf-btn-canc, .sf-cortar { min-height: 40px; min-width: 40px; padding: 8px 12px; }
       .sf-l-acoes { gap: 10px; }
     }
   </style>

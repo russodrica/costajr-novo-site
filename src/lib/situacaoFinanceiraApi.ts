@@ -29,7 +29,7 @@ export function erroDoBanco(err: { message?: string; code?: string } | null): Re
   const m = err?.message || "";
   const code = err?.code || "";
   if (["42P01", "42703", "PGRST204", "PGRST205"].includes(code) || /does not exist|schema cache|Could not find the table/i.test(m)) {
-    return jsonErr(503, "As tabelas da Situação Financeira ainda não estão completas no banco (migrations 118 e 119). Peça para rodar as migrations e tente de novo.");
+    return jsonErr(503, "As tabelas da Situação Financeira ainda não estão completas no banco (migrations 118, 119 e 120). Peça para rodar as migrations e tente de novo.");
   }
   return jsonErr(500, "Não consegui salvar agora. Tente de novo em instantes.", m);
 }

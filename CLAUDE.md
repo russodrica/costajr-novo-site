@@ -3592,3 +3592,31 @@ consórcios) e plano de ação NOVO sem equipe/investimento (consultoria, planil
   overflow auto) dentro do `.main-wrap` (flex, min-width:auto) fazia a página abrir com 704px no
   celular. Fix: `contain: inline-size` na faixa. Diagnóstico: `window.innerWidth` > 375 com emulação
   de 375 = algum elemento impõe largura mínima.
+
+## Atualizacao 14/10/2026 (parte 4) — Situação Financeira: DÍVIDA = só o VENCIDO; a vencer = COMPROMETIDO
+
+**A Adriana pegou:** em Fornecedores "sem cobrança" entravam vencimentos futuros (Evandio R$ 31.800 em
+dia contando como passivo). O critério antigo era o TOTAL em aberto na Vobi (vencido + a vencer) do
+levantamento de 13/10. **REGRA DELA:** dívida = só o que já VENCEU, separado em "com cobrança"
+(protesto, intimação, execução/ação, cobrança jurídica, dívida ativa) e "sem cobrança"; vencimento
+futuro = **DESPESA COMPROMETIDA**, fora da dívida e da meta ("pode deixar de acontecer").
+
+- **Migration 120 RODADA** (Management API): fin_sf_dividas + valor_a_vencer, proximo_vencimento,
+  cobranca (com_cobranca|sem_cobranca), vobi_fornecedor_id, comprometida_cortada, cortada_em.
+  **`valor` passou a significar SÓ O VENCIDO.**
+- **Backfill** (D:/temp/situacao_fin/backfill_vencido_1410.mjs; classificação linha a linha com evidência em
+  classificacao_vencido_1410.json; cópia antes em backup_dividas_pre_vencido_1410.json): 115 linhas.
+  Totais: vencido com cobrança R$ 4,18 mi + sem cobrança R$ 1,33 mi = **dívida R$ 5,51 mi**; comprometido
+  R$ 1,77 mi (fora: PF, contingente Tax All, sócios, a conferir). Bancos em execução (Bradesco x2,
+  Sicoob) = saldo inteiro vencido; demais bancos pelo cronograma do contrato (Vobi guarda data-tampão 2030).
+- **Tela:** cada aba com "Vencidas — com cobrança" / "Vencidas — sem cobrança" e bloco recolhido
+  "Despesas comprometidas — a vencer" com "✗ Não vai acontecer" (corte vira conquista). Card novo no
+  Painel "Comprometido (a vencer)". "✓ Quitei" numa linha com a vencer paga SÓ o vencido. A vencer com
+  data passada vira vencido estimado ("venceu — atualize").
+- **Sincronizar com a Vobi** (POST /api/admin/situacao-financeira/sincronizar, chamado pelo botão
+  "Atualizar da Vobi"): atualiza vencido/a vencer das linhas com vobi_fornecedor_id; NUNCA quita sozinho
+  (fornecedor que some da leitura volta em "paraConferir"). Cache da leitura ao vivo virou 'sf:aovivo:v3'.
+- **Em dev, a leitura da Vobi falha** ("Dynamic access of import.meta.env is not supported") — limitação
+  do servidor de desenvolvimento; em produção funciona.
+- **PENDENTE (Adriana):** João Telhadista (sfd-fornecedor-7, R$ 23.103,79 vencido) teve a parcela
+  CANCELADA na Vobi em 14/10 16:46 junto com as do Evandio — mantido como dívida até ela confirmar.
