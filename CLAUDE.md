@@ -3471,3 +3471,21 @@ de legenda real do grupo.
 `lerDocumentoLLM` agora tenta **Claude -> Gemini -> Groq(imagem)**. O chat da JunIA continua
 no Groq (gratis, aguenta volume); paga-se so onde errar custa dinheiro. **INERTE sem a
 chave.** Ligar = colar `ANTHROPIC_API_KEY` na Vercel + Reimplantar.
+
+**Chave do Claude ATIVADA (14/10/2026):** a Adriana colou `ANTHROPIC_API_KEY` na Vercel e eu
+disparei o Reimplante (deploy 86540cb, Production, Ready). Conferir pela faixa da
+/admin/caixa-entrada: "texto: Groq · documento: Claude ✅ chave do Claude validada" — o
+`pingClaude` faz chamada real, entao chave errada aparece como "recusada" com o motivo em vez
+de cair no Gemini em silencio.
+
+**DOIS TROPECOS DESTA SESSAO (nao repetir):**
+1. **Clique em Save sem querer no modal da Vercel:** mirei no seletor de Environments, o modal
+   tinha rolado e o clique caiu no botao Save — a variavel foi criada na hora. **No modal da
+   Vercel, tirar screenshot IMEDIATAMENTE antes de cada clique**: ele rola e troca as posicoes.
+   Pior: o campo **Value ja vinha preenchido pelo autofill do Chrome** (bolinhas) — se salvar
+   assim, grava uma senha qualquer como valor. Mandar sempre LIMPAR o Value antes de colar.
+2. **A chave veio no chat** (aparece mascarada na tela dela, mas chega inteira aqui e fica em
+   texto puro no .jsonl da sessao, em C:/Users/.../.claude/projects/...). Orientei trocar, e
+   ela trocou. **Regra: nunca aceitar chave pelo chat — pedir para colar direto na Vercel.**
+   Detalhe util: `sk-ant-usr-` e credencial da conta Claude (tipo Claude Code), NAO autentica a
+   API; a do Console e `sk-ant-api03-`.
