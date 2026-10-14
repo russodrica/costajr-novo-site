@@ -18,7 +18,9 @@ pasta ja acumulou 24 `PUBLICAR-*.cmd` mortos por causa disso.
 `COMERCIAL-PUXAR.cmd`. Tambem ficam (uso recorrente, nao versionados):
 `1-BAIXAR-DO-GITHUB.cmd`, `ATIVAR-PONTE-AUTOMATICA.cmd`,
 `DESATIVAR-PONTE-AUTOMATICA.cmd`, `ATIVAR-PLANILHA-AUTOMATICA.cmd`,
-`DESATIVAR-PLANILHA-AUTOMATICA.cmd` (planilha financeira sob demanda, 09/10/2026).
+`DESATIVAR-PLANILHA-AUTOMATICA.cmd` (planilha financeira sob demanda, 09/10/2026),
+`ATIVAR-BOLETOS-CARTORIO.cmd`, `DESATIVAR-BOLETOS-CARTORIO.cmd` (robô de boletos
+de cartório, 14/10/2026).
 
 ---
 
@@ -3502,3 +3504,43 @@ agentes contra os e-mails. Novidades de 14/10: 6o mandou credor+data dos 5 titul
 apresentado a protesto em 08/07/2026, 2 dias DEPOIS do pagamento (06/07); 1o recusou de novo (so certidao); 8o: boleto so pelo site
 protestosp.com.br/cancelamento-de-protesto/Simples. Nasci Car do 9o = parcela 002 (nao 3/3). LICAO: na PGFN "CONTR. EMPREGADO" =
 patronal e "CONTR. SEGURADOS" = descontada do empregado.
+
+## Atualizacao 14/10/2026 (parte 2) — Robô de BOLETOS DE CARTÓRIO (Outlook → Telegram + Vobi)
+
+**Pedido da Adriana:** todo boleto que os cartórios mandarem por e-mail vai para o grupo
+**CJR_ADM** (bot @cjr_adm_bot) com valor, vencimento e linha digitável, já entra na Vobi, e
+os e-mails ficam arquivados na pasta do Outlook **"Cartórios - Protestos"** (subpasta da
+Caixa de Entrada; tem os recebidos E os que ela mandou).
+
+**Como funciona:** tarefa do Windows **"CJR - Boletos de Cartorio"** (a cada 15 min, sem
+janela: `scripts/cartorio-silenciosa.vbs` → `node scripts/cartorio-boletos.mjs`, log em
+`_cartorio-boletos.log`). Lê o Outlook por COM (`scripts/cartorio-outlook.ps1`), acha a
+linha digitável no PDF (unpdf) e tira **valor e vencimento DA LINHA** — o vencimento escrito
+no corpo do boleto às vezes é o do título (o 2º imprime 20/10/2025). Fator de vencimento
+FEBRABAN recomeçou em 22/02/2025 (fator 1000 = 22/02/2025). Só funciona com o PC ligado,
+ela logada e o Outlook configurado. Estado (o que já foi enviado) em
+`%LOCALAPPDATA%\CJR\cartorio-boletos.json` (fora do OneDrive). Simular: `--dry`.
+
+**Regras da Vobi no robô (nunca cancela nem apaga):** conta em aberto do mesmo cartório com
+o mesmo valor → só troca o vencimento (PUT /payment com a parcela sem id; só se o lançamento
+tiver 1 parcela); intimação cujo título original já está lançado → não duplica, avisa;
+**intimação da PGFN NÃO é lançada** (dívida já controlada na aba Situação Financeira — lança
+se ela decidir pagar); senão lança: custas = categoria **Cartório 21658033**, cc
+**ADMINISTRATIVO 26762**; guia de prefeitura = Impostos e taxas 22039501, cc 26630;
+intimação de fornecedor = fornecedor do sacador + categoria usual dele. Conta Santander,
+forma boleto. Cada escrita vai para audit_log (usuario "robo-cartorios").
+Fornecedores criados em 14/10: **1052750 4º TABELIÃO**, **1052746 PREFEITURA MUNICIPAL DE
+JUNDIAÍ**, **1052747 TABELIÃO DE PROTESTO DE JUNDIAÍ**. Ainda não há cadastro do 9º (o robô
+cria quando precisar). Remetentes reconhecidos: domínios dos 10 tabeliões de SP, Jundiaí
+(tabelião e Prefeitura `jundiai.sp.gov.br`).
+
+**Limitação:** boleto cuja linha digitável é IMAGEM (Bradesco do cartório de Jundiaí) não é
+lido — o robô pega valor e vencimento do texto e manda "use o código de barras do PDF".
+Para ler à mão: renderizar o PDF pelo WinRT (memória pdf_imagem_render_windows).
+
+**1ª carga (14/10/2026), 9 boletos enviados:** Prefeitura de Jundiaí guia ISS R$ 124,86
+(vence 14/10) + custas do tabelião de Jundiaí R$ 49,92 (15/10); PGFN 1160/1161/1162 no 2º
+(R$ 38.427,61, 16/10, só Telegram); Labor Med 6º R$ 647,48 (16/10, lançado no fornecedor
+665902); Saint-Gobain 2º R$ 71,85 (dfd960cc → 20/10) e 3º R$ 71,85 (1e11ffe4 → 24/10);
+Arpini 4º R$ 205,62 (21/10). PDFs também em
+`Financeiro\03_Contabilidade\01_Documentos\AUDITORIA\02_Protestos\Boletos e intimacoes`.
