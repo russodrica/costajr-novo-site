@@ -3430,3 +3430,18 @@ tinha subido).
   Edicoes (status/responsavel/prazo das ideias, resposta do cartorio nos protestos, situacao/valor das
   dividas) por PATCH em `acoes|protestos|dividas/[id]`, com auditoria.
 - Pendente: preencher `resposta_cartorio` conforme os 11 tabelionatos responderem o e-mail de 13/10.
+
+**14/10/2026 — respostas dos tabelionatos (10 de 11; faltam 5o e 7o):** relacao GRATIS por e-mail veio do 3o
+(cancelamento@3protestosp.com.br, 9 titulos c/ credor e data), 8o, 9o (lista completa) e 10o (PDF). Confirmados:
+Mascarenhas 416,00/337,00 (3o), Nasci Car 611,66 (9o), PGFN Simples CDA 80 4 24 292594 = R$ 1.180.548,55
+(9o, protestado 20/07/2026); Jundiai = CDA 538.2025.9922.138 ISS retido 2025 (pagar direto a Prefeitura).
+PGFN: as intimacoes de 06/10 nao pagas viraram PROTESTO em 09/10 (9o: 17.096,45 / 4.430,49 / 1.863,67 / 1.114,30;
+6o e 3o: protocolo 1194 = 2.795,49; 3o: 1191 = 4.659,23). NOVAS intimacoes com prazo 16/10/2026: 2o protocolos
+1160 (CDA 80 6 25 163284 contrib. social, pagar 18.768,83), 1161 (80 2 25 110946 IRRF, 4.418,34), 1162
+(81 4 25 048541 contrib. do empregado, 15.240,44) e 6o protocolo 0244 LABOR MED/Eliana Nunes Milano DSI 11653
+R$ 560,34 (pagar 647,48) — NAO lancada na Vobi. 1o, 4o e 6o so por certidao paga -> em 14/10 respondemos pedindo
+"e-mail simples com credor, valor e data" (4o: foco no R$ 1.400,00). Enviados tambem em 14/10: pedido de guia a
+Prefeitura de Jundiai (atendimentofinancas@jundiai.sp.gov.br) e boletos de custas da Saint-Gobain no 3o (189,00) e
+no 8o (576,46); no 2o o boleto de custas R$ 71,85 (Saint-Gobain 0130982101) JA veio, vence 20/10/2026.
+Envio de resposta via Graph com assinatura em imagem falha ("draft has attachments") -> mandar pelo Outlook
+desktop (COM: Drafts folder 16 -> Item.Send()).
