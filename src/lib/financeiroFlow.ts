@@ -78,6 +78,26 @@ export function extrairValor(texto: string): number | null {
   return melhor;
 }
 
+/**
+ * Valor escrito como DINHEIRO: exige "R$" na frente ou centavos explícitos.
+ *
+ * É o que a LEGENDA do comprovante exige. Um número solto na legenda quase
+ * nunca é o valor — "LYSNOR - 2 parcelas do acordo" (14/10/2026) virou
+ * R$ 2,00, e esse 2 sequestrou a leitura certa do papel (R$ 639,06). Também
+ * pega "3 boletos", "NF 1234", "2ª via". Com R$ ou com centavos, é dinheiro.
+ */
+export function valorDeDinheiro(texto: string): number | null {
+  const t = String(texto || "");
+  const achados: number[] = [];
+  const guardar = (s: string) => {
+    const n = Number(s.replace(/\./g, "").replace(",", "."));
+    if (Number.isFinite(n) && n > 0) achados.push(n);
+  };
+  for (const m of t.matchAll(/r\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)/gi)) guardar(m[1]);
+  for (const m of t.matchAll(/(?:^|[^\d.,])(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2})(?![\d])/g)) guardar(m[1]);
+  return achados.length ? Math.max(...achados) : null;
+}
+
 /** Tira do texto os números e palavras de comando, sobrando o nome do fornecedor. */
 export function extrairNome(texto: string): string {
   return texto
@@ -1229,11 +1249,16 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
   // exatamente o que a Adriana viu em 23/09/2026.
   const legenda = String(msg.caption || "").trim();
   const cmdLancar = lerComandoLancar(legenda);
+  // A legenda NOMEIA o fornecedor; o VALOR é do papel. Ela entra como valor só
+  // no fim, se o papel não disser nada — e só se estiver escrita como dinheiro.
+  // "LYSNOR - 2 parcelas do acordo" (14/10/2026) virava R$ 2,00: o `usar()`
+  // abaixo só preenche o que está vazio, então aquele "2" descartava a leitura
+  // correta de R$ 639,06 e a conferência contra a Vobi acusava diferença.
+  let valorLegenda: number | null = null;
   if (legenda && !cmdLancar) {
-    valor = extrairValor(legenda);
+    valorLegenda = valorDeDinheiro(legenda);
     const n = extrairNome(legenda);
     if (n.length >= 2) favorecido = n;
-    if (valor && favorecido) comoLi = "pela legenda";
   }
 
   const usar = (j: any, de: string) => {
@@ -1285,6 +1310,10 @@ export async function onComprovanteFinanceiro(db: any, B: Bot, msg: any, chatId:
       }
     }
   }
+
+  // Último recurso: a legenda (ver CAMADA 1). Só chega aqui se o papel não
+  // entregou valor nenhum.
+  if (!valor && valorLegenda) { valor = valorLegenda; if (!comoLi) comoLi = "pela legenda"; }
 
   if (!data) data = hojeISO();
 
