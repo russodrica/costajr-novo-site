@@ -3445,3 +3445,29 @@ Prefeitura de Jundiai (atendimentofinancas@jundiai.sp.gov.br) e boletos de custa
 no 8o (576,46); no 2o o boleto de custas R$ 71,85 (Saint-Gobain 0130982101) JA veio, vence 20/10/2026.
 Envio de resposta via Graph com assinatura em imagem falha ("draft has attachments") -> mandar pelo Outlook
 desktop (COM: Drafts folder 16 -> Item.Send()).
+
+## Atualizacao 14/10/2026 — "nao sei de onde ele tirou 2 reais": era a LEGENDA
+
+Boleto do acordo LYSNOR, **R$ 639,06** (CAIXA ECONOMICA FEDERAL - TRT02, pago 14/10 pela
+ELYSIUM/Pagme). O bot conferiu contra a Vobi como se tivesse pago **R$ 2,00**.
+**CAUSA: a legenda que ela digitou junto do PDF era "LYSNOR - 2 parcelas do acordo"** — a
+CAMADA 1 rodava `extrairValor(legenda)`, que pega o MAIOR numero de um texto livre: o "2" de
+"2 parcelas". E como o `usar()` das camadas seguintes so preenche o que esta VAZIO, a leitura
+certa do papel era descartada. **Nao foi o modelo** (o valor esta impresso 2x no PDF).
+
+**DIAGNOSTICO EM 1 CONSULTA — o log de 09/10 pagou-se:** `audit_log` entidade
+`vobi_comprovante` guarda a LEGENDA junto do arquivo recebido; foi ela que entregou a causa
+sem precisar reproduzir nada. (A chave de IA NAO esta no .env local, so na Vercel — nao da
+para repetir a leitura aqui; o log resolveu.)
+
+**Fix (commit b7e6289):** `valorDeDinheiro(texto)` so aceita numero escrito como DINHEIRO
+(com "R$" ou com centavos) — "2 parcelas", "3 boletos", "NF 1234", "2a via" nao sao valor. E a
+legenda virou **ULTIMO RECURSO**: so entra se o papel nao entregou valor nenhum (ela segue
+nomeando o fornecedor, o que ate ajudou aqui a achar as parcelas do acordo). 11/11 em casos
+de legenda real do grupo.
+
+**Claude como leitor de documento (commit 22cc6f4):** a Adriana passou a ter credito de API.
+`lerDocumentoClaude` (PDF NATIVO, nao precisa de camada de texto nem virar imagem) e
+`lerDocumentoLLM` agora tenta **Claude -> Gemini -> Groq(imagem)**. O chat da JunIA continua
+no Groq (gratis, aguenta volume); paga-se so onde errar custa dinheiro. **INERTE sem a
+chave.** Ligar = colar `ANTHROPIC_API_KEY` na Vercel + Reimplantar.
