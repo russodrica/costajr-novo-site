@@ -413,11 +413,6 @@ function fornecedoresVobi(): { total: number; vencido: number; aVencer: number }
     if (g.aba !== "fornecedor" || g.grupo === "fornecedor_contingente") continue; // Tax All fica fora (contingente)
     r.total += n0(g.total); r.vencido += n0(g.vencido); r.aVencer += n0(g.aVencer);
   }
-  // diaristas não entram (decisão da Adriana, 14/10/2026): desconta quem tem "(DIARISTA)" no nome
-  for (const f of arr<{ fornecedor: string; grupo: string; total: number; vencido: number; aVencer: number }>(ab.porFornecedor)) {
-    if (!/\bDIARISTA\b/i.test(txt(f.fornecedor)) || !/^(fornecedor_obra|fornecedor_estrutura|acordo_juridico)$/.test(txt(f.grupo))) continue;
-    r.total -= n0(f.total); r.vencido -= n0(f.vencido); r.aVencer -= n0(f.aVencer);
-  }
   return r;
 }
 function somaDias(iso: string, dias: number): string {
