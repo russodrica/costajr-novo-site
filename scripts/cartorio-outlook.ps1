@@ -10,6 +10,7 @@ param(
   [string]$saida = "",
   [string]$ids = "",
   [string]$pastaOutlook = "Cartórios - Protestos",
+  [string]$origem = "inbox",
   [string]$remetentes = "protesto|tabeli|8tpsp\.com|10tpsp\.com|jundiai\.sp\.gov\.br"
 )
 $ErrorActionPreference = "Stop"
@@ -17,8 +18,13 @@ $ol = New-Object -ComObject Outlook.Application
 $ns = $ol.GetNamespace("MAPI")
 $inbox = $ns.GetDefaultFolder(6)
 
-function PastaDestino {
+function AcharPasta {
   foreach ($f in $inbox.Folders) { if ($f.Name -eq $pastaOutlook) { return $f } }
+  return $null
+}
+function PastaDestino {
+  $f = AcharPasta
+  if ($f) { return $f }
   return $inbox.Folders.Add($pastaOutlook)
 }
 
@@ -29,7 +35,9 @@ if ($modo -eq "mover") {
     $id = $id.Trim(); if (-not $id) { continue }
     try {
       $m = $ns.GetItemFromID($id)
-      if ($m.Parent.EntryID -ne $destino.EntryID) { [void]$m.Move($destino); $n++ }
+      if ($m.Parent.EntryID -ne $destino.EntryID) { [void]$m.Move($destino) }
+      Write-Output ("movido: " + $id)
+      $n++
     } catch { Write-Output ("falhou: " + $id.Substring(0, 12) + " " + $_.Exception.Message) }
   }
   Write-Output ("movidos: " + $n)
@@ -37,7 +45,12 @@ if ($modo -eq "mover") {
 }
 
 $limite = (Get-Date).AddDays(-$dias)
-$items = $inbox.Items
+$fonte = $inbox
+if ($origem -eq "arquivo") {
+  $fonte = AcharPasta
+  if (-not $fonte) { ConvertTo-Json -InputObject @() | Out-File -Encoding utf8 $saida; Write-Output "emails: 0"; exit 0 }
+}
+$items = $fonte.Items
 $items.Sort("[ReceivedTime]", $true)
 $res = @()
 $k = 0
@@ -58,11 +71,16 @@ foreach ($m in $items) {
     $a.SaveAsFile($p)
     $anexos += $p
   }
+  $spf = ""
+  try {
+    $h = [string]$m.PropertyAccessor.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x007D001F")
+    $spf = [regex]::Match($h, '(?i)\bspf=(\w+)').Groups[1].Value
+  } catch {}
   $corpo = [string]$m.Body
   if ($corpo.Length -gt 4000) { $corpo = $corpo.Substring(0, 4000) }
   $res += [pscustomobject]@{
     id = $m.EntryID; de = $de; nome = [string]$m.SenderName; assunto = [string]$m.Subject
-    data = $m.ReceivedTime.ToString("yyyy-MM-ddTHH:mm:ss"); corpo = $corpo; anexos = $anexos
+    data = $m.ReceivedTime.ToString("yyyy-MM-ddTHH:mm:ss"); corpo = $corpo; anexos = $anexos; spf = $spf
   }
 }
 ConvertTo-Json -InputObject @($res) -Depth 4 | Out-File -Encoding utf8 $saida

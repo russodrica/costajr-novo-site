@@ -3521,14 +3521,19 @@ FEBRABAN recomeçou em 22/02/2025 (fator 1000 = 22/02/2025). Só funciona com o 
 ela logada e o Outlook configurado. Estado (o que já foi enviado) em
 `%LOCALAPPDATA%\CJR\cartorio-boletos.json` (fora do OneDrive). Simular: `--dry`.
 
+**REGRA (Adriana, 14/10/2026 — vale mais que o pedido original):** "PGFN não tem como ser
+pago, quero apenas os boletos de custas do que já está pago" + "e Jundiaí". Só vão como
+boleto (PDF no grupo + Vobi) os **boletos de CUSTAS DE CANCELAMENTO** (o credor já autorizou =
+título já pago) e a **guia da Prefeitura de Jundiaí** que ela pediu (`deveMandar()` no robô).
+**Intimação (PGFN ou de fornecedor) NUNCA vira boleto nem entra na Vobi** — só um aviso de uma
+linha no grupo ("Intimação da PGFN de R$ X, prazo dd/mm... não mandei o boleto nem lancei").
+Resposta automática de cartório só é arquivada, sem aviso.
+
 **Regras da Vobi no robô (nunca cancela nem apaga):** conta em aberto do mesmo cartório com
 o mesmo valor → só troca o vencimento (PUT /payment com a parcela sem id; só se o lançamento
-tiver 1 parcela); intimação cujo título original já está lançado → não duplica, avisa;
-**intimação da PGFN NÃO é lançada** (dívida já controlada na aba Situação Financeira — lança
-se ela decidir pagar); senão lança: custas = categoria **Cartório 21658033**, cc
-**ADMINISTRATIVO 26762**; guia de prefeitura = Impostos e taxas 22039501, cc 26630;
-intimação de fornecedor = fornecedor do sacador + categoria usual dele. Conta Santander,
-forma boleto. Cada escrita vai para audit_log (usuario "robo-cartorios").
+tiver 1 parcela); senão lança: custas = categoria **Cartório 21658033**, cc
+**ADMINISTRATIVO 26762**; guia de prefeitura = Impostos e taxas 22039501, cc 26630. Conta
+Santander, forma boleto. Cada escrita vai para audit_log (usuario "robo-cartorios").
 Fornecedores criados em 14/10: **1052750 4º TABELIÃO**, **1052746 PREFEITURA MUNICIPAL DE
 JUNDIAÍ**, **1052747 TABELIÃO DE PROTESTO DE JUNDIAÍ**. Ainda não há cadastro do 9º (o robô
 cria quando precisar). Remetentes reconhecidos: domínios dos 10 tabeliões de SP, Jundiaí
@@ -3544,3 +3549,8 @@ Para ler à mão: renderizar o PDF pelo WinRT (memória pdf_imagem_render_window
 665902); Saint-Gobain 2º R$ 71,85 (dfd960cc → 20/10) e 3º R$ 71,85 (1e11ffe4 → 24/10);
 Arpini 4º R$ 205,62 (21/10). PDFs também em
 `Financeiro\03_Contabilidade\01_Documentos\AUDITORIA\02_Protestos\Boletos e intimacoes`.
+Depois da regra nova: o lançamento da Labor Med (1bb75e0f) foi CANCELADO (status 12) e o robô
+mandou no grupo uma correção ("PGFN e Labor Med não são para pagar"). As mensagens antigas da
+PGFN continuam no grupo — apagar mensagem é com a Adriana. Testar a regra sem efeito nenhum:
+`CARTORIO_ESTADO=<arquivo vazio> node scripts/cartorio-boletos.mjs --dry --da-pasta --dias=4`
+(relê a pasta de arquivo do Outlook; `--da-pasta` só funciona junto com `--dry`).
