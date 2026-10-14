@@ -237,6 +237,37 @@ async function chamarGroqVisao(key: string, system: string, prompt: string, base
 }
 
 /**
+ * Leitura de DOCUMENTO pelo Claude (PDF nativo ou imagem).
+ *
+ * O Claude recebe o PDF inteiro como documento — não precisa virar imagem nem
+ * depender de camada de texto —, o que resolve justamente os casos que mais
+ * deram trabalho aqui: comprovante escaneado, boleto com colunas trocadas e
+ * resposta cortada no meio. Só roda se ANTHROPIC_API_KEY existir.
+ */
+export async function lerDocumentoClaude(
+  system: string,
+  prompt: string,
+  base64: string,
+  mimeType: string,
+): Promise<string | null> {
+  const key = envClaude();
+  if (!key) return null;
+  const mt = (mimeType || "").toLowerCase();
+  const anexo: any = mt === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+    : { type: "image", source: { type: "base64", media_type: mt, data: base64 } };
+  const client = new Anthropic({ apiKey: key });
+  const resp = await client.messages.create({
+    model: MODELO_CLAUDE,
+    max_tokens: 1200,
+    system,
+    messages: [{ role: "user", content: [anexo, { type: "text", text: prompt }] }] as any,
+  });
+  const bloco = resp.content.find((b: any) => b.type === "text") as any;
+  return (bloco?.text || "").trim() || null;
+}
+
+/**
  * Lê um documento (PDF ou imagem) tentando os provedores EM ORDEM:
  * Gemini (PDF e imagem) -> Groq visão (só imagem). Devolve também o motivo do
  * erro, porque "não consegui ler" sem motivo é impossível de diagnosticar.
@@ -252,6 +283,15 @@ export async function lerDocumentoLLM(
     return { texto: null, provedor: "", erro: "formato não suportado" };
   }
   let erro = "";
+  // Claude PRIMEIRO quando houver credito: le o PDF nativo (inclusive escaneado)
+  // e e o mais confiavel na extracao — aqui um erro de leitura vira baixa errada.
+  const an = envClaude();
+  if (an) {
+    try {
+      const r = await lerDocumentoClaude(system, prompt, base64, mimeType);
+      if (r) return { texto: r, provedor: "Claude", erro: "" };
+    } catch (e: any) { erro = String(e?.message || e); }
+  }
   const gm = envGemini();
   if (gm) {
     try {
@@ -266,7 +306,7 @@ export async function lerDocumentoLLM(
       if (r) return { texto: r, provedor: "Groq", erro: "" };
     } catch (e: any) { erro = String(e?.message || e); }
   }
-  if (!erro) erro = gm || gq ? "os leitores não devolveram nada" : "nenhum leitor de imagem configurado";
+  if (!erro) erro = an || gm || gq ? "os leitores não devolveram nada" : "nenhum leitor de documento configurado";
   return { texto: null, provedor: "", erro };
 }
 
