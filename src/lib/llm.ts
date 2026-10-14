@@ -237,6 +237,29 @@ async function chamarGroqVisao(key: string, system: string, prompt: string, base
 }
 
 /**
+ * Testa a chave do Claude de verdade (1 token de resposta).
+ *
+ * O medidor antes só olhava se a variável EXISTIA — e valor errado salvo na
+ * Vercel ficaria invisível: o leitor tentaria o Claude, tomaria 401 e cairia no
+ * Gemini em silêncio. Aqui a resposta é honesta: ok, ou o motivo da recusa.
+ */
+export async function pingClaude(): Promise<{ configurado: boolean; ok: boolean; erro: string }> {
+  const key = envClaude();
+  if (!key) return { configurado: false, ok: false, erro: "" };
+  try {
+    const client = new Anthropic({ apiKey: key });
+    const r = await client.messages.create({
+      model: MODELO_CLAUDE,
+      max_tokens: 4,
+      messages: [{ role: "user", content: "ok" }],
+    });
+    return { configurado: true, ok: !!r?.content?.length, erro: "" };
+  } catch (e: any) {
+    return { configurado: true, ok: false, erro: String(e?.message || e).slice(0, 200) };
+  }
+}
+
+/**
  * Leitura de DOCUMENTO pelo Claude (PDF nativo ou imagem).
  *
  * O Claude recebe o PDF inteiro como documento — não precisa virar imagem nem

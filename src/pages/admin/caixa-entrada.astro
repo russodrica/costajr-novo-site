@@ -285,7 +285,13 @@ const dadosJson = JSON.stringify(dados).replace(/</g, "\\u003c");
         if (!r.ok) throw new Error(d.error || "Falha");
         if (d.ok) {
           box.className = "cx-iast cx-iast-ok";
-          box.innerHTML = `✅ <b>IA ativa</b> — texto: ${esc(d.provider || "")} · documento: ${esc(d.leitorDoc || "—")}. "Organizar com IA" e leitura de documentos estão funcionando.`;
+          const cl = d.claude || {};
+          const sobreClaude = !cl.configurado
+            ? ""
+            : cl.ok
+              ? " ✅ chave do Claude validada."
+              : ` <b>⚠️ a chave do Claude foi recusada</b> (<code>${esc(String(cl.erro || "").slice(0, 120))}</code>) — a leitura está caindo no Gemini.`;
+          box.innerHTML = `✅ <b>IA ativa</b> — texto: ${esc(d.provider || "")} · documento: ${esc(d.leitorDoc || "—")}.${sobreClaude}`;
         } else if (!d.configurado) {
           box.className = "cx-iast cx-iast-warn";
           box.innerHTML = `⚠️ <b>IA ainda não ativada.</b> A página funciona no modo manual / por nome do arquivo. Falta a chave <code>GEMINI_API_KEY</code> na Vercel + Reimplantar.`;

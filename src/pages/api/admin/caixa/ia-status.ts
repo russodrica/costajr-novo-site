@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "~/lib/auth";
-import { gerarTextoLLM } from "~/lib/llm";
+import { gerarTextoLLM, pingClaude } from "~/lib/llm";
 
 export const prerender = false;
 
@@ -28,15 +28,16 @@ export const GET: APIRoute = async ({ request }) => {
   try {
     await requireAdminCookie(request);
     const prov = provedor();
+    const claude = await pingClaude();
     if (!prov) {
       return jsonOk({ provider: null, configurado: false, ok: false, motivo: "Nenhuma chave de IA configurada na Vercel (GEMINI_API_KEY)." });
     }
     try {
       const r = await gerarTextoLLM("Voce e um teste de conectividade. Responda apenas: OK", [{ role: "user", content: "ping" }]);
       const ok = !!(r && r.trim());
-      return jsonOk({ provider: prov, leitorDoc: leitorDeDocumento(), configurado: true, ok, resposta: (r || "").slice(0, 40), motivo: ok ? null : "O provedor respondeu vazio." });
+      return jsonOk({ provider: prov, leitorDoc: leitorDeDocumento(), claude, configurado: true, ok, resposta: (r || "").slice(0, 40), motivo: ok ? null : "O provedor respondeu vazio." });
     } catch (e: any) {
-      return jsonOk({ provider: prov, leitorDoc: leitorDeDocumento(), configurado: true, ok: false, motivo: String(e?.message || e).slice(0, 200) });
+      return jsonOk({ provider: prov, leitorDoc: leitorDeDocumento(), claude, configurado: true, ok: false, motivo: String(e?.message || e).slice(0, 200) });
     }
   } catch (e: any) {
     return jsonErr(e.message === "Não autenticado" ? 401 : 500, e.message);
