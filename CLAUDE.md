@@ -3438,7 +3438,7 @@ Mascarenhas 416,00/337,00 (3o), Nasci Car 611,66 (9o), PGFN Simples CDA 80 4 24 
 PGFN: as intimacoes de 06/10 nao pagas viraram PROTESTO em 09/10 (9o: 17.096,45 / 4.430,49 / 1.863,67 / 1.114,30;
 6o e 3o: protocolo 1194 = 2.795,49; 3o: 1191 = 4.659,23). NOVAS intimacoes com prazo 16/10/2026: 2o protocolos
 1160 (CDA 80 6 25 163284 contrib. social, pagar 18.768,83), 1161 (80 2 25 110946 IRRF, 4.418,34), 1162
-(81 4 25 048541 contrib. do empregado, 15.240,44) e 6o protocolo 0244 LABOR MED/Eliana Nunes Milano DSI 11653
+(81 4 25 048541 "CONTR. EMPREGADO" = previdenciaria PATRONAL, 15.240,44 — so a 1161 IRRF e retida; a descontada do empregado aparece como "CONTR. SEGURADOS") e 6o protocolo 0244 LABOR MED/Eliana Nunes Milano DSI 11653
 R$ 560,34 (pagar 647,48) — NAO lancada na Vobi. 1o, 4o e 6o so por certidao paga -> em 14/10 respondemos pedindo
 "e-mail simples com credor, valor e data" (4o: foco no R$ 1.400,00). Enviados tambem em 14/10: pedido de guia a
 Prefeitura de Jundiai (atendimentofinancas@jundiai.sp.gov.br) e boletos de custas da Saint-Gobain no 3o (189,00) e
@@ -3493,3 +3493,12 @@ de cair no Gemini em silencio.
 emissao 02/09/2025, venc 20/06/2026, custas de cancelamento R$ 205,62. Na Vobi a parcela 7a2ae115 (venc 20/06/2026)
 foi PAGA em 06/07/2026 pelo Santander (16 dias de atraso). Falta a anuencia da Arpini (Adriana tratando). Linha sfp-58
 de fin_sf_protestos atualizada (credor, confirmado, resposta_cartorio). Todos os 58 da CENPROT agora tem credor.
+
+**14/10/2026 (tarde) — planilha atualizada:** `Financeiro/03_Contabilidade/01_Documentos/AUDITORIA/02_Protestos/Protestos_CJR_14_10_26.xlsx`
+(pasta 02_Protestos criada; a de 12/10 continua em 01_Documentos/15_Protestos). Gerador: D:/temp/protestos_planilha/atualizar_1410.mjs ->
+montar_excel_1410.mjs -> gravar_excel_1410.ps1 (coluna nova RESPOSTA DO TABELIAO; secao 3 = intimacoes com prazo 16/10). Revisada por 2
+agentes contra os e-mails. Novidades de 14/10: 6o mandou credor+data dos 5 titulos; 3o mandou boleto Saint-Gobain R$ 71,85 (vence 24/10);
+4o mandou boleto das custas da Arpini R$ 205,62 (vence 21/10) depois da carta de anuencia que a Adriana enviou — o titulo da Arpini foi
+apresentado a protesto em 08/07/2026, 2 dias DEPOIS do pagamento (06/07); 1o recusou de novo (so certidao); 8o: boleto so pelo site
+protestosp.com.br/cancelamento-de-protesto/Simples. Nasci Car do 9o = parcela 002 (nao 3/3). LICAO: na PGFN "CONTR. EMPREGADO" =
+patronal e "CONTR. SEGURADOS" = descontada do empregado.
