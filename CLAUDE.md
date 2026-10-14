@@ -3489,3 +3489,7 @@ de cair no Gemini em silencio.
    ela trocou. **Regra: nunca aceitar chave pelo chat — pedir para colar direto na Vercel.**
    Detalhe util: `sk-ant-usr-` e credencial da conta Claude (tipo Claude Code), NAO autentica a
    API; a do Console e `sk-ant-api03-`.
+**14/10/2026 (4o):** o R$ 1.400,00 do 4o = ARPINI & ARAUJO SOLUCOES TRIBUTARIAS LTDA (CNPJ 60.278.552/0001-98), DSI 10,
+emissao 02/09/2025, venc 20/06/2026, custas de cancelamento R$ 205,62. Na Vobi a parcela 7a2ae115 (venc 20/06/2026)
+foi PAGA em 06/07/2026 pelo Santander (16 dias de atraso). Falta a anuencia da Arpini (Adriana tratando). Linha sfp-58
+de fin_sf_protestos atualizada (credor, confirmado, resposta_cartorio). Todos os 58 da CENPROT agora tem credor.
