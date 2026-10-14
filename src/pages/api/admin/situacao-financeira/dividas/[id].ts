@@ -3,26 +3,35 @@ import { requireAdminCookie, jsonOk, jsonErr, type AdminClaims } from "../../../
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
+import { lerData, lerBool, hojeSP, dataBR } from "../../../../../lib/situacaoFinanceiraApi";
 
 export const prerender = false;
 
 // PATCH /api/admin/situacao-financeira/dividas/<id>
-// Atualiza UMA dívida do quadro (tabela fin_sf_dividas, migration 118).
+// Atualiza UMA dívida do quadro (tabela fin_sf_dividas, migrations 118 e 119).
 // Corpo (JSON, todos opcionais, pelo menos 1):
-//   { situacao, valor, valor_teto, parcela_mensal, observacao, risco }
+//   { situacao, valor, valor_teto, parcela_mensal, observacao, risco,
+//     valor_proposta, proposta_obs, quitada, quitada_em, valor_pago }
 //   valores em reais: número >= 0, ou null para apagar (aceita também "1234,56" ou "1.234,56").
+//   quitada: true/false. Ao marcar quitada=true sem data, quitada_em = hoje (São Paulo).
+//   Desmarcar (quitada=false) NÃO apaga quitada_em/valor_pago: o histórico do que foi digitado fica.
 const MODULO = "situacao-financeira";
 const TABELA = "fin_sf_dividas";
-const CAMPOS = ["situacao", "valor", "valor_teto", "parcela_mensal", "observacao", "risco"] as const;
+const CAMPOS = [
+  "situacao", "valor", "valor_teto", "parcela_mensal", "observacao", "risco",
+  "valor_proposta", "proposta_obs", "quitada", "quitada_em", "valor_pago",
+] as const;
 type Campo = (typeof CAMPOS)[number];
 const ROTULO: Record<Campo, string> = {
   situacao: "situação", valor: "valor", valor_teto: "valor máximo (teto)", parcela_mensal: "parcela mensal",
-  observacao: "observação", risco: "risco",
+  observacao: "observação", risco: "risco", valor_proposta: "proposta de quitação", proposta_obs: "observação da proposta",
+  quitada: "quitada", quitada_em: "data da quitação", valor_pago: "valor pago",
 };
-const NUMERICOS = ["valor", "valor_teto", "parcela_mensal"] as const;
+const NUMERICOS = ["valor", "valor_teto", "parcela_mensal", "valor_proposta", "valor_pago"] as const;
 const MAX_SITUACAO = 1000;
 const MAX_RISCO = 1000;
 const MAX_OBS = 4000;
+const MAX_PROPOSTA_OBS = 1000;
 const MAX_VALOR = 1_000_000_000_000; // R$ 1 trilhão: acima disso é erro de digitação
 const MAX_CORPO = 20000;
 
@@ -47,7 +56,7 @@ function erroDoBanco(err: { message?: string; code?: string } | null): Response 
   const m = err?.message || "";
   const code = err?.code || "";
   if (["42P01", "42703", "PGRST204", "PGRST205"].includes(code) || /does not exist|schema cache|Could not find the table/i.test(m)) {
-    return jsonErr(503, "As tabelas da Situação Financeira ainda não foram criadas no banco (migration 118). Peça para rodar a migration e tente de novo.");
+    return jsonErr(503, "As tabelas da Situação Financeira ainda não estão completas no banco (migrations 118 e 119). Peça para rodar as migrations e tente de novo.");
   }
   return jsonErr(500, "Não consegui salvar agora. Tente de novo em instantes.", m);
 }
@@ -141,7 +150,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!chaves.length) return jsonErr(400, `Nada para atualizar: envie pelo menos um campo (${CAMPOS.join(", ")}).`);
 
   const upd: Record<string, unknown> = {};
-  const textos: Array<[Campo, number]> = [["situacao", MAX_SITUACAO], ["risco", MAX_RISCO], ["observacao", MAX_OBS]];
+  const textos: Array<[Campo, number]> = [
+    ["situacao", MAX_SITUACAO], ["risco", MAX_RISCO], ["observacao", MAX_OBS], ["proposta_obs", MAX_PROPOSTA_OBS],
+  ];
   for (const [k, max] of textos) {
     if (k in b) {
       const r = lerTexto(b[k], ROTULO[k], max);
@@ -156,12 +167,29 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       upd[k] = r.v;
     }
   }
+  if ("quitada" in b) {
+    const r = lerBool(b.quitada, ROTULO.quitada);
+    if (!r.ok) return jsonErr(400, r.erro);
+    upd.quitada = r.v;
+  }
+  if ("quitada_em" in b) {
+    const r = lerData(b.quitada_em, ROTULO.quitada_em);
+    if (!r.ok) return jsonErr(400, r.erro);
+    upd.quitada_em = r.v;
+  }
 
   const db = supabaseAdmin();
   const { data: antes, error: e1 } = await db.from(TABELA).select("*").eq("id", id).maybeSingle();
   if (e1) return erroDoBanco(e1);
   if (!antes) return jsonErr(404, "Dívida não encontrada. Ela pode ter sido removida; recarregue a página.");
   const A = antes as Record<string, unknown>;
+
+  // marcou como quitada sem data: mantém a data que já existia (se já estava quitada) ou usa hoje
+  let dataPadrao = false;
+  if (upd.quitada === true && !upd.quitada_em) {
+    upd.quitada_em = A.quitada === true && typeof A.quitada_em === "string" && A.quitada_em ? A.quitada_em : hojeSP();
+    dataPadrao = !("quitada_em" in b) || b.quitada_em == null || b.quitada_em === "";
+  }
 
   // piso x teto: só confere quando um dos dois foi enviado agora (não trava edição de outros campos)
   if ("valor" in upd || "valor_teto" in upd) {
@@ -180,10 +208,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const D = data as Record<string, unknown>;
 
   // log: o que mudou, em português
-  const enviados = chaves as Campo[];
+  const enviados = (dataPadrao && !chaves.includes("quitada_em") ? [...chaves, "quitada_em"] : chaves) as Campo[];
   const ehNumero = (k: Campo) => (NUMERICOS as readonly string[]).includes(k);
   const igual = (k: Campo) => (ehNumero(k) ? (A[k] == null ? null : Number(A[k])) === (D[k] == null ? null : Number(D[k])) : A[k] === D[k]);
   const partes = enviados.filter((k) => !igual(k)).map((k) => {
+    if (k === "quitada") {
+      return D.quitada === true
+        ? `marcou como QUITADA (pago ${brl(D.valor_pago ?? D.valor_proposta ?? D.valor)} em ${dataBR(D.quitada_em)})`
+        : "desmarcou a quitação (voltou para em aberto)";
+    }
+    if (k === "quitada_em") return `data da quitação: ${dataBR(A[k])} → ${dataBR(D[k])}`;
     if (ehNumero(k)) return `${ROTULO[k]}: ${brl(A[k])} → ${brl(D[k])}`;
     return `${ROTULO[k]} alterad${k === "risco" ? "o" : "a"}`;
   });

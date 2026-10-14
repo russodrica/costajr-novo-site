@@ -1,5 +1,7 @@
 // Situação Financeira (aba da Diretoria, só admin).
 // - Tabelas fin_sf_* (migration 118): dívidas por grupo, protestos, plano de ação e blocos do painel.
+// - v2 (migration 119, 14/10/2026): proposta de quitação e "quitada" por dívida, protesto cancelado,
+//   lista do que há A REAVER (fin_sf_reaver) e plano de ação novo (fin_sf_acoes.plano = 'v2').
 // - Leitura AO VIVO da Vobi, com cache de 1 h em vobi_cache (a cota é 1000 consultas/h para a integração inteira):
 //   (1) fluxo mensal realizado pelo relatório da tela (/financial/cashFlow?source=report), classificado por categoria;
 //   (2) contas a pagar em aberto agrupadas em imposto / banco / fornecedor / estrutura fixa / trabalhista...
@@ -16,6 +18,16 @@ export type StatusAcao = (typeof STATUS_ACAO)[number];
 export const ROTULO_STATUS: Record<StatusAcao, string> = {
   ideia: "Ideia", testando: "Testando", em_andamento: "Em andamento", feito: "Feito", descartado: "Descartado",
 };
+/** Tipos do que a empresa tem A REAVER (fin_sf_reaver.tipo), na ordem em que aparecem na tela. */
+export const TIPOS_REAVER = ["processo", "credito_tributario", "consorcio", "outro"] as const;
+export type TipoReaver = (typeof TIPOS_REAVER)[number];
+export const ROTULO_TIPO_REAVER: Record<TipoReaver, string> = {
+  processo: "Processos", credito_tributario: "Créditos tributários", consorcio: "Consórcios", outro: "Outros",
+};
+/** Chance de o valor voltar (fin_sf_reaver.chance). */
+export const CHANCES = ["alta", "media", "baixa", "nao_sei"] as const;
+export type Chance = (typeof CHANCES)[number];
+export const ROTULO_CHANCE: Record<Chance, string> = { alta: "Alta", media: "Média", baixa: "Baixa", nao_sei: "Não sei" };
 
 // ───────────────────────── tipos das tabelas ─────────────────────────
 export type SfDivida = {
@@ -23,6 +35,10 @@ export type SfDivida = {
   natureza: string | null; retido: boolean; valor: number | null; valor_teto: number | null; parcela_mensal: number | null;
   situacao: string | null; risco: string | null; data_ref: string | null; fonte: string | null; observacao: string | null;
   ordem: number | null; ativo: boolean;
+  /** v2 (migration 119): valor de quitação proposto/negociado, observação da proposta e quitação */
+  valor_proposta: number | null; proposta_obs: string | null;
+  quitada: boolean; quitada_em: string | null; valor_pago: number | null;
+  updated_at?: string | null;
 };
 export type SfProtesto = {
   id: string; secao: string; grupo: string | null; tabeliao: string; credor: string; credor_cnpj: string | null;
@@ -30,6 +46,8 @@ export type SfProtesto = {
   vencimento: string | null; data_protocolo: string | null; prazo_limite: string | null; data_protesto: string | null;
   protocolo: string | null; situacao_vobi: string | null; confianca: string | null; observacao: string | null;
   fontes: string | null; resposta_cartorio: string | null; ordem: number | null; ativo: boolean;
+  /** v2 (migration 119) */
+  cancelado: boolean; cancelado_em: string | null;
 };
 export type SfAcao = {
   id: string; codigo: number | null; onda: number | null; titulo: string; grupo: string | null; descricao: string | null;
@@ -39,32 +57,52 @@ export type SfAcao = {
   fontes: string[] | null; ajuste_revisor: string | null; descartada: boolean; motivo_descarte: string | null;
   top10_ordem: number | null; top10_porque: string | null; status: StatusAcao; responsavel: string | null;
   prazo: string | null; notas: string | null; ordem: number | null;
+  /** v2 (migration 119): 'v1' = 44 ideias de 13/10 (histórico); 'v2' = plano novo de 14/10 */
+  plano: string; valor_vendido: number | null;
+  updated_at?: string | null;
+};
+export type SfReaver = {
+  id: string; tipo: TipoReaver; titulo: string; contraparte: string | null; valor_estimado: number | null;
+  chance: Chance | null; situacao: string | null; previsao: string | null; fonte: string | null; observacao: string | null;
+  recebido: boolean; recebido_em: string | null; valor_recebido: number | null; ordem: number | null; ativo: boolean;
+  atualizado_por?: string | null; created_at?: string; updated_at?: string | null;
 };
 export type SfPainel = { chave: string; dados: any; atualizado_em: string };
 
-/** Lê as 4 tabelas. Se a migration 118 ainda não rodou, devolve `faltaMigration: true` em vez de quebrar a página. */
+/** Lê as tabelas. Se a migration 118 ainda não rodou, devolve `faltaMigration: true` em vez de quebrar a página.
+ *  A lista A REAVER (migration 119) é opcional: se a tabela não existir, volta `reaver: []` sem erro. */
 export async function carregarSituacao(): Promise<{
   faltaMigration: boolean; erro?: string;
-  dividas: SfDivida[]; protestos: SfProtesto[]; acoes: SfAcao[]; painel: Record<string, any>;
+  dividas: SfDivida[]; protestos: SfProtesto[]; acoes: SfAcao[]; reaver: SfReaver[]; painel: Record<string, any>;
 }> {
   const db = supabaseAdmin();
-  const [d, p, a, k] = await Promise.all([
+  const [d, p, a, k, r] = await Promise.all([
     db.from("fin_sf_dividas").select("*").eq("ativo", true).order("grupo").order("ordem", { nullsFirst: false }).limit(2000),
     db.from("fin_sf_protestos").select("*").eq("ativo", true).order("ordem", { nullsFirst: false }).limit(2000),
     db.from("fin_sf_acoes").select("*").order("onda").order("ordem", { nullsFirst: false }).limit(500),
     db.from("fin_sf_painel").select("*").limit(100),
+    db.from("fin_sf_reaver").select("*").eq("ativo", true).order("ordem", { nullsFirst: false }).limit(500),
   ]);
   const erro = d.error || p.error || a.error || k.error;
   if (erro) {
     const falta = /does not exist|schema cache|relation|Could not find the table/i.test(erro.message || "");
-    return { faltaMigration: falta, erro: erro.message, dividas: [], protestos: [], acoes: [], painel: {} };
+    return { faltaMigration: falta, erro: erro.message, dividas: [], protestos: [], acoes: [], reaver: [], painel: {} };
   }
+  if (r.error) console.warn("[situacao-financeira] fin_sf_reaver indisponível:", r.error.message);
   const painel: Record<string, any> = {};
-  for (const r of (k.data || []) as SfPainel[]) painel[r.chave] = r.dados;
+  for (const row of (k.data || []) as SfPainel[]) painel[row.chave] = row.dados;
+  // linhas de antes da migration 119 podem vir sem os campos novos: completa com o padrão
+  const dividas = ((d.data || []) as SfDivida[]).map((x) => ({
+    ...x, valor_proposta: x.valor_proposta ?? null, proposta_obs: x.proposta_obs ?? null,
+    quitada: x.quitada === true, quitada_em: x.quitada_em ?? null, valor_pago: x.valor_pago ?? null,
+  }));
+  const protestos = ((p.data || []) as SfProtesto[]).map((x) => ({ ...x, cancelado: x.cancelado === true, cancelado_em: x.cancelado_em ?? null }));
+  const acoes = ((a.data || []) as SfAcao[]).map((x) => ({ ...x, plano: x.plano || "v1", valor_vendido: x.valor_vendido ?? null }));
   return {
     faltaMigration: false,
-    dividas: (d.data || []) as SfDivida[], protestos: (p.data || []) as SfProtesto[],
-    acoes: (a.data || []) as SfAcao[], painel,
+    dividas, protestos, acoes,
+    reaver: r.error ? [] : ((r.data || []) as SfReaver[]),
+    painel,
   };
 }
 

@@ -4,18 +4,20 @@ import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
 import { STATUS_ACAO, ROTULO_STATUS, type StatusAcao } from "../../../../../lib/situacaoFinanceira";
+import { lerValor, brl } from "../../../../../lib/situacaoFinanceiraApi";
 
 export const prerender = false;
 
 // PATCH /api/admin/situacao-financeira/acoes/<id>
 // Atualiza o acompanhamento de UMA ideia do plano de ação (tabela fin_sf_acoes, migration 118).
-// Corpo (JSON, todos opcionais, pelo menos 1): { status, responsavel, prazo (AAAA-MM-DD | null), notas }
+// Corpo (JSON, todos opcionais, pelo menos 1): { status, responsavel, prazo (AAAA-MM-DD | null), notas, valor_vendido }
+//   valor_vendido (migration 119): quanto já faturou com a ideia, em reais >= 0 (aceita "1.234,56"), ou null.
 // Os textos do plano (título, descrição, onda...) vêm do seed e NÃO são editáveis por aqui.
 const MODULO = "situacao-financeira";
 const TABELA = "fin_sf_acoes";
-const CAMPOS = ["status", "responsavel", "prazo", "notas"] as const;
+const CAMPOS = ["status", "responsavel", "prazo", "notas", "valor_vendido"] as const;
 type Campo = (typeof CAMPOS)[number];
-const ROTULO: Record<Campo, string> = { status: "situação", responsavel: "responsável", prazo: "prazo", notas: "anotações" };
+const ROTULO: Record<Campo, string> = { status: "situação", responsavel: "responsável", prazo: "prazo", notas: "anotações", valor_vendido: "valor vendido" };
 const MAX_RESPONSAVEL = 80;
 const MAX_NOTAS = 4000;
 const MAX_CORPO = 20000;
@@ -41,7 +43,7 @@ function erroDoBanco(err: { message?: string; code?: string } | null): Response 
   const m = err?.message || "";
   const code = err?.code || "";
   if (["42P01", "42703", "PGRST204", "PGRST205"].includes(code) || /does not exist|schema cache|Could not find the table/i.test(m)) {
-    return jsonErr(503, "As tabelas da Situação Financeira ainda não foram criadas no banco (migration 118). Peça para rodar a migration e tente de novo.");
+    return jsonErr(503, "As tabelas da Situação Financeira ainda não estão completas no banco (migrations 118 e 119). Peça para rodar as migrations e tente de novo.");
   }
   return jsonErr(500, "Não consegui salvar agora. Tente de novo em instantes.", m);
 }
@@ -125,7 +127,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (extras.length) {
     return jsonErr(400, `Campo não aceito: ${extras.join(", ")}. Nesta tela só dá para alterar: ${CAMPOS.join(", ")}.`);
   }
-  if (!chaves.length) return jsonErr(400, "Nada para atualizar: envie pelo menos um campo (status, responsavel, prazo ou notas).");
+  if (!chaves.length) return jsonErr(400, "Nada para atualizar: envie pelo menos um campo (status, responsavel, prazo, notas ou valor_vendido).");
 
   const upd: Record<string, unknown> = {};
   if ("status" in b) {
@@ -151,6 +153,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (!r.ok) return jsonErr(400, r.erro);
     upd.notas = r.v;
   }
+  if ("valor_vendido" in b) {
+    const r = lerValor(b.valor_vendido, ROTULO.valor_vendido);
+    if (!r.ok) return jsonErr(400, r.erro);
+    upd.valor_vendido = r.v;
+  }
 
   const db = supabaseAdmin();
   const { data: antes, error: e1 } = await db.from(TABELA).select("*").eq("id", id).maybeSingle();
@@ -165,7 +172,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
   // log: o que mudou, em português
   const enviados = chaves as Campo[];
-  const mudou = enviados.filter((k) => (antes as Record<string, unknown>)[k] !== (data as Record<string, unknown>)[k]);
+  const mudou = enviados.filter((k) => {
+    const a = (antes as Record<string, unknown>)[k], d = (data as Record<string, unknown>)[k];
+    if (k === "valor_vendido") return (a == null ? null : Number(a)) !== (d == null ? null : Number(d));
+    return a !== d;
+  });
   const partes = mudou.map((k) => {
     const a = (antes as Record<string, unknown>)[k];
     const d = (data as Record<string, unknown>)[k];
@@ -176,6 +187,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
     if (k === "responsavel") return `responsável: ${a || "—"} → ${d || "—"}`;
     if (k === "prazo") return `prazo: ${dataBR(a)} → ${dataBR(d)}`;
+    if (k === "valor_vendido") return `vendido: ${brl(a)} → ${brl(d)}`;
     return "anotações alteradas";
   });
   const titulo = String((data as Record<string, unknown>).titulo || id).slice(0, 120);

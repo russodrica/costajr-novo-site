@@ -3554,3 +3554,41 @@ mandou no grupo uma correção ("PGFN e Labor Med não são para pagar"). As men
 PGFN continuam no grupo — apagar mensagem é com a Adriana. Testar a regra sem efeito nenhum:
 `CARTORIO_ESTADO=<arquivo vazio> node scripts/cartorio-boletos.mjs --dry --da-pasta --dias=4`
 (relê a pasta de arquivo do Outlook; `--da-pasta` só funciona junto com `--dry`).
+
+## Atualizacao 14/10/2026 (parte 3) — Situação Financeira v2: enxuta, com progresso, a reaver e plano novo
+
+**Pedido da Adriana:** a aba tinha informação demais; ela quer algo MUITO sucinto que dê ESTÍMULO
+("ver que estou andando para frente"): dívida por tipo, receita que tem x receita que precisa,
+campo editável da PROPOSTA DE QUITAÇÃO (ex.: banco deve 240 mil, propõe 100 mil), marcar QUITEI e
+ver o progresso, valores A REAVER (contabilidade, Drogaria São Paulo, Sem Parar, processos,
+consórcios) e plano de ação NOVO sem equipe/investimento (consultoria, planilhas, produtos).
+
+**Feito (levantamento + implementação + revisão adversarial por workflows):**
+- **Migration 119 RODADA** (Management API): `fin_sf_dividas` + valor_proposta/proposta_obs/quitada/
+  quitada_em/valor_pago; `fin_sf_protestos` + cancelado/cancelado_em; `fin_sf_acoes` + plano (v1|v2)/
+  valor_vendido; tabela nova `fin_sf_reaver` (tipo, titulo, contraparte, valor_estimado, chance,
+  situacao, previsao, fonte, observacao, recebido, recebido_em, valor_recebido). IDs text, RLS.
+- **Abas:** Painel · Impostos · Bancos · Fornecedores · Outras · A reaver · Plano · Protestos
+  (Despesas fixas e a Visão geral antiga SAÍRAM). Painel = "você já eliminou R$ X" + barra, 4 números
+  (dívida hoje, realista, a reaver, receita média), meta de receita (prazo 12/24/36, impostos 60),
+  por tipo, próximas 3 vitórias (menores dívidas, botão Quitei) e conquistas.
+- **Contas no cliente, a partir das LINHAS** (mudam na hora): devido = `valor` de hoje (linha sem valor
+  conta 0 com selo "sem valor" — contar pelo teto inflava bancos para R$ 3,4 mi, acima do teto do
+  levantamento); realista = proposta ?? devido; fora da conta: PF/fora da empresa, sócios (último da
+  fila), "a conferir" e contingente (Tax All). Receita = média de 3 meses FECHADOS (Vobi);
+  necessária = (custo fixo + realista/prazo) / k, k = margem − tributo do painel (0,3072).
+- **A reaver:** item no CPF da Adriana (consórcio Santander) fica num bloco à parte, fora do "pode voltar";
+  crédito de 11%/residual/Consiste marcados "abate dívida" (não viram caixa).
+- **Plano v2 (11 ideias, ids sfa2-01..11):** bloco "Caixa para a empresa" (vender bens parados e cotas
+  de consórcio — SÓ com OK do advogado, art. 185 CTN) e bloco "Renda com o que você sabe fazer"
+  (propostas já na rua, diagnóstico express, planilhas, raio-X de dívidas, mutirão de conciliação,
+  comparativo para síndicos, orçamento p/ arquitetos, pasta de homologação, assistente técnica de
+  pleito). O v1 (44 ideias) ficou no banco, fora da tela. Crítico: renda entra no CPF dela — tributo
+  RETIDO em dívida ativa (R$ 39 mil, 14 linhas) pode redirecionar cobrança à sócia (art. 135 CTN).
+- **Dados (seed FORA do repo: D:/temp/situacao_fin/seed_v2.mjs; especificação D:/temp/situacao_fin/SPEC_V2.md):**
+  15 itens a reaver; sfd-banco-12 (consórcios) ativo=false; 1ª conquista: Jundiaí CDA quitada (R$ 124,86
+  em 14/10, ELYSIUM); 2ª: Arpini DSI 10 (sfd-fornecedor-29) quitada (R$ 1.400 pago 06/07 — Vobi 7a2ae115).
+- **Bug de layout achado no teste (vale para outras telas):** faixa de abas sem quebra (`nowrap` +
+  overflow auto) dentro do `.main-wrap` (flex, min-width:auto) fazia a página abrir com 704px no
+  celular. Fix: `contain: inline-size` na faixa. Diagnóstico: `window.innerWidth` > 375 com emulação
+  de 375 = algum elemento impõe largura mínima.

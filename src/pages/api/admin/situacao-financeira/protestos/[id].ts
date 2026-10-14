@@ -3,6 +3,7 @@ import { requireAdminCookie, jsonOk, jsonErr, type AdminClaims } from "../../../
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
+import { lerBool, hojeSP } from "../../../../../lib/situacaoFinanceiraApi";
 
 export const prerender = false;
 
@@ -12,13 +13,15 @@ export const prerender = false;
 // Corpo (JSON, todos opcionais, pelo menos 1):
 //   { resposta_cartorio, observacao, data_protesto (AAAA-MM-DD | null), credor, confianca }
 //   confianca: confirmado | provavel | nao_identificado (ou null para limpar)
+//   cancelado (true/false) e cancelado_em (AAAA-MM-DD | null) — migration 119. Ao marcar cancelado=true
+//   sem data, cancelado_em = hoje (São Paulo). Desmarcar mantém a data digitada (histórico).
 const MODULO = "situacao-financeira";
 const TABELA = "fin_sf_protestos";
-const CAMPOS = ["resposta_cartorio", "observacao", "data_protesto", "credor", "confianca"] as const;
+const CAMPOS = ["resposta_cartorio", "observacao", "data_protesto", "credor", "confianca", "cancelado", "cancelado_em"] as const;
 type Campo = (typeof CAMPOS)[number];
 const ROTULO: Record<Campo, string> = {
   resposta_cartorio: "resposta do cartório", observacao: "observação", data_protesto: "data do protesto",
-  credor: "credor", confianca: "certeza sobre o credor",
+  credor: "credor", confianca: "certeza sobre o credor", cancelado: "cancelado", cancelado_em: "data do cancelamento",
 };
 const CONFIANCA = ["confirmado", "provavel", "nao_identificado"] as const;
 const ROTULO_CONFIANCA: Record<(typeof CONFIANCA)[number], string> = {
@@ -49,7 +52,7 @@ function erroDoBanco(err: { message?: string; code?: string } | null): Response 
   const m = err?.message || "";
   const code = err?.code || "";
   if (["42P01", "42703", "PGRST204", "PGRST205"].includes(code) || /does not exist|schema cache|Could not find the table/i.test(m)) {
-    return jsonErr(503, "As tabelas da Situação Financeira ainda não foram criadas no banco (migration 118). Peça para rodar a migration e tente de novo.");
+    return jsonErr(503, "As tabelas da Situação Financeira ainda não estão completas no banco (migrations 118 e 119). Peça para rodar as migrations e tente de novo.");
   }
   return jsonErr(500, "Não consegui salvar agora. Tente de novo em instantes.", m);
 }
@@ -148,6 +151,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (!r.ok) return jsonErr(400, r.erro);
     upd.data_protesto = r.v;
   }
+  if ("cancelado" in b) {
+    const r = lerBool(b.cancelado, ROTULO.cancelado);
+    if (!r.ok) return jsonErr(400, r.erro);
+    upd.cancelado = r.v;
+  }
+  if ("cancelado_em" in b) {
+    const r = lerData(b.cancelado_em, ROTULO.cancelado_em);
+    if (!r.ok) return jsonErr(400, r.erro);
+    upd.cancelado_em = r.v;
+  }
   if ("credor" in b) {
     const r = lerTexto(b.credor, ROTULO.credor, MAX_CREDOR);
     if (!r.ok) return jsonErr(400, r.erro);
@@ -171,6 +184,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (e1) return erroDoBanco(e1);
   if (!antes) return jsonErr(404, "Protesto não encontrado. Ele pode ter sido removido; recarregue a página.");
 
+  // marcou como cancelado sem data: mantém a data que já existia (se já estava cancelado) ou usa hoje
+  let dataPadrao = false;
+  if (upd.cancelado === true && !upd.cancelado_em) {
+    const A0 = antes as Record<string, unknown>;
+    upd.cancelado_em = A0.cancelado === true && typeof A0.cancelado_em === "string" && A0.cancelado_em ? A0.cancelado_em : hojeSP();
+    dataPadrao = true;
+  }
+
   upd.updated_at = new Date().toISOString();
   upd.atualizado_por = admin.email || null;
   const { data, error } = await db.from(TABELA).update(upd).eq("id", id).select("*").maybeSingle();
@@ -180,8 +201,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // log: o que mudou, em português
   const A = antes as Record<string, unknown>;
   const D = data as Record<string, unknown>;
-  const enviados = chaves as Campo[];
+  const enviados = (dataPadrao && !chaves.includes("cancelado_em") ? [...chaves, "cancelado_em"] : chaves) as Campo[];
   const partes = enviados.filter((k) => A[k] !== D[k]).map((k) => {
+    if (k === "cancelado") return D.cancelado === true ? `marcou como CANCELADO (em ${dataBR(D.cancelado_em)})` : "desmarcou o cancelamento";
+    if (k === "cancelado_em") return `data do cancelamento: ${dataBR(A[k])} → ${dataBR(D[k])}`;
     if (k === "data_protesto") return `data do protesto: ${dataBR(A[k])} → ${dataBR(D[k])}`;
     if (k === "credor") return `credor: ${A[k] || "—"} → ${D[k] || "—"}`;
     if (k === "confianca") {
