@@ -37,6 +37,33 @@ async function banChat(token: string, chatId: any, userId: any): Promise<boolean
   } catch { return false; }
 }
 
+// ── Ressalva do desligamento ────────────────────────────────────────────────
+// Quando um passo não pode ser cumprido (colaborador sumiu, termo não assinado,
+// verbas rescisórias ainda não pagas...), o desligamento é encerrado COM RESSALVA:
+// a justificativa fica gravada em rh_desligamentos.checklist.ressalvas (lista, para
+// poder acrescentar outras depois) e na trilha de auditoria. Sem migration.
+export type Ressalva = {
+  texto: string;
+  rescisao_pendente: boolean;
+  valor_rescisao: number | null;
+  previsao_rescisao: string | null; // AAAA-MM-DD
+};
+
+/** Valida e limpa a ressalva vinda da tela. null = inválida (texto curto demais). */
+export function normalizarRessalva(r: any): Ressalva | null {
+  const texto = String(r?.texto ?? "").replace(/\s+/g, " ").trim().slice(0, 2000);
+  if (texto.length < 15) return null;
+  const valorNum = r?.valor_rescisao === "" || r?.valor_rescisao == null ? null : Number(String(r.valor_rescisao).replace(",", "."));
+  const valor = valorNum != null && Number.isFinite(valorNum) && valorNum >= 0 ? Math.round(valorNum * 100) / 100 : null;
+  const prev = /^\d{4}-\d{2}-\d{2}$/.test(String(r?.previsao_rescisao || "")) ? String(r.previsao_rescisao) : null;
+  const pend = !!r?.rescisao_pendente;
+  return { texto, rescisao_pendente: pend, valor_rescisao: pend ? valor : null, previsao_rescisao: pend ? prev : null };
+}
+
+export function escHtml(s: any): string {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 export type DesligResumo = { portal: string; telegram: string; acessosRevogados: number; tarefas: number };
 
 export async function iniciarDesligamento(db: any, colaboradorId: string, admin: { email: string }, req?: Request): Promise<DesligResumo> {

@@ -19,6 +19,14 @@ export const POST: APIRoute = async ({ request }) => {
     const { colaborador_id, itens } = body;
     if (!colaborador_id || !Array.isArray(itens)) return jsonErr(400, "Informe colaborador_id e itens.");
 
+    // EPI que ficou com quem saiu (desligamento → "não devolvido") não pode voltar a
+    // "ativo" só porque a aba EPIs foi salva de novo: a tela manda todas as linhas.
+    const db0 = supabaseAdmin();
+    // Só mantém "não devolvido" se a entrega é a MESMA (mesma data de entrega e CA);
+    // uma entrega nova do mesmo EPI volta a ser "ativo" normalmente.
+    const { data: atuais } = await db0.from("epi_entregas").select("epi, status, data_entrega, ca").eq("colaborador_id", colaborador_id);
+    const naoDevolvidos = new Map((atuais || []).filter((r: any) => r.status === "nao_devolvido").map((r: any) => [String(r.epi), r]));
+    const mesmaEntrega = (it: any) => { const r: any = naoDevolvidos.get(String(it.epi)); return !!r && String(r.data_entrega || "") === String(it.data_entrega || "") && String(r.ca || "") === String(it.ca || ""); };
     const rows: any[] = [];
     for (const it of itens) {
       if (!it.epi) continue;
@@ -28,7 +36,7 @@ export const POST: APIRoute = async ({ request }) => {
         ca: it.ca || null, tamanho: it.tamanho || null,
         data_entrega: it.data_entrega || null, data_validade: it.data_validade || null,
         data_devolucao: it.data_devolucao || null,
-        status: it.data_devolucao ? "devolvido" : "ativo",
+        status: it.data_devolucao ? "devolvido" : (mesmaEntrega(it) ? "nao_devolvido" : "ativo"),
         aviso_15: false, // ao mexer no item, libera novo alerta de vencimento
         updated_at: new Date().toISOString(),
       });

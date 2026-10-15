@@ -2,14 +2,15 @@ import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { registrarAcao } from "../../../../../lib/auditoria";
-import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
+import { bloqueioSeSoLeitura, bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
 // GET /api/admin/rh/desligamentos?colaborador_id=
 export const GET: APIRoute = async ({ request, url }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const _sl = await bloqueioSeSemLeitura(admin, "rh"); if (_sl) return _sl;
     const db = supabaseAdmin();
     const cid = url.searchParams.get("colaborador_id");
     let q = db.from("rh_desligamentos").select("*").order("created_at", { ascending: false }).limit(500);
@@ -32,12 +33,16 @@ export const POST: APIRoute = async ({ request }) => {
     if (!body.colaborador_id) return jsonErr(400, "colaborador_id é obrigatório.");
     const db = supabaseAdmin();
     const { data: colab } = await db.from("rh_colaboradores").select("nome").eq("id", body.colaborador_id).maybeSingle();
+    // Ressalvas e conclusão só nascem no servidor (finalizar.ts / ressalva.ts), com
+    // autor e data gravados lá — aqui o cliente não pode forjar nenhuma das duas.
+    const checklist = body.checklist && typeof body.checklist === "object" ? { ...body.checklist } : null;
+    if (checklist) delete (checklist as any).ressalvas;
     const row = {
       colaborador_id: body.colaborador_id,
       data_desligamento: body.data_desligamento || new Date().toISOString().slice(0, 10),
       tipo: body.tipo || null, motivo: body.motivo || null,
-      entrevista: body.entrevista || null, checklist: body.checklist || null,
-      status: body.status === "concluido" ? "concluido" : "aberto",
+      entrevista: body.entrevista || null, checklist,
+      status: "aberto",
       criado_por: admin.email,
     };
     const { data, error } = await db.from("rh_desligamentos").insert(row).select().single();

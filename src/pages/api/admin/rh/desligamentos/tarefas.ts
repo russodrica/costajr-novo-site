@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
-import { bloqueioSeSoLeitura } from "../../../../../lib/permissoes";
+import { bloqueioSeSoLeitura, bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 import { registrarAcao } from "../../../../../lib/auditoria";
 
 export const prerender = false;
@@ -9,7 +9,8 @@ export const prerender = false;
 // GET /api/admin/rh/desligamentos/tarefas?colaborador_id=ID → lista as tarefas.
 export const GET: APIRoute = async ({ request, url }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const _sl = await bloqueioSeSemLeitura(admin, "rh"); if (_sl) return _sl;
     const colaborador_id = url.searchParams.get("colaborador_id");
     if (!colaborador_id) return jsonErr(400, "colaborador_id é obrigatório.");
     const db = supabaseAdmin();

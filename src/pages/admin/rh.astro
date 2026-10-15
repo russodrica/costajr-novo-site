@@ -805,8 +805,19 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           <label style="display:flex;gap:8px;align-items:center;color:#16A34A"><input type="checkbox" checked disabled /> Acesso ao portal revogado (automático ao concluir)</label>
         </div>
         <p style="font-size:12px;color:#B45309;margin-top:8px">⚠ O desligamento só é concluído quando cada item for <strong>devolvido em perfeito estado</strong> — ou marcado como <strong>🚫 Não devolvido</strong> (quando o colaborador sumiu com ele; o item vira <strong>extraviado</strong>, com registro de quem estava) — e os passos do regime estiverem cumpridos.</p>
+        <details id="deslRessalvaBox" style="margin-top:10px;border:1px solid #FDE68A;background:#FFFBEB;border-radius:8px;padding:8px 12px">
+          <summary style="cursor:pointer;font-weight:700;font-size:13px;color:#92400E">⚠️ Concluir com ressalva — quando algum passo não puder ser cumprido</summary>
+          <p style="font-size:12px;color:#92400E;margin:8px 0">Ex.: o colaborador sumiu e não assinou o termo nem fez o exame, ou as verbas rescisórias ainda não foram pagas. O desligamento é concluído e a justificativa fica no histórico (ficha → aba 🚪 Desligamento). Também vale para item devolvido <strong>com avaria</strong> (sem "Perfeito estado"): ele vai para "Para conserto". Os itens em posse continuam tendo de ser marcados um a um. Só o administrador conclui com pendências.</p>
+          <div class="form-group"><label>Ressalva / justificativa *</label><textarea id="deslRessalvaTexto" rows="3" placeholder="O que ficou pendente e por quê (ex.: colaborador deixou de comparecer em 10/09 e não respondeu às convocações; termo não assinado)"></textarea></div>
+          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-mid)"><input type="checkbox" id="deslRescPend" onchange="deslToggleResc(this, 'deslRescCampos')" /> Verbas rescisórias ainda não pagas (total ou parcialmente)</label>
+          <div class="form-row" id="deslRescCampos" style="display:none;margin-top:6px">
+            <div class="form-group"><label>Valor pendente (R$)</label><input id="deslRescValor" type="number" step="0.01" min="0" /></div>
+            <div class="form-group"><label>Previsão de pagamento</label><input id="deslRescPrev" type="date" /></div>
+          </div>
+        </details>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharModal('modalDesligamento')">Cancelar</button>
+          <button type="button" class="btn btn-light" onclick="confirmarDesligamento(true)" style="border-color:#F59E0B;color:#92400E">⚠️ Concluir com ressalva</button>
           <button type="button" class="btn btn-danger" onclick="confirmarDesligamento()">Concluir desligamento</button>
         </div>
       </form>
@@ -1897,9 +1908,77 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
           <div style="margin-top:12px"><button type="button" class="btn btn-danger" onclick="iniciarDesligamentoColab('${colabId}')">🚪 Iniciar desligamento (cortar acessos)</button></div>
         </div>`;
       }
-      el.innerHTML = topo + '<div id="desligTarefas" style="margin-top:14px"></div>';
+      el.innerHTML = topo + '<div id="desligTarefas" style="margin-top:14px"></div><div id="desligHistorico" style="margin-top:14px"></div>';
       await carregarTarefasDeslig(colabId);
+      await carregarHistoricoDeslig(colabId, st);
     }
+    // Histórico do desligamento (registro + ressalvas) e formulário de nova ressalva.
+    async function carregarHistoricoDeslig(colabId: string, st: string) {
+      const alvo = document.getElementById("desligHistorico"); if (!alvo) return;
+      const es = (s: any) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      // Só aceita data AAAA-MM-DD (o resto vira "—"): nada de texto cru no innerHTML.
+      const dt = (s: any) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || "")); return m ? `${m[3]}/${m[2]}/${m[1]}` : "—"; };
+      const brl = (n: any) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      // Data/hora gravada em UTC → mostra no fuso de Brasília (registro com valor de prova).
+      const dtHora = (s: any) => { const n = Date.parse(String(s || "")); return Number.isNaN(n) ? "—" : new Date(n).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); };
+      let regs: any[] = [];
+      try { const r = await fetch(`/api/admin/rh/desligamentos?colaborador_id=${encodeURIComponent(colabId)}`); regs = r.ok ? await r.json() : []; } catch { /* segue sem histórico */ }
+      // Se outra ficha foi aberta enquanto carregava, não escreve o histórico dela aqui.
+      if ((window as any).__fichaColabId && (window as any).__fichaColabId !== colabId) return;
+      const alvoAgora = document.getElementById("desligHistorico"); if (!alvoAgora || alvoAgora !== alvo || !alvo.isConnected) return;
+      const TIPO: Record<string, string> = { pedido: "Pedido de demissão", sem_justa_causa: "Dispensa sem justa causa", justa_causa: "Justa causa", fim_contrato: "Fim de contrato", acordo: "Acordo" };
+      const blocoRess = (x: any) => `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12.5px;line-height:1.55">
+          <b style="color:#92400E">⚠️ Ressalva</b> <span style="color:#9CA3AF">· ${es(dtHora(x.em))} · ${es(x.por)}${x.momento === "conclusao" ? " · na conclusão" : ""}</span><br>${es(x.texto)}
+          ${Array.isArray(x.pendencias) && x.pendencias.length ? `<br><span style="color:#B45309">Passos não cumpridos: ${x.pendencias.map(es).join("; ")}</span>` : ""}
+          ${Array.isArray(x.itens_avariados) && x.itens_avariados.length ? `<br><span style="color:#B45309">Devolvidos com avaria: ${x.itens_avariados.map(es).join("; ")}</span>` : ""}
+          ${x.rescisao_pendente ? `<br><span style="color:#B91C1C">💰 Verbas rescisórias pendentes${typeof x.valor_rescisao === "number" ? `: ${es(brl(x.valor_rescisao))}` : ""}${x.previsao_rescisao ? ` · previsão ${dt(x.previsao_rescisao)}` : ""}</span>` : ""}
+        </div>`;
+      const cards = regs.map((d: any) => {
+        const ress = (d.checklist && Array.isArray(d.checklist.ressalvas)) ? d.checklist.ressalvas : [];
+        return `<div style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:13px">
+          <b>${d.checklist && d.checklist.origem === "ressalva_posterior" ? "📝 Registro de ressalvas" : d.status === "concluido" ? "✅ Desligamento concluído" : "📝 Desligamento em andamento"}</b>
+          <span style="color:#6B7280"> · ${dt(d.data_desligamento)}${d.tipo ? ` · ${es(TIPO[d.tipo] || d.tipo)}` : ""}${d.checklist && d.checklist.concluido_por ? ` · concluído por ${es(d.checklist.concluido_por)}` : d.criado_por ? ` · registrado por ${es(d.criado_por)}` : ""}</span>
+          ${d.motivo ? `<br><span style="color:#4B5563">Motivo: ${es(d.motivo)}</span>` : ""}
+          ${ress.map(blocoRess).join("")}
+        </div>`;
+      }).join("");
+      const podeRessalva = ["em_desligamento", "desligado"].includes(st);
+      const form = podeRessalva ? `<details style="margin-top:6px;border:1px dashed #F59E0B;border-radius:8px;padding:8px 12px">
+          <summary style="cursor:pointer;font-weight:700;font-size:13px;color:#92400E">➕ Registrar ressalva</summary>
+          <p style="font-size:12px;color:#6B7280;margin:6px 0">Para guardar no histórico algo que ficou pendente (ex.: verbas rescisórias ainda não pagas, colaborador sumiu). Não muda o status do colaborador.</p>
+          <div class="form-group"><label>Ressalva *</label><textarea id="hRessTexto" rows="3"></textarea></div>
+          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-mid)"><input type="checkbox" id="hRescPend" onchange="deslToggleResc(this, 'hRescCampos')" /> Verbas rescisórias ainda não pagas (total ou parcialmente)</label>
+          <div class="form-row" id="hRescCampos" style="display:none;margin-top:6px">
+            <div class="form-group"><label>Valor pendente (R$)</label><input id="hRescValor" type="number" step="0.01" min="0" /></div>
+            <div class="form-group"><label>Previsão de pagamento</label><input id="hRescPrev" type="date" /></div>
+          </div>
+          <div id="hRessMsg"></div>
+          <button type="button" class="btn btn-light btn-sm" style="border-color:#F59E0B;color:#92400E" data-colab="${es(colabId)}" onclick="salvarRessalvaDeslig(this.dataset.colab, this)">Salvar ressalva</button>
+        </details>` : "";
+      alvo.innerHTML = (regs.length || podeRessalva)
+        ? `<div class="section-title" style="font-size:14px;margin-bottom:8px">🗂 Histórico do desligamento</div>${cards || '<p style="font-size:12.5px;color:#9CA3AF">Nenhum registro ainda.</p>'}${form}`
+        : "";
+    }
+    async function salvarRessalvaDeslig(colabId: string, btn?: HTMLButtonElement) {
+      const msg = document.getElementById("hRessMsg")!;
+      if ((window as any).__fichaColabId && (window as any).__fichaColabId !== colabId) { msg.innerHTML = '<div class="alert alert-error">A ficha mudou. Reabra o colaborador e tente de novo.</div>'; return; }
+      const r = lerRessalva("hRessTexto", "hRescPend", "hRescValor", "hRescPrev");
+      if (r.texto.length < 15) { msg.innerHTML = '<div class="alert alert-error">Descreva a ressalva (mínimo de 15 caracteres).</div>'; return; }
+      if (btn) { if (btn.disabled) return; btn.disabled = true; btn.textContent = "Salvando…"; }
+      try {
+        const res = await fetch("/api/admin/rh/desligamentos/ressalva", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ colaborador_id: colabId, ...r }) });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((d as any).error || "Falha ao salvar");
+        const st = ((colabPorId as any)[colabId] || {}).status || "desligado";
+        await carregarHistoricoDeslig(colabId, st);
+        const box = document.getElementById("desligHistorico");
+        if (box) box.insertAdjacentHTML("afterbegin", '<div class="alert alert-success" style="margin-bottom:8px">✅ Ressalva registrada no histórico.</div>');
+      } catch (e: any) {
+        msg.innerHTML = `<div class="alert alert-error">${escD(e.message)}</div>`;
+        if (btn) { btn.disabled = false; btn.textContent = "Salvar ressalva"; }
+      }
+    }
+    (window as any).salvarRessalvaDeslig = salvarRessalvaDeslig;
     async function carregarTarefasDeslig(colabId: string) {
       const alvo = document.getElementById("desligTarefas"); if (!alvo) return;
       try {
@@ -2183,6 +2262,8 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       (document.getElementById("deslColabId") as HTMLInputElement).value = id;
       document.getElementById("deslNome")!.textContent = nome + (c.regime ? ` · ${String(c.regime).toUpperCase()}` : "");
       (document.getElementById("formDesligamento") as HTMLFormElement).reset();
+      (document.getElementById("deslRessalvaBox") as HTMLDetailsElement).open = false;
+      document.getElementById("deslRescCampos")!.style.display = "none";
       (document.querySelector('#formDesligamento [name="data_desligamento"]') as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
       document.getElementById("msgDesl")!.innerHTML = "";
       document.getElementById("deslRegime")!.innerHTML = regimeStepsHtml(c.regime || "");
@@ -2225,7 +2306,15 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
         <div style="display:flex;flex-direction:column;gap:6px">${cb("ck_contrato", "Contrato de encerramento da prestação de serviço assinado")}</div>`;
       return "";
     }
-    async function confirmarDesligamento() {
+    async function confirmarDesligamento(comRessalva?: boolean) {
+      if (!comRessalva) {
+        const txt = ((document.getElementById("deslRessalvaTexto") as HTMLTextAreaElement | null)?.value || "").trim();
+        const resc = !!(document.getElementById("deslRescPend") as HTMLInputElement | null)?.checked;
+        if (txt || resc) {
+          if (!confirm("Você preencheu uma ressalva. Concluir o desligamento COM essa ressalva?\n\nOK = concluir com ressalva · Cancelar = voltar e revisar")) return;
+          comRessalva = true;
+        }
+      }
       const id = (document.getElementById("deslColabId") as HTMLInputElement).value;
       const c = (colabPorId as any)[id] || {};
       const fd = new FormData(document.getElementById("formDesligamento") as HTMLFormElement);
@@ -2242,10 +2331,43 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
       if (c.regime === "clt") { checklist.exame_demissional = !!qs("#ck_aso")?.checked; checklist.exame_emocional = !!qs("#ck_emoc")?.checked; checklist.aviso_previo = qs("#ck_aviso")?.value || ""; checklist.termo_encerramento = !!qs("#ck_termo")?.checked; }
       if (c.regime === "pj") { checklist.contrato_encerramento = !!qs("#ck_contrato")?.checked; }
       const entrevista = { motivo_principal: fd.get("motivo_principal"), ambiente: fd.get("ambiente"), relacao_gestao: fd.get("relacao_gestao"), recomendaria: fd.get("recomendaria"), comentarios: fd.get("comentarios") };
-      const res = await fetch("/api/admin/rh/desligamentos/finalizar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ colaborador_id: id, data_desligamento: data, tipo: fd.get("tipo"), motivo: fd.get("motivo"), entrevista, checklist }) });
-      if (res.ok) { reloadComAba(); return; }
-      const d = await res.json().catch(() => ({}));
-      msg.innerHTML = `<div class="alert alert-error" style="white-space:pre-line">${(d as any).error || "Erro ao concluir"}</div>`;
+      let ressalva: any = null;
+      if (comRessalva) {
+        ressalva = lerRessalva("deslRessalvaTexto", "deslRescPend", "deslRescValor", "deslRescPrev");
+        if (ressalva.texto.length < 15) {
+          (document.getElementById("deslRessalvaBox") as HTMLDetailsElement).open = true;
+          msg.innerHTML = '<div class="alert alert-error">Descreva a ressalva (o que ficou pendente e por quê) — mínimo de 15 caracteres.</div>';
+          msg.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          return;
+        }
+        if (!confirm("Concluir o desligamento COM RESSALVA? O colaborador passa para Desligado e a justificativa fica registrada no histórico.")) return;
+      }
+      // Trava os botões do modal enquanto o servidor trabalha (evita envio em dobro).
+      const botoes = Array.from(document.querySelectorAll("#modalDesligamento .modal-actions button")) as HTMLButtonElement[];
+      if (botoes.some((b) => b.disabled)) return;
+      botoes.forEach((b) => (b.disabled = true));
+      try {
+        const res = await fetch("/api/admin/rh/desligamentos/finalizar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ colaborador_id: id, data_desligamento: data, tipo: fd.get("tipo"), motivo: fd.get("motivo"), entrevista, checklist, ressalva }) });
+        if (res.ok) { reloadComAba(); return; } // botões seguem travados até a página recarregar
+        botoes.forEach((b) => (b.disabled = false));
+        const d = await res.json().catch(() => ({}));
+        const erro = String((d as any).error || "Erro ao concluir");
+        msg.innerHTML = `<div class="alert alert-error" style="white-space:pre-line">${escD(erro)}</div>`;
+        msg.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        if (!comRessalva && /ressalva/i.test(erro)) (document.getElementById("deslRessalvaBox") as HTMLDetailsElement).open = true;
+      } catch (e: any) {
+        botoes.forEach((b) => (b.disabled = false));
+        msg.innerHTML = `<div class="alert alert-error">${escD(e?.message || "Erro de conexão")}</div>`;
+        msg.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }
+    function lerRessalva(idTexto: string, idPend: string, idValor: string, idPrev: string) {
+      const v = (s: string) => ((document.getElementById(s) as HTMLInputElement | null)?.value || "").trim();
+      const pend = !!(document.getElementById(idPend) as HTMLInputElement | null)?.checked;
+      return { texto: v(idTexto), rescisao_pendente: pend, valor_rescisao: pend ? v(idValor) : "", previsao_rescisao: pend ? v(idPrev) : "" };
+    }
+    function deslToggleResc(cb: HTMLInputElement, alvo: string) {
+      const el = document.getElementById(alvo); if (el) el.style.display = cb.checked ? "" : "none";
     }
     // "Devolvido" e "Não devolvido" são mutuamente exclusivos por item.
     function deslItemPerdido(cb: HTMLInputElement) {
@@ -2269,6 +2391,7 @@ const ufs = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
     (window as any).deslItemDevolvido = deslItemDevolvido;
     (window as any).deslMarcarPerdidoTudo = deslMarcarPerdidoTudo;
     (window as any).confirmarDesligamento = confirmarDesligamento;
+    (window as any).deslToggleResc = deslToggleResc;
 
     // campos obrigatórios da ficha (exceto diaristas, que são esporádicos)
     const OBRIGATORIOS: [string, string][] = [

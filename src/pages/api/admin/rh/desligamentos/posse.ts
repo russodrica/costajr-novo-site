@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { requireAdminCookie, jsonOk, jsonErr } from "../../../../../lib/auth";
 import { supabaseAdmin } from "../../../../../lib/supabase";
+import { bloqueioSeSemLeitura } from "../../../../../lib/permissoes";
 
 export const prerender = false;
 
@@ -11,7 +12,8 @@ export const prerender = false;
 //   Serve para travar o desligamento até a devolução completa.
 export const GET: APIRoute = async ({ request, url }) => {
   try {
-    await requireAdminCookie(request);
+    const admin = await requireAdminCookie(request);
+    const _sl = await bloqueioSeSemLeitura(admin, "rh"); if (_sl) return _sl;
     const db = supabaseAdmin();
     const cid = url.searchParams.get("colaborador_id");
     if (!cid) return jsonErr(400, "colaborador_id é obrigatório.");
@@ -24,12 +26,12 @@ export const GET: APIRoute = async ({ request, url }) => {
     const ids = [colab.id, colab.profile_id].filter(Boolean);
     const { data: ativosAloc } = await db.from("ativos")
       .select("id, descricao, categoria, patrimonio, status, alocado_para_tipo, alocado_para_id, alocado_para_nome")
-      .eq("alocado_para_tipo", "colaborador").eq("status", "alocado").limit(2000);
+      .eq("alocado_para_tipo", "colaborador").in("status", ["alocado", "danificado"]).limit(2000);
     const nomeLow = (colab.nome || "").toLowerCase();
     const ativos = (ativosAloc || []).filter((a: any) =>
       (a.alocado_para_id && ids.includes(a.alocado_para_id)) ||
       (a.alocado_para_nome && String(a.alocado_para_nome).toLowerCase() === nomeLow)
-    ).map((a: any) => ({ tipo: "ativo", id: a.id, nome: a.descricao || a.patrimonio || a.id, categoria: a.categoria }));
+    ).map((a: any) => ({ tipo: "ativo", id: a.id, nome: a.descricao || a.patrimonio || a.id, categoria: a.status === "danificado" ? `${a.categoria || "ativo"} · com defeito` : a.categoria }));
 
     // EPIs/uniformes entregues e ainda não devolvidos
     const { data: epis } = await db.from("epi_entregas")

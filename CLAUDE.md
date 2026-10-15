@@ -3620,3 +3620,48 @@ futuro = **DESPESA COMPROMETIDA**, fora da dívida e da meta ("pode deixar de ac
   do servidor de desenvolvimento; em produção funciona.
 - **PENDENTE (Adriana):** João Telhadista (sfd-fornecedor-7, R$ 23.103,79 vencido) teve a parcela
   CANCELADA na Vobi em 14/10 16:46 junto com as do Evandio — mantido como dívida até ela confirmar.
+
+## Atualizacao 14/10/2026 (parte 5) — Labor Med: LTCAT cobrado sem ser feito, contestação e Vobi ajustada
+
+**O caso:** em 17/04 a Patricia contratou a renovação de PCMSO 847 + PGR 957 + LTCAT 1.089 (+ NR1 600,
+AET descartada) em 6x. A Labor Med entregou PGR e PCMSO em 26/05, cancelou o LTCAT (nunca feito) e
+mesmo assim faturou 6 parcelas de R$ 482,17 = 2.893 (com LTCAT): NFs 11454 (parc 1, venc 20/07, SEM
+boleto), 11653 (parc 2, venc 20/08, PROTESTO 6º Tabelião prot. 0244, R$ 647,48 até 16/10) e 11812
+(parc 3, venc 20/09), além da NF 11253 (R$ 80, retorno Crispim). Nenhuma paga (conferido em todos os
+bancos, cartões, Vobi e Outlook). Valor certo sem LTCAT = R$ 1.804 (R$ 300,67/parcela).
+- **14/10 23:15: contestação enviada** de contato@costajr.com.br (assinada **Juliana Costa**, cc
+  financeiro@costajr.com.br — a caixa financeiro@ é só de recebimento) pedindo reemissão sem LTCAT,
+  desistência do protesto e extrato; diz que a empresa está reorganizando as contas, sem data.
+  Adriana NÃO vai pagar o protesto agora; negociação segue por WhatsApp (Juliana).
+- **Vobi (tudo no fornecedor 665902):** lançados pelas NFs (líquido): 2cdc932e NF 11454 521,73;
+  74c537d5 NF 11653 560,34; 80880a9a NF 11812 459,76; 926359fd saldo a faturar 357,49 (3x out-dez);
+  d39e7175 renomeado NF 11253. Cancelados: provisões PCMSO 847, PGR 957, NR1 950 e "PREVISÃO PPRA E
+  PCMSO" 800 (cópia de pagamento de 2023 à Idivonete). Situação Financeira: sfd-outro-8 = vencido
+  1.621,83 + a vencer 357,49; protesto em fin_sf_protestos **sfp-83**.
+- **Quando a Labor Med responder:** conferir que a NF 11454 conta como parcela 1/6 (eles falam em
+  "faltam 4 parcelas" — provavelmente não contam a 11454, que saiu sem boleto → risco de cobrar 2x);
+  ao reemitir, ajustar os 4 lançamentos e o saldo.
+- **Retenções:** cada NF retém PIS/COFINS/CSLL 4,65% (DARF 5952) — 11454 25,44; 11653 26,83; 11812
+  22,41 — devidas quando pagar o líquido. E há um DARF antigo de R$ 22,87 (NF 11073, venc 20/04/2026,
+  Vobi 35309c4a) **em aberto**: tributo retido não recolhido → avisar a Construtivo.
+- **PGR entregue tem defeitos graves** (revisão por agente): zero risco psicossocial; "Cargo AUXILIAR
+  DE COZINHA" copiado de outro cliente (p.24/40/55); vibração "causa radiação ionizante"; sem registro
+  das tentativas do questionário NR1; anexos citados inexistentes; campo da empresa sem assinatura.
+  PCMSO usável com ressalvas (texto da NR-7 revogada; regra de retorno ao trabalho errada). Serve de
+  argumento na negociação (revisão sem custo).
+- **INSS na dívida ativa x retenção de 11% (pergunta da Adriana, 15/10):** a intimação do 2º
+  (CDA 81.4.25.048541-06, R$ 15.240,44) é **4156 PATRONAL** (PA 10642.279.707/2025-10 = parcelamento
+  25-73, patronal+terceiros 02-06/2025) — em 14/10 eu a chamei por engano de "descontada do empregado";
+  o rótulo do cartório "CONTR. EMPREGADO" engana, vale o código do e-CAC. INSS DESCONTADO dos empregados
+  (4133, risco ao sócio) = 81.4.25.048548-74 (R$ 17.096,45, protestado no 9º; PA 19414.143.190/2025-81 =
+  parcelamento 25-69: 4T/2024 + 01/2025) e 81.4.25.048533-98 (R$ 5.900,53; PA 10641.200.856/2024-77, 2024).
+  A retenção de 11% abate o INSS da folha (empresa + segurados; não terceiros). Provado: 04/2025 deixou
+  R$ 14.398,84 de retenção fora da DCTFWeb → R$ 1.667,82 de INSS confessado à toa, hoje inscrito; 06/2025
+  R$ 1.071,76 fora. Indício: há pedido de restituição de residual (Tax All) em meses de 2024 e jan/2025 que
+  também têm INSS inscrito → conferir competência a competência. Dívida inscrita não se corrige só
+  retificando: precisa de PRDI na PGFN. DCTFWeb de 12/08/2026 (sem autoria) retiraram R$ 25.070,16 de
+  créditos de retenção out-dez/2025 — perguntar quem transmitiu.
+- **NR-1 psicossocial (pesquisa com fontes MTE/STF, 14/10):** questionário NÃO é obrigatório (FAQ MTE
+  maio/2026, perg. 8; para grupo pequeno: observação + diálogo + indicadores). Obrigação vale desde
+  26/05/2026; sanções dos itens psicossociais suspensas por cautelar do STF (ADPF 1.316) — temporário,
+  conferir antes de contar com isso. Sugestão pendente: avaliação interna simples anexada ao PGR.
