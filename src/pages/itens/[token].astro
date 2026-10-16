@@ -160,7 +160,7 @@ if (ok) {
         var q = (Number.isInteger(it.qtd) ? it.qtd : String(it.qtd).replace(".", ",")) + " " + it.un;
         var ph = it.foto ? '<img alt="" src="/api/itens/foto?t=' + encodeURIComponent(T) + "&n=" + it.n + '">' : "<span>Sem foto</span>";
         var val = it.valor !== null
-          ? '<div class="v">' + brl(it.valor) + "<small>" + (it.qtd > 1 && it.un !== "lote" && it.un !== "conj" ? "valor unitário" : "valor") + "</small></div>"
+          ? '<div class="v">' + brl(it.valor) + "<small>" + (it.un === "lote" || it.un === "conj" ? "valor do " + it.un : it.un === "un" ? "valor unitário" : "valor por " + it.un) + "</small></div>"
           : '<div class="v nv">Valor a combinar</div>';
         return '<article class="card"><div class="ph">' + ph + '</div><div class="body"><div class="top"><span class="n">#' + it.n + '</span><span class="badge ' + cls + '">' + esc(it.cond) + "</span></div><h2>" + esc(it.nome) + "</h2>" +
           (it.marca && it.marca !== "-" ? '<p class="marca">' + esc(it.marca) + "</p>" : "") +
