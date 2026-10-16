@@ -15,6 +15,24 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
     <span class="toolbar-title">📦 Itens de Depósito — links para credores</span>
   </div>
 
+  <div id="resumo" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:14px">
+    <div class="card" style="padding:14px 16px;border-top:4px solid #C41E3A">
+      <div style="font-size:12px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Valor total em estoque</div>
+      <div id="totalEstoque" style="font-size:28px;font-weight:800;font-variant-numeric:tabular-nums">R$ 0,00</div>
+      <div style="font-size:12px;color:#6B7280">montante que pode ser negociado (itens ativos × quantidade)</div>
+    </div>
+    <div class="card" style="padding:14px 16px">
+      <div style="font-size:12px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Itens ativos</div>
+      <div id="qtdAtivos" style="font-size:28px;font-weight:800">0</div>
+      <div id="semValor" style="font-size:12px;color:#6B7280"></div>
+    </div>
+    <div class="card" style="padding:14px 16px">
+      <div style="font-size:12px;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Já baixado</div>
+      <div id="totalBaixado" style="font-size:28px;font-weight:800;font-variant-numeric:tabular-nums">R$ 0,00</div>
+      <div id="qtdBaixados" style="font-size:12px;color:#6B7280"></div>
+    </div>
+  </div>
+
   <div class="card" style="padding:12px 16px;margin-bottom:14px;background:#FFFBEB;border:1px solid #FCD34D">
     <strong>Como funciona:</strong> cada link é <b>pessoal</b> (leva o nome do credor como marca d'água), vale <b>no máximo 24 horas</b> e só existe porque você o gerou aqui. Para o credor ver de novo, gere outro. O credor precisa <b>aceitar um aviso de confidencialidade</b> antes de ver a lista, e cada abertura fica registrada (data, hora, IP). Você pode <b>revogar</b> um link a qualquer momento.
   </div>
@@ -54,10 +72,15 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
     </table>
   </div>
 
-  <h3 style="margin:22px 0 8px">Itens do catálogo <span id="resumoItens" style="font-weight:400;font-size:13px;color:#6B7280"></span></h3>
+  <h3 style="margin:22px 0 8px">Itens do catálogo</h3>
+  <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+    <button class="btn btn-primary" id="abaAtivos" onclick="mudarAba('ativos')">Ativos</button>
+    <button class="btn" id="abaBaixados" onclick="mudarAba('baixados')">Baixados</button>
+    <span id="resumoItens" style="align-self:center;font-size:13px;color:#6B7280"></span>
+  </div>
   <div class="card" style="overflow-x:auto">
     <table>
-      <thead><tr><th></th><th>#</th><th>Item</th><th>Qtd</th><th>Condição</th><th>Valor (R$)</th><th>Situação</th><th></th></tr></thead>
+      <thead><tr><th></th><th>#</th><th>Item</th><th>Qtd</th><th>Condição</th><th>Valor (R$)</th><th>Total (R$)</th><th>Ação</th></tr></thead>
       <tbody id="itens"></tbody>
     </table>
   </div>
@@ -84,12 +107,36 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
       }).join("");
       document.getElementById("links").innerHTML=html||'<tr><td colspan="8" style="padding:18px;color:#6B7280">Nenhum link gerado ainda.</td></tr>';
     }
+    var aba="ativos";
+    function moeda(v){return v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
+    function soma(lista){return lista.reduce(function(a,i){return a+(i.valor!=null?i.valor*i.qtd:0)},0)}
+    function mudarAba(a){
+      aba=a;
+      document.getElementById("abaAtivos").className="btn"+(a==="ativos"?" btn-primary":"");
+      document.getElementById("abaBaixados").className="btn"+(a==="baixados"?" btn-primary":"");
+      renderItens();
+    }
     function renderItens(){
-      var disp=DADOS.itens.filter(function(i){return i.status==="disponivel"}).length;
-      document.getElementById("resumoItens").textContent="— "+disp+" disponíveis, "+(DADOS.itens.length-disp)+" baixados";
-      document.getElementById("itens").innerHTML=DADOS.itens.map(function(i){
-        return '<tr style="'+(i.status==="baixado"?"opacity:.55":"")+'"><td>'+(i.foto?'<img src="/api/admin/itens-deposito/foto?n='+i.n+'" width="56" height="42" style="object-fit:cover;border-radius:4px" loading="lazy">':"")+'</td><td>'+i.n+'</td><td style="min-width:220px">'+esc(i.nome)+(i.marca&&i.marca!=="-"?'<br><small style="color:#6B7280">'+esc(i.marca)+'</small>':"")+'</td><td>'+(i.est?"≈ ":"")+i.qtd+" "+esc(i.un)+'</td><td>'+esc(i.cond)+'</td><td><input class="input" style="width:100px" id="v'+i.n+'" value="'+(i.valor==null?"":i.valor)+'" placeholder="a combinar"></td><td><select class="input" id="s'+i.n+'"><option value="disponivel"'+(i.status==="disponivel"?" selected":"")+'>Disponível</option><option value="baixado"'+(i.status==="baixado"?" selected":"")+'>Baixado</option></select></td><td><button class="btn btn-sm" onclick="salvarItem('+i.n+')">Salvar</button></td></tr>';
+      var atv=DADOS.itens.filter(function(i){return i.status==="disponivel"});
+      var bx=DADOS.itens.filter(function(i){return i.status!=="disponivel"});
+      var sv=atv.filter(function(i){return i.valor==null}).length;
+      document.getElementById("totalEstoque").textContent=moeda(soma(atv));
+      document.getElementById("qtdAtivos").textContent=atv.length;
+      document.getElementById("semValor").textContent=sv?sv+" sem valor (não entram no total)":"todos com valor";
+      document.getElementById("totalBaixado").textContent=moeda(soma(bx));
+      document.getElementById("qtdBaixados").textContent=bx.length+" itens";
+      document.getElementById("abaAtivos").textContent="Ativos ("+atv.length+")";
+      document.getElementById("abaBaixados").textContent="Baixados ("+bx.length+")";
+      var lista=aba==="ativos"?atv:bx;
+      var html=lista.map(function(i){
+        var tot=i.valor!=null?moeda(i.valor*i.qtd):"—";
+        var btn=i.status==="disponivel"
+          ?'<button class="btn btn-sm" onclick="mudarStatus('+i.n+',\'baixado\')">Dar baixa</button>'
+          :'<button class="btn btn-sm" onclick="mudarStatus('+i.n+',\'disponivel\')">Reativar</button>';
+        return '<tr><td>'+(i.foto?'<img src="/api/admin/itens-deposito/foto?n='+i.n+'" width="56" height="42" style="object-fit:cover;border-radius:4px" loading="lazy">':"")+'</td><td>'+i.n+'</td><td style="min-width:220px">'+esc(i.nome)+(i.marca&&i.marca!=="-"?'<br><small style="color:#6B7280">'+esc(i.marca)+'</small>':"")+'</td><td>'+(i.est?"≈ ":"")+i.qtd+" "+esc(i.un)+'</td><td>'+esc(i.cond)+'</td><td><input class="input" style="width:100px" id="v'+i.n+'" value="'+(i.valor==null?"":i.valor)+'" placeholder="a combinar"> <button class="btn btn-sm" onclick="salvarItem('+i.n+')">Salvar</button></td><td style="white-space:nowrap;font-variant-numeric:tabular-nums">'+tot+'</td><td>'+btn+'</td></tr>';
       }).join("");
+      document.getElementById("resumoItens").textContent=aba==="ativos"?"Itens que aparecem para os credores.":"Itens que saíram da página dos credores.";
+      document.getElementById("itens").innerHTML=html||'<tr><td colspan="8" style="padding:18px;color:#6B7280">'+(aba==="ativos"?"Nenhum item ativo.":"Nenhum item baixado ainda.")+'</td></tr>';
     }
     function gerar(){
       var credor=document.getElementById("credor").value.trim();
@@ -103,8 +150,9 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
     }
     function reemitir(id){post({acao:"url",id:id}).then(function(j){document.getElementById("novoUrl").value=j.url;document.getElementById("novoQuem").textContent="Link reemitido";document.getElementById("novoLink").hidden=false;copiar("novoUrl");window.scrollTo(0,0)}).catch(function(e){alert(e.message)})}
     function revogar(id){if(!window.confirm("Revogar este link? O credor perde o acesso agora."))return;post({acao:"revogar",id:id}).then(carregar).catch(function(e){alert(e.message)})}
-    function salvarItem(n){post({acao:"item",n:n,status:document.getElementById("s"+n).value,valor:document.getElementById("v"+n).value.replace(",",".")}).then(carregar).catch(function(e){alert(e.message)})}
-    Object.assign(window,{gerar:gerar,copiar:copiar,reemitir:reemitir,revogar:revogar,salvarItem:salvarItem});
+    function salvarItem(n){post({acao:"item",n:n,valor:document.getElementById("v"+n).value.replace(",",".")}).then(carregar).catch(function(e){alert(e.message)})}
+    function mudarStatus(n,status){post({acao:"item",n:n,status:status}).then(carregar).catch(function(e){alert(e.message)})}
+    Object.assign(window,{gerar:gerar,copiar:copiar,reemitir:reemitir,revogar:revogar,salvarItem:salvarItem,mudarStatus:mudarStatus,mudarAba:mudarAba});
     carregar();
   </script>
 </Admin>
