@@ -1,0 +1,191 @@
+---
+export const prerender = false;
+import { supabaseAdmin } from "~/lib/supabase";
+import { lerItens, registrarAcessoLink, validarLink } from "~/lib/itensDeposito";
+
+const token = Astro.params.token || "";
+const db = supabaseAdmin();
+const ok = await validarLink(db, token);
+
+let credor = "";
+let expira = "";
+let aceitou = false;
+let dados = "[]";
+let marcaBg = "";
+
+if (ok) {
+  const { link, links } = ok;
+  credor = link.credor;
+  aceitou = !!link.aceitouEm;
+  expira = new Date(link.expiraEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  if (aceitou) {
+    // só registra a abertura depois do aceite (a tela do aviso não conta como visualização do catálogo)
+    await registrarAcessoLink(db, links, link, "abriu", Astro.request);
+    const itens = (await lerItens(db)).filter((i) => i.status === "disponivel");
+    dados = JSON.stringify(
+      itens.map((i) => ({
+        n: i.n, nome: i.nome, marca: i.marca, qtd: i.qtd, un: i.un, cond: i.cond, est: i.est,
+        valor: link.mostrarValor ? i.valor : null, foto: !!i.foto,
+      })),
+    ).replace(/</g, "\\u003c");
+  }
+  const agora = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const xml = (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const txt = `${credor} • ${agora} • ref ${link.id.slice(0, 6)}`;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='420' height='230'><text x='20' y='130' transform='rotate(-24 210 115)' fill='rgba(120,120,120,0.28)' font-family='Arial, sans-serif' font-size='17' font-weight='700'>${xml(txt)}</text></svg>`;
+  marcaBg = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+---
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow, noarchive" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Itens de Depósito — Costa Júnior</title>
+  <style is:inline>
+    :root{--bg:#F6F5F3;--surface:#fff;--ink:#2D2F36;--muted:#6B6E78;--line:#E3E1DD;--brand:#C41E3A;--novo:#1F7A4D;--novo-bg:#E3F3EA;--usado:#8A5A00;--usado-bg:#FBEFD5;--conf:#555B66;--conf-bg:#E9EAEE}
+    @media (prefers-color-scheme:dark){:root{--bg:#17181C;--surface:#212329;--ink:#ECECEF;--muted:#A0A3AD;--line:#34363E;--brand:#E8465F;--novo:#6FD09A;--novo-bg:#17372A;--usado:#F0C56A;--usado-bg:#3A2E12;--conf:#BFC3CE;--conf-bg:#2E3038;color-scheme:dark}}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:'Open Sans',Arial,sans-serif;line-height:1.45;padding:0 16px 48px;-webkit-user-select:none;user-select:none}
+    .wm{position:fixed;inset:0;pointer-events:none;z-index:50;background-image:var(--wm);background-repeat:repeat}
+    .wrap{max-width:1180px;margin:0 auto}
+    header{padding:28px 0 18px;display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-end;justify-content:space-between;border-bottom:3px solid var(--brand)}
+    .eyebrow{font:700 12px/1 Arial,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);margin:0 0 10px}
+    h1{font:800 clamp(26px,5vw,42px)/1.05 Arial,sans-serif;margin:0}
+    .meta{font-size:13px;color:var(--muted);text-align:right}
+    .meta b{color:var(--ink)}
+    .tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:16px 0;position:sticky;top:0;background:var(--bg);z-index:5}
+    .chip{font:700 13px Arial,sans-serif;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:999px;cursor:pointer}
+    .chip[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:#fff}
+    input[type=search]{flex:1 1 200px;min-width:0;font:400 15px Arial,sans-serif;padding:10px 14px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);-webkit-user-select:text;user-select:text}
+    .count{font-size:13px;color:var(--muted);margin-left:auto}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+    .ph{aspect-ratio:4/3;background:var(--conf-bg);display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .ph img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;-webkit-user-drag:none}
+    .ph span{font-size:12px;color:var(--muted)}
+    .body{padding:14px;display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .n{font:700 12px Arial,sans-serif;color:var(--muted)}
+    .badge{font:700 11px Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:4px}
+    .b-Novo{background:var(--novo-bg);color:var(--novo)}.b-Usado{background:var(--usado-bg);color:var(--usado)}.b-conf{background:var(--conf-bg);color:var(--conf)}
+    h2{font:700 15px/1.3 Arial,sans-serif;margin:0;overflow-wrap:anywhere}
+    .marca{font-size:13px;color:var(--muted);margin:0;overflow-wrap:anywhere}
+    .foot{margin-top:auto;padding-top:10px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+    .q{font-size:13px;color:var(--muted)}
+    .v{font:800 19px Arial,sans-serif;text-align:right}
+    .v small{display:block;font:600 11px Arial,sans-serif;color:var(--muted)}
+    .v.nv{font:600 13px Arial,sans-serif;color:var(--muted)}
+    .empty{padding:48px 0;text-align:center;color:var(--muted)}
+    footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+    .aviso{max-width:640px;margin:56px auto;background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--brand);border-radius:6px;padding:28px}
+    .aviso h1{font-size:24px;margin:0 0 6px}
+    .aviso p{font-size:14.5px;margin:12px 0}
+    .aviso ul{padding-left:20px;font-size:14.5px}
+    .aviso li{margin:6px 0}
+    .btn{margin-top:14px;font:800 15px Arial,sans-serif;background:var(--brand);color:#fff;border:0;border-radius:8px;padding:13px 22px;cursor:pointer}
+    .btn:disabled{opacity:.6;cursor:wait}
+    .erro{max-width:520px;margin:80px auto;text-align:center;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:30px}
+    @media(max-width:480px){.grid{grid-template-columns:1fr 1fr;gap:12px}.body{padding:10px}h2{font-size:13px}.v{font-size:16px}.count{margin-left:0;width:100%}.meta{text-align:left}}
+    @media print{body{display:none!important}}
+  </style>
+</head>
+<body>
+  {!ok ? (
+    <div class="erro">
+      <p class="eyebrow">Costa Júnior Engenharia</p>
+      <h1 style="font-size:22px">Link indisponível</h1>
+      <p style="color:var(--muted)">Este link expirou, foi cancelado ou não é válido. O acesso a esta lista é pessoal e temporário. Solicite um novo link à Costa Júnior.</p>
+    </div>
+  ) : (
+    <>
+      <div class="wm" style={`--wm:${marcaBg}`}></div>
+      {!aceitou ? (
+        <div class="aviso">
+          <p class="eyebrow">Costa Júnior Engenharia</p>
+          <h1>Itens de Depósito</h1>
+          <p>Acesso preparado para <strong>{credor}</strong>. Antes de continuar, leia:</p>
+          <ul>
+            <li>Esta é uma <strong>lista informativa</strong> de materiais que podem estar disponíveis, sujeita a disponibilidade e a conferência física.</li>
+            <li>Ela <strong>não é uma oferta vinculante</strong> nem reconhece a existência de bens, patrimônio ou capacidade de pagamento da empresa.</li>
+            <li>O conteúdo é <strong>confidencial</strong> e foi enviado só para {credor}, para uma negociação reservada. Não repasse, copie ou publique.</li>
+            <li>Este acesso é <strong>pessoal, temporário</strong> (válido até {expira}) e <strong>registrado</strong>: data, hora e endereço de acesso. As telas levam seu nome como marca d'água.</li>
+          </ul>
+          <button class="btn" id="aceitar">Li e concordo</button>
+          <p id="msg" style="font-size:13px;color:var(--brand)"></p>
+        </div>
+      ) : (
+        <div class="wrap">
+          <header>
+            <div><p class="eyebrow">Costa Júnior Engenharia</p><h1>Itens de Depósito</h1></div>
+            <div class="meta">Acesso de <b>{credor}</b><br />válido até {expira}</div>
+          </header>
+          <div class="tools">
+            <button class="chip" data-f="Todos" aria-pressed="true">Todos</button>
+            <button class="chip" data-f="Novo" aria-pressed="false">Novos</button>
+            <button class="chip" data-f="Usado" aria-pressed="false">Usados</button>
+            <input type="search" id="q" placeholder="Buscar item ou marca" aria-label="Buscar item ou marca" />
+            <span class="count" id="count"></span>
+          </div>
+          <main class="grid" id="grid"></main>
+          <p class="empty" id="empty" hidden>Nenhum item encontrado.</p>
+          <footer>Lista informativa e confidencial, sujeita a disponibilidade. Não constitui oferta vinculante nem reconhecimento de bens da empresa. Itens sem valor ficam a combinar. Quantidades com ≈ são aproximadas.</footer>
+        </div>
+      )}
+    </>
+  )}
+
+  <script type="application/json" id="dados" set:html={dados}></script>
+  <script is:inline define:vars={{ T: token }}>
+    document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    document.addEventListener("dragstart", function (e) { e.preventDefault(); });
+    var btn = document.getElementById("aceitar");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        btn.disabled = true;
+        fetch("/api/itens/aceitar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ t: T }) })
+          .then(function (r) { if (!r.ok) throw new Error(); location.reload(); })
+          .catch(function () { btn.disabled = false; document.getElementById("msg").textContent = "Não foi possível registrar. Tente de novo."; });
+      });
+    }
+    var grid = document.getElementById("grid");
+    if (grid) {
+      var DATA = JSON.parse(document.getElementById("dados").textContent || "[]");
+      var brl = function (v) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); };
+      var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+      var state = { f: "Todos", q: "" };
+      var card = function (it) {
+        var cls = it.cond === "Novo" ? "b-Novo" : it.cond === "Usado" ? "b-Usado" : "b-conf";
+        var q = (Number.isInteger(it.qtd) ? it.qtd : String(it.qtd).replace(".", ",")) + " " + it.un;
+        var ph = it.foto ? '<img alt="" src="/api/itens/foto?t=' + encodeURIComponent(T) + "&n=" + it.n + '">' : "<span>Sem foto</span>";
+        var val = it.valor !== null
+          ? '<div class="v">' + brl(it.valor) + "<small>" + (it.qtd > 1 && it.un !== "lote" && it.un !== "conj" ? "valor unitário" : "valor") + "</small></div>"
+          : '<div class="v nv">Valor a combinar</div>';
+        return '<article class="card"><div class="ph">' + ph + '</div><div class="body"><div class="top"><span class="n">#' + it.n + '</span><span class="badge ' + cls + '">' + esc(it.cond) + "</span></div><h2>" + esc(it.nome) + "</h2>" +
+          (it.marca && it.marca !== "-" ? '<p class="marca">' + esc(it.marca) + "</p>" : "") +
+          '<div class="foot"><span class="q">' + (it.est ? "≈ " : "") + q + "</span>" + val + "</div></div></article>";
+      };
+      var render = function () {
+        var q = state.q.trim().toLowerCase();
+        var list = DATA.filter(function (it) {
+          if (state.f === "Novo" && it.cond !== "Novo") return false;
+          if (state.f === "Usado" && it.cond !== "Usado") return false;
+          if (q && (it.nome + " " + it.marca).toLowerCase().indexOf(q) < 0) return false;
+          return true;
+        });
+        grid.innerHTML = list.map(card).join("");
+        document.getElementById("empty").hidden = list.length > 0;
+        document.getElementById("count").textContent = list.length + " de " + DATA.length + " itens";
+      };
+      document.querySelector(".tools").addEventListener("click", function (e) {
+        var b = e.target.closest(".chip"); if (!b) return; state.f = b.dataset.f;
+        [].forEach.call(document.querySelectorAll(".chip"), function (c) { c.setAttribute("aria-pressed", c === b ? "true" : "false"); });
+        render();
+      });
+      document.getElementById("q").addEventListener("input", function (e) { state.q = e.target.value; render(); });
+      render();
+    }
+  </script>
+</body>
+</html>

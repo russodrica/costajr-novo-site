@@ -1,0 +1,110 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco } from "../../lib/permissoes";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
+---
+<Admin title="Itens de Depósito" current="itens-deposito">
+  <div class="toolbar">
+    <span class="toolbar-title">📦 Itens de Depósito — links para credores</span>
+  </div>
+
+  <div class="card" style="padding:12px 16px;margin-bottom:14px;background:#FFFBEB;border:1px solid #FCD34D">
+    <strong>Como funciona:</strong> cada link é <b>pessoal</b> (leva o nome do credor como marca d'água), vale <b>no máximo 24 horas</b> e só existe porque você o gerou aqui. Para o credor ver de novo, gere outro. O credor precisa <b>aceitar um aviso de confidencialidade</b> antes de ver a lista, e cada abertura fica registrada (data, hora, IP). Você pode <b>revogar</b> um link a qualquer momento.
+  </div>
+
+  <div class="card" style="padding:16px;margin-bottom:16px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <label style="flex:2 1 240px;font-size:13px">Nome do credor
+        <input id="credor" class="input" style="width:100%" placeholder="Ex.: Leroy Merlin Ltda" maxlength="80" />
+      </label>
+      <label style="flex:0 0 140px;font-size:13px">Validade
+        <select id="horas" class="input" style="width:100%">
+          <option value="24" selected>24 horas</option>
+          <option value="12">12 horas</option>
+          <option value="6">6 horas</option>
+          <option value="1">1 hora</option>
+        </select>
+      </label>
+      <label style="flex:0 0 auto;font-size:13px;display:flex;align-items:center;gap:6px;padding-bottom:9px">
+        <input type="checkbox" id="mostrarValor" checked /> Mostrar valores
+      </label>
+      <button class="btn btn-primary" id="btnGerar" onclick="gerar()">Gerar link</button>
+    </div>
+    <div id="novoLink" hidden style="margin-top:14px;padding:12px;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px">
+      <div style="font-size:13px;margin-bottom:6px"><b id="novoQuem"></b> — copie e envie. Ele não será mostrado de novo, mas você pode reemiti-lo na lista abaixo enquanto estiver válido.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="novoUrl" class="input" readonly style="flex:1 1 320px;min-width:0" onclick="this.select()" />
+        <button class="btn" onclick="copiar('novoUrl')">Copiar</button>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin:18px 0 8px">Links gerados</h3>
+  <div class="card" style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Credor</th><th>Gerado</th><th>Expira</th><th>Situação</th><th>Aceite</th><th>Aberturas</th><th>Último acesso</th><th></th></tr></thead>
+      <tbody id="links"><tr><td colspan="8" style="padding:18px;color:#6B7280">Carregando…</td></tr></tbody>
+    </table>
+  </div>
+
+  <h3 style="margin:22px 0 8px">Itens do catálogo <span id="resumoItens" style="font-weight:400;font-size:13px;color:#6B7280"></span></h3>
+  <div class="card" style="overflow-x:auto">
+    <table>
+      <thead><tr><th></th><th>#</th><th>Item</th><th>Qtd</th><th>Condição</th><th>Valor (R$)</th><th>Situação</th><th></th></tr></thead>
+      <tbody id="itens"></tbody>
+    </table>
+  </div>
+
+  <script is:inline>
+    var DADOS = { itens: [], links: [] };
+    function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+    function dt(s){return s?new Date(s).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—"}
+    function post(corpo){return fetch("/api/admin/itens-deposito",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(corpo)}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"Falha");return j})})}
+    function copiar(id){var el=document.getElementById(id);el.select();try{navigator.clipboard.writeText(el.value)}catch(e){document.execCommand("copy")}}
+    function carregar(){
+      fetch("/api/admin/itens-deposito").then(function(r){return r.json()}).then(function(j){
+        if(!j.ok)throw new Error(j.error||"Falha");DADOS=j;renderLinks();renderItens();
+      }).catch(function(e){document.getElementById("links").innerHTML='<tr><td colspan="8" style="padding:18px;color:#B91C1C">'+esc(e.message)+'</td></tr>'});
+    }
+    function renderLinks(){
+      var cor={ativo:"badge-green",expirado:"badge-gray",revogado:"badge-red"};
+      var html=DADOS.links.map(function(l){
+        var abriu=l.acessos.filter(function(a){return a.tipo==="abriu"});
+        var ult=l.acessos.length?l.acessos[l.acessos.length-1]:null;
+        var ips=l.acessos.slice(-5).reverse().map(function(a){return dt(a.em)+" · "+(a.tipo==="aceitou"?"aceitou":"abriu")+" · "+esc(a.ip||"?")}).join("<br>");
+        var acoes=l.estado==="ativo"?'<button class="btn btn-sm" onclick="reemitir(\''+l.id+'\')">Copiar link</button> <button class="btn btn-sm" onclick="revogar(\''+l.id+'\')">Revogar</button>':"";
+        return '<tr><td><b>'+esc(l.credor)+'</b>'+(l.mostrarValor?"":' <span class="badge badge-gray">sem valores</span>')+'</td><td>'+dt(l.criadoEm)+'</td><td>'+dt(l.expiraEm)+'</td><td><span class="badge '+cor[l.estado]+'">'+l.estado+'</span></td><td>'+(l.aceitouEm?dt(l.aceitouEm):"—")+'</td><td title="'+esc(ips.replace(/<br>/g,"\n"))+'">'+abriu.length+'</td><td>'+(ult?dt(ult.em)+'<br><small style="color:#6B7280">'+esc(ult.ip||"")+'</small>':"—")+'</td><td style="white-space:nowrap">'+acoes+'</td></tr>';
+      }).join("");
+      document.getElementById("links").innerHTML=html||'<tr><td colspan="8" style="padding:18px;color:#6B7280">Nenhum link gerado ainda.</td></tr>';
+    }
+    function renderItens(){
+      var disp=DADOS.itens.filter(function(i){return i.status==="disponivel"}).length;
+      document.getElementById("resumoItens").textContent="— "+disp+" disponíveis, "+(DADOS.itens.length-disp)+" baixados";
+      document.getElementById("itens").innerHTML=DADOS.itens.map(function(i){
+        return '<tr style="'+(i.status==="baixado"?"opacity:.55":"")+'"><td>'+(i.foto?'<img src="/api/admin/itens-deposito/foto?n='+i.n+'" width="56" height="42" style="object-fit:cover;border-radius:4px" loading="lazy">':"")+'</td><td>'+i.n+'</td><td style="min-width:220px">'+esc(i.nome)+(i.marca&&i.marca!=="-"?'<br><small style="color:#6B7280">'+esc(i.marca)+'</small>':"")+'</td><td>'+(i.est?"≈ ":"")+i.qtd+" "+esc(i.un)+'</td><td>'+esc(i.cond)+'</td><td><input class="input" style="width:100px" id="v'+i.n+'" value="'+(i.valor==null?"":i.valor)+'" placeholder="a combinar"></td><td><select class="input" id="s'+i.n+'"><option value="disponivel"'+(i.status==="disponivel"?" selected":"")+'>Disponível</option><option value="baixado"'+(i.status==="baixado"?" selected":"")+'>Baixado</option></select></td><td><button class="btn btn-sm" onclick="salvarItem('+i.n+')">Salvar</button></td></tr>';
+      }).join("");
+    }
+    function gerar(){
+      var credor=document.getElementById("credor").value.trim();
+      if(credor.length<2){alert("Informe o nome do credor.");return}
+      var b=document.getElementById("btnGerar");b.disabled=true;
+      post({acao:"gerar",credor:credor,horas:Number(document.getElementById("horas").value),mostrarValor:document.getElementById("mostrarValor").checked}).then(function(j){
+        document.getElementById("novoUrl").value=j.url;
+        document.getElementById("novoQuem").textContent="Link de "+j.link.credor+" (válido até "+dt(j.link.expiraEm)+")";
+        document.getElementById("novoLink").hidden=false;document.getElementById("credor").value="";carregar();
+      }).catch(function(e){alert(e.message)}).then(function(){b.disabled=false});
+    }
+    function reemitir(id){post({acao:"url",id:id}).then(function(j){document.getElementById("novoUrl").value=j.url;document.getElementById("novoQuem").textContent="Link reemitido";document.getElementById("novoLink").hidden=false;copiar("novoUrl");window.scrollTo(0,0)}).catch(function(e){alert(e.message)})}
+    function revogar(id){if(!window.confirm("Revogar este link? O credor perde o acesso agora."))return;post({acao:"revogar",id:id}).then(carregar).catch(function(e){alert(e.message)})}
+    function salvarItem(n){post({acao:"item",n:n,status:document.getElementById("s"+n).value,valor:document.getElementById("v"+n).value.replace(",",".")}).then(carregar).catch(function(e){alert(e.message)})}
+    Object.assign(window,{gerar:gerar,copiar:copiar,reemitir:reemitir,revogar:revogar,salvarItem:salvarItem});
+    carregar();
+  </script>
+</Admin>
