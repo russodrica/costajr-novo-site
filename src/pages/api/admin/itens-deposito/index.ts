@@ -92,10 +92,16 @@ export const POST: APIRoute = async ({ request }) => {
         if (!Number.isFinite(v) || v < 0) return jsonErr(400, "Valor inválido.");
         it.valor = Math.round(v * 100) / 100;
       }
+      if (b.qtd !== undefined && b.qtd !== "") {
+        const q = Number(b.qtd);
+        if (!Number.isFinite(q) || q < 0 || q > 100000) return jsonErr(400, "Quantidade inválida.");
+        it.qtd = Math.round(q * 100) / 100;
+        it.est = false; // quantidade conferida por você: deixa de ser "aproximada"
+      }
       await gravarItens(db, itens);
       await registrarAcao(db, ctx, {
         acao: "editar", entidade: "itens_deposito_item", registro_id: String(it.n),
-        descricao: `Item #${it.n} (${it.nome}): ${it.status}${it.valor != null ? ", valor " + it.valor : ""}`,
+        descricao: `Item #${it.n} (${it.nome}): ${it.status}, qtd ${it.qtd}${it.valor != null ? ", valor " + it.valor : ""}`,
       });
       return jsonOk({ ok: true });
     }
