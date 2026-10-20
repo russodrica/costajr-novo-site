@@ -73,6 +73,11 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
   </div>
 
   <input type="file" id="arqFoto" accept="image/*" hidden />
+  <div id="zoom" onclick="fecharZoom()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:16px;cursor:zoom-out">
+    <img id="zoomImg" alt="" style="max-width:96vw;max-height:84vh;object-fit:contain;border-radius:6px;background:#111" />
+    <div id="zoomTit" style="color:#fff;font-size:14px;text-align:center;max-width:90vw"></div>
+    <div style="color:#9CA3AF;font-size:12px">Clique em qualquer lugar ou aperte Esc para fechar</div>
+  </div>
   <h3 style="margin:22px 0 8px">Itens do catálogo</h3>
   <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button class="btn btn-primary" id="abaAtivos" onclick="mudarAba('ativos')">Ativos</button>
@@ -134,7 +139,7 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
         var btn=i.status==="disponivel"
           ?'<button class="btn btn-sm" onclick="mudarStatus('+i.n+',\'baixado\')">Dar baixa</button>'
           :'<button class="btn btn-sm" onclick="mudarStatus('+i.n+',\'disponivel\')">Reativar</button>';
-        return '<tr><td style="text-align:center">'+(i.foto?'<img src="/api/admin/itens-deposito/foto?n='+i.n+'&v='+encodeURIComponent(i.foto)+'" width="64" height="48" style="object-fit:cover;border-radius:4px;display:block;margin:0 auto 4px" loading="lazy">':"")+'<button class="btn btn-sm" onclick="trocarFoto('+i.n+')">Trocar foto</button></td><td>'+i.n+'</td><td style="min-width:220px">'+esc(i.nome)+(i.marca&&i.marca!=="-"?'<br><small style="color:#6B7280">'+esc(i.marca)+'</small>':"")+'</td><td style="white-space:nowrap"><input class="input" type="number" min="0" step="any" style="width:76px" id="q'+i.n+'" value="'+i.qtd+'"> '+esc(i.un)+(i.est?'<br><small style="color:#B45309">aproximada</small>':"")+'</td><td>'+esc(i.cond)+'</td><td><input class="input" style="width:100px" id="v'+i.n+'" value="'+(i.valor==null?"":i.valor)+'" placeholder="a combinar"> <button class="btn btn-sm" onclick="salvarItem('+i.n+')">Salvar</button></td><td style="white-space:nowrap;font-variant-numeric:tabular-nums">'+tot+'</td><td>'+btn+'</td></tr>';
+        return '<tr><td style="text-align:center">'+(i.foto?'<img src="/api/admin/itens-deposito/foto?n='+i.n+'&v='+encodeURIComponent(i.foto)+'" width="88" height="66" title="Clique para ampliar" onclick="ampliar('+i.n+')" style="object-fit:cover;border-radius:4px;display:block;margin:0 auto 4px;cursor:zoom-in" loading="lazy">':"")+'<button class="btn btn-sm" onclick="trocarFoto('+i.n+')">Trocar foto</button></td><td>'+i.n+'</td><td style="min-width:220px">'+esc(i.nome)+(i.marca&&i.marca!=="-"?'<br><small style="color:#6B7280">'+esc(i.marca)+'</small>':"")+'</td><td style="white-space:nowrap"><input class="input" type="number" min="0" step="any" style="width:76px" id="q'+i.n+'" value="'+i.qtd+'"> '+esc(i.un)+(i.est?'<br><small style="color:#B45309">aproximada</small>':"")+'</td><td>'+esc(i.cond)+'</td><td><input class="input" style="width:100px" id="v'+i.n+'" value="'+(i.valor==null?"":i.valor)+'" placeholder="a combinar"> <button class="btn btn-sm" onclick="salvarItem('+i.n+')">Salvar</button></td><td style="white-space:nowrap;font-variant-numeric:tabular-nums">'+tot+'</td><td>'+btn+'</td></tr>';
       }).join("");
       document.getElementById("resumoItens").textContent=aba==="ativos"?"Itens que aparecem para os credores.":"Itens que saíram da página dos credores.";
       document.getElementById("itens").innerHTML=html||'<tr><td colspan="8" style="padding:18px;color:#6B7280">'+(aba==="ativos"?"Nenhum item ativo.":"Nenhum item baixado ainda.")+'</td></tr>';
@@ -152,6 +157,14 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
     function reemitir(id){post({acao:"url",id:id}).then(function(j){document.getElementById("novoUrl").value=j.url;document.getElementById("novoQuem").textContent="Link reemitido";document.getElementById("novoLink").hidden=false;copiar("novoUrl");window.scrollTo(0,0)}).catch(function(e){alert(e.message)})}
     function revogar(id){if(!window.confirm("Revogar este link? O credor perde o acesso agora."))return;post({acao:"revogar",id:id}).then(carregar).catch(function(e){alert(e.message)})}
     function salvarItem(n){post({acao:"item",n:n,qtd:document.getElementById("q"+n).value.replace(",","."),valor:document.getElementById("v"+n).value.replace(",",".")}).then(carregar).catch(function(e){alert(e.message)})}
+    function ampliar(n){
+      var it=DADOS.itens.filter(function(x){return x.n===n})[0];if(!it||!it.foto)return;
+      document.getElementById("zoomImg").src="/api/admin/itens-deposito/foto?n="+n+"&v="+encodeURIComponent(it.foto);
+      document.getElementById("zoomTit").textContent="#"+n+" — "+it.nome+" ("+it.qtd+" "+it.un+")";
+      document.getElementById("zoom").style.display="flex";
+    }
+    function fecharZoom(){document.getElementById("zoom").style.display="none";document.getElementById("zoomImg").removeAttribute("src")}
+    document.addEventListener("keydown",function(e){if(e.key==="Escape")fecharZoom()});
     var fotoAlvo=0;
     function trocarFoto(n){fotoAlvo=n;var i=document.getElementById("arqFoto");i.value="";i.click()}
     function reduzir(file,max){
@@ -169,7 +182,7 @@ if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin")
         .then(carregar).catch(function(err){alert(err.message)});
     });
     function mudarStatus(n,status){post({acao:"item",n:n,status:status}).then(carregar).catch(function(e){alert(e.message)})}
-    Object.assign(window,{gerar:gerar,copiar:copiar,reemitir:reemitir,revogar:revogar,salvarItem:salvarItem,mudarStatus:mudarStatus,mudarAba:mudarAba,trocarFoto:trocarFoto});
+    Object.assign(window,{gerar:gerar,copiar:copiar,reemitir:reemitir,revogar:revogar,salvarItem:salvarItem,mudarStatus:mudarStatus,mudarAba:mudarAba,trocarFoto:trocarFoto,ampliar:ampliar,fecharZoom:fecharZoom});
     carregar();
   </script>
 </Admin>
