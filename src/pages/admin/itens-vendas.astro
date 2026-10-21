@@ -1,0 +1,98 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { verifyToken, type AdminClaims } from "../../lib/auth";
+import { temPerfilFresco } from "../../lib/permissoes";
+
+const token = Astro.cookies.get("admin_token")?.value;
+if (!token) return Astro.redirect("/admin/login");
+let claims: AdminClaims;
+try { claims = await verifyToken<AdminClaims>(token); if (claims.tipo !== "admin") throw new Error(); }
+catch { Astro.cookies.delete("admin_token", { path: "/" }); return Astro.redirect("/admin/login"); }
+if (!(await temPerfilFresco(claims, ["admin"]))) return Astro.redirect("/admin");
+---
+<Admin title="Vendas dos Itens" current="itens-vendas">
+  <div class="toolbar"><span class="toolbar-title">🛒 Vendas dos itens — Marketplace e OLX</span></div>
+
+  <div class="card" style="padding:12px 16px;margin-bottom:14px;background:#FFFBEB;border:1px solid #FCD34D">
+    <b>Regra de entrega usada em todos os textos:</b> sem entrega pessoal e sem metrô; só motoboy ou Lalamove chamado pelo comprador, que paga o frete. Perguntas de preço/desconto ficam marcadas <b>"Você decide"</b>. As respostas são sugestões: você copia e cola na conversa do Marketplace/OLX.
+  </div>
+
+  <div class="card" style="padding:16px;margin-bottom:16px">
+    <h3 style="margin:0 0 10px">Nova pergunta de comprador</h3>
+    <div style="display:grid;grid-template-columns:140px 1fr 1fr;gap:8px;margin-bottom:8px">
+      <select id="pCanal"><option>Marketplace</option><option>OLX</option><option>Outro</option></select>
+      <input id="pComprador" placeholder="Nome do comprador (opcional)">
+      <select id="pItem"><option value="">Item (opcional)</option></select>
+    </div>
+    <textarea id="pTexto" rows="3" style="width:100%" placeholder="Cole aqui a pergunta do comprador"></textarea>
+    <div style="margin-top:8px"><button class="btn btn-primary" id="btnSug">Sugerir resposta</button> <span id="msg" style="font-size:12px;color:#6B7280"></span></div>
+  </div>
+
+  <div class="card" style="padding:16px;margin-bottom:16px">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0;flex:1">Perguntas</h3>
+      <select id="fSt"><option value="">Todas</option><option value="decidir">Você decide</option><option value="pendente">A responder</option><option value="respondida">Respondidas</option></select>
+    </div>
+    <div id="lista"></div>
+  </div>
+
+  <div class="card" style="padding:16px">
+    <h3 style="margin:0 0 10px">Anúncios prontos para copiar</h3>
+    <input id="busca" placeholder="Buscar item" style="width:100%;margin-bottom:10px">
+    <div id="anuncios"></div>
+  </div>
+
+  <style is:global>
+    .pq{border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:8px}
+    .pq .t{font-size:12px;color:#6B7280}.pq textarea{width:100%;margin:6px 0}
+    .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;background:#F3F4F6;margin-right:4px}
+    .tag.d{background:#FEF3C7}.tag.r{background:#DCFCE7}
+  </style>
+
+  <script is:inline>
+    var DATA = { anuncios: [], perguntas: [] };
+    var H = { "Content-Type": "application/json" };
+    function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+    function copiar(txt, btn){ navigator.clipboard.writeText(txt).then(function(){ var o=btn.textContent; btn.textContent="Copiado!"; setTimeout(function(){btn.textContent=o;},1200); }); }
+    function copiarAnuncio(n, campo, btn){ var a=DATA.anuncios.filter(function(x){return x.n===n;})[0]; if(a) copiar(a[campo], btn); }
+    async function carregar(){
+      var r = await fetch("/api/admin/itens-vendas"); var j = await r.json(); if(!j.ok) return;
+      DATA = j; var sel = document.getElementById("pItem");
+      sel.innerHTML = '<option value="">Item (opcional)</option>' + j.anuncios.map(function(a){return '<option value="'+a.n+'">#'+a.n+' '+esc(a.titulo)+'</option>';}).join("");
+      desenhar();
+    }
+    function desenhar(){
+      var f = document.getElementById("fSt").value;
+      var L = DATA.perguntas.filter(function(p){return !f || p.status===f;});
+      document.getElementById("lista").innerHTML = L.length ? L.map(function(p){
+        var cls = p.status==="decidir"?"d":p.status==="respondida"?"r":"";
+        var lbl = p.status==="decidir"?"Você decide":p.status==="respondida"?"Respondida":"A responder";
+        return '<div class="pq"><div><span class="tag '+cls+'">'+lbl+'</span><span class="tag">'+esc(p.canal)+'</span>'+(p.n?'<span class="tag">item #'+p.n+'</span>':'')+'<span class="t">'+esc(p.comprador)+' · '+new Date(p.em).toLocaleString("pt-BR")+'</span></div>'
+          +'<div style="margin:6px 0"><b>'+esc(p.pergunta)+'</b></div>'
+          +'<textarea id="r'+p.id+'" rows="3">'+esc(p.resposta)+'</textarea>'
+          +'<button class="btn" onclick="copiar(document.getElementById(\'r'+p.id+'\').value,this)">Copiar resposta</button> '
+          +'<button class="btn" onclick="marcar(\''+p.id+'\',\'respondida\')">Marcar respondida</button> '
+          +'<button class="btn" onclick="marcar(\''+p.id+'\',\'pendente\')">Reabrir</button> '
+          +'<button class="btn" onclick="excluir(\''+p.id+'\')">Excluir</button></div>';
+      }).join("") : '<div class="t" style="color:#6B7280">Nenhuma pergunta ainda.</div>';
+      var q = (document.getElementById("busca").value||"").toLowerCase();
+      document.getElementById("anuncios").innerHTML = DATA.anuncios.filter(function(a){return !q||a.titulo.toLowerCase().indexOf(q)>=0;}).map(function(a){
+        return '<div class="pq"><b>#'+a.n+' '+esc(a.titulo)+'</b> <span class="t">'+(a.preco!=null?'R$ '+Number(a.preco).toFixed(2).replace(".",","):'')+'</span><br>'
+          +'<button class="btn" onclick="copiarAnuncio('+a.n+',\'titulo\',this)">Copiar título</button> '
+          +'<button class="btn" onclick="copiarAnuncio('+a.n+',\'descricao\',this)">Copiar descrição</button> '
+          +'<a href="/api/admin/itens-deposito/foto?n='+a.n+'" target="_blank" class="btn">Ver foto</a></div>';
+      }).join("");
+    }
+    async function marcar(id,st){ var ta=document.getElementById("r"+id); await fetch("/api/admin/itens-vendas",{method:"POST",headers:H,body:JSON.stringify({acao:"status",id:id,status:st,resposta:ta?ta.value:undefined})}); carregar(); }
+    async function excluir(id){ if(!confirm("Excluir esta pergunta?")) return; await fetch("/api/admin/itens-vendas",{method:"POST",headers:H,body:JSON.stringify({acao:"excluir",id:id})}); carregar(); }
+    document.getElementById("btnSug").onclick = async function(){
+      var m=document.getElementById("msg"); m.textContent="Pensando...";
+      var r = await fetch("/api/admin/itens-vendas",{method:"POST",headers:H,body:JSON.stringify({acao:"sugerir",canal:document.getElementById("pCanal").value,comprador:document.getElementById("pComprador").value,n:document.getElementById("pItem").value,pergunta:document.getElementById("pTexto").value})});
+      var j = await r.json(); m.textContent = j.ok ? "Pronto, veja na lista abaixo." : (j.error||"Erro");
+      if(j.ok){ document.getElementById("pTexto").value=""; carregar(); }
+    };
+    document.getElementById("fSt").onchange = desenhar; document.getElementById("busca").oninput = desenhar;
+    Object.assign(window,{copiar:copiar,copiarAnuncio:copiarAnuncio,marcar:marcar,excluir:excluir});
+    carregar();
+  </script>
+</Admin>

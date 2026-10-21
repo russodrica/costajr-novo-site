@@ -253,6 +253,7 @@ export const GRUPOS_ADMIN: GrupoAdmin[] = [
   { id: "sistema", label: "Sistema", itens: [
     { key: "fornecedores", label: "Fornecedores (acesso externo)", icon: "🚚", href: "/admin/fornecedores" },
     { key: "itens-deposito", label: "Itens de Depósito (links)", icon: "📦", href: "/admin/itens-deposito" },
+    { key: "itens-vendas", label: "Vendas dos Itens", icon: "🛒", href: "/admin/itens-vendas" },
     { key: "logs", label: "Auditoria (Logs)", icon: "🧾", href: "/admin/logs" },
     { key: "lixeira", label: "Lixeira", icon: "🗑️", href: "/admin/lixeira" },
     { key: "telegram", label: "Bot Telegram", icon: "🤖", href: "/admin/telegram" },
