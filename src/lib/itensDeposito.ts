@@ -60,6 +60,10 @@ async function gravarJson(db: any, caminho: string, valor: unknown): Promise<voi
 
 export const lerItens = (db: any) => lerJson<ItemDeposito[]>(db, "itens.json", []);
 export const gravarItens = (db: any, itens: ItemDeposito[]) => gravarJson(db, "itens.json", itens);
+// Itens tirados do catálogo (extraviados etc.): ficam guardados aqui para poder restaurar.
+export type ItemExcluido = ItemDeposito & { excluidoEm: string; excluidoPor: string; motivo: string };
+export const lerExcluidos = (db: any) => lerJson<ItemExcluido[]>(db, "excluidos.json", []);
+export const gravarExcluidos = (db: any, l: ItemExcluido[]) => gravarJson(db, "excluidos.json", l);
 export const lerLinks = (db: any) => lerJson<LinkItens[]>(db, "links.json", []);
 export const gravarLinks = (db: any, links: LinkItens[]) => gravarJson(db, "links.json", links);
 

@@ -3,7 +3,7 @@ import { requireAdminCookie, temPerfil, jsonOk, jsonErr, signToken } from "../..
 import { supabaseAdmin } from "../../../../lib/supabase";
 import { registrarAcao } from "../../../../lib/auditoria";
 import { bloqueioSeSoLeitura } from "../../../../lib/permissoes";
-import { criarLink, estadoLink, gravarItens, gravarLinks, lerItens, lerLinks } from "../../../../lib/itensDeposito";
+import { criarLink, estadoLink, gravarExcluidos, gravarItens, gravarLinks, lerExcluidos, lerItens, lerLinks } from "../../../../lib/itensDeposito";
 
 export const prerender = false;
 // Quem gera/revoga links e mexe no catálogo: só administrador.
@@ -102,6 +102,42 @@ export const POST: APIRoute = async ({ request }) => {
       await registrarAcao(db, ctx, {
         acao: "editar", entidade: "itens_deposito_item", registro_id: String(it.n),
         descricao: `Item #${it.n} (${it.nome}): ${it.status}, qtd ${it.qtd}${it.valor != null ? ", valor " + it.valor : ""}`,
+      });
+      return jsonOk({ ok: true });
+    }
+
+    // Tira o item do catálogo (ex.: extraviado). A cópia fica em excluidos.json para restaurar.
+    if (b.acao === "excluir") {
+      const itens = await lerItens(db);
+      const it = itens.find((x) => x.n === Number(b.n));
+      if (!it) return jsonErr(404, "Item não encontrado.");
+      const motivo = String(b.motivo || "Extraviado").trim().slice(0, 200);
+      const excl = await lerExcluidos(db);
+      excl.push({ ...it, excluidoEm: new Date().toISOString(), excluidoPor: admin.email || "admin", motivo });
+      await gravarExcluidos(db, excl);
+      await gravarItens(db, itens.filter((x) => x.n !== it.n));
+      await registrarAcao(db, ctx, {
+        acao: "excluir", entidade: "itens_deposito_item", registro_id: String(it.n),
+        descricao: `Excluiu o item #${it.n} (${it.nome}), qtd ${it.qtd}. Motivo: ${motivo}`,
+        dados: it,
+      });
+      return jsonOk({ ok: true });
+    }
+
+    if (b.acao === "restaurar") {
+      const excl = await lerExcluidos(db);
+      const idx = excl.map((x) => x.n).lastIndexOf(Number(b.n));
+      if (idx < 0) return jsonErr(404, "Item excluído não encontrado.");
+      const { excluidoEm, excluidoPor, motivo, ...it } = excl[idx];
+      const itens = await lerItens(db);
+      if (itens.some((x) => x.n === it.n)) return jsonErr(400, "Já existe um item com esse número.");
+      itens.push(it);
+      itens.sort((a, c) => a.n - c.n);
+      await gravarItens(db, itens);
+      await gravarExcluidos(db, excl.filter((_, k) => k !== idx));
+      await registrarAcao(db, ctx, {
+        acao: "restaurar", entidade: "itens_deposito_item", registro_id: String(it.n),
+        descricao: `Restaurou o item #${it.n} (${it.nome})`,
       });
       return jsonOk({ ok: true });
     }
